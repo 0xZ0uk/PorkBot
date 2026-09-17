@@ -173,13 +173,17 @@ scripts/setup-branch-protection.sh --dry-run   # print the payload
 scripts/setup-branch-protection.sh             # apply
 ```
 
-> **Not applied yet.** GitHub refuses branch protection and rulesets on private
-> repositories below the Pro plan (`HTTP 403: Upgrade to GitHub Pro or make this
-repository public to enable this feature`), and this repository is private on a
-> free plan. Until the repository is public or the account is on Pro, no tier is
-> enforced by GitHub: a red pull request is blocked by convention (and, from
-> slice 1.7, by the pr-watch skill) rather than by the platform. Making the
-> repository public is enough, and applying the rule is then one command.
+> **Deliberately not applied — an accepted trade-off, not an oversight.** This
+> repository is private on GitHub's free plan, where GitHub refuses branch
+> protection _and_ rulesets outright (`HTTP 403: Upgrade to GitHub Pro or make
+this repository public to enable this feature`). The decision for now is to
+> stay private on the free plan, so a red pull request is blocked by convention
+> and by the reviewer — and, from slice 1.7, by the pr-watch skill — rather than
+> by the platform.
+>
+> The script above is therefore the unexercised half of this slice: written,
+> dry-run verified and drift-guarded. Applying it later is one command, and
+> making the repository public is enough to make that command work.
 
 ## Status
 
