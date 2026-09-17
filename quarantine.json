@@ -1,16 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {
-      "id": "flake-0001",
-      "tier": "e2e",
-      "file": "apps/api/test/e2e/health.e2e.test.ts",
-      "test": "starts, serves /healthz over HTTP and stops on SIGTERM",
-      "owner": "@Z0uk",
-      "reason": "PROOF: an entry whose expiry has passed must fail CI",
-      "issue": "https://github.com/0xZ0uk/PorkBot/issues/19",
-      "quarantinedOn": "2026-08-01",
-      "expires": "2026-09-01"
-    }
-  ]
+  "entries": []
 }
