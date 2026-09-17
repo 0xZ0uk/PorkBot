@@ -2,15 +2,11 @@
 
 # Dependencies
 node_modules
-.pnp
-.pnp.js
 
 # Local env files
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
 # Testing
 coverage
@@ -18,20 +14,19 @@ coverage
 # Turbo
 .turbo
 
-# Vercel
-.vercel
-
-# Build Outputs
-.next/
-out/
-build
+# Build outputs
 dist
+out
+*.tsbuildinfo
 
+# Local agent worktrees
+.worktrees
+.opencode
 
 # Debug
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
+pnpm-debug.log*
 
 # Misc
 .DS_Store

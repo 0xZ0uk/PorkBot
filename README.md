@@ -1,159 +1,80 @@
-# Turborepo starter
+# PorkBot
 
-This Turborepo starter is maintained by the Turborepo core team.
+PorkBot is a self-hosted, single-operator AI teammate platform. This repository is the
+pnpm 10 + Turborepo + Node 24 workspace the whole product is built in: the module map,
+the boundary rules that keep the domain pure, the test harnesses and the CI gate. Nothing
+product-facing ships until those are in place.
 
-## Using this example
+## Requirements
 
-Run the following command:
+- Node 24 (`.nvmrc`, `engines.node`, `devEngines.runtime`)
+- pnpm 10 (`packageManager`, `engines.pnpm`, `devEngines.packageManager`)
 
-```sh
-npx create-turbo@latest
-```
-
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Corepack is the easiest way to get the pinned pnpm:
 
 ```sh
-cd my-turborepo
-turbo build
+corepack enable
 ```
 
-Without global `turbo`, use your package manager:
+## Entry points
 
 ```sh
-cd my-turborepo
-npx turbo build
-nub exec turbo build
-nub exec turbo build
+pnpm install          # install the workspace
+pnpm build            # build every app and package (tsc, dist output)
+pnpm typecheck        # typecheck every app and package
+pnpm lint             # lint every app and package
+pnpm test             # unit tests
+pnpm test:e2e         # end-to-end tests
+pnpm dev              # run the always-on processes (api, worker)
+pnpm format           # rewrite files with Prettier
+pnpm format:check     # verify formatting (CI runs this)
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+`pnpm typecheck` and `pnpm test` build the workspace dependencies they need first, so a
+clean checkout only needs `pnpm install` followed by any single command.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Layout
 
-```sh
-turbo build --filter=docs
+```
+apps/
+  api/       HTTP and streaming surface over the domain
+  worker/    always-on background worker, durable jobs
+  web/       static SPA surface
+  desktop/   Electron client of the same API
+  www/       public landing and documentation site
+packages/
+  core/         pure domain: rules, state machine, reducer, policies
+  db/           Drizzle schema, migrations, actor-scoped repositories
+  contracts/    schemas and transport types
+  adapter-kit/  provider interfaces only
+  adapters/     provider implementations and offline emulators
+  auth/         the authentication gate and actor resolution
+  effect/       Effect layers, service tags, transport error mapping
+  ui/           design-system components
+  tokens/       design tokens
+  logging/      JSON logs, levels, correlation ids, redaction
+  testkit/      emulators, harness CLI, database-per-suite isolation
+  eslint-config/     internal: shared ESLint flat config
+  typescript-config/ internal: shared tsconfig bases
 ```
 
-Without global `turbo`:
+Every package is private, ESM, `"type": "module"`, and exports built `dist` output
+(`exports` maps `types` + `default`). Packages import each other with the `workspace:*`
+protocol, so a package can only use what it declares.
 
-```sh
-npx turbo build --filter=docs
-nub exec turbo build --filter=docs
-nub exec turbo build --filter=docs
-```
+## Boundaries
 
-### Develop
+- `packages/core` has no runtime dependencies at all: no framework, no I/O, no database
+  driver. A test in that package fails if a runtime dependency is added.
+- Provider SDKs live only in `packages/adapters`. Everything else consumes
+  `packages/adapter-kit` interfaces.
+- `packages/contracts` is the only source of transport types.
+- Lint and import-boundary rules are enforced from slice 1.2 (#17).
 
-To develop all apps and packages, run the following command:
+## Status
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-nub exec turbo dev
-nub exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-nub exec turbo dev --filter=web
-nub exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-nub exec turbo login
-nub exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-nub exec turbo link
-nub exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+This is slice 1.1 of epic E1 (M0 — Foundation). The workspace, build, typecheck, lint and
+test wiring are real. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
+M10 surface slices replace with the real clients; `apps/api` currently serves a single
+`/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices 6.1 and
+later.
