@@ -1,6 +1,6 @@
 import { createApiServer, moduleInfo } from "./index.ts";
 
-const requestedPort = Number(process.env.PORT ?? 3001);
+const requestedPort = Number(process.env["PORT"] ?? 3001);
 const server = createApiServer();
 
 server.listen(requestedPort, () => {

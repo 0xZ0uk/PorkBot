@@ -1,76 +1,67 @@
-import babelParser from "@babel/eslint-parser";
 import js from "@eslint/js";
 import eslintConfigPrettier from "eslint-config-prettier";
+import importX from "eslint-plugin-import-x";
 import turboPlugin from "eslint-plugin-turbo";
 import globals from "globals";
+import tseslint from "typescript-eslint";
+import { boundaryConfigsFor } from "./module-boundaries.js";
 
-const typescriptRules = {
-  "turbo/no-undeclared-env-vars": "warn",
-  "constructor-super": "off",
-  "getter-return": "off",
-  "no-class-assign": "off",
-  "no-const-assign": "off",
-  "no-dupe-args": "off",
-  "no-dupe-class-members": "off",
-  "no-dupe-keys": "off",
-  "no-func-assign": "off",
-  "no-import-assign": "off",
-  "no-new-native-nonconstructor": "off",
-  "no-new-symbol": "off",
-  "no-obj-calls": "off",
-  "no-redeclare": "off",
-  "no-setter-return": "off",
-  "no-this-before-super": "off",
-  "no-undef": "off",
-  "no-unreachable": "off",
-  "no-unsafe-negation": "off",
-  "no-unused-vars": "off",
-};
+const sourceFiles = ["**/*.ts", "**/*.tsx"];
+const allFiles = [...sourceFiles, "**/*.js", "**/*.mjs", "**/*.cjs"];
 
-function typescriptLanguageOptions(parserPlugins = []) {
-  return {
-    parser: babelParser,
-    parserOptions: {
-      requireConfigFile: false,
-      babelOptions: {
-        presets: ["@babel/preset-typescript"],
-        ...(parserPlugins.length > 0 ? { parserOpts: { plugins: parserPlugins } } : {}),
+// typescript-eslint's configs are not file-scoped. Scoping them to the
+// TypeScript sources keeps the parser and the TS rule set off plain JS, where
+// the `js.configs.recommended` equivalents apply instead.
+const typescriptConfigs = tseslint.configs.strict.map((config) =>
+  config.files === undefined ? { ...config, files: sourceFiles } : config,
+);
+
+/**
+ * Builds the flat config for one workspace package. The package name selects
+ * the boundary rules from the module map, so every package's eslint.config.js
+ * is one call and cannot silently opt out.
+ *
+ * typescript-eslint runs against the TypeScript 6 API, which is the last
+ * compiler version that exposes one: the workspace compiler is TypeScript 7
+ * and @typescript-eslint refuses to run against it.
+ */
+export function defineConfig({ package: packageName }) {
+  return [
+    {
+      name: "porkbot/ignores",
+      ignores: ["dist/**", "coverage/**", ".turbo/**", "node_modules/**"],
+    },
+    js.configs.recommended,
+    ...typescriptConfigs,
+    {
+      name: "porkbot/language-options",
+      files: allFiles,
+      languageOptions: {
+        globals: {
+          ...globals.node,
+        },
+      },
+      plugins: {
+        "import-x": importX,
+        turbo: turboPlugin,
+      },
+      rules: {
+        "turbo/no-undeclared-env-vars": "warn",
+        "import-x/consistent-type-specifier-style": ["error", "prefer-top-level"],
+        "import-x/no-relative-packages": "error",
       },
     },
-    globals: {
-      ...globals.node,
+    {
+      name: "porkbot/typescript-imports",
+      files: sourceFiles,
+      rules: {
+        "@typescript-eslint/consistent-type-imports": [
+          "error",
+          { prefer: "type-imports", fixStyle: "separate-type-imports" },
+        ],
+      },
     },
-  };
+    ...boundaryConfigsFor(packageName),
+    eslintConfigPrettier,
+  ];
 }
-
-export default [
-  {
-    ignores: ["dist/**", "coverage/**", ".turbo/**", "node_modules/**"],
-  },
-  js.configs.recommended,
-  {
-    files: ["**/*.ts"],
-    languageOptions: typescriptLanguageOptions(),
-    plugins: {
-      turbo: turboPlugin,
-    },
-    rules: typescriptRules,
-  },
-  {
-    files: ["**/*.tsx"],
-    languageOptions: typescriptLanguageOptions(["jsx"]),
-    plugins: {
-      turbo: turboPlugin,
-    },
-    rules: typescriptRules,
-  },
-  {
-    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
-    languageOptions: {
-      globals: {
-        ...globals.node,
-      },
-    },
-  },
-  eslintConfigPrettier,
-];
