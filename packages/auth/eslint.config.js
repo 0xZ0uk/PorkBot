@@ -1,3 +1,3 @@
-import config from "@porkbot/eslint-config/base";
+import { defineConfig } from "@porkbot/eslint-config/base";
 
-export default config;
+export default defineConfig({ package: "@porkbot/auth" });

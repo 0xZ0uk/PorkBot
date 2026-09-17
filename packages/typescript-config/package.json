@@ -1,5 +1,11 @@
 {
   "name": "@porkbot/typescript-config",
   "version": "0.0.0",
-  "private": true
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "5.0.1"
+  }
 }
