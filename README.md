@@ -64,17 +64,39 @@ protocol, so a package can only use what it declares.
 
 ## Boundaries
 
-- `packages/core` has no runtime dependencies at all: no framework, no I/O, no database
-  driver. A test in that package fails if a runtime dependency is added.
+Boundaries are lint rules, not conventions. `packages/eslint-config/module-boundaries.js`
+is the module map: each workspace package declares which workspace packages it may import,
+and each restricted library declares the packages that own it. Every `eslint.config.js`
+builds its rules from that map, so an import edge is added in one reviewable place. A
+package that is not in the map cannot import any workspace package.
+
+- `packages/core` is pure: no workspace imports, no Node built-ins outside tests, no
+  framework, no database driver, no vendor SDK. A test in that package also fails if a
+  runtime dependency is added.
 - Provider SDKs live only in `packages/adapters`. Everything else consumes
   `packages/adapter-kit` interfaces.
 - `packages/contracts` is the only source of transport types.
-- Lint and import-boundary rules are enforced from slice 1.2 (#17).
+- Deep imports (`@porkbot/*/src/**`), relative imports that cross a package boundary, and
+  inline `type` specifiers fail lint; type-only imports are top-level `import type`.
+- The rules are proven, not just configured: deliberate violations live in
+  `packages/eslint-config/fixtures/` and are linted by that package's tests, so a rule
+  that stops firing fails CI.
+
+`packages/typescript-config` holds the strict bases (`strict`, `noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes`, `verbatimModuleSyntax`, ...); a test fails if a package
+config weakens one of them.
+
+Formatting has one answer: `pnpm format` rewrites the repo with Prettier, `pnpm
+format:check` verifies it, and CI runs the check.
 
 ## Status
 
-This is slice 1.1 of epic E1 (M0 — Foundation). The workspace, build, typecheck, lint and
+This is slice 1.2 of epic E1 (M0 — Foundation). The workspace, build, typecheck, lint and
 test wiring are real. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
 M10 surface slices replace with the real clients; `apps/api` currently serves a single
 `/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices 6.1 and
 later.
+
+The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
+`@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
+pin once typescript-eslint supports TypeScript 7.
