@@ -1,4 +1,5 @@
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { moduleInfo as contracts } from "@porkbot/contracts";
 import { moduleInfo as core } from "@porkbot/core";
 import { moduleInfo as logging } from "@porkbot/logging";
