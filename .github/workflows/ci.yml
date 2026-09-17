@@ -8,14 +8,19 @@ name: CI
 #   lint         eslint, including the module-boundary rules
 #   typecheck    tsc --noEmit everywhere
 #   build        tsc emit, the artifact every later tier and every deploy uses
+#   quarantine   the quarantine ledger is valid and nothing in it is stale
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  unit tests that need a real Postgres 18 service
-#   e2e          whole-process tests against the built output
+#   e2e          whole-process tests against the built output; the only tier that retries
 #   gate         green only when every tier above is green
 #
-# Planned tiers that do not exist yet: retries/quarantine (slice 1.4) and the
-# testkit container harness (slice 1.5). Both extend this file; neither replaces
-# it.
+# The retry policy, the timeouts and the quarantine ledger are enforced by the
+# tier presets in packages/testkit, which every package's vitest config calls; the
+# quarantine tier is the named check for the ledger itself, so an expired entry
+# fails with its own name instead of inside a test log.
+#
+# The planned tier that does not exist yet is the testkit container harness
+# (slice 1.5). It extends this file; it does not replace it.
 
 on:
   push:
@@ -59,6 +64,22 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm lint
 
+  # The ledger is checked before any test runs and before anything is installed:
+  # the CLI reads nothing but the ledger and the tests it names, so this tier is
+  # seconds long, and a stale entry fails here with its own name.
+  quarantine:
+    name: quarantine
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Check the quarantine ledger
+        timeout-minutes: 2
+        run: node packages/testkit/src/quarantine/cli.ts check
+
   # The build job populates the turbo cache that typecheck, unit, e2e and
   # integration then restore, which is why they wait for it rather than racing it.
   build:
@@ -92,6 +113,10 @@ jobs:
         # Coverage runs in the tier that gates merges. Thresholds live in the
         # package's own vitest.config.ts and gate @porkbot/core and @porkbot/db;
         # every other package reports without gating.
+        #
+        # The step has its own budget on top of the job's: every test has a
+        # timeout, and this is the backstop for the runner itself.
+        timeout-minutes: 20
         run: pnpm test:coverage
       - name: Coverage summary
         if: always()
@@ -136,6 +161,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - name: Integration tests against the Postgres service
+        timeout-minutes: 20
         run: pnpm test:integration
 
   e2e:
@@ -149,7 +175,12 @@ jobs:
       # Placeholder spec today (apps/api/test/e2e). Later slices add real
       # end-to-end coverage here; the job exists now so the wiring is proven
       # rather than introduced alongside new tests.
-      - run: pnpm test:e2e
+      #
+      # This is the only tier that retries (twice, from the e2e preset), and the
+      # shared flake reporter annotates every retried test on the pull request.
+      - name: End-to-end tests
+        timeout-minutes: 15
+        run: pnpm test:e2e
 
   gate:
     name: gate
@@ -157,7 +188,7 @@ jobs:
     # required check would never report and the pull request would hang instead
     # of failing.
     if: always()
-    needs: [format, lint, typecheck, build, unit, integration, e2e]
+    needs: [format, lint, typecheck, build, quarantine, unit, integration, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -170,6 +201,7 @@ jobs:
             echo "| lint | ${{ needs.lint.result }} |"
             echo "| typecheck | ${{ needs.typecheck.result }} |"
             echo "| build | ${{ needs.build.result }} |"
+            echo "| quarantine | ${{ needs.quarantine.result }} |"
             echo "| unit | ${{ needs.unit.result }} |"
             echo "| integration | ${{ needs.integration.result }} |"
             echo "| e2e | ${{ needs.e2e.result }} |"

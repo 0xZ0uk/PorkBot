@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",
+    "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
     "@types/node": "24.13.5",
     "@vitest/coverage-v8": "5.0.1",
