@@ -26,7 +26,8 @@ pnpm lint             # lint every app and package
 pnpm test             # unit tests
 pnpm test:coverage    # unit tests with coverage: the tier CI actually runs
 pnpm test:integration # tests that need a real Postgres
-pnpm test:e2e         # end-to-end tests
+pnpm test:e2e         # end-to-end tests (the only tier that retries)
+pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
 pnpm dev              # run the always-on processes (api, worker)
 pnpm format           # rewrite files with Prettier
 pnpm format:check     # verify formatting (CI runs this)
@@ -56,7 +57,7 @@ packages/
   ui/           design-system components
   tokens/       design tokens
   logging/      JSON logs, levels, correlation ids, redaction
-  testkit/      emulators, harness CLI, database-per-suite isolation
+  testkit/      tier presets, timeouts, quarantine ledger, flake reporter, harness CLI
   eslint-config/     internal: shared ESLint flat config
   typescript-config/ internal: shared tsconfig bases
 ```
@@ -81,6 +82,11 @@ package that is not in the map cannot import any workspace package.
 - `packages/contracts` is the only source of transport types.
 - Deep imports (`@porkbot/*/src/**`), relative imports that cross a package boundary, and
   inline `type` specifiers fail lint; type-only imports are top-level `import type`.
+- `imports` is what shipped source may depend on; `testImports` is the same claim
+  for test files and test configs. That is how `@porkbot/testkit` — the tier
+  presets, the quarantine ledger and the flake reporter — is reachable from a spec
+  and from `vitest.config.ts` while staying unreachable from production code.
+  Both edges are enforced, in opposite directions, by the same map.
 - The rules are proven, not just configured: deliberate violations live in
   `packages/eslint-config/fixtures/` and are linted by that package's tests, so a rule
   that stops firing fails CI.
@@ -101,6 +107,7 @@ with a name instead of a step index buried in one long log.
 - `lint` — ESLint, including the module-boundary rules
 - `typecheck` — `tsc --noEmit` everywhere
 - `build` — `tsc` emit, the artifact the later tiers and every deploy consume
+- `quarantine` — `quarantine.json` is valid and nothing in it has expired
 - `unit` — unit tests with coverage
 - `integration` — the tests that need a real Postgres
 - `e2e` — whole-process tests against the built output
@@ -126,7 +133,70 @@ DATABASE_URL=postgres://porkbot:porkbot@127.0.0.1:5432/porkbot pnpm test:integra
 
 The e2e tier carries the placeholder spec later slices replace. The job exists
 now so the wiring is proven on its own rather than introduced alongside new
-tests.
+tests. It is the only tier that retries.
+
+### Flake management
+
+Every package's `vitest.config.ts` is one call to a tier preset from
+`packages/testkit`: `unit()`, `integration()` or `e2e()`. The preset decides the
+timeouts, the retry policy, coverage, and which tests the ledger skips, so "unit
+tests never retry" is a property of the tier rather than a line somebody has to
+remember to keep in fourteen config files. `packages/testkit/test/tier-policy.test.ts`
+loads each package's real config and fails if one of them hand-rolls its own
+numbers.
+
+- **Retries are e2e-only.** The e2e tier retries a transient failure twice;
+  unit and integration tests never retry, because a retry in an in-process test
+  hides a bug instead of a race.
+- **Retries are reported, never silent.** A shared reporter annotates every
+  retried test on the pull request (`::warning file=…`) and writes a flake table
+  into the job summary, including the tests the ledger skipped and why. "No test
+  was retried in this run" is printed in words, so silence always means zero.
+- **Every test has a timeout.** Each tier sets `testTimeout`, `hookTimeout` and
+  `teardownTimeout`, the test steps have their own budgets, and every job has
+  one, so a hanging test fails on a clock instead of blocking a runner.
+- **`allowOnly: false` everywhere.** A stray `.only` fails the run rather than
+  quietly reducing the suite to one test.
+
+#### The quarantine ledger
+
+`quarantine.json` at the repository root is the only place a test is allowed not
+to run. Each entry names the test, an owner, a reason, an expiry and the issue
+tracking the fix:
+
+```json
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "flake-0001",
+      "tier": "e2e",
+      "file": "apps/api/test/e2e/health.e2e.test.ts",
+      "test": "starts, serves /healthz over HTTP and stops on SIGTERM",
+      "owner": "@Z0uk",
+      "reason": "the port is not always free on the shared runner",
+      "issue": "https://github.com/0xZ0uk/PorkBot/issues/19",
+      "quarantinedOn": "2026-09-17",
+      "expires": "2026-10-17"
+    }
+  ]
+}
+```
+
+A quarantined test is skipped by a pattern the tier preset derives from the
+ledger, so it shows up as `skipped` in the run instead of disappearing from it.
+The ledger fails CI — in the `quarantine` tier, and again when a tier preset
+refuses to load — when:
+
+- an entry has expired (the expiry date is inclusive; the check runs daily);
+- an entry is more than 90 days out, so quarantine stays a deadline;
+- the test it names no longer exists, or the title is ambiguous in that file;
+- an owner, reason, expiry or tracking issue is missing or malformed;
+- the file has moved, or two entries describe the same test.
+
+`pnpm quarantine:check` runs the same validation locally and prints the table.
+
+### Coverage
 
 ### Coverage
 
@@ -135,7 +205,8 @@ Coverage is measured by the unit tier. Thresholds live in a package's own
 code are gated:
 
 - `packages/core` and `packages/db` fail the tier below 90% statements, branches,
-  functions and lines.
+  functions and lines (the numbers are passed to the unit preset, and the guard
+  test pins them).
 - Every other package reports coverage into the pull request summary without
   gating, so a placeholder app cannot block a merge on a number nobody has
   decided yet.
@@ -187,8 +258,11 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 1.3 of epic E1 (M0 — Foundation). The workspace, build, typecheck, lint and
-test wiring are real and the CI gate runs them as separate blocking tiers. `apps/web`,
+This is slice 1.4 of epic E1 (M0 — Foundation): the CI gate now also carries the
+flake policy — e2e-only retries with the retry counts reported, timeouts on every
+tier, and a quarantine ledger whose entries expire on a date CI enforces. The
+workspace, build, typecheck, lint and test wiring are real and the CI gate runs
+them as separate blocking tiers. `apps/web`,
 `apps/desktop` and `apps/www` are placeholders that the
 M10 surface slices replace with the real clients; `apps/api` currently serves a single
 `/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices 6.1 and
