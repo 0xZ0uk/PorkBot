@@ -99,6 +99,11 @@ GitHub does not offer branch protection or rulesets there. Pick one:
 and re-run this script. Until then, no tier is enforced by GitHub: merging a red
 pull request is prevented by convention (and, from slice 1.7, by the pr-watch
 skill) rather than by the platform.
+
+That is the accepted position today: this repository stays private on the free
+plan and convention is the enforcement. A 403 here is the expected outcome, not a
+failure to chase — until the repository goes public, at which point this script
+is the whole switch.
 MESSAGE
   exit 1
 fi
