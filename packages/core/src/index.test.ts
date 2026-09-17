@@ -18,3 +18,6 @@ describe("@porkbot/core", () => {
     expect(packageJson.dependencies ?? {}).toEqual({});
   });
 });
+
+// PROOF ONLY — reverted in the next commit.
+export const deliberateTypeError: number = "a string is not a number";
