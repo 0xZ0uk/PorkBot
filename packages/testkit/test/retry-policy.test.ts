@@ -1,7 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { workspaceMarker } from "../src/paths.ts";
 import { repoRoot, runVitest } from "./support/vitest-child.ts";
 
 /**
@@ -140,7 +141,11 @@ describe("quarantine", () => {
 
 describe("the proofs are running against this repository", () => {
   it("resolves the repository root and the fixtures from the testkit package", () => {
-    expect(path.basename(repoRoot)).toBe("porkbot");
-    expect(quarantineFixture.startsWith("packages/testkit/")).toBe(true);
+    // The root is proved by the workspace marker it was found through, not by
+    // the directory's spelling: CI checks out into PorkBot/, not porkbot/.
+    expect(existsSync(path.join(repoRoot, workspaceMarker))).toBe(true);
+    expect(path.relative(repoRoot, path.resolve(repoRoot, quarantineFixture))).toBe(
+      quarantineFixture,
+    );
   });
 });
