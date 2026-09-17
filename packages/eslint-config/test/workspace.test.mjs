@@ -35,6 +35,17 @@ describe("module map", () => {
       for (const imported of entry.imports) {
         expect(registered.has(imported), `${name} imports ${imported}`).toBe(true);
       }
+
+      for (const imported of entry.testImports ?? []) {
+        expect(registered.has(imported), `${name} imports ${imported} in tests`).toBe(true);
+      }
+
+      // A package cannot test-import itself, and a test-only edge that is also a
+      // production edge is a category error in the map.
+      expect(entry.testImports ?? [], `${name} testImports`).not.toContain(name);
+      for (const imported of entry.testImports ?? []) {
+        expect(entry.imports, `${name} declares ${imported} twice`).not.toContain(imported);
+      }
     }
 
     for (const { category, owners } of restrictedLibraries) {

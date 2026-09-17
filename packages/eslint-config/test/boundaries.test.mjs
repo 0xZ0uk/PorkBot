@@ -92,6 +92,14 @@ const boundaryViolations = [
     ruleId: "@typescript-eslint/no-explicit-any",
     message: /Unexpected any/,
   },
+  {
+    // The test-only edge: `@porkbot/testkit` is allowed in test files, not in
+    // shipped source. Same import, different path.
+    fixture: "core-testkit-in-source.ts",
+    package: "@porkbot/core",
+    ruleId: "no-restricted-imports",
+    message: /"@porkbot\/testkit" is outside the "@porkbot\/core" boundary/,
+  },
 ];
 
 // These fixtures are lint-clean on purpose: they catch a rule that fires on
@@ -100,6 +108,7 @@ const allowedFixtures = [
   { fixture: "clean/core.ts", package: "@porkbot/core" },
   { fixture: "clean/api.ts", package: "@porkbot/api" },
   { fixture: "clean/web.ts", package: "@porkbot/web" },
+  { fixture: "core-testkit-in-test.test.ts", package: "@porkbot/core" },
 ];
 
 describe("module boundary rules", () => {

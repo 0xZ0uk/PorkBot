@@ -1,15 +1,6 @@
-import { defineConfig } from "vitest/config";
+import { unit } from "@porkbot/testkit";
 
-// Unit tier. Integration specs (*.integration.test.ts) run under their own
-// config against a real service, never here.
-export default defineConfig({
-  test: {
-    exclude: ["**/node_modules/**", "**/dist/**", "**/*.integration.test.ts"],
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "json-summary", "lcov"],
-      include: ["src/**"],
-      exclude: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    },
-  },
-});
+// Unit tier. The specs under test/fixtures/ are inputs to the flake tests: they
+// are meant to be flaky, so they are never collected as part of this package's
+// own run.
+export default unit({ additionalExclude: ["**/test/fixtures/**"] });

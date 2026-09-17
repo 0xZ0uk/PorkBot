@@ -11,18 +11,29 @@
  */
 
 // Workspace packages and the workspace packages each one may import.
+//
+// `imports` is the production edge set: what the package ships may depend on.
+// `testImports` is the same claim for test files and test configs, which is what
+// keeps `@porkbot/testkit` (the test harness) out of shipped code while still
+// letting every package's vitest config call the shared tier presets. Both are
+// enforced: the production rule does not apply to test paths, and the test rule
+// does not apply to anything else.
 export const workspacePackages = {
   "@porkbot/core": {
     role: "pure domain: rules, state machine, reducer, policies",
     imports: [],
+    testImports: ["@porkbot/testkit"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/contracts": {
     role: "schemas and transport types",
     imports: ["@porkbot/core"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/adapter-kit": {
     role: "provider interfaces only",
     imports: [],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/adapters": {
     role: "provider implementations and offline emulators",
@@ -33,10 +44,12 @@ export const workspacePackages = {
       "@porkbot/effect",
       "@porkbot/logging",
     ],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/db": {
     role: "schema, migrations, actor-scoped repositories",
     imports: ["@porkbot/contracts", "@porkbot/core", "@porkbot/effect", "@porkbot/logging"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/auth": {
     role: "authentication gate and actor resolution",
@@ -47,17 +60,20 @@ export const workspacePackages = {
       "@porkbot/effect",
       "@porkbot/logging",
     ],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/effect": {
     role: "shared layers, service tags, transport error mapping",
     imports: ["@porkbot/adapter-kit", "@porkbot/contracts", "@porkbot/core", "@porkbot/logging"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/logging": {
     role: "JSON logs, levels, correlation ids, redaction",
     imports: [],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/testkit": {
-    role: "emulators, harness, database-per-suite isolation",
+    role: "test policy (tier presets, quarantine ledger, flake reporter), emulators, harness",
     imports: [
       "@porkbot/adapter-kit",
       "@porkbot/adapters",
@@ -70,10 +86,12 @@ export const workspacePackages = {
   "@porkbot/tokens": {
     role: "design tokens",
     imports: [],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/ui": {
     role: "design-system components",
     imports: ["@porkbot/tokens"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/api": {
     role: "HTTP and streaming surface",
@@ -87,6 +105,7 @@ export const workspacePackages = {
       "@porkbot/effect",
       "@porkbot/logging",
     ],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/worker": {
     role: "durable jobs and the run executor",
@@ -100,19 +119,28 @@ export const workspacePackages = {
       "@porkbot/effect",
       "@porkbot/logging",
     ],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/web": {
     role: "static SPA surface",
     imports: ["@porkbot/contracts", "@porkbot/core", "@porkbot/tokens", "@porkbot/ui"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/desktop": {
     role: "Electron client of the same API",
     imports: ["@porkbot/contracts", "@porkbot/core", "@porkbot/tokens", "@porkbot/ui"],
+    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/www": {
     role: "public landing and documentation site",
     imports: ["@porkbot/tokens", "@porkbot/ui"],
+    testImports: ["@porkbot/testkit"],
   },
+  // Internal config packages are leaves: they configure the toolchain for the
+  // packages that import them, so an edge back into the workspace would be a
+  // cycle. That includes test configs: their own vitest configs repeat the unit
+  // tier's numbers, and packages/testkit/test/tier-policy.test.ts fails if those
+  // numbers drift.
   "@porkbot/eslint-config": {
     role: "internal lint tooling",
     imports: [],
@@ -170,19 +198,34 @@ const deepWorkspaceImport = {
     "Deep imports into a workspace package are forbidden; import the package entry point instead.",
 };
 
+// Test files and test configs, in one place: these paths are governed by
+// `testImports` instead of `imports`, so a package can use the test harness
+// without the harness becoming importable from shipped source.
+const testFilePatterns = [
+  "**/*.test.ts",
+  "**/*.test.tsx",
+  "**/*.spec.ts",
+  "**/*.spec.tsx",
+  "**/test/**/*.ts",
+  "**/test/**/*.tsx",
+  "vitest*.config.ts",
+];
+
+export { testFilePatterns };
+
 const nodeBuiltInImport = {
   group: ["node:*"],
   message: "@porkbot/core is pure domain code: no I/O, no Node built-ins.",
 };
 
-function workspaceImportPaths(packageName, entry) {
+function workspaceImportPaths(packageName, entry, allowedImports = entry.imports) {
   return Object.keys(workspacePackages)
-    .filter((name) => name !== packageName && !entry.imports.includes(name))
+    .filter((name) => name !== packageName && !allowedImports.includes(name))
     .map((name) => ({
       name,
       message:
         `"${name}" is outside the "${packageName}" boundary. ` +
-        `Allowed workspace imports: ${entry.imports.length > 0 ? entry.imports.join(", ") : "none"}. ` +
+        `Allowed workspace imports: ${allowedImports.length > 0 ? allowedImports.join(", ") : "none"}. ` +
         "Update the module map in packages/eslint-config/module-boundaries.js if this edge is intended.",
     }));
 }
@@ -206,7 +249,10 @@ function libraryImportPatterns(packageName) {
   return patterns;
 }
 
-function restrictedImportsOptions(packageName, { includeNodeBuiltIns = false } = {}) {
+function restrictedImportsOptions(
+  packageName,
+  { includeNodeBuiltIns = false, extraImports = [] } = {},
+) {
   const entry = workspacePackages[packageName];
   const patterns = [deepWorkspaceImport, ...libraryImportPatterns(packageName)];
 
@@ -215,15 +261,18 @@ function restrictedImportsOptions(packageName, { includeNodeBuiltIns = false } =
   }
 
   return {
-    paths: workspaceImportPaths(packageName, entry),
+    paths: workspaceImportPaths(packageName, entry, [...entry.imports, ...extraImports]),
     patterns,
   };
 }
 
 /**
- * Builds the boundary config for one package. Returns an array so that packages
- * with production-only restrictions (core's ban on Node built-ins) can exempt
- * their test files without weakening the shipped source.
+ * Builds the boundary config for one package: the production rule, and the
+ * test-file rule that swaps `imports` for `imports + testImports`. Splitting them
+ * is what makes a test-only edge mean something — the production rule ignores
+ * test paths entirely, and the test rule uses the wider edge set, so
+ * `@porkbot/testkit` is reachable from a spec and from `vitest.config.ts` but not
+ * from the code the package ships.
  */
 export function boundaryConfigsFor(packageName) {
   if (!Object.hasOwn(workspacePackages, packageName)) {
@@ -232,10 +281,12 @@ export function boundaryConfigsFor(packageName) {
     );
   }
 
+  const entry = workspacePackages[packageName];
   const configs = [
     {
       name: `porkbot/boundaries/${packageName}`,
       files: ["**/*.ts", "**/*.tsx"],
+      ignores: testFilePatterns,
       rules: {
         "no-restricted-imports": [
           "error",
@@ -245,17 +296,19 @@ export function boundaryConfigsFor(packageName) {
         ],
       },
     },
-  ];
-
-  if (packageName === "@porkbot/core") {
-    configs.push({
+    {
       name: `porkbot/boundaries/${packageName}/tests`,
-      files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+      files: testFilePatterns,
       rules: {
-        "no-restricted-imports": ["error", restrictedImportsOptions(packageName)],
+        "no-restricted-imports": [
+          "error",
+          restrictedImportsOptions(packageName, {
+            extraImports: entry.testImports ?? [],
+          }),
+        ],
       },
-    });
-  }
+    },
+  ];
 
   return configs;
 }

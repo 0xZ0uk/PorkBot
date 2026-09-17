@@ -1,0 +1,17 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "dependsOn": ["^build", "build"],
+      "passThroughEnv": ["FLAKE_ATTEMPTS_FILE", "FLAKE_LEDGER_FILE"]
+    },
+    "test:coverage": {
+      "dependsOn": ["^build", "build"],
+      "passThroughEnv": ["FLAKE_ATTEMPTS_FILE", "FLAKE_LEDGER_FILE"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "build"]
+    }
+  }
+}
