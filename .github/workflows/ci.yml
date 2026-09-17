@@ -1,5 +1,22 @@
 name: CI
 
+# One job per tier, so a red tier is a red check with a name rather than a step
+# index buried in a log. The check names below are the required status checks on
+# `main`; scripts/setup-branch-protection.sh reads this file and applies them.
+#
+#   format       prettier --check
+#   lint         eslint, including the module-boundary rules
+#   typecheck    tsc --noEmit everywhere
+#   build        tsc emit, the artifact every later tier and every deploy uses
+#   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
+#   integration  unit tests that need a real Postgres 18 service
+#   e2e          whole-process tests against the built output
+#   gate         green only when every tier above is green
+#
+# Planned tiers that do not exist yet: retries/quarantine (slice 1.4) and the
+# testkit container harness (slice 1.5). Both extend this file; neither replaces
+# it.
+
 on:
   push:
     branches: [main]
@@ -9,27 +26,161 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+  # Pin the cache directory so `.github/actions/setup` can persist a known path.
+  TURBO_CACHE_DIR: .turbo/cache
+  # Optional turbo remote cache. Set the TURBO_TOKEN secret and the TURBO_TEAM
+  # repository variable, then uncomment the two lines below; no other change is
+  # needed. Until then turbo uses only the on-disk cache, which this workflow
+  # persists between runs.
+  # TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  # TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
 jobs:
-  verify:
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm format:check
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+
+  # The build job populates the turbo cache that typecheck, unit, e2e and
+  # integration then restore, which is why they wait for it rather than racing it.
+  build:
+    name: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.34.4
-          run_install: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
+      - uses: ./.github/actions/setup
       - run: pnpm build
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Unit tests with coverage
+        # Coverage runs in the tier that gates merges. Thresholds live in the
+        # package's own vitest.config.ts and gate @porkbot/core and @porkbot/db;
+        # every other package reports without gating.
+        run: pnpm test:coverage
+      - name: Coverage summary
+        if: always()
+        run: node scripts/coverage-summary.mjs >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            apps/*/coverage/lcov.info
+            apps/*/coverage/coverage-summary.json
+            packages/*/coverage/lcov.info
+            packages/*/coverage/coverage-summary.json
+          if-no-files-found: warn
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [build]
+    services:
+      postgres:
+        # Same major as production: slice 2.1 pins Postgres 18 for the real
+        # schema, and apps/api + the testkit harness use the same major. The
+        # integration tests assert this major rather than trusting the tag.
+        image: postgres:18
+        env:
+          POSTGRES_USER: porkbot
+          POSTGRES_PASSWORD: porkbot
+          POSTGRES_DB: porkbot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U porkbot -d porkbot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://porkbot:porkbot@127.0.0.1:5432/porkbot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Integration tests against the Postgres service
+        run: pnpm test:integration
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Placeholder spec today (apps/api/test/e2e). Later slices add real
+      # end-to-end coverage here; the job exists now so the wiring is proven
+      # rather than introduced alongside new tests.
       - run: pnpm test:e2e
+
+  gate:
+    name: gate
+    # `always()` matters: if this job were skipped when a tier failed, the
+    # required check would never report and the pull request would hang instead
+    # of failing.
+    if: always()
+    needs: [format, lint, typecheck, build, unit, integration, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarize the tiers
+        run: |
+          {
+            echo "| tier | result |"
+            echo "| --- | --- |"
+            echo "| format | ${{ needs.format.result }} |"
+            echo "| lint | ${{ needs.lint.result }} |"
+            echo "| typecheck | ${{ needs.typecheck.result }} |"
+            echo "| build | ${{ needs.build.result }} |"
+            echo "| unit | ${{ needs.unit.result }} |"
+            echo "| integration | ${{ needs.integration.result }} |"
+            echo "| e2e | ${{ needs.e2e.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail unless every tier passed
+        # `skipped` counts as a failure: typecheck, unit and e2e are skipped when
+        # build is red, and a tier that did not run has not proved anything.
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled') ||
+          contains(needs.*.result, 'skipped')
+        run: |
+          echo "::error::At least one required tier did not pass. Merging is blocked."
+          exit 1

@@ -1,0 +1,48 @@
+name: Setup toolchain
+
+# Composite action shared by every CI tier job: the pinned toolchain, an asserted
+# Node major, the workspace install and the turbo cache. Kept in one place so a
+# toolchain bump cannot land in some tiers and not others.
+description: Node 24, pnpm 10, installed workspace, restored turbo cache.
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10.34.4
+        run_install: false
+
+    - uses: actions/setup-node@v4
+      with:
+        # .nvmrc is the single source of truth, and turbo hashes it, so a Node
+        # bump invalidates every cached task instead of silently reusing output
+        # produced by the old major.
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    - name: Assert the Node major
+      shell: bash
+      # "on Node 24" is a claim; this makes it a check. `engines` and
+      # `devEngines` already police it during install, and this fails the tier
+      # even if a future install stops policing it.
+      run: |
+        node -e 'const major = process.versions.node.split(".")[0]; if (major !== "24") { console.error(`expected Node 24, got ${process.versions.node}`); process.exit(1); }'
+
+    - name: Install the workspace
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Restore the turbo cache
+      uses: actions/cache@v4
+      with:
+        # TURBO_CACHE_DIR is pinned to this path at workflow level. The key is
+        # per job so parallel tiers do not fight over one cache entry; the
+        # restore-keys prefix is what actually lets a later job (or a later run)
+        # reuse the build/typecheck/lint/test output an earlier one already
+        # produced.
+        path: .turbo/cache
+        key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          turbo-${{ runner.os }}-

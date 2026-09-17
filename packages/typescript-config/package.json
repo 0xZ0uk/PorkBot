@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "5.0.1",
     "vitest": "5.0.1"
   }
 }

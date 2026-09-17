@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@porkbot/core": "workspace:*",
@@ -20,6 +21,7 @@
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
     "@types/node": "24.13.5",
+    "@vitest/coverage-v8": "5.0.1",
     "eslint": "10.10.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
