@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 
 function startApi(): { child: ChildProcess; port: Promise<number> } {
   const child = spawn(process.execPath, ["src/main.ts"], {
-    env: { ...process.env, PORT: "0" },
+    // LOG_LEVEL is pinned so an ambient level above info cannot filter the
+    // startup line this test waits for.
+    env: { ...process.env, PORT: "0", LOG_LEVEL: "info" },
     stdio: ["ignore", "pipe", "inherit"],
   });
 
