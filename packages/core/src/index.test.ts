@@ -11,8 +11,7 @@ const packageJson = JSON.parse(
 
 describe("@porkbot/core", () => {
   it("identifies the package it ships as", () => {
-    // PROOF ONLY — reverted in the next commit.
-    expect(moduleInfo.name).toBe("not-the-package-name");
+    expect(moduleInfo.name).toBe(packageJson.name);
   });
 
   it("has no runtime dependencies", () => {
