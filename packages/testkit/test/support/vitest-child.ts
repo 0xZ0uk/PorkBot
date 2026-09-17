@@ -38,8 +38,9 @@ export function runVitest(configFile: string, options: ChildRunOptions = {}): Pr
         timeout: options.timeoutMs ?? 120_000,
         // Unless a caller says otherwise, the child is told there is no job
         // summary: these tests read the reporter's output from stdout, and a
-        // nested run must not append to the real runner's summary.
-        env: { GITHUB_STEP_SUMMARY: "", ...process.env, ...options.env },
+        // nested run must not append to the real runner's summary. It has to come
+        // after the inherited environment, which is where CI sets that variable.
+        env: { ...process.env, GITHUB_STEP_SUMMARY: "", ...options.env },
       },
       (error, stdout, stderr) => {
         if (error !== null && typeof error.code !== "number") {
