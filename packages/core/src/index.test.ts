@@ -11,13 +11,11 @@ const packageJson = JSON.parse(
 
 describe("@porkbot/core", () => {
   it("identifies the package it ships as", () => {
-    expect(moduleInfo.name).toBe(packageJson.name);
+    // PROOF ONLY — reverted in the next commit.
+    expect(moduleInfo.name).toBe("not-the-package-name");
   });
 
   it("has no runtime dependencies", () => {
     expect(packageJson.dependencies ?? {}).toEqual({});
   });
 });
-
-// PROOF ONLY — reverted in the next commit.
-export const deliberateTypeError: number = "a string is not a number";
