@@ -1,0 +1,27 @@
+{
+  "name": "@porkbot/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --exclude 'test/e2e/**'",
+    "test:e2e": "vitest run test/e2e"
+  },
+  "dependencies": {
+    "@porkbot/contracts": "workspace:*",
+    "@porkbot/core": "workspace:*",
+    "@porkbot/logging": "workspace:*"
+  },
+  "devDependencies": {
+    "@porkbot/eslint-config": "workspace:*",
+    "@porkbot/typescript-config": "workspace:*",
+    "@types/node": "24.13.5",
+    "eslint": "10.10.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

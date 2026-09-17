@@ -1,20 +1,32 @@
-"use client";
+import type { ReactNode } from "react";
+import { colors, font, radius, space } from "@porkbot/tokens";
 
-import { ReactNode } from "react";
-
-interface ButtonProps {
+export type ButtonProps = {
   children: ReactNode;
-  className?: string;
-  appName: string;
-}
+  tone?: "neutral" | "primary";
+  type?: "button" | "submit";
+};
 
-export const Button = ({ children, className, appName }: ButtonProps) => {
+export function Button({ children, tone = "neutral", type = "button" }: ButtonProps) {
+  const palette =
+    tone === "primary"
+      ? { background: colors.accent, color: colors.onAccent, borderColor: colors.accent }
+      : { background: colors.surface, color: colors.text, borderColor: colors.border };
+
   return (
     <button
-      className={className}
-      onClick={() => alert(`Hello from your ${appName} app!`)}
+      type={type}
+      style={{
+        ...palette,
+        borderStyle: "solid",
+        borderWidth: "1px",
+        borderRadius: radius.md,
+        padding: `${space.sm} ${space.md}`,
+        fontFamily: font.sans,
+        cursor: "pointer",
+      }}
     >
       {children}
     </button>
   );
-};
+}
