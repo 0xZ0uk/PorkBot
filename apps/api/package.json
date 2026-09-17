@@ -8,9 +8,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run --exclude 'test/e2e/**'",
-    "test:e2e": "vitest run test/e2e",
-    "test:coverage": "vitest run --exclude 'test/e2e/**' --coverage"
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@porkbot/contracts": "workspace:*",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",
+    "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
     "@types/node": "24.13.5",
     "@vitest/coverage-v8": "5.0.1",

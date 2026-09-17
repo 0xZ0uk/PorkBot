@@ -1,15 +1,5 @@
-import { defineConfig } from "vitest/config";
+import { unit } from "@porkbot/testkit";
 
-// Unit tier. Integration specs (*.integration.test.ts) run under their own
-// config against a real service, never here.
-export default defineConfig({
-  test: {
-    exclude: ["**/node_modules/**", "**/dist/**", "**/*.integration.test.ts"],
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "json-summary", "lcov"],
-      include: ["src/**"],
-      exclude: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    },
-  },
-});
+// Unit tier: the specs under src/, no retries, coverage on. Whole-process specs
+// live in the e2e tier (vitest.e2e.config.ts) and never run here.
+export default unit();

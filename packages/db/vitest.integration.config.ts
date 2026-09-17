@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { integration } from "@porkbot/testkit";
 
 // The database-backed tier. It needs a real Postgres reachable over
 // DATABASE_URL, and turbo is told not to cache `test:integration` (see
@@ -13,13 +13,5 @@ import { defineConfig } from "vitest/config";
 //
 // then:
 //
-//   DATABASE_URL=postgres://porkbot:porkbot@127.0.0.1:5432/porkbot pnpm test:integration
-export default defineConfig({
-  test: {
-    include: ["test/integration/**/*.integration.test.ts"],
-    // Integration suites wait on a service and a socket, so they get their own
-    // budget instead of the unit default.
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
-  },
-});
+//   DATABASE_URL=postgres://porkbot:***@127.0.0.1:5432/porkbot pnpm test:integration
+export default integration({ include: ["test/integration/**/*.integration.test.ts"] });

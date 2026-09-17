@@ -39,5 +39,6 @@
       "cache": false,
       "persistent": true
     }
-  }
+  },
+  "globalPassThroughEnv": ["GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY"]
 }
