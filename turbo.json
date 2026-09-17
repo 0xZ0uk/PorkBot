@@ -2,7 +2,7 @@
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
   "globalEnv": ["NODE_ENV", "PORT"],
-  "globalDependencies": [".nvmrc"],
+  "globalDependencies": [".nvmrc", "quarantine.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
