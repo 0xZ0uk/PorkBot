@@ -730,6 +730,38 @@ role gains exactly what the scheduler needs in
 on its cursor columns only — a job cannot rewrite an instruction or a cron
 expression — plus INSERT on the ledger, `task` and `run`.
 
+## Notifications
+
+The notification seam (slice 8.6, PRD decision 33; story 35) is declared in
+`packages/adapter-kit` and shipped twice in `packages/adapters`: the
+`NotificationEmulator`, whose mailbox tests read, and
+`createHttpNotificationProvider`, an HTTPS webhook reached by URL and credential
+name like every other seam. Both run the conformance suite in
+`notification-conformance.ts`, including the rule that a delivery carries the
+title, the body and an optional link and nothing else: the request body is built
+from that allowlist rather than spread from the caller, so a credential or a raw
+tool argument cannot ride along to a third party even if one was in the payload.
+
+What is worth interrupting for lives in `@porkbot/core`: a closed vocabulary of
+`run.completed`, `run.failed`, `run.needs_approval` and `run.stalled`, and the
+quiet default is off for every one of them. `notification_preference` stores one
+opt-in switch per `(space, operator, kind)` — no row is the quiet default — and
+`packages/db/src/notification-store.ts` is the one module that names the rows:
+an operator reads and writes its own switches, while a job asks one recipient's
+eligibility through a `space_member` join, so a user outside the space is
+suppressed rather than notified.
+
+`createNotificationDelivery` in `@porkbot/effect` is the one path from an event
+to a provider call: it checks eligibility first, then retries `rate_limited` and
+`timed_out` with core's bounded backoff, surfaces `auth_failed` and `not_found`
+without retrying, and returns a `delivered`, `suppressed` or `undelivered`
+outcome — an undelivered notification is an error log and an outcome the caller
+holds, never a silent drop. The operator surface ships with it:
+`notifications.preferences` and `notifications.setPreference` are authenticated
+procedures that read and flip the actor's own switches. The run lifecycle
+producers that fire on finish, failure and stuck-run detection land with slice
+8.7.
+
 ## URL safety
 
 Every fetch of a user-supplied URL — an MCP server, an OpenAPI document, a model

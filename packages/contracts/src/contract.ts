@@ -13,6 +13,10 @@ import {
 } from "./bots.ts";
 import { deploymentStatusContract } from "./deployment.ts";
 import {
+  notificationsPreferencesContract,
+  notificationsSetPreferenceContract,
+} from "./notifications.ts";
+import {
   sectionsCreateContract,
   sectionsDeleteContract,
   sectionsListContract,
@@ -34,6 +38,10 @@ export const appContract = {
   },
   account: {
     me: accountMeContract,
+  },
+  notifications: {
+    preferences: notificationsPreferencesContract,
+    setPreference: notificationsSetPreferenceContract,
   },
   bots: {
     list: botsListContract,

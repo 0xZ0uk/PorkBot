@@ -132,6 +132,13 @@ change it without breaking what the boundaries and the CI gate protect.
   the schema defines them and every other path goes through the `MemoryStore`
   seam in `@porkbot/effect`, so both are auditable in one place. Checked by:
   test (`packages/db/src/memory-store.call-sites.test.ts`).
+- **One module owns the notification switches.** `packages/db/src/notification-store.ts`
+  is the only shipped code that reads or writes `notification_preference`; the
+  schema defines it and every other path goes through the
+  `NotificationPreferences` and `NotificationRecipients` seams in
+  `@porkbot/effect`, so the operator's own switches and the delivery path's
+  space check are auditable in one place. Checked by: test
+  (`packages/db/src/notification-store.call-sites.test.ts`).
 - **One module owns run creation.** `packages/db/src/run-creation.ts` holds both
   run-creation commands — message-triggered and routine-triggered — and no other
   shipped code inserts a `task` or a `run`, so the scheduler is a producer that
@@ -155,6 +162,13 @@ change it without breaking what the boundaries and the CI gate protect.
   than left unused, and logging `key`, `token`, `secret` or `password` fields
   needs an explicit opt-in that a reviewer can see. Checked by: test
   (`@porkbot/logging` redaction suite) and review.
+- **A notification carries three fields and nothing else.** A provider request
+  body is built from an allowlist of the title, the body and the link — never
+  spread from the caller's object — so a credential or a raw tool argument
+  cannot ride along to a third party, and the notification conformance suite
+  proves a smuggled field never reaches a destination. Checked by: test
+  (`packages/adapters/src/notification-emulator.test.ts`,
+  `packages/adapters/src/http-notification.test.ts`) and review.
 - **Public-safe prose.** Commits, PR descriptions, issues and review replies
   must not identify a person, machine, account or key: no local paths,
   usernames, hostnames, emails, tenant ids or key ids. Describe test results in

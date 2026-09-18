@@ -255,3 +255,16 @@ export type {
   PromptSectionChannel,
   SystemSectionId,
 } from "./prompt-composition.ts";
+
+export {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  isNotificationKind,
+  NOTIFICATION_KINDS,
+  resolveNotificationPreferences,
+  shouldNotify,
+} from "./notification-policy.ts";
+export type {
+  NotificationKind,
+  NotificationPreferenceSet,
+  StoredNotificationPreference,
+} from "./notification-policy.ts";

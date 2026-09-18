@@ -127,3 +127,20 @@ export { createHttpMemoryProvider } from "./http-memory.ts";
 export type { HttpMemoryProviderOptions } from "./http-memory.ts";
 export { MemoryRecall } from "./memory-recall.ts";
 export type { MemoryRecallOperation, MemoryRecallOptions } from "./memory-recall.ts";
+
+// Operator notifications (slice 8.6, PRD decision 33; stories 35). The interface
+// lives in @porkbot/adapter-kit; this package ships the two implementations the
+// rule requires, held to one conformance suite. The emulator is the delivery
+// path the product runs on with nothing configured; the HTTP provider reaches a
+// webhook by URL and credential name like every other seam, and its request body
+// is an allowlist of the three fields the interface names, so a credential or a
+// raw tool argument can never ride along to a third party.
+export { NotificationEmulator } from "./notification-emulator.ts";
+export type { DeliveredNotification } from "./notification-emulator.ts";
+export {
+  NotificationConfigurationError,
+  NotificationProviderError,
+} from "./notification-errors.ts";
+export type { NotificationConfigurationReason } from "./notification-errors.ts";
+export { createHttpNotificationProvider } from "./http-notification.ts";
+export type { HttpNotificationProviderOptions } from "./http-notification.ts";

@@ -19,6 +19,7 @@ import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
+import { createNotificationsRouter } from "./routers/notifications.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
 import { createBotService } from "./services/bots.ts";
@@ -138,6 +139,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
+    notifications: createNotificationsRouter(),
     bots: createBotsRouter(createBotService(storage)),
     sections: createSectionsRouter(),
     threads: createThreadsRouter(threadEvents),

@@ -164,6 +164,30 @@ export type {
 export { loadRunPrompt } from "./run-context.ts";
 export type { LoadRunPromptInput } from "./run-context.ts";
 
+// The durable half and the delivery path of operator notifications (slice 8.6,
+// PRD decision 33; stories 35). Preferences are per operator with quiet
+// defaults from `@porkbot/core`; the eligibility read joins the space
+// membership, so a notification cannot cross a space and a non-member is
+// suppressed rather than notified. `createNotificationDelivery` retries the
+// transient provider failures with core's backoff and surfaces the permanent
+// ones as an outcome the caller holds — an undelivered notification is an
+// error line, never a silent drop. The store seams are implemented in
+// `@porkbot/db`; the provider is the adapter-kit seam, so the offline emulator
+// exercises this path with no key and no network.
+export type {
+  NotificationEligibility,
+  NotificationPreferences,
+  NotificationRecipients,
+} from "./notification-store.ts";
+export { createNotificationDelivery } from "./notification-delivery.ts";
+export type {
+  NotificationDelivery,
+  NotificationDeliveryOptions,
+  NotificationDeliveryOutcome,
+  NotificationDeliveryRequest,
+  NotificationSuppressionReason,
+} from "./notification-delivery.ts";
+
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed
 // refusal live here so there is no second policy to drift from.

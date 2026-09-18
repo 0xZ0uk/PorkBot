@@ -1,6 +1,8 @@
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
+import type { NotificationPreferences, NotificationRecipients } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
+import { createNotificationStore } from "./notification-store.ts";
 import {
   botColumns,
   botSectionColumns,
@@ -267,6 +269,12 @@ export interface SystemRepositories {
   readonly runs: RunReader & SystemRunWriter;
   /** The scheduler's half: settle one routine slot through the job's space. */
   readonly routines: RoutineScheduler;
+  /**
+   * The delivery path's half (slice 8.6): whether one member of the job's
+   * space has enabled one notification kind. The membership check is inside
+   * the read, so a user outside the space is `not_a_recipient`.
+   */
+  readonly notifications: NotificationRecipients;
 }
 
 /** An operator's scope: reads plus the writes that carry a user of record. */
@@ -278,6 +286,8 @@ export interface UserRepositories {
   readonly runs: RunReader & RunWriter;
   readonly events: EventReader;
   readonly routines: RoutineReader & RoutineWriter;
+  /** The operator's own notification switches (slice 8.6). */
+  readonly notifications: NotificationPreferences;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -308,6 +318,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
       routines: createRoutineStore(actor, database),
+      notifications: createNotificationStore(actor, database),
     };
   }
 
@@ -338,6 +349,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
     },
     events,
     routines: createRoutineStore(actor, database),
+    notifications: createNotificationStore(actor, database),
   };
 }
 
