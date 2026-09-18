@@ -72,6 +72,11 @@ export const workspacePackages = {
     imports: [],
     testImports: ["@porkbot/testkit"],
   },
+  "@porkbot/health": {
+    role: "health endpoints for always-on processes",
+    imports: [],
+    testImports: ["@porkbot/testkit"],
+  },
   "@porkbot/testkit": {
     role: "test policy (tier presets, quarantine ledger, flake reporter), emulators, harness",
     imports: [
@@ -117,13 +122,36 @@ export const workspacePackages = {
       "@porkbot/core",
       "@porkbot/db",
       "@porkbot/effect",
+      "@porkbot/health",
+      "@porkbot/logging",
+    ],
+    testImports: ["@porkbot/testkit"],
+  },
+  "@porkbot/supervisor": {
+    role: "the Docker socket holder and owner of computer lifecycle",
+    imports: [
+      "@porkbot/adapter-kit",
+      "@porkbot/adapters",
+      "@porkbot/auth",
+      "@porkbot/contracts",
+      "@porkbot/core",
+      "@porkbot/db",
+      "@porkbot/effect",
+      "@porkbot/health",
       "@porkbot/logging",
     ],
     testImports: ["@porkbot/testkit"],
   },
   "@porkbot/web": {
     role: "static SPA surface",
-    imports: ["@porkbot/contracts", "@porkbot/core", "@porkbot/tokens", "@porkbot/ui"],
+    imports: [
+      "@porkbot/contracts",
+      "@porkbot/core",
+      "@porkbot/health",
+      "@porkbot/logging",
+      "@porkbot/tokens",
+      "@porkbot/ui",
+    ],
     testImports: ["@porkbot/testkit"],
   },
   "@porkbot/desktop": {

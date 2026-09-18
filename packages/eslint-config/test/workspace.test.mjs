@@ -64,6 +64,14 @@ describe("module map", () => {
       .map(([name]) => name)
       .sort();
 
-    expect(adapterImporters).toEqual(["@porkbot/api", "@porkbot/testkit", "@porkbot/worker"]);
+    // Only the surfaces that translate provider work — the HTTP/streaming
+    // surface, the run executor and the computer lifecycle owner — plus the
+    // testkit, which consumes adapters.
+    expect(adapterImporters).toEqual([
+      "@porkbot/api",
+      "@porkbot/supervisor",
+      "@porkbot/testkit",
+      "@porkbot/worker",
+    ]);
   });
 });
