@@ -84,6 +84,7 @@ describe("procedure access", () => {
       "routines.preview",
       "routines.testRun",
       "routines.outcomes",
+      "credentials.list",
     ]);
   });
 

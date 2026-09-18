@@ -18,6 +18,7 @@ import { httpRateLimited, installLimits, resolveLimits, routeRules } from "./lim
 import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
+import { createCredentialsRouter } from "./routers/credentials.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
 import { createNotificationsRouter } from "./routers/notifications.ts";
 import { createRoutinesRouter } from "./routers/routines.ts";
@@ -147,6 +148,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     sections: createSectionsRouter(),
     threads: createThreadsRouter(threadEvents, threads),
     routines: createRoutinesRouter(),
+    credentials: createCredentialsRouter(),
   });
   const rpc = new RPCHandler(router, {
     interceptors: [

@@ -139,6 +139,12 @@ change it without breaking what the boundaries and the CI gate protect.
   `@porkbot/effect`, so the operator's own switches and the delivery path's
   space check are auditable in one place. Checked by: test
   (`packages/db/src/notification-store.call-sites.test.ts`).
+- **One module owns the encrypted credential rows.** `packages/db/src/encrypted-credential-store.ts`
+  is the only shipped code that reads or writes `encrypted_credential`; the
+  schema defines it and every other path goes through the `Credentials` seam in
+  `@porkbot/effect`, so the ciphertext, its key id and the rotation pass are
+  auditable in one place. Checked by: test
+  (`packages/db/src/encrypted-credential-store.call-sites.test.ts`).
 - **One module owns run creation.** `packages/db/src/run-creation.ts` holds
   every run-creation command — message-triggered, routine-triggered and the
   operator's test run — and no other shipped code inserts a `task` or a `run`,
@@ -162,7 +168,9 @@ change it without breaking what the boundaries and the CI gate protect.
   sandbox.** The redaction helper is wired into request and error logging rather
   than left unused, and logging `key`, `token`, `secret` or `password` fields
   needs an explicit opt-in that a reviewer can see. Checked by: test
-  (`@porkbot/logging` redaction suite) and review.
+  (`@porkbot/logging` redaction suite,
+  `packages/db/src/encrypted-credential-store.test.ts`,
+  `apps/api/src/routers/credentials.test.ts`) and review.
 - **A notification carries three fields and nothing else.** A provider request
   body is built from an allowlist of the title, the body and the link — never
   spread from the caller's object — so a credential or a raw tool argument

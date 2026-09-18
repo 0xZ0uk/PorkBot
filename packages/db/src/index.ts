@@ -245,3 +245,35 @@ export { createMemoryStore } from "./memory-store.ts";
 // in `@porkbot/effect`, and `createRepositories` exposes the matching half on
 // each actor's repository set.
 export { createNotificationStore } from "./notification-store.ts";
+
+// The encrypted credential store (slice 9.1, PRD decision 10; stories 14 and
+// 15): AES-256-GCM envelopes in the encrypted credential rows, each bound to
+// its `(space, name)` identity and carrying its key id, so a second key can be
+// introduced before a rotation pass and both decrypt while it runs. This module
+// and `credential-cipher.ts` are the only shipped code that names the rows, and
+// `createEncryptedCredentialStore` is the only way in or out. The factory splits
+// by actor: an operator lists masked summaries, writes and rotates through the
+// actor's space, while a job resolves one name and cannot enumerate. The seam
+// it implements (`Credentials`, which extends adapter-kit's `CredentialStore`)
+// is declared in `@porkbot/effect`; `createRepositories` exposes the matching
+// half on each actor's repository set and takes the keyring in its options.
+export { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
+
+// The envelope itself: the versioned ciphertext format, the deployment keyring
+// and the mask a list response shows. They are exported for the composition
+// root, which parses `PORKBOT_CREDENTIAL_KEYS` once at boot, and for the tests
+// that prove a moved ciphertext fails and a rotation re-encrypts.
+export {
+  createCredentialKeyring,
+  credentialEnvelopeKeyId,
+  credentialKeyringFromEnvironment,
+  decryptCredentialValue,
+  encryptCredentialValue,
+  maskCredentialValue,
+} from "./credential-cipher.ts";
+export type {
+  CredentialBinding,
+  CredentialKeyring,
+  CredentialKeyringEntry,
+  CredentialKeyringInput,
+} from "./credential-cipher.ts";

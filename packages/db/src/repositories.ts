@@ -1,6 +1,7 @@
+import type { CredentialStore } from "@porkbot/adapter-kit";
 import { ACTIVE_RUN_STATUSES } from "@porkbot/core";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
-import type { NotificationPreferences, NotificationRecipients } from "@porkbot/effect";
+import type { Credentials, NotificationPreferences, NotificationRecipients } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import {
   clearThread,
@@ -10,6 +11,8 @@ import {
 } from "./messages.ts";
 import type { AssistantMessageWriter, MessageReader, SteeringMessageWriter } from "./messages.ts";
 import type { Queryable } from "./queryable.ts";
+import type { CredentialKeyring } from "./credential-cipher.ts";
+import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 import { createNotificationStore } from "./notification-store.ts";
 import {
   botColumns,
@@ -310,6 +313,23 @@ export interface SystemRepositories {
    * the read, so a user outside the space is `not_a_recipient`.
    */
   readonly notifications: NotificationRecipients;
+  /**
+   * The provider half (slice 9.1): resolve one named credential through the
+   * job's space. A system actor cannot enumerate or write credentials.
+   */
+  readonly credentials: CredentialStore;
+}
+
+/**
+ * How the actor-scoped repositories reach the credential keyring. It is
+ * configuration rather than data, so it is passed beside the connection the
+ * repositories are built over and not read from the environment here: the
+ * composition root parses `PORKBOT_CREDENTIAL_KEYS` once. Omitted, the
+ * credential store is locked and every credential call raises the typed
+ * `CredentialStoreError` rather than reading a row it cannot authenticate.
+ */
+export interface RepositoryOptions {
+  readonly credentialKeys?: CredentialKeyring | undefined;
 }
 
 /** An operator's scope: reads plus the writes that carry a user of record. */
@@ -325,14 +345,32 @@ export interface UserRepositories {
   readonly routines: RoutineReader & RoutineWriter;
   /** The operator's own notification switches (slice 8.6). */
   readonly notifications: NotificationPreferences;
+  /** The operator's stored credentials (slice 9.1), masked on list. */
+  readonly credentials: Credentials;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
 
-export function createRepositories(actor: UserActor, database: Queryable): UserRepositories;
-export function createRepositories(actor: SystemActor, database: Queryable): SystemRepositories;
-export function createRepositories(actor: Actor, database: Queryable): Repositories;
-export function createRepositories(actor: Actor, database: Queryable): Repositories {
+export function createRepositories(
+  actor: UserActor,
+  database: Queryable,
+  options?: RepositoryOptions,
+): UserRepositories;
+export function createRepositories(
+  actor: SystemActor,
+  database: Queryable,
+  options?: RepositoryOptions,
+): SystemRepositories;
+export function createRepositories(
+  actor: Actor,
+  database: Queryable,
+  options?: RepositoryOptions,
+): Repositories;
+export function createRepositories(
+  actor: Actor,
+  database: Queryable,
+  options?: RepositoryOptions,
+): Repositories {
   const bots = readBots(actor, database);
   const threads = readThreads(actor, database);
   const runs = readRuns(actor, database);
@@ -358,6 +396,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
       messages: createAssistantMessageStore(actor, database),
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),
+      credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
     };
   }
 
@@ -396,6 +435,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
     },
     routines: createRoutineStore(actor, database),
     notifications: createNotificationStore(actor, database),
+    credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
   };
 }
 

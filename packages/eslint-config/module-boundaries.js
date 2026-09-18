@@ -47,7 +47,13 @@ export const workspacePackages = {
   },
   "@porkbot/db": {
     role: "schema, migrations, actor-scoped repositories",
-    imports: ["@porkbot/contracts", "@porkbot/core", "@porkbot/effect", "@porkbot/logging"],
+    imports: [
+      "@porkbot/adapter-kit",
+      "@porkbot/contracts",
+      "@porkbot/core",
+      "@porkbot/effect",
+      "@porkbot/logging",
+    ],
     testImports: ["@porkbot/testkit"],
   },
   "@porkbot/auth": {
