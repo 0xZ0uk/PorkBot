@@ -62,3 +62,29 @@ export type {
   ToolFailedEvent,
   ToolRequestedEvent,
 } from "./run-events.ts";
+
+export { backoffDelayMs, DEFAULT_BACKOFF } from "./backoff.ts";
+export type { BackoffOptions, BackoffPolicy } from "./backoff.ts";
+
+export { decideSignup, isOwnerEmail, normalizeEmail } from "./signup-policy.ts";
+export type { DeploymentSettings, SignupDecision, SignupRole } from "./signup-policy.ts";
+
+export {
+  ClientNonceReused,
+  ClientNonceTooLong,
+  decideMessageSend,
+  EmptyMessage,
+  MAX_CLIENT_NONCE_LENGTH,
+  MAX_MESSAGE_TEXT_LENGTH,
+  MessageRuleError,
+  MessageTooLong,
+  MissingClientNonce,
+} from "./messaging-policy.ts";
+export type {
+  ActiveRun,
+  ExistingSend,
+  MessageAction,
+  MessageContext,
+  MessageDecision,
+  SendMessageRequest,
+} from "./messaging-policy.ts";
