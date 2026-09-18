@@ -1,6 +1,7 @@
 import { accountMeContract } from "./account.ts";
 import { botsGetContract } from "./bots.ts";
 import { deploymentStatusContract } from "./deployment.ts";
+import { threadsEventsContract } from "./threads.ts";
 
 /**
  * The application contract: the one source of transport truth (PRD decision
@@ -19,6 +20,9 @@ export const appContract = {
   },
   bots: {
     get: botsGetContract,
+  },
+  threads: {
+    events: threadsEventsContract,
   },
 };
 

@@ -3,6 +3,7 @@ import { ORPCError } from "@porkbot/contracts";
 import {
   BlockedUrlError,
   CredentialMissingError,
+  CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
   LeaseLostError,
@@ -80,6 +81,11 @@ export const errorMappings = {
     code: "BAD_REQUEST",
     message: "The URL was refused by the deployment's network policy.",
     matches: (error: unknown): error is BlockedUrlError => error instanceof BlockedUrlError,
+  },
+  CursorRejectedError: {
+    code: "BAD_REQUEST",
+    message: "The resume cursor is not valid for this stream.",
+    matches: (error: unknown): error is CursorRejectedError => error instanceof CursorRejectedError,
   },
 } as const satisfies { readonly [K in TypedErrorTag]: ErrorMapping };
 

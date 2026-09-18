@@ -20,3 +20,9 @@ export type { HttpMailProviderOptions } from "./http-mail.ts";
 // same interface without touching a provider.
 export { createEnvironmentCredentialStore, createMemoryCredentialStore } from "./credentials.ts";
 export type { MemoryCredentialStore } from "./credentials.ts";
+
+// The realtime fanout's in-process implementation (slice 4.3). It carries
+// wake-ups only, so the API's SSE subscriptions resume from durable event rows
+// whatever the fanout forgets; the durable cross-process implementation over
+// Postgres LISTEN/NOTIFY lands in slice 6.1 behind the same interface.
+export { InProcessRealtimeFanout } from "./realtime.ts";

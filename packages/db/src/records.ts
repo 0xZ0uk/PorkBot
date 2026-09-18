@@ -71,6 +71,24 @@ export interface MessageRecord {
   readonly createdAt: Date;
 }
 
+/**
+ * One persisted thread event: the durable row an SSE subscription replays from.
+ * `seq` is the cursor position — contiguous and per-thread, with
+ * `(thread_id, seq)` unique — and `type` plus `payload` are the wire event the
+ * reducer in `@porkbot/core` interprets. `runId` is nullable because the table
+ * is thread-scoped and a future thread event need not belong to a run.
+ */
+export interface EventRecord {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly threadId: string;
+  readonly seq: number;
+  readonly type: string;
+  readonly payload: Record<string, unknown>;
+  readonly runId: string | null;
+  readonly createdAt: Date;
+}
+
 export interface RunRecord {
   readonly id: string;
   readonly spaceId: string;
@@ -112,6 +130,10 @@ export const taskColumns =
 export const messageColumns =
   'id, thread_id as "threadId", seq, role::text as "role", blocks, ' +
   'run_id as "runId", client_nonce as "clientNonce", created_at as "createdAt"';
+
+export const eventColumns =
+  'id, space_id as "spaceId", thread_id as "threadId", seq, type, payload, ' +
+  'run_id as "runId", created_at as "createdAt"';
 
 export const runColumns =
   'id, space_id as "spaceId", bot_id as "botId", thread_id as "threadId", ' +
