@@ -76,9 +76,3 @@ export type {
 } from "./harness/postgres.ts";
 export { applyMigrations, listMigrations } from "./harness/migrations.ts";
 export type { MigrationFile, MigrationReport } from "./harness/migrations.ts";
-export type {
-  CommandOptions,
-  CommandOutput,
-  PostgresContainerRequest,
-  RunningContainer,
-} from "./harness/docker.ts";

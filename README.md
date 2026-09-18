@@ -103,6 +103,46 @@ config weakens one of them.
 Formatting has one answer: `pnpm format` rewrites the repo with Prettier, `pnpm
 format:check` verifies it, and CI runs the check.
 
+## Logging
+
+`packages/logging` is the only writer of logs. Every line is one JSON object:
+`level`, `timestamp`, `msg`, and — when a request or a run is in scope —
+`correlationId`, plus the context and fields the call site passes.
+
+```ts
+const logger = createLogger({ service: "@porkbot/api" });
+const request = logger.child({ requestId: "req-1" });
+const run = logger.child({ runId: "run-9" });
+
+request.info("connected", { botId }); // one JSON line
+request.request({ method, path, status, durationMs }); // level follows status
+run.error("run failed", { error }); // error serialized + redacted
+```
+
+- **Level.** `LOG_LEVEL` selects `debug`, `info`, `warn` or `error`; unset or
+  blank means `info`, and an unknown value fails startup rather than silently
+  logging at the wrong level. `LOG_LEVEL` is a turbo global env, so changing it
+  invalidates cached tasks instead of reusing output written at another level.
+- **Correlation.** `child({ requestId })` and `child({ runId })` fold the id
+  into `correlationId` on every line, so one request or run can be followed
+  across the process. The API generates a request id per request (honouring an
+  incoming `x-request-id`), echoes it in the response, and logs the finished
+  request at a level derived from the status: 5xx error, 4xx warn, otherwise
+  info.
+- **Redaction is wired in, not opt-in.** The logger redacts before it writes:
+  fields named `key`, `token`, `secret` or `password` (and compounds such as
+  `apiKey` or `X-Api-Key`, plus `authorization`, `cookie` and `credentials`)
+  become `[redacted]`, sensitive query parameters are stripped from request
+  paths, and every string is scrubbed of known shapes — `Bearer …`, `sk-…`,
+  JWTs, connection strings with credentials, PEM private keys, `password=…`.
+  Errors are serialized with their message, stack and cause redacted too.
+- **Opting out is review-visible.** Keeping one of those fields requires
+  `unredacted(value)` at the exact call site. Grep for `unredacted(` to see
+  every place a secret is deliberately allowed into a log.
+
+`packages/logging` has no workspace imports and no dependencies; it is a leaf
+like `packages/core`, so every package can log without a cycle.
+
 ## CI
 
 `.github/workflows/ci.yml` runs one job per tier, so a red tier is a red check
@@ -327,17 +367,20 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 1.5 of epic E1 (M0 — Foundation): integration tests now run against
-a real Postgres 18 that the testkit harness boots itself — one container per run,
-a migrated template database, and a clone per suite — with a harness CLI for
-scripted scenarios and canaries. The CI gate still carries the flake policy from
-slice 1.4 (e2e-only retries with the retry counts reported, timeouts on every
-tier, a quarantine ledger whose entries expire on a date CI enforces), and the
-workspace, build, typecheck, lint and test wiring remain real blocking tiers.
-`apps/web`, `apps/desktop` and `apps/www` are placeholders that the M10 surface
-slices replace with the real clients; `apps/api` currently serves a single
-`/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices
-6.1 and later.
+This is slice 1.6 of epic E1 (M0 — Foundation): `packages/logging` now ships
+the structured logger the rest of the product uses — one JSON object per line
+with a level, an ISO timestamp and a request/run correlation id, a `LOG_LEVEL`
+setting that defaults to `info`, and redaction wired into the request and error
+logs `apps/api` writes rather than left as an unused helper. Slice 1.5 is in
+place with it: integration tests run against a real Postgres 18 that the testkit
+harness boots itself — one container per run, a migrated template database and a
+clone per suite — with a harness CLI for scripted scenarios and canaries. The
+workspace, build, typecheck, lint and test wiring are real and the CI gate runs
+them as separate blocking tiers. `apps/web`,
+`apps/desktop` and `apps/www` are placeholders that the
+M10 surface slices replace with the real clients; `apps/api` currently serves a single
+`/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices 6.1 and
+later.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
