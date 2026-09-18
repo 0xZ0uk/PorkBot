@@ -30,6 +30,17 @@ const eventBase = {
   runId: z.string().min(1),
 } as const;
 
+/**
+ * Where an oversized tool result's full value lives: the `external_effect` row
+ * of the call. Mirrors core's `ToolResultArtifact`, so a client can render the
+ * preview and link the pointer without a second interpretation (slice 5.6).
+ */
+const toolResultArtifact = z.object({
+  kind: z.literal("tool_call"),
+  callId: z.string().min(1),
+  bytes: z.number().int().min(0),
+});
+
 export const runEventSchema = z.discriminatedUnion("type", [
   z.object({ ...eventBase, type: z.literal("run.started") }),
   z.object({
@@ -50,12 +61,15 @@ export const runEventSchema = z.discriminatedUnion("type", [
     type: z.literal("tool.completed"),
     callId: z.string().min(1),
     result: z.unknown(),
+    resultArtifact: z.exactOptional(toolResultArtifact),
+    durationMs: z.exactOptional(z.number().int().min(0)),
   }),
   z.object({
     ...eventBase,
     type: z.literal("tool.failed"),
     callId: z.string().min(1),
     error: z.string(),
+    durationMs: z.exactOptional(z.number().int().min(0)),
   }),
   z.object({
     ...eventBase,

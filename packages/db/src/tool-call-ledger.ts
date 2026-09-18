@@ -1,5 +1,6 @@
 import { NotFoundError } from "@porkbot/effect";
 import type { ToolCall, ToolCallAdmission, ToolCallLedger, ToolOutcome } from "@porkbot/effect";
+import { redact } from "@porkbot/logging";
 import type { SystemActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 
@@ -31,6 +32,13 @@ import type { Queryable } from "./queryable.ts";
  * and nothing is written. The tool name is the effect's `kind`, which is text
  * on purpose — new tools ride without a migration, and the registry above this
  * seam is what refuses a kind it does not know.
+ *
+ * Arguments are redacted with the logging helper before they are stored, and
+ * the same redaction runs on the incoming call before the stored `request` is
+ * compared (slice 5.6): a secret-shaped argument is `[redacted]` in the
+ * durable audit row too, and because redaction is deterministic a retry with
+ * the same arguments still replays while a different request is still a
+ * conflict.
  */
 export function createExternalEffectLedger(
   actor: SystemActor,
@@ -38,13 +46,15 @@ export function createExternalEffectLedger(
 ): ToolCallLedger {
   return {
     async begin(call: ToolCall): Promise<ToolCallAdmission> {
+      const requestJson = argumentsJson(call);
+
       const { rows } = await database.query<{ readonly id: string }>(
         "insert into external_effect (space_id, run_id, kind, idempotency_key, status, request) " +
           "select $1, r.id, $3, $4, 'running'::effect_status, $5::jsonb " +
           "from run r where r.id = $2 and r.space_id = $1 " +
           "on conflict (run_id, idempotency_key) do nothing " +
           "returning id",
-        [actor.spaceId, call.runId, call.tool, call.callId, argumentsJson(call)],
+        [actor.spaceId, call.runId, call.tool, call.callId, requestJson],
       );
 
       if (rows.length > 0) {
@@ -63,7 +73,7 @@ export function createExternalEffectLedger(
         'select e.status::text as status, e.kind as kind, e.request = $4::jsonb as "sameRequest", ' +
           "e.result as result from external_effect e " +
           "where e.space_id = $1 and e.run_id = $2 and e.idempotency_key = $3",
-        [actor.spaceId, call.runId, call.callId, argumentsJson(call)],
+        [actor.spaceId, call.runId, call.callId, requestJson],
       );
 
       const existing = claimed[0];
@@ -164,7 +174,7 @@ function serializeResult(result: unknown): SerializedResult {
 }
 
 function argumentsJson(call: ToolCall): string {
-  return JSON.stringify(call.arguments ?? null) ?? "null";
+  return JSON.stringify(redact(call.arguments ?? null)) ?? "null";
 }
 
 function storedError(result: unknown): string {

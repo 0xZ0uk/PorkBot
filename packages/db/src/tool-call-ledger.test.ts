@@ -75,6 +75,38 @@ describe("claiming a call", () => {
     ]);
   });
 
+  it("redacts secret-shaped arguments before storing them, and compares that stored form", async () => {
+    const secretive = call({
+      arguments: { text: "hi", token: "sk-live-0123456789", nested: { password: "hunter2" } },
+    });
+    const redacted = JSON.stringify({
+      text: "hi",
+      token: "[redacted]",
+      nested: { password: "[redacted]" },
+    });
+
+    const inserting = fakeDatabase(({ text }) =>
+      text.startsWith("insert into external_effect") ? [{ id: "effect-1" }] : [],
+    );
+    await expect(createExternalEffectLedger(worker, inserting).begin(secretive)).resolves.toEqual({
+      status: "started",
+    });
+    expect(began(inserting)[0]?.values[4]).toBe(redacted);
+
+    // A retry compares the redacted form, so it still replays instead of
+    // answering conflict for a request that is in fact the same one.
+    const replaying = fakeDatabase(({ text }) =>
+      text.startsWith("insert into external_effect")
+        ? []
+        : [{ status: "completed", kind: "echo", sameRequest: true, result: { echoed: true } }],
+    );
+    await expect(createExternalEffectLedger(worker, replaying).begin(secretive)).resolves.toEqual({
+      status: "completed",
+      result: { echoed: true },
+    });
+    expect(replaying.calls[1]?.values[3]).toBe(redacted);
+  });
+
   it("replays a completed claim from the stored row and never re-executes", async () => {
     const database = fakeDatabase(({ text }) =>
       text.startsWith("insert into external_effect")

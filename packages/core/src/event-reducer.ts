@@ -12,6 +12,7 @@ import type {
   ToolCompletedEvent,
   ToolFailedEvent,
   ToolRequestedEvent,
+  ToolResultArtifact,
 } from "./run-events.ts";
 
 /**
@@ -41,7 +42,11 @@ export interface ToolCallSnapshot {
   readonly arguments: unknown;
   readonly status: "requested" | "completed" | "failed";
   readonly result?: unknown;
+  /** Where the whole result lives when the event carried only a preview. */
+  readonly resultArtifact?: ToolResultArtifact;
   readonly error?: string;
+  /** Wall-clock duration of the call once it settled, in milliseconds. */
+  readonly durationMs?: number;
 }
 
 export interface RunFailureSnapshot {
@@ -337,8 +342,19 @@ function reduceToolResolution(
 
   const resolved: ToolCallSnapshot =
     event.type === "tool.completed"
-      ? { ...call, status: "completed", result: event.result }
-      : { ...call, status: "failed", error: event.error };
+      ? {
+          ...call,
+          status: "completed",
+          result: event.result,
+          ...(event.resultArtifact === undefined ? {} : { resultArtifact: event.resultArtifact }),
+          ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+        }
+      : {
+          ...call,
+          status: "failed",
+          error: event.error,
+          ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+        };
   const toolCalls = run.toolCalls.map((candidate) =>
     candidate.callId === event.callId ? resolved : candidate,
   );

@@ -61,7 +61,16 @@ export type {
   ToolCompletedEvent,
   ToolFailedEvent,
   ToolRequestedEvent,
+  ToolResultArtifact,
 } from "./run-events.ts";
+
+export {
+  DEFAULT_TOOL_RESULT_LIMITS,
+  summarizeToolResult,
+  toolResultTruncationMarker,
+  unserializableToolResultPreview,
+} from "./tool-results.ts";
+export type { ToolResultLimits, ToolResultSummary } from "./tool-results.ts";
 
 export { backoffDelayMs, DEFAULT_BACKOFF } from "./backoff.ts";
 export type { BackoffOptions, BackoffPolicy } from "./backoff.ts";

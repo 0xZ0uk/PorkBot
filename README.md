@@ -233,6 +233,30 @@ side effect that can outlive its lease can commit under another owner. The
 declared duration is also the hard budget — a handler that overruns it is
 interrupted and reported as a failed call.
 
+## Tool-call lifecycle
+
+A tool call is visible from requested to completed or failed, with arguments,
+result summary and timing, and the timeline survives a reload.
+`createRunEventRecorder` in `packages/effect` is the one transform every
+consumer runs a session's events through — the durable row, the live frame and
+a replayed one — so all three are the same bytes. The recorder redacts
+secret-shaped arguments with the logging helper, replaces a result past the
+inline budget with a bounded preview plus a `resultArtifact` pointer to the
+call's `external_effect` row, and stamps the settled call with its wall-clock
+`durationMs`; the artifact is never dropped silently.
+
+`RunEventSink` is the write half. `createRunEventSink` in `packages/db`
+appends the recorded event to the `event` table in one scoped statement that
+advances the thread's `next_event_seq` counter with the row, so
+`(thread_id, seq)` stays contiguous and a reconnecting subscriber replays
+exactly what the run emitted. Reducing the replayed stream equals reducing the
+live one, and the ledger stores a redacted request, so a retry with the same
+secret-shaped arguments still replays while the secret never reaches the
+durable audit row. The unit suites prove the recorder over a manual clock and
+the sink over a recording fake; the `packages/db` integration suite drives both
+on Postgres, reads the rows back through the actor-scoped repository, and
+resolves the artifact to the full result.
+
 ## Dependencies
 
 `dependencies.json` at the repository root is the pin register: every package
