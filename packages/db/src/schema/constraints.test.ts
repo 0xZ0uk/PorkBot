@@ -126,7 +126,7 @@ describe("the schema's unique constraints", () => {
     expect(violations).toEqual([]);
   });
 
-  it("include the memberships, sessions and credentials the dedupe argument covers", () => {
+  it("include the memberships, sessions, credentials and ingress ledgers the dedupe argument covers", () => {
     const names = new Set(
       tables().flatMap(([table, definition]) =>
         uniqueIndexesOf(definition).map((index) => `${table}.${index.name}`),
@@ -138,6 +138,8 @@ describe("the schema's unique constraints", () => {
     expect(names).toContain("account.account_provider_account_unique");
     expect(names).toContain("spaceMember.space_member_space_user_unique");
     expect(names).toContain("verification.verification_identifier_value_unique");
+    expect(names).toContain("webhookDelivery.webhook_delivery_source_delivery_unique");
+    expect(names).toContain("oauthState.oauth_state_state_hash_unique");
   });
 });
 

@@ -34,6 +34,27 @@ export type { BootstrapInput, BootstrapResult } from "./bootstrap.ts";
 export { resolveUserActor } from "./membership.ts";
 export type { ResolveActorInput } from "./membership.ts";
 
+// The ingress ledgers (slice 4.5): the pre-actor paths the unauthenticated
+// webhook and OAuth-callback surfaces use. A delivery id is deduped under a
+// NOT NULL unique key with a TTL the recorder sweeps, and an OAuth state is
+// bound to the initiating actor and space and consumed exactly once. The raw
+// state is never stored; only its hash is.
+export {
+  createIngressStore,
+  hashOAuthState,
+  oauthStateTtlSeconds,
+  webhookDeliveryTtlSeconds,
+} from "./ingress.ts";
+export type {
+  DeliveryLedger,
+  IngressStore,
+  IssueOAuthStateInput,
+  OAuthStateBinding,
+  OAuthStateStore,
+  RecordWebhookDeliveryInput,
+  ReleaseWebhookDeliveryInput,
+} from "./ingress.ts";
+
 // Applying migrations, exported so the API, the worker and scripts share one
 // implementation with the `db:migrate` command rather than each shelling out.
 export {

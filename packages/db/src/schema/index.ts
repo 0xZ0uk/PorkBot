@@ -17,6 +17,7 @@ export { botSection, bot } from "./bots.ts";
 export { attemptStatus, effectStatus, messageRole, runStatus, taskStatus } from "./enums.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
+export { oauthState, webhookDelivery } from "./ingress.ts";
 export { message } from "./messages.ts";
 export { attempt, run } from "./runs.ts";
 export { steeringMessage } from "./steering-messages.ts";
