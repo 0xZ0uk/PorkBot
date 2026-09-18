@@ -108,6 +108,7 @@ function stubRepositories(): UserRepositories {
 
   return {
     actor: owner,
+    membership: { requireActive: notExercised },
     bots: {
       findById: notExercised,
       list: notExercised,

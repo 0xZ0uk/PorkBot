@@ -15,11 +15,13 @@ import type { DeploymentStatus } from "./services/deployment.ts";
 
 /**
  * The resumable subscription over the real HTTP surface (slice 4.3, PRD
- * decisions 14 and 18; story 19). Every acceptance criterion has a test here:
- * a dropped connection resumes with no duplicate and no missing event,
- * `Last-Event-ID` is honoured — including through a proxy that preserves it —
- * subscribe and resume both re-validate the actor and the membership, and a
- * forged or foreign cursor is a typed refusal rather than a replay.
+ * decisions 14 and 18; story 19; the live revocation check from slice 3.3).
+ * Every acceptance criterion has a test here: a dropped connection resumes
+ * with no duplicate and no missing event, `Last-Event-ID` is honoured —
+ * including through a proxy that preserves it — subscribe and resume both
+ * re-validate the actor and the membership, a revoked membership ends a
+ * subscription that is already open, and a forged or foreign cursor is a
+ * typed refusal rather than a replay.
  *
  * The event rows live in a small in-memory store and the realtime fanout is the
  * shipped in-process implementation, so the tests drive exactly the seam the
@@ -54,13 +56,33 @@ const siblingThread = "01900000-0000-7000-8000-000000000003";
 interface FakeStore {
   readonly threads: Map<string, ThreadRecord>;
   readonly events: EventRecord[];
+  /** The `space_member` rows the live membership check re-reads: `space:user`. */
+  readonly memberships: Set<string>;
 }
 
 let store: FakeStore;
 let sessionActor: UserActor | null = owner;
 
-function emptyStore(): FakeStore {
-  return { threads: new Map(), events: [] };
+/**
+ * A test-only hold inside the event read, so a fetch can straddle a
+ * revocation: the service has the rows in hand but has not sent a frame yet.
+ */
+let listAfterHold: Promise<void> | undefined;
+let onListAfter: (() => void) | undefined;
+
+function fakeStore(): FakeStore {
+  return {
+    threads: new Map(),
+    events: [],
+    memberships: new Set([
+      `${owner.spaceId}:${owner.userId}`,
+      `${member.spaceId}:${member.userId}`,
+    ]),
+  };
+}
+
+function revokeMembership(actor: UserActor): void {
+  store.memberships.delete(`${actor.spaceId}:${actor.userId}`);
 }
 
 function addThread(id: string, spaceId: string): ThreadRecord {
@@ -116,6 +138,13 @@ function fakeRepositories(actor: UserActor): UserRepositories {
 
   return {
     actor,
+    membership: {
+      async requireActive(): Promise<void> {
+        if (!store.memberships.has(`${actor.spaceId}:${actor.userId}`)) {
+          throw new NotFoundError("space membership", actor.userId);
+        }
+      },
+    },
     bots: {
       findById: notExercised,
       list: notExercised,
@@ -159,6 +188,9 @@ function fakeRepositories(actor: UserActor): UserRepositories {
     },
     events: {
       async listAfter(threadId: string, afterSeq: number, limit: number): Promise<EventRecord[]> {
+        onListAfter?.();
+        await listAfterHold;
+
         return store.events
           .filter(
             (event) =>
@@ -225,8 +257,10 @@ beforeAll(async () => {
 
 beforeEach(() => {
   lines.length = 0;
-  store = emptyStore();
+  store = fakeStore();
   sessionActor = owner;
+  listAfterHold = undefined;
+  onListAfter = undefined;
 });
 
 afterAll(async () => {
@@ -256,6 +290,21 @@ class SseReader {
 
   /** The next data frame, skipping comments (the transport's keep-alives). */
   async next(): Promise<SseFrame> {
+    const frame = await this.nextOrEnd();
+
+    if (frame === undefined) {
+      throw new Error("the stream ended before the next frame");
+    }
+
+    return frame;
+  }
+
+  /**
+   * The next data frame, or `undefined` when the server ended the stream. The
+   * live-revocation and client-disconnect tests need the ending itself to be
+   * an observable, not an exception the reader happened to hit.
+   */
+  async nextOrEnd(): Promise<SseFrame | undefined> {
     for (;;) {
       const boundary = this.#buffer.indexOf("\n\n");
 
@@ -264,17 +313,23 @@ class SseReader {
         this.#buffer = this.#buffer.slice(boundary + 2);
         const frame = parseFrame(raw);
 
-        if (frame !== undefined) {
-          return frame;
+        if (frame === undefined) {
+          continue;
         }
 
-        continue;
+        // oRPC's SSE encoding closes a completed iterator with an explicit
+        // `event: done` marker; for the reader that marker *is* the ending.
+        if (frame.event === "done") {
+          return undefined;
+        }
+
+        return frame;
       }
 
       const { done, value } = await this.#reader.read();
 
       if (done) {
-        throw new Error("the stream ended before the next frame");
+        return undefined;
       }
 
       this.#buffer += this.#decoder.decode(value, { stream: true });
@@ -418,6 +473,71 @@ describe("subscribe and resume re-validate the actor and the membership", () => 
       json: { defined: true, code: "NOT_FOUND" },
     });
     await resume.close();
+  });
+
+  it("ends an open stream when the actor's membership is revoked mid-stream", async () => {
+    addThread(spaceOneThread, "space-1");
+    appendEvent(spaceOneThread, 1);
+
+    const stream = await openStream({ threadId: spaceOneThread });
+
+    expect(eventSeq(await stream.reader.next())).toBe(1);
+
+    // The membership is revoked while the connection is open and an event is
+    // appended after it: the stream must end without delivering that event.
+    revokeMembership(owner);
+    await persist(spaceOneThread, 2);
+
+    await expect(stream.reader.nextOrEnd()).resolves.toBeUndefined();
+    await stream.close();
+  });
+
+  it("does not deliver a batch fetched before the membership was revoked", async () => {
+    addThread(spaceOneThread, "space-1");
+    appendEvent(spaceOneThread, 1);
+    appendEvent(spaceOneThread, 2);
+
+    let release = (): void => {};
+    listAfterHold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetching = new Promise<void>((resolve) => {
+      onListAfter = resolve;
+    });
+
+    const stream = await openStream({ threadId: spaceOneThread });
+
+    // The server has both rows fetched but has not sent a frame. Revoke now,
+    // then let the read return: neither frame may be delivered, because the
+    // per-frame membership check runs after the fetch.
+    await fetching;
+    revokeMembership(owner);
+    release();
+
+    await expect(stream.reader.nextOrEnd()).resolves.toBeUndefined();
+    await stream.close();
+  });
+
+  it("refuses a subscribe and a resume once the membership is revoked", async () => {
+    addThread(spaceOneThread, "space-1");
+    appendEvent(spaceOneThread, 1);
+
+    const first = await openStream({ threadId: spaceOneThread });
+    const firstFrame = await first.reader.next();
+    await first.close();
+
+    revokeMembership(owner);
+
+    for (const attempt of [
+      await openStream({ threadId: spaceOneThread }),
+      await openStream({ threadId: spaceOneThread, lastEventId: firstFrame.id }),
+    ]) {
+      expect(attempt.response.status).toBe(404);
+      expect(await attempt.response.json()).toMatchObject({
+        json: { defined: true, code: "NOT_FOUND" },
+      });
+      await attempt.close();
+    }
   });
 
   it("refuses a resume by another actor in the same space", async () => {

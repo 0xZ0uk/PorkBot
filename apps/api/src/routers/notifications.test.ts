@@ -51,6 +51,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
 
   return {
     actor,
+    membership: { requireActive: notExercised },
     bots: {
       findById: notExercised,
       list: notExercised,

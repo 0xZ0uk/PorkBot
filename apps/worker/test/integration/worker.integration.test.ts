@@ -214,38 +214,71 @@ describe("the worker's run-execute job", () => {
   });
 
   it("exits without side effects when the payload's fence never matched", async () => {
-    const before = await runFence();
+    const before = await runState();
 
     await deliver({ runId, fence: 99, spaceId });
 
     expect(executions).toHaveLength(1);
-    expect(await runFence()).toBe(before);
+    expect(await runState()).toEqual(before);
   });
 
-  it("is not-found, not an error, when the payload names another space", async () => {
-    const before = await runFence();
+  it("cannot touch another space's run, task or attempts when the payload names that space", async () => {
+    const before = await runState();
 
+    // The payload's space is the job's whole scope: the handler derives a
+    // `SystemActor` from it and re-reads the run inside that space, so the run
+    // that actually exists elsewhere is not found and nothing changes — not the
+    // fence, not the lease, not an attempt row.
     await deliver({ runId, fence: 1, spaceId: otherSpaceId });
 
     expect(executions).toHaveLength(1);
-    expect(await runFence()).toBe(before);
+    expect(await runState()).toEqual(before);
+    expect(before.spaceId).toBe(spaceId);
   });
 
   it("completes a job for a run that does not exist", async () => {
-    const before = await runFence();
+    const before = await runState();
 
     await deliver({ runId: randomUUID(), fence: 0, spaceId });
 
     expect(executions).toHaveLength(1);
-    expect(await runFence()).toBe(before);
+    expect(await runState()).toEqual(before);
   });
 });
 
-async function runFence(): Promise<number> {
-  const { rows } = await db().query<{ lease_fence: number }>(
-    "select lease_fence from run where id = $1",
+interface RunState {
+  readonly spaceId: string;
+  readonly status: string;
+  readonly fence: number;
+  readonly owner: string | null;
+  readonly attempts: number;
+}
+
+/**
+ * The run's whole observable authorization surface: which space owns it, its
+ * state, its lease and how many attempts exist. A refused job must leave every
+ * one of these identical, not merely the fence.
+ */
+async function runState(): Promise<RunState> {
+  const { rows } = await db().query<{
+    readonly spaceId: string;
+    readonly status: string;
+    readonly fence: number;
+    readonly owner: string | null;
+    readonly attempts: number;
+  }>(
+    'select r.space_id::text as "spaceId", r.status::text as status, ' +
+      "r.lease_fence as fence, r.lease_owner as owner, " +
+      "(select count(*)::int from attempt a where a.run_id = r.id) as attempts " +
+      "from run r where r.id = $1",
     [runId],
   );
 
-  return required(rows[0]?.lease_fence);
+  const row = rows[0];
+
+  if (row === undefined) {
+    throw new Error(`runState: no run ${runId}`);
+  }
+
+  return row;
 }

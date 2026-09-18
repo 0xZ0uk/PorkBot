@@ -243,6 +243,7 @@ describe("the typed answer", () => {
 
     return {
       actor,
+      membership: { requireActive: notExercised },
       bots: {
         findById: notExercised,
         list: notExercised,
