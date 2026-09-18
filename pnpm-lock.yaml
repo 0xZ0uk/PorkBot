@@ -475,6 +475,9 @@ importers:
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
       eslint:
         specifier: 10.10.0
         version: 10.10.0

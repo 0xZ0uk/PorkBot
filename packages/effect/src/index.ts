@@ -14,9 +14,13 @@ export {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidToolCallError,
   LeaseLostError,
   NotFoundError,
   RunGoneError,
+  ToolCallConflictError,
+  ToolLedgerError,
+  UnknownToolError,
 } from "./errors.ts";
 export type { BlockedUrlReason, CursorRejection, TypedError, TypedErrorTag } from "./errors.ts";
 
@@ -66,6 +70,27 @@ export type {
   RunSession,
   RunStartRequest,
 } from "./agent-runtime.ts";
+
+// Tool dispatch (slice 5.5, PRD decision 26; audit section 3). One registration
+// carries a tool's metadata and its handler, so the list the model sees is
+// generated from the same value `execute` dispatches and cannot drift. Every
+// call is keyed by its durable `callId`, claimed in a ledger before the side
+// effect and replayed on retry; the caller's fenced heartbeat runs before the
+// handler, and the run lease TTL must cover every tool's declared duration.
+// The database implementation of `ToolCallLedger` lives in `@porkbot/db` over
+// the `external_effect` rows; this package declares the seam.
+export { createToolDispatcher, ToolRegistrationError } from "./tool-dispatcher.ts";
+export type {
+  ToolCall,
+  ToolCallAdmission,
+  ToolCallLedger,
+  ToolDispatchError,
+  ToolDispatcher,
+  ToolDispatcherOptions,
+  ToolOutcome,
+  ToolRegistration,
+  ToolRegistrationErrorReason,
+} from "./tool-dispatcher.ts";
 
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed

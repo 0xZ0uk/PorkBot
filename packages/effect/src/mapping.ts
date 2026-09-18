@@ -6,9 +6,13 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidToolCallError,
   LeaseLostError,
   NotFoundError,
   RunGoneError,
+  ToolCallConflictError,
+  ToolLedgerError,
+  UnknownToolError,
 } from "./errors.ts";
 import type { TypedErrorTag } from "./errors.ts";
 
@@ -86,6 +90,28 @@ export const errorMappings = {
     code: "BAD_REQUEST",
     message: "The resume cursor is not valid for this stream.",
     matches: (error: unknown): error is CursorRejectedError => error instanceof CursorRejectedError,
+  },
+  UnknownToolError: {
+    code: "BAD_REQUEST",
+    message: "The requested tool is not available in this run.",
+    matches: (error: unknown): error is UnknownToolError => error instanceof UnknownToolError,
+  },
+  InvalidToolCallError: {
+    code: "BAD_REQUEST",
+    message: "The tool call is missing a required field.",
+    matches: (error: unknown): error is InvalidToolCallError =>
+      error instanceof InvalidToolCallError,
+  },
+  ToolCallConflictError: {
+    code: "CONFLICT",
+    message: "That tool call is already in flight or was used for a different request.",
+    matches: (error: unknown): error is ToolCallConflictError =>
+      error instanceof ToolCallConflictError,
+  },
+  ToolLedgerError: {
+    code: "SERVICE_UNAVAILABLE",
+    message: "The tool-call record is not available.",
+    matches: (error: unknown): error is ToolLedgerError => error instanceof ToolLedgerError,
   },
 } as const satisfies { readonly [K in TypedErrorTag]: ErrorMapping };
 
