@@ -49,6 +49,7 @@ beforeAll(async () => {
   runner = await startWorker({
     connectionString: connectionStringForRole(suite.connectionString, workerRole),
     scheduleWatchdog: false,
+    scheduleRoutines: false,
     executeRun: async (execution) => {
       executions.push(execution);
       const behavior = behaviors.get(execution.run.id);

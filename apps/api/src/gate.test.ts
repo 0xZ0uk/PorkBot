@@ -112,6 +112,26 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
         return [];
       },
     },
+    routines: {
+      async findById(id: string): Promise<never> {
+        throw new NotFoundError("routine", id);
+      },
+      async list(): Promise<never[]> {
+        return [];
+      },
+      async listForBot(): Promise<never[]> {
+        return [];
+      },
+      async outcomes(): Promise<never[]> {
+        return [];
+      },
+      async lastOutcome(): Promise<undefined> {
+        return undefined;
+      },
+      create: notExercised,
+      update: notExercised,
+      remove: notExercised,
+    },
   };
 }
 

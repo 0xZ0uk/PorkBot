@@ -1,6 +1,6 @@
 import { INITIAL_RUN_STATUS } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
-import type { UserActor } from "./actor.ts";
+import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 import { messageColumns, runColumns, taskColumns } from "./records.ts";
 import type { MessageRecord, RunRecord, TaskRecord } from "./records.ts";
@@ -8,23 +8,38 @@ import { insertedRow, requiredRow } from "./rows.ts";
 import { withTransaction } from "./transaction.ts";
 
 /**
- * The single run-creation command: one call builds the user message, the task,
- * the run and the links between them.
+ * The run-creation commands, and the only code in the package that inserts a
+ * `task`, a `run` or the links between them.
  *
  * The reference implementation grew 13–17 near-duplicate creation sites, each
- * with its own idea of ordering, status and idempotency. Here there is one
- * path, and the database owns the duplicate decision: the run's
- * `(space_id, client_nonce)` unique index is a NOT NULL key, so a resubmission
- * is an `insert ... on conflict do nothing`, never a read-then-write race. The
- * task is inserted first (a run cannot exist without it) and the transaction
- * rolls it back when the run conflicts, so a duplicate leaves no stray task
- * behind. Under concurrency, the losing insert waits for the winner at the
- * index and then replays it, so parallel duplicate submissions return the same
- * run.
+ * with its own idea of ordering, status and idempotency. Here there are two
+ * commands for the two triggers — a message and a routine — and they share
+ * this module, this ordering and this idempotency discipline, so a third
+ * trigger is a third command here rather than a new insert elsewhere.
  *
- * The initial status is `INITIAL_RUN_STATUS` from the run state machine, and
- * this command is the only writer of a run's first status; the transition map
- * is the one place that decides what "initial" means.
+ * `createRunAndTask` is the message-triggered command: one call builds the
+ * user message, the task, the run and the links between them. The database
+ * owns the duplicate decision: the run's `(space_id, client_nonce)` unique
+ * index is a NOT NULL key, so a resubmission is an
+ * `insert ... on conflict do nothing`, never a read-then-write race. The task
+ * is inserted first (a run cannot exist without it) and the transaction rolls
+ * it back when the run conflicts, so a duplicate leaves no stray task behind.
+ * Under concurrency, the losing insert waits for the winner at the index and
+ * then replays it, so parallel duplicate submissions return the same run.
+ *
+ * `createRoutineRun` is the routine-triggered command, called by the
+ * scheduler. It has no user message — the routine's instruction is the task's
+ * prompt and `source_message_id` stays null — and it settles the routine's
+ * occurrence ledger in the same transaction that creates the task and the run,
+ * so a fire and its outcome link commit together. The routine row is locked
+ * for the transaction and the slot is deduped by
+ * `routine_occurrence (routine_id, scheduled_for)` on NOT NULL columns, so two
+ * scheduler passes racing one slot produce one run, and the loser returns
+ * undefined without writing anything.
+ *
+ * Both commands take the initial status from `INITIAL_RUN_STATUS` in the run
+ * state machine; they are the only writers of a run's first status, and the
+ * transition map is the one place that decides what "initial" means.
  *
  * Scope comes from the actor, never from an argument: the thread is looked up
  * inside the actor's space, and a thread that does not exist and one in another
@@ -158,6 +173,170 @@ async function createOnce(
     );
 
     return { run: insertedRow(linkedRows), task, message };
+  });
+}
+
+/**
+ * One scheduled fire: the routine, the slot it is settling, and the next slot
+ * the scheduler advances it to.
+ *
+ * The command reads the instruction, the bot, the thread and the owner from
+ * the locked routine row — never from this input — so a scheduler job that
+ * only knows the routine id and the two instants cannot smuggle a prompt or
+ * address another bot's thread.
+ */
+export interface NewRoutineRun {
+  readonly routineId: string;
+  /** The slot being settled; the ledger's idempotency key. */
+  readonly scheduledFor: Date;
+  /** The next fire the routine row advances to, decided by `@porkbot/core`. */
+  readonly nextRunAt: Date;
+}
+
+/** The run one fire created, with the ledger row that links to it. */
+export interface CreatedRoutineRun {
+  readonly run: RunRecord;
+  readonly occurrenceId: string;
+}
+
+/**
+ * The routine's deterministic idempotency key for one slot: a retried fire
+ * addresses the same `(space, client_nonce)` the run table already dedupes,
+ * so the ledger and the run's unique index agree about what a duplicate is.
+ */
+export function routineRunNonce(routineId: string, scheduledFor: Date): string {
+  return `routine:${routineId}:${scheduledFor.getTime()}`;
+}
+
+/** The routine fields one fire reads while holding the row lock. */
+interface FiringRoutine {
+  readonly id: string;
+  readonly botId: string;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly instruction: string;
+}
+
+/**
+ * Fires one due routine: inserts the occurrence, the task and the run, links
+ * the occurrence to the run, and advances the schedule, all in one
+ * transaction.
+ *
+ * Returns undefined when the routine is no longer live (disabled, deleted or
+ * moved to another slot) or when the slot already has an occurrence — both are
+ * superseded passes that must write nothing rather than an error. The routine
+ * row is locked with `for update` and re-checked against `scheduledFor`, so
+ * the decision the scheduler made from its scan is validated against the row
+ * it is about to change.
+ */
+export async function createRoutineRun(
+  actor: SystemActor,
+  database: Queryable,
+  input: NewRoutineRun,
+): Promise<CreatedRoutineRun | undefined> {
+  return fireRoutineOnce(actor, database, input).catch((error: unknown) => {
+    if (error instanceof RoutineSlotSettled) {
+      return undefined;
+    }
+
+    throw error;
+  });
+}
+
+/**
+ * Thrown inside the transaction when the run's unique nonce already exists, so
+ * the transaction rolls the ledger insert back; the catch outside decides that
+ * the slot is settled. It never escapes this module. This mirrors the message
+ * command's `SubmissionSettled`: the ledger is the scheduler's first dedupe,
+ * and the run's `(space_id, client_nonce)` index is the second, so a state
+ * where only the second fires (a restored or hand-cleaned ledger) still
+ * resolves to "settled", not to a unique violation that fails the tick.
+ */
+class RoutineSlotSettled extends Error {
+  constructor() {
+    super("the routine slot did not insert a run");
+    this.name = "RoutineSlotSettled";
+  }
+}
+
+async function fireRoutineOnce(
+  actor: SystemActor,
+  database: Queryable,
+  input: NewRoutineRun,
+): Promise<CreatedRoutineRun | undefined> {
+  return withTransaction(database, async (transaction) => {
+    const { rows: routineRows } = await transaction.query<FiringRoutine>(
+      'select id, bot_id as "botId", thread_id as "threadId", user_id as "userId", instruction ' +
+        "from routine where id = $1 and space_id = $2 and enabled and deleted_at is null " +
+        "and date_trunc('milliseconds', next_run_at) = $3 for update",
+      [input.routineId, actor.spaceId, input.scheduledFor],
+    );
+
+    const firing = routineRows[0];
+    if (firing === undefined) {
+      return undefined;
+    }
+
+    const { rows: occurrenceRows } = await transaction.query<{ readonly id: string }>(
+      "insert into routine_occurrence (routine_id, scheduled_for) values ($1, $2) " +
+        "on conflict (routine_id, scheduled_for) do nothing returning id",
+      [firing.id, input.scheduledFor],
+    );
+
+    const occurrence = occurrenceRows[0];
+    if (occurrence === undefined) {
+      return undefined;
+    }
+
+    const { rows: taskRows } = await transaction.query<TaskRecord>(
+      "insert into task (space_id, bot_id, thread_id, user_id, prompt, status) " +
+        "values ($1, $2, $3, $4, $5, 'queued') " +
+        `returning ${taskColumns}`,
+      [actor.spaceId, firing.botId, firing.threadId, firing.userId, firing.instruction],
+    );
+
+    const task = insertedRow(taskRows);
+
+    const { rows: runRows } = await transaction.query<RunRecord>(
+      "insert into run (space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce) " +
+        "values ($1, $2, $3, $4, $5, $6::run_status, 'routine', $7) " +
+        "on conflict (space_id, client_nonce) do nothing " +
+        `returning ${runColumns}`,
+      [
+        actor.spaceId,
+        firing.botId,
+        firing.threadId,
+        task.id,
+        firing.userId,
+        INITIAL_RUN_STATUS,
+        routineRunNonce(firing.id, input.scheduledFor),
+      ],
+    );
+
+    const run = runRows[0];
+    if (run === undefined) {
+      throw new RoutineSlotSettled();
+    }
+
+    await transaction.query(
+      "update routine_occurrence set run_id = $1, updated_at = now() where id = $2",
+      [run.id, occurrence.id],
+    );
+
+    const { rows: advancedRows } = await transaction.query<{ readonly id: string }>(
+      "update routine set next_run_at = $1, updated_at = now() " +
+        "where id = $2 and space_id = $3 and date_trunc('milliseconds', next_run_at) = $4 " +
+        "returning id",
+      [input.nextRunAt, firing.id, actor.spaceId, input.scheduledFor],
+    );
+
+    if (advancedRows[0] === undefined) {
+      // The lock makes this unreachable; if it ever happens, the slot must not
+      // be left half-settled, so the throw rolls the whole fire back.
+      throw new Error(`the routine "${firing.id}" moved while its slot was firing`);
+    }
+
+    return { run, occurrenceId: occurrence.id };
   });
 }
 
