@@ -166,23 +166,45 @@ export type {
 
 export {
   assertMemoryPreserved,
+  COMPACTION_SUMMARY_INSTRUCTIONS,
+  compactionSummaryRequest,
   CompactionRuleError,
   CONVERSATION_ROLES,
   DuplicateConversationMessage,
+  EmptyCompactionPlan,
   isConversationRole,
   MemoryCreatedByCompaction,
   MemoryDeletionByCompaction,
   MemoryRewriteByCompaction,
   MissingConversationMessageId,
   planCompaction,
+  UnknownCompactionMessage,
   UnknownConversationRole,
 } from "./compaction-policy.ts";
 export type {
   CompactionPlan,
   CompactionRequest,
+  CompactionSummaryMessage,
   ConversationMessage,
   ConversationRole,
 } from "./compaction-policy.ts";
+
+export {
+  assertRecallLimits,
+  boundRecallMatches,
+  DEFAULT_RECALL_LIMITS,
+  RecallLimitError,
+  selectPromptMemory,
+} from "./recall-policy.ts";
+export type {
+  BoundedRecall,
+  PromptMemorySelection,
+  RecallLimits,
+  RecallMatch,
+} from "./recall-policy.ts";
+
+export { composeRunPrompt } from "./run-context.ts";
+export type { RunPrompt, RunPromptInput } from "./run-context.ts";
 
 export {
   decideReclaim,
