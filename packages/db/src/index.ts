@@ -11,6 +11,15 @@ export const moduleInfo = {
 // other packages may import.
 export * from "./schema/index.ts";
 
+// The connected handle and the one deployment-level read. `openDatabase` is how
+// a consumer outside this package gets a drizzle instance without naming
+// `pg`/`drizzle-orm`; `readDeploymentSettings` is the pre-auth read the signup
+// gate needs, and it is deliberately not actor-scoped because no actor exists
+// before registration.
+export { openDatabase } from "./database.ts";
+export type { DatabaseHandle, PostgresDatabase } from "./database.ts";
+export { readDeploymentSettings } from "./deployment-settings.ts";
+
 // Applying migrations, exported so the API, the worker and scripts share one
 // implementation with the `db:migrate` command rather than each shelling out.
 export {

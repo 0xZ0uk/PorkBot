@@ -14,7 +14,15 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
+    "@porkbot/core": "workspace:*",
+    "@porkbot/db": "workspace:*",
+    "@porkbot/logging": "workspace:*",
+    "better-auth": "1.7.5"
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",

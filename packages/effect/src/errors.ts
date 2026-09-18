@@ -25,3 +25,23 @@ export class NotFoundError extends Error {
     this.id = id;
   }
 }
+
+/**
+ * The deployment configuration disagrees with itself: the settings table holds
+ * more than one row, so "are signups open?" has no single answer. Fail-closed
+ * ownership (PRD decision 8) means the resolution must be an explicit
+ * misconfiguration surfaced to the operator, never a coin flip between rows,
+ * and never a silently-open deployment.
+ */
+export class DeploymentSettingsConflictError extends Error {
+  readonly rows: number;
+
+  constructor(rows: number) {
+    super(
+      `deployment_settings holds ${rows} rows; exactly one configuration is expected. ` +
+        "Remove the extra rows and keep the one the operator wrote.",
+    );
+    this.name = "DeploymentSettingsConflictError";
+    this.rows = rows;
+  }
+}

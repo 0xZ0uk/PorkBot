@@ -54,6 +54,7 @@ export const workspacePackages = {
   "@porkbot/auth": {
     role: "authentication gate and actor resolution",
     imports: [
+      "@porkbot/adapter-kit",
       "@porkbot/contracts",
       "@porkbot/core",
       "@porkbot/db",
@@ -207,6 +208,11 @@ export const restrictedLibraries = [
     category: "desktop shell",
     owners: ["@porkbot/desktop"],
     names: ["electron"],
+  },
+  {
+    category: "authentication library",
+    owners: ["@porkbot/auth"],
+    names: ["better-auth"],
   },
   {
     category: "provider SDK",

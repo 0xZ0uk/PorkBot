@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { decideSignup, isOwnerEmail, normalizeEmail } from "./signup-policy.ts";
+import {
+  decideSignup,
+  isOwnerEmail,
+  normalizeEmail,
+  resolveDeploymentSettings,
+} from "./signup-policy.ts";
 import type { DeploymentSettings } from "./signup-policy.ts";
 
 const configured: DeploymentSettings = {
@@ -129,5 +134,27 @@ describe("normalizeEmail", () => {
   it("trims and lowercases", () => {
     expect(normalizeEmail("  Operator@Example.COM ")).toBe("operator@example.com");
     expect(normalizeEmail("")).toBe("");
+  });
+});
+
+describe("resolveDeploymentSettings", () => {
+  it("reports an unconfigured deployment as absent, not as a closed one", () => {
+    expect(resolveDeploymentSettings([])).toEqual({ kind: "absent" });
+  });
+
+  it("returns the one configured row", () => {
+    expect(resolveDeploymentSettings([configured])).toEqual({
+      kind: "configured",
+      settings: configured,
+    });
+  });
+
+  it("treats rows that disagree as a conflict with the row count, never as open", () => {
+    const conflicting: DeploymentSettings[] = [
+      { signupsEnabled: true, adminEmail: "operator@example.com" },
+      { signupsEnabled: false, adminEmail: null },
+    ];
+
+    expect(resolveDeploymentSettings(conflicting)).toEqual({ kind: "conflict", rows: 2 });
   });
 });
