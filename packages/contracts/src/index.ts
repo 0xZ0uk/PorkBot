@@ -86,8 +86,24 @@ export {
 } from "./routines.ts";
 export type { Routine, RoutineOutcome, RoutineOutcomeStatus } from "./routines.ts";
 
-export { runEventSchema, threadsEventsContract } from "./threads.ts";
-export type { RunEventMessage } from "./threads.ts";
+export {
+  defaultMessagePageSize,
+  defaultThreadPageSize,
+  maxPageSize,
+  messageBlockSchema,
+  messageRoleSchema,
+  messageSchema,
+  runEventSchema,
+  threadCursorSchema,
+  threadSchema,
+  threadsClearContract,
+  threadsCreateContract,
+  threadsEventsContract,
+  threadsListContract,
+  threadsMessagesContract,
+  threadsSendContract,
+} from "./threads.ts";
+export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 
 // The client: a type derived from the contract plus the factory that builds it.
 export { createApiClient } from "./client.ts";

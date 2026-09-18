@@ -68,3 +68,12 @@ export function isActiveStatus(status: RunStatus): boolean {
 export function isRunStatus(value: unknown): value is RunStatus {
   return typeof value === "string" && (RUN_STATUSES as readonly string[]).includes(value);
 }
+
+/**
+ * The statuses that mean "a run is not done yet", in the order the vocabulary
+ * declares. It exists as a value because a query that looks for the thread's
+ * live run must filter on the same set `isActiveStatus` decides over, and a
+ * hand-written `in (...)` list in SQL is exactly the second reading of the
+ * state machine this package prevents.
+ */
+export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = RUN_STATUSES.filter(isActiveStatus);

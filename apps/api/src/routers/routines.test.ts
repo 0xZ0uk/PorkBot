@@ -128,9 +128,20 @@ function stubRepositories(): UserRepositories {
       findById: notExercised,
       listForBot: notExercised,
       createForBot: notExercised,
+      clear: notExercised,
     },
-    runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
+    runs: {
+      findById: notExercised,
+      listForThread: notExercised,
+      findActiveForThread: notExercised,
+      create: notExercised,
+    },
     events: { listAfter: notExercised },
+    messages: {
+      listForThread: notExercised,
+      findByNonce: notExercised,
+      steer: notExercised,
+    },
     routines: {
       findById: vi.fn(async () => routine),
       list: vi.fn(async () => [routine]),

@@ -31,7 +31,14 @@ import {
   sectionsListContract,
   sectionsUpdateContract,
 } from "./sections.ts";
-import { threadsEventsContract } from "./threads.ts";
+import {
+  threadsClearContract,
+  threadsCreateContract,
+  threadsEventsContract,
+  threadsListContract,
+  threadsMessagesContract,
+  threadsSendContract,
+} from "./threads.ts";
 
 /**
  * The application contract: the one source of transport truth (PRD decision
@@ -71,6 +78,11 @@ export const appContract = {
     delete: sectionsDeleteContract,
   },
   threads: {
+    create: threadsCreateContract,
+    list: threadsListContract,
+    messages: threadsMessagesContract,
+    send: threadsSendContract,
+    clear: threadsClearContract,
     events: threadsEventsContract,
   },
   routines: {

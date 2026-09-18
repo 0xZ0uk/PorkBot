@@ -214,6 +214,17 @@ describe("decideMessageSend duplicate sends", () => {
       expect(error.messageId).toBe("msg-1");
     }
   });
+
+  it("replays a steer whose run row is gone with a null run id", () => {
+    const decision = decideMessageSend(request, {
+      existingSend: { ...storedSend, runId: null },
+    });
+
+    expect(decision).toEqual({
+      ok: true,
+      action: { action: "replay", messageId: "msg-1", runId: null },
+    });
+  });
 });
 
 describe("message rule errors", () => {

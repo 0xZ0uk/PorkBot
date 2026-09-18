@@ -602,6 +602,50 @@ input names a bot or a section, never a space.
   volume in the local stack; a deployment on the S3-compatible provider answers
   the same way because the key is the only thing the row carries.
 
+## Threads and messages
+
+Slice 6.5 is the conversation surface: `threads.create`, `threads.list`,
+`threads.messages`, `threads.send` and `threads.clear`, every one authenticated
+and every one naming a bot, a thread or a message, never a space. A thread
+belongs to one bot; its transcript is the ordered `message` rows, and the run
+events that stream to a subscriber are the durable `event` rows the resumable
+stream already replays.
+
+- **A send is idempotent on the client nonce.** `threads.send` takes the text
+  and a non-empty `clientNonce`; `decideMessageSend` in `@porkbot/core` reads
+  the nonce's earlier message and the thread's live run and returns what to do.
+  A message that starts a run goes through `createRunAndTask` — the same single
+  run-creation command the routine scheduler uses — and the run's
+  `(space_id, client_nonce)` index replays the first result when two
+  submissions race, so a retried send is one message and one run. The same
+  nonce with different text is the typed `CONFLICT`, and a nonce already spent
+  on another thread is refused by the send service rather than replayed, since
+  the run's key is scoped to the space while a send's is scoped to its thread.
+- **A send into a live run steers it.** When the thread has a non-terminal run,
+  the message is written with its `steering_message` delivery row bound to that
+  run in one transaction; no second run is created. Delivering and claiming
+  that row is slice 6.7's half. `packages/db/src/messages.ts` is the one module
+  that inserts a message row — the run-creation command, the steering command
+  and the worker's assistant-message command all allocate their sequence and
+  insert through it — which a call-site suite enforces.
+- **Persistence never waits for a subscriber.** The user message commits with
+  its run; an assistant message is appended through the message store by the
+  run that produced it, with a nonce derived from the run so a retried append
+  is a replay; and every run event is appended to the `event` table by
+  `RunEventSink` as it is produced. A subscription replays those rows, so a
+  closed tab costs the live frames, never the transcript.
+- **Lists are keyset-paginated.** `threads.list` orders by
+  `(updated_at desc, id desc)` and carries the ordering key of its last row as
+  a typed cursor; `threads.messages` orders by the thread's contiguous `seq`
+  and carries the next `afterSeq`. The service asks for one row past the page
+  to decide whether a next page exists, so a "no more rows" answer is exact
+  rather than inferred from a full page.
+- **Clearing is an explicit, bounded act.** `threads.clear` deletes the
+  thread's messages and events and resets both sequence counters in one
+  transaction; the thread row, its runs and the bot's memory documents survive.
+  "What did it learn" is not the transcript, and clearing a conversation never
+  clears it.
+
 ## Webhook ingress
 
 `POST /webhooks/<source>` (slice 4.5, PRD decision 24) is the deployment's only
@@ -675,7 +719,10 @@ job's parser accepts only its addressing fields, so a producer that tries to
 smuggle a prompt or a tool call into a job is refused at delivery. Slice 6.1
 ends at the fence check — the claim, heartbeat and execution arrive through the
 `RunExecutor` seam in 6.2; the routine tick (8.4) enqueues `run.execute` for a
-scheduled slot, and the message path's producer arrives in 6.5.
+scheduled slot, and the message path (6.5) creates its run `queued` through the
+same run-creation command. Delivering message-triggered runs to the queue is a
+producer step the run-runtime slices add beside the API's own database role,
+which today cannot write the worker's queue schema.
 
 The worker connects with its own database role. `packages/db/migrations/0004_database_roles.sql`
 creates `porkbot_api` and `porkbot_worker` and grants each only its own work:

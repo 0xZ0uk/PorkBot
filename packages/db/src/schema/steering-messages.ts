@@ -9,11 +9,14 @@ import { run } from "./runs.ts";
  * The delivery record for a message sent into a live run.
  *
  * The message row already carries the duplicate-send nonce; this table records
- * that the message is a steering command, which bot it targets, and whether a
- * live run has claimed it. `(message_id, bot_id)` is unique so two concurrent
- * deliveries of the same command cannot both queue, and `claimed_at` is the
- * handoff mark — set once, by the run that consumed it. `run_id` is null until
- * then, and cleared rather than cascaded if the run row is removed.
+ * that the message is a steering command, which bot it targets, the run the
+ * send addressed, and whether that run has claimed it. `(message_id, bot_id)`
+ * is unique so two concurrent deliveries of the same command cannot both
+ * queue, and `claimed_at` is the handoff mark — set once, by the run that
+ * consumed it. `run_id` is written by the send, which already resolved the
+ * thread's live run: binding the steer to that run is what lets a claim from a
+ * different (or finished) run refuse it, and the column is cleared rather than
+ * cascaded if the run row is removed.
  */
 export const steeringMessage = pgTable(
   "steering_message",
