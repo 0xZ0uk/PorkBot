@@ -31,16 +31,13 @@ if (connectionString === undefined || connectionString.length === 0) {
 }
 
 /**
- * Slice 6.1's executor. The handler has already re-read the run and matched the
- * payload's fence to the row, and there is nothing else to do yet: slice 6.2
- * replaces this function with the claim, the heartbeat and the work, and the
- * handler's fence rule does not move. Nothing enqueues `run.execute` until run
- * creation wires the producer (slice 6.5), so this placeholder cannot swallow
- * real work, and the handler's only statement is its scoped read — a duplicate
- * delivery has no side effect to duplicate until 6.2's claim writes the fence.
+ * The handler has atomically claimed the run before entering this seam. Later
+ * execution slices add model/tool work and schedule heartbeats around it; until
+ * then, the durable claim and attempt prove ownership without pretending that
+ * the orchestration layer already exists.
  */
 const verifiedRunExecutor: RunExecutor = async ({ run, logger: runLogger }) => {
-  runLogger.info("run job verified against the run row", { fence: run.leaseFence });
+  runLogger.info("run claimed", { fence: run.leaseFence });
 };
 
 let runner: Runner;

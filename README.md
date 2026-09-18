@@ -599,6 +599,10 @@ The rules are checks, not conventions:
   increment it monotonically and a stale owner's write matches no row;
   `run.checkpoint` is NOT NULL jsonb defaulting to `{}`, so "resume from
   checkpoint" and "start from scratch" cannot be confused.
+  Workers heartbeat every minute and write a two-minute TTL: the extra minute is
+  explicit grace for ordinary clock drift and a brief host suspend. Missing two
+  heartbeats therefore makes the run reclaimable without letting a stale owner
+  renew or publish another checkpoint.
 - **Foreign keys never dangle.** Every foreign key resolves to the id of a table
   in this schema; where the runs domain needed an optional link — a bot without
   a section, a user message before its run exists — the column is nullable and

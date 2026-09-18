@@ -20,10 +20,9 @@ import type { Logger } from "@porkbot/logging";
  * Both are authoritative; neither substitutes for the other. A job that has
  * been reclaimed by Graphile after a crash is still refused by a run row whose
  * fence moved on, and a duplicate delivery is a no-op because the handler's
- * decision comes from the row, not from the delivery count. The handler itself
- * writes nothing — the fence's writer (slice 6.2's claim, deduped by the
- * attempt table's unique `(run_id, fence)`) is what makes the side effect
- * idempotent, and the re-read is what makes a superseded delivery harmless.
+ * decision comes from the row, not from the delivery count. The handler claims
+ * with one CAS, deduped by the attempt table's unique `(run_id, fence)`; the
+ * initial re-read and the claim guard make a superseded delivery harmless.
  *
  * This module is also where "payloads never carry the work" is enforced rather
  * than promised: a definition's `parse` must accept the payload as an object
