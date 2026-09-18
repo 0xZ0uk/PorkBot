@@ -288,6 +288,22 @@ The API process reads `DATABASE_URL` and exits when it is missing. The local
 stack supplies it in `compose.yaml`; unit tests inject a service, and the e2e
 spec starts the process with a placeholder URL it never dials.
 
+## URL safety
+
+Every fetch of a user-supplied URL — an MCP server, an OpenAPI document, a model
+endpoint, a web page — goes through `@porkbot/effect`'s `safeFetch` (PRD decision
+23). It enforces HTTPS, refuses embedded credentials, and blocks private,
+loopback, link-local, metadata, multicast and reserved addresses.
+
+The rules are one list, `BLOCKED_ADDRESS_RULES`, and the check that matters runs
+as the socket's DNS lookup rather than as a pre-flight string check: every
+connection resolves and checks again, so a hostname that answers with a public
+address for one look and a private one for the next is refused on the socket.
+An IP-literal host never reaches the resolver, so `assertAllowedUrl` checks it
+where it is parsed. A refused fetch throws a typed `BlockedUrlError` — never a
+raw network failure — and a test in `packages/effect` walks the shipped fetch
+call sites, so a new one cannot bypass the module.
+
 ## Migrations
 
 `packages/db` owns the schema and the migration workflow. Postgres 18 is the
