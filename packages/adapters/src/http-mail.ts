@@ -4,7 +4,8 @@ import type {
   TransactionalEmailProvider,
   TransactionalEmailReceipt,
 } from "@porkbot/adapter-kit";
-import { CredentialMissingError } from "@porkbot/effect";
+import { BlockedUrlError, CredentialMissingError, safeFetch } from "@porkbot/effect";
+import type { SafeFetch } from "@porkbot/effect";
 import { MailConfigurationError, MailDeliveryError } from "./mail-errors.ts";
 
 /**
@@ -43,8 +44,13 @@ export interface HttpMailProviderOptions {
   readonly credentialName: string;
   /** Resolves the API key; the parameter is never read from the environment here. */
   readonly credentials: CredentialStore;
-  /** Transport seam for tests; defaults to the platform `fetch`. */
-  readonly fetch?: typeof globalThis.fetch;
+  /**
+   * Transport seam for the offline wire emulator, which speaks plain HTTP on
+   * loopback; defaults to the URL-safety module's `safeFetch`, so a shipped
+   * deployment only ever dials an HTTPS endpoint whose resolved address is
+   * public (PRD decision 23).
+   */
+  readonly fetch?: SafeFetch;
   /** Per-request budget; defaults to 10 seconds. */
   readonly timeoutMs?: number;
 }
@@ -167,7 +173,7 @@ export function createHttpMailProvider(
   const from = resolveSender(options.from);
   const credentialName = resolveCredentialName(options.credentialName);
   const timeoutMs = resolveTimeout(options.timeoutMs);
-  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const fetchImpl = options.fetch ?? safeFetch;
 
   return {
     async send(message: TransactionalEmailMessage): Promise<TransactionalEmailReceipt> {
@@ -196,6 +202,16 @@ export function createHttpMailProvider(
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (cause) {
+        // A refused URL is a permanent configuration fact, not a delivery
+        // failure to retry: the URL-safety module decided before any request.
+        if (cause instanceof BlockedUrlError) {
+          throw new MailConfigurationError(
+            "endpoint",
+            "invalid",
+            "Expected an https endpoint whose host resolves to a public address.",
+          );
+        }
+
         throw new MailDeliveryError({ retryable: true, cause });
       }
 

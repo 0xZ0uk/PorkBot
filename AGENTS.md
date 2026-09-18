@@ -101,6 +101,20 @@ change it without breaking what the boundaries and the CI gate protect.
   usernames, hostnames, emails, tenant ids or key ids. Describe test results in
   words, never as pasted tool output. Checked by: review.
 
+### Network egress
+
+- **Every fetch of a user-supplied URL goes through `@porkbot/effect`'s
+  URL-safety module.** An MCP server, an OpenAPI document, a model endpoint and
+  a web fetch all call `safeFetch`, which enforces HTTPS, refuses embedded
+  credentials, and checks the address on the connection rather than on the
+  string, so a hostname that rebinds from public to private is refused on the
+  socket. Checked by: test
+  (`packages/effect/src/url-safety.call-sites.test.ts`) and review.
+- **The blocked ranges are one list.** Private, loopback, link-local, metadata,
+  multicast and reserved ranges live in `BLOCKED_ADDRESS_RULES`; a second place
+  that decides "private" is the bug the list exists to prevent. Checked by: test
+  (`packages/effect/src/url-safety.test.ts`) and review.
+
 ### UI
 
 - **Colours come from `@porkbot/tokens`.** No hardcoded hex, `rgb()` or `hsl()`

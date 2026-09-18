@@ -139,6 +139,9 @@ function build(options: {
     from: options.from ?? from,
     credentialName: options.credentialName ?? credentialName,
     credentials,
+    // The wire emulator speaks plain HTTP on loopback; the shipped default is
+    // the URL-safety module, exercised in its own suite below.
+    fetch: globalThis.fetch,
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
   });
 }
@@ -196,6 +199,7 @@ describe("the HTTP mail provider wire contract", () => {
       from,
       credentialName,
       credentials: store,
+      fetch: globalThis.fetch,
     });
 
     await mail.send(resetEmail);
@@ -291,6 +295,44 @@ describe("the HTTP mail provider fails closed on misconfiguration", () => {
     );
 
     expect(error).toMatchObject({ setting: "timeoutMs", reason: "invalid" });
+  });
+});
+
+describe("the HTTP mail provider's shipped transport", () => {
+  it("refuses a plain-http endpoint as a configuration error, without a request", async () => {
+    const wire = await startWireProvider((response) => {
+      jsonResponse(response, 200, { id: "provider-message-6" });
+    });
+    const mail = createHttpMailProvider({
+      endpoint: wire.endpoint,
+      from,
+      credentialName,
+      credentials: createMemoryCredentialStore([[credentialName, credentialValue]]),
+    });
+
+    const error = await rejection(mail.send(resetEmail));
+
+    expect(error).toBeInstanceOf(MailConfigurationError);
+    expect(error).toMatchObject({ setting: "endpoint", reason: "invalid" });
+    expect(wire.requests).toEqual([]);
+  });
+
+  it("refuses an https endpoint that resolves to a blocked address", async () => {
+    const wire = await startWireProvider((response) => {
+      jsonResponse(response, 200, { id: "provider-message-7" });
+    });
+    const mail = createHttpMailProvider({
+      endpoint: wire.endpoint.replace("http://", "https://"),
+      from,
+      credentialName,
+      credentials: createMemoryCredentialStore([[credentialName, credentialValue]]),
+    });
+
+    const error = await rejection(mail.send(resetEmail));
+
+    expect(error).toBeInstanceOf(MailConfigurationError);
+    expect(error).toMatchObject({ setting: "endpoint", reason: "invalid" });
+    expect(wire.requests).toEqual([]);
   });
 });
 
