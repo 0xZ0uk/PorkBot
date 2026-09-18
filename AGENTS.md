@@ -132,6 +132,12 @@ change it without breaking what the boundaries and the CI gate protect.
   the schema defines them and every other path goes through the `MemoryStore`
   seam in `@porkbot/effect`, so both are auditable in one place. Checked by:
   test (`packages/db/src/memory-store.call-sites.test.ts`).
+- **Compaction never touches the memory lane.** A compaction reads memory
+  through the `MemoryReader` seam, carries the documents through by reference,
+  and runs `assertMemoryPreserved` before the model is asked for a summary, so a
+  compacted conversation can drop messages but never a durable document. Checked by:
+  test (`packages/core/src/compaction-policy.test.ts`,
+  `packages/adapters/src/two-lane-context.test.ts`) and review.
 
 ### Secrets and public-safe text
 
