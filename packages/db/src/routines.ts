@@ -1,15 +1,23 @@
 import {
+  InvalidRoutineCron,
   InvalidRoutineTimezone,
   isRoutineTimezone,
   nextRoutineFire,
   parseRoutineCron,
+  UnreachableRoutineSchedule,
 } from "@porkbot/core";
+import { InvalidRoutineScheduleError } from "@porkbot/effect";
 import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 import { requiredRow } from "./rows.ts";
 import { routineColumns, routineOccurrenceColumns } from "./records.ts";
-import type { RoutineOccurrenceRecord, RoutineOutcomeRecord, RoutineRecord } from "./records.ts";
-import { createRoutineRun } from "./run-creation.ts";
+import type {
+  RoutineOccurrenceRecord,
+  RoutineOutcomeRecord,
+  RoutineRecord,
+  RunRecord,
+} from "./records.ts";
+import { createRoutineRun, createRoutineTestRun } from "./run-creation.ts";
 import type { CreatedRoutineRun, NewRoutineRun } from "./run-creation.ts";
 import { withTransaction } from "./transaction.ts";
 
@@ -50,6 +58,12 @@ export const ROUTINE_OUTCOME_DEFAULT_LIMIT = 20;
 /** The most outcomes one history read returns, so a caller cannot ask for all of them. */
 export const ROUTINE_OUTCOME_MAX_LIMIT = 200;
 
+/** How many fire times a schedule preview returns without an explicit count. */
+export const ROUTINE_PREVIEW_DEFAULT_COUNT = 5;
+
+/** The most fire times one preview returns, so a caller cannot ask for years of them. */
+export const ROUTINE_PREVIEW_MAX_COUNT = 10;
+
 /**
  * How long a queued routine run may sit unclaimed before the scheduler
  * re-enqueues it. The initial delivery and its job are written a moment apart,
@@ -82,6 +96,14 @@ export interface RoutineReader {
   outcomes(routineId: string, limit?: number): Promise<readonly RoutineOutcomeRecord[]>;
   /** The most recent settled slot, or undefined when the routine never fired. */
   lastOutcome(routineId: string): Promise<RoutineOutcomeRecord | undefined>;
+  /**
+   * The next fire times for a submitted schedule, computed from the
+   * database's clock — the same clock every write and the scheduler use. An
+   * invalid expression, an unknown timezone and an unreachable schedule are
+   * the typed `InvalidRoutineScheduleError`, so the editor shows the mistake
+   * before a row exists rather than after.
+   */
+  preview(cron: string, timezone: string, count?: number): Promise<readonly Date[]>;
 }
 
 export interface RoutineWriter {
@@ -97,6 +119,12 @@ export interface RoutineWriter {
    * disabled, its thread and runs stay, and the scheduler no longer sees it.
    */
   remove(id: string): Promise<RoutineRecord>;
+  /**
+   * Fires the routine once, now, outside its schedule: the editor's test run.
+   * The run is an ordinary routine run in the routine's thread, deduped by the
+   * caller's nonce; the schedule and the occurrence ledger are untouched.
+   */
+  testRun(id: string, clientNonce: string): Promise<RunRecord>;
 }
 
 /** The scheduler's half: settling one slot, and only through a `SystemActor`. */
@@ -165,9 +193,12 @@ export function createRoutineStore(
       const rows = await listOutcomes(database, actor.spaceId, routineId, 1);
       return rows[0];
     },
+    preview: (cron, timezone, count) => previewRoutineSchedule(database, cron, timezone, count),
     create: (input) => createRoutine(actor, database, input),
     update: (id, patch) => updateRoutine(actor, database, id, patch),
     remove: (id) => removeRoutine(actor, database, id),
+    testRun: (id, clientNonce) =>
+      createRoutineTestRun(actor, database, { routineId: id, clientNonce }),
   };
 }
 
@@ -308,16 +339,93 @@ function outcomeLimit(requested: number | undefined): number {
   return Math.min(Math.max(Math.trunc(requested), 1), ROUTINE_OUTCOME_MAX_LIMIT);
 }
 
+/** Bounds a caller's preview request the way `outcomeLimit` bounds a history read. */
+function previewCount(requested: number | undefined): number {
+  if (requested === undefined || !Number.isFinite(requested)) {
+    return ROUTINE_PREVIEW_DEFAULT_COUNT;
+  }
+
+  return Math.min(Math.max(Math.trunc(requested), 1), ROUTINE_PREVIEW_MAX_COUNT);
+}
+
+/**
+ * The next fire times for a schedule the operator is still editing: no routine
+ * row is read or written, and the search starts from the database's clock so
+ * the answer agrees with what a save would store. The times are the schedule's
+ * own instants, strictly increasing, exactly as the scheduler would settle
+ * them.
+ */
+async function previewRoutineSchedule(
+  database: Queryable,
+  cronText: string,
+  timezone: string,
+  count?: number,
+): Promise<readonly Date[]> {
+  const cron = scheduleBoundary(() => parseRoutineCron(cronText));
+  assertRoutineTimezone(timezone);
+
+  const { rows } = await database.query<{ readonly now: Date }>("select now() as now");
+  const clock = rows[0];
+  if (clock === undefined) {
+    throw new Error("the database returned no clock to preview a routine schedule");
+  }
+
+  const fireTimes: Date[] = [];
+  let after = clock.now;
+
+  for (let index = 0; index < previewCount(count); index += 1) {
+    const next = scheduleBoundary(() => nextRoutineFire(cron, timezone, after));
+    fireTimes.push(next);
+    after = next;
+  }
+
+  return fireTimes;
+}
+
+/**
+ * Runs a pure schedule computation and turns the scheduler's rejection into
+ * the typed error the transport boundary maps: a bad cron expression, an
+ * unknown timezone and an unreachable schedule are the caller's 400, and any
+ * other `RoutineScheduleError` (an invalid date, a zone that moved its clock
+ * by days) is a defect and is rethrown untouched.
+ */
+function scheduleBoundary<Value>(compute: () => Value): Value {
+  try {
+    return compute();
+  } catch (error) {
+    throw asInvalidRoutineSchedule(error);
+  }
+}
+
+function asInvalidRoutineSchedule(error: unknown): unknown {
+  if (error instanceof InvalidRoutineCron) {
+    return new InvalidRoutineScheduleError("invalid_cron", error.message);
+  }
+
+  if (error instanceof InvalidRoutineTimezone) {
+    return new InvalidRoutineScheduleError("invalid_timezone", error.message);
+  }
+
+  if (error instanceof UnreachableRoutineSchedule) {
+    return new InvalidRoutineScheduleError("unreachable", error.message);
+  }
+
+  return error;
+}
+
+function assertRoutineTimezone(timezone: string): void {
+  if (!isRoutineTimezone(timezone)) {
+    throw asInvalidRoutineSchedule(new InvalidRoutineTimezone(timezone));
+  }
+}
+
 async function createRoutine(
   actor: UserActor,
   database: Queryable,
   input: NewRoutine,
 ): Promise<RoutineRecord> {
-  const cron = parseRoutineCron(input.cron);
-
-  if (!isRoutineTimezone(input.timezone)) {
-    throw new InvalidRoutineTimezone(input.timezone);
-  }
+  const cron = scheduleBoundary(() => parseRoutineCron(input.cron));
+  assertRoutineTimezone(input.timezone);
 
   return withTransaction(database, async (transaction) => {
     const { rows: clockRows } = await transaction.query<{ readonly now: Date }>(
@@ -350,7 +458,7 @@ async function createRoutine(
         input.instruction,
         input.cron,
         input.timezone,
-        nextRoutineFire(cron, input.timezone, clock.now),
+        scheduleBoundary(() => nextRoutineFire(cron, input.timezone, clock.now)),
       ],
     );
 
@@ -398,11 +506,8 @@ async function updateRoutine(
   }
 
   if (scheduleChanged || reenabled) {
-    const parsed = parseRoutineCron(cron);
-
-    if (!isRoutineTimezone(timezone)) {
-      throw new InvalidRoutineTimezone(timezone);
-    }
+    const parsed = scheduleBoundary(() => parseRoutineCron(cron));
+    assertRoutineTimezone(timezone);
 
     // The database's clock, never the host's: an edit moves the cursor to the
     // next fire after the server's now, exactly as a fire advances it.
@@ -412,7 +517,7 @@ async function updateRoutine(
       throw new Error("the database returned no clock to reschedule a routine");
     }
 
-    values.push(nextRoutineFire(parsed, timezone, clock.now));
+    values.push(scheduleBoundary(() => nextRoutineFire(parsed, timezone, clock.now)));
     assignments.push(`next_run_at = $${values.length}`);
   }
 

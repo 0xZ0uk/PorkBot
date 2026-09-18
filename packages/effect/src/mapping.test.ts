@@ -8,6 +8,7 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
   NameConflictError,
@@ -86,6 +87,11 @@ const samples = {
     error: new ToolLedgerError("begin"),
     code: "SERVICE_UNAVAILABLE",
     status: 503,
+  },
+  InvalidRoutineScheduleError: {
+    error: new InvalidRoutineScheduleError("invalid_cron", "the cron expression is invalid"),
+    code: "BAD_REQUEST",
+    status: 400,
   },
 } satisfies {
   readonly [K in TypedErrorTag]: {

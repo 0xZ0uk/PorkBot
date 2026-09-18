@@ -114,11 +114,12 @@ export type {
   ThreadWriter,
   UserRepositories,
 } from "./repositories.ts";
-export { routineRunNonce } from "./run-creation.ts";
+export { routineRunNonce, routineTestRunNonce } from "./run-creation.ts";
 export type {
   CreatedRoutineRun,
   CreatedRunAndTask,
   NewRoutineRun,
+  NewRoutineTestRun,
   NewRunAndTask,
 } from "./run-creation.ts";
 
@@ -133,6 +134,8 @@ export {
   listDueRoutines,
   ROUTINE_DISPATCH_GRACE_SECONDS,
   ROUTINE_OUTCOME_DEFAULT_LIMIT,
+  ROUTINE_PREVIEW_DEFAULT_COUNT,
+  ROUTINE_PREVIEW_MAX_COUNT,
   ROUTINE_SCHEDULER_BATCH_LIMIT,
 } from "./routines.ts";
 export type {

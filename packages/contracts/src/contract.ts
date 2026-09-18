@@ -17,6 +17,15 @@ import {
   notificationsSetPreferenceContract,
 } from "./notifications.ts";
 import {
+  routinesCreateContract,
+  routinesListContract,
+  routinesOutcomesContract,
+  routinesPreviewContract,
+  routinesRemoveContract,
+  routinesTestRunContract,
+  routinesUpdateContract,
+} from "./routines.ts";
+import {
   sectionsCreateContract,
   sectionsDeleteContract,
   sectionsListContract,
@@ -63,6 +72,15 @@ export const appContract = {
   },
   threads: {
     events: threadsEventsContract,
+  },
+  routines: {
+    list: routinesListContract,
+    create: routinesCreateContract,
+    update: routinesUpdateContract,
+    remove: routinesRemoveContract,
+    preview: routinesPreviewContract,
+    testRun: routinesTestRunContract,
+    outcomes: routinesOutcomesContract,
   },
 };
 

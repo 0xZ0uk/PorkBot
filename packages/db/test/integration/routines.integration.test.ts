@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { UnreachableRoutineSchedule } from "@porkbot/core";
-import { NotFoundError } from "@porkbot/effect";
+import { InvalidRoutineScheduleError, NotFoundError } from "@porkbot/effect";
 import { createSuiteDatabase } from "@porkbot/testkit";
 import type { SuiteDatabase } from "@porkbot/testkit";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "../../src/actor.ts";
 import { createRepositories } from "../../src/repositories.ts";
+import { routineTestRunNonce } from "../../src/run-creation.ts";
 import { findQueuedRoutineRuns, listDueRoutines } from "../../src/routines.ts";
 
 /**
@@ -156,8 +156,14 @@ describe("a created routine", () => {
   it("refuses a schedule that can never fire instead of inserting a dead row", async () => {
     const store = createRepositories(user, db()).routines;
 
-    // February 31 exists in the grammar but never on the calendar, and the
-    // store computes the first fire before the insert, so no row is created.
+    const { rows: before } = await db().query<{ threads: number }>(
+      "select count(*)::int as threads from thread where bot_id = $1",
+      [botId],
+    );
+
+    // February 31 exists in the grammar but never on the calendar. The first
+    // fire is computed inside the create transaction, after the dedicated
+    // thread insert, so the rollback must take that thread with it.
     await expect(
       store.create({
         botId,
@@ -165,12 +171,14 @@ describe("a created routine", () => {
         cron: "0 0 31 2 *",
         timezone: "UTC",
       }),
-    ).rejects.toBeInstanceOf(UnreachableRoutineSchedule);
+    ).rejects.toBeInstanceOf(InvalidRoutineScheduleError);
 
-    const { rows } = await db().query<{ count: number }>(
-      "select count(*)::int as count from routine where instruction = 'unreachable'",
+    const { rows } = await db().query<{ routines: number; threads: number }>(
+      "select (select count(*)::int from routine where instruction = 'unreachable') as routines, " +
+        "(select count(*)::int from thread where bot_id = $1) as threads",
+      [botId],
     );
-    expect(rows[0]?.count).toBe(0);
+    expect(rows[0]).toEqual({ routines: 0, threads: required(before[0]).threads });
   });
 });
 
@@ -301,6 +309,113 @@ describe("the scheduler's fire path", () => {
     });
 
     expect(fired).toBeUndefined();
+    const { rows } = await db().query<{ count: number }>(
+      "select count(*)::int as count from run where thread_id = $1",
+      [routine.threadId],
+    );
+    expect(rows[0]?.count).toBe(0);
+  });
+});
+
+describe("previewing and testing a routine", () => {
+  it("previews the next fires in the submitted timezone from the server's clock", async () => {
+    const store = createRepositories(user, db()).routines;
+    const started = Date.now();
+
+    const fires = await store.preview("30 9 * * *", "America/New_York", 3);
+
+    expect(fires).toHaveLength(3);
+    for (const fire of fires) {
+      expect(fire.getTime()).toBeGreaterThan(started);
+    }
+    for (let index = 1; index < fires.length; index += 1) {
+      expect(required(fires[index]).getTime()).toBeGreaterThan(
+        required(fires[index - 1]).getTime(),
+      );
+    }
+
+    const local = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hourCycle: "h23",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    expect(fires.map((fire) => local.format(fire))).toEqual(["09:30", "09:30", "09:30"]);
+  });
+
+  it("refuses a schedule the runtime cannot resolve with the typed error", async () => {
+    const store = createRepositories(user, db()).routines;
+
+    await expect(store.preview("nope", "UTC")).rejects.toMatchObject({
+      _tag: "InvalidRoutineScheduleError",
+      reason: "invalid_cron",
+    });
+    await expect(store.preview("0 9 * * *", "Mars/Base")).rejects.toMatchObject({
+      _tag: "InvalidRoutineScheduleError",
+      reason: "invalid_timezone",
+    });
+  });
+
+  it("creates an ordinary queued run without touching the cursor or the ledger", async () => {
+    const store = createRepositories(user, db()).routines;
+    const routine = await store.create({
+      botId,
+      instruction: "test me",
+      cron: "0 9 * * *",
+      timezone: "UTC",
+    });
+
+    const run = await store.testRun(routine.id, "test-nonce");
+
+    expect(run).toMatchObject({
+      status: "queued",
+      trigger: "routine",
+      threadId: routine.threadId,
+      sourceMessageId: null,
+      leaseOwner: null,
+      leaseFence: 0,
+    });
+    expect(run.clientNonce).toBe(routineTestRunNonce(routine.id, "test-nonce"));
+
+    const { rows } = await db().query<{ prompt: string }>("select prompt from task where id = $1", [
+      run.taskId,
+    ]);
+    expect(rows[0]?.prompt).toBe("test me");
+
+    const current = await store.findById(routine.id);
+    expect(current.nextRunAt.getTime()).toBe(routine.nextRunAt.getTime());
+
+    const { rows: ledger } = await db().query<{ count: number }>(
+      "select count(*)::int as count from routine_occurrence where routine_id = $1",
+      [routine.id],
+    );
+    expect(ledger[0]?.count).toBe(0);
+
+    // The same nonce is a replay: the first submission's run, not a second.
+    const replay = await store.testRun(routine.id, "test-nonce");
+    expect(replay.id).toBe(run.id);
+
+    const { rows: runs } = await db().query<{ count: number }>(
+      "select count(*)::int as count from run where thread_id = $1",
+      [routine.threadId],
+    );
+    expect(runs[0]?.count).toBe(1);
+  });
+
+  it("refuses to test a routine addressed through another space", async () => {
+    const store = createRepositories(user, db()).routines;
+    const routine = await store.create({
+      botId,
+      instruction: "not testable elsewhere",
+      cron: "0 9 * * *",
+      timezone: "UTC",
+    });
+
+    const foreign = createRepositories(otherUser, db()).routines;
+
+    await expect(foreign.testRun(routine.id, "foreign-nonce")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
     const { rows } = await db().query<{ count: number }>(
       "select count(*)::int as count from run where thread_id = $1",
       [routine.threadId],

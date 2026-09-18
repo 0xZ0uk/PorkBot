@@ -113,6 +113,19 @@ const requestBodies: Record<string, string> = {
   "sections.update": JSON.stringify({ json: { id: "section-1", name: "Work" } }),
   "sections.delete": JSON.stringify({ json: { id: "section-1" } }),
   "threads.events": JSON.stringify({ json: { threadId: "thread-1" } }),
+  "routines.create": JSON.stringify({
+    json: {
+      botId: "bot-1",
+      instruction: "summarise the inbox",
+      cron: "0 9 * * *",
+      timezone: "UTC",
+    },
+  }),
+  "routines.update": JSON.stringify({ json: { id: "routine-1", enabled: false } }),
+  "routines.remove": JSON.stringify({ json: { id: "routine-1" } }),
+  "routines.preview": JSON.stringify({ json: { cron: "0 9 * * *", timezone: "UTC" } }),
+  "routines.testRun": JSON.stringify({ json: { id: "routine-1", clientNonce: "nonce-1" } }),
+  "routines.outcomes": JSON.stringify({ json: { id: "routine-1" } }),
 };
 
 describe("the route list", () => {
@@ -161,6 +174,13 @@ describe("every contract procedure", () => {
       "deployment.status",
       "notifications.preferences",
       "notifications.setPreference",
+      "routines.create",
+      "routines.list",
+      "routines.outcomes",
+      "routines.preview",
+      "routines.remove",
+      "routines.testRun",
+      "routines.update",
       "sections.create",
       "sections.delete",
       "sections.list",
@@ -236,9 +256,11 @@ describe("the typed answer", () => {
         listForBot: notExercised,
         outcomes: notExercised,
         lastOutcome: notExercised,
+        preview: notExercised,
         create: notExercised,
         update: notExercised,
         remove: notExercised,
+        testRun: notExercised,
       },
     };
   }
