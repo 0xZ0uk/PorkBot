@@ -82,7 +82,48 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@24.13.5)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.1)(yaml@2.9.0))
 
+  apps/supervisor:
+    dependencies:
+      '@porkbot/health':
+        specifier: workspace:*
+        version: link:../../packages/health
+      '@porkbot/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
+    devDependencies:
+      '@porkbot/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@porkbot/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      '@porkbot/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: 24.13.5
+        version: 24.13.5
+      '@vitest/coverage-v8':
+        specifier: 5.0.1
+        version: 5.0.1(vitest@5.0.1)
+      eslint:
+        specifier: 10.10.0
+        version: 10.10.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.5)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.1)(yaml@2.9.0))
+
   apps/web:
+    dependencies:
+      '@porkbot/health':
+        specifier: workspace:*
+        version: link:../../packages/health
+      '@porkbot/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
     devDependencies:
       '@porkbot/eslint-config':
         specifier: workspace:*
@@ -120,6 +161,9 @@ importers:
       '@porkbot/effect':
         specifier: workspace:*
         version: link:../../packages/effect
+      '@porkbot/health':
+        specifier: workspace:*
+        version: link:../../packages/health
       '@porkbot/logging':
         specifier: workspace:*
         version: link:../../packages/logging
@@ -404,6 +448,33 @@ importers:
       typescript-eslint:
         specifier: 8.70.0
         version: 8.70.0(eslint@10.10.0)(typescript@6.0.3)
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.5)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.1)(yaml@2.9.0))
+
+  packages/health:
+    devDependencies:
+      '@porkbot/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@porkbot/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+      '@porkbot/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: 24.13.5
+        version: 24.13.5
+      '@vitest/coverage-v8':
+        specifier: 5.0.1
+        version: 5.0.1(vitest@5.0.1)
+      eslint:
+        specifier: 10.10.0
+        version: 10.10.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@24.13.5)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.1)(yaml@2.9.0))

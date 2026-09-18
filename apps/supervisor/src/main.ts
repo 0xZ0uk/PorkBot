@@ -1,17 +1,17 @@
 import { createHealthServer, healthPath } from "@porkbot/health";
 import { createLogger } from "@porkbot/logging";
-import { moduleInfo, workerModules } from "./index.ts";
+import { moduleInfo } from "./index.ts";
 
 const logger = createLogger({ service: moduleInfo.name });
-const requestedPort = Number(process.env["PORT"] ?? 3002);
+const requestedPort = Number(process.env["PORT"] ?? 3003);
 const server = createHealthServer({ service: moduleInfo.name });
 
-logger.info("worker idle", { modules: [...workerModules] });
+logger.info("supervisor idle");
 
 server.listen(requestedPort, () => {
   const address = server.address();
   const port = address !== null && typeof address === "object" ? address.port : requestedPort;
-  logger.info("worker listening", { port, path: healthPath });
+  logger.info("supervisor listening", { port, path: healthPath });
 });
 
 process.on("SIGTERM", () => {
