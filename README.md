@@ -201,7 +201,13 @@ commit after the lease moved.
 The runtime emulator (`emulatorAgentRuntimeLayer`) in `packages/adapters` is the
 offline implementation: deterministic scripts over mailboxes, no keys, no
 network and no clock, driving the shipped seam end to end in that package's
-suite. Pi implements the same interface in slice 5.3; the orchestrator names no
+suite. The Pi adapter (`piAgentRuntimeLayer`) is the second implementation: it
+consumes Pi's async iterator of canonical events and exposes the same seam,
+mapping every event through one explicit table (`PI_EVENT_MAPPING`) and refusing
+an unknown event, field or nested update with a typed error. Its golden corpus
+in `packages/adapters/src/pi-corpus` replays sessions recorded from the pinned Pi
+version and asserts the reduced snapshot, and the suite refuses the corpus when
+the pin moves without it being re-recorded. The orchestrator names no
 implementation.
 
 ## Dependencies
