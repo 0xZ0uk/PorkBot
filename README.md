@@ -253,10 +253,36 @@ The rules are checks, not conventions:
   `pg_catalog` for foreign keys whose referencing columns are not the leading
   columns of an index — Postgres does not index them for you — and fails while
   it finds any. A fixture proves the check can fail before it is trusted.
+- **Statuses are Postgres enums, built from the domain.** Run, task, attempt and
+  effect status are enums, and the run-status enum comes from `RUN_STATUSES` in
+  `@porkbot/core`, so the database and the transition map cannot drift. A set
+  that is expected to grow — the run trigger — is text with a check constraint
+  instead, never an enum.
+- **Idempotency keys are NOT NULL and scoped.** `bot.spawn_key`,
+  `message.client_nonce`, `run.client_nonce` and
+  `external_effect.idempotency_key` sit in unique indexes over NOT NULL
+  columns, so a resubmission collides at the database instead of racing a
+  read-then-write, and no NULL can make the constraint vacuous. The schema suite
+  fails any unique index that covers a nullable column, and the integration
+  suite proves the database rejects the duplicate and the NULL.
+- **The run lease is fence-guarded and the checkpoint is never NULL.**
+  `run.lease_fence` is a NOT NULL integer defaulting to zero, so reclaim can
+  increment it monotonically and a stale owner's write matches no row;
+  `run.checkpoint` is NOT NULL jsonb defaulting to `{}`, so "resume from
+  checkpoint" and "start from scratch" cannot be confused.
+- **Foreign keys never dangle.** Every foreign key resolves to the id of a table
+  in this schema; where the runs domain needed an optional link — a bot without
+  a section, a user message before its run exists — the column is nullable and
+  the key is `on delete set null`, so deleting the target clears the link
+  instead of leaving a reference to nothing. The integration suite proves the
+  cascade and the clear against a real server.
 
-The baseline migration is deliberately empty: slice 2.1 lands the workflow
-before any domain table, and slices 2.2 (identity and tenancy) and 2.3 (runs)
-are the first migrations with tables in them.
+The baseline migration is deliberately empty: slice 2.1 landed the workflow
+before any domain table. `0001_identity_and_tenancy.sql` added the identity and
+tenancy tables and `0002_runs_domain.sql` the runs domain — bots, sections,
+threads, messages, events, tasks, runs, attempts, steering messages and external
+effects — whose `space_id`/`user_id` columns are foreign keys into `space` and
+`user`.
 
 ## CI
 
@@ -487,22 +513,26 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 2.1 of epic E2 (M1 — Data & Domain Core), landing beside slice
-2.4: `packages/db` owns the Drizzle migration workflow, and `packages/core`
-owns the run state machine as one transition map over `queued`, `running`,
-`waiting_approval`, `completed`, `failed` and `cancelled`, where an illegal
-transition returns a typed `IllegalTransition` and an exhaustive table-driven
-test covers every state pair.
+This is slice 2.3 of epic E2 (M1 — Data & Domain Core), landing after slices
+2.1 and 2.4–2.5: `packages/db` owns the Drizzle migration workflow and the
+runs-domain schema — bots, sections, threads, messages, events, tasks, runs,
+attempts, steering messages and external effects, with typed statuses,
+NOT NULL idempotency keys and the lease/fence and checkpoint columns reclaim
+depends on — and `packages/core` owns the run state machine as one transition
+map over `queued`, `running`, `waiting_approval`, `completed`, `failed` and
+`cancelled`, where an illegal transition returns a typed `IllegalTransition`,
+and the event reducer that folds run events into a thread snapshot.
 
 `pnpm db:generate` diffs `src/schema` against the committed snapshots and
 `pnpm db:migrate` applies the journal to `$DATABASE_URL` through drizzle's
-ledger, safe to run twice; the baseline migration is deliberately empty, and
-slices 2.2 (identity and tenancy) and 2.3 (runs) are the first migrations with
-tables in them. The rules are checked: the migration suite regenerates and
-compares the committed output, labels and separates destructive migrations, the
-schema suite pins every primary key to `uuidv7()` through `primaryKeyId()`, and
-an integration test reads `pg_catalog` to fail on a lookup foreign key no index
-leads with.
+ledger, safe to run twice; the baseline migration is deliberately empty,
+`0001_identity_and_tenancy.sql` added the identity and tenancy tables from slice
+2.2 and `0002_runs_domain.sql` the runs domain. The rules are checked: the
+migration suite regenerates and compares the committed output, labels and
+separates destructive migrations, the schema suite pins every primary key to
+`uuidv7()` through `primaryKeyId()`, keeps every unique index on non-null
+columns and every foreign key from dangling, and an integration test reads
+`pg_catalog` to fail on a lookup foreign key no index leads with.
 
 Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
 stack — Postgres 18, api, worker, web and supervisor — and waits for every

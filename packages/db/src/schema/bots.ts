@@ -1,0 +1,91 @@
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { primaryKeyId, timestamps } from "./columns.ts";
+import { user } from "./identity.ts";
+import { space } from "./tenancy.ts";
+
+/**
+ * Bots and the sections that group them.
+ *
+ * `space_id` and `user_id` are the tenancy columns every runs-domain table
+ * carries, and they are real foreign keys now that the identity tables have
+ * landed: deleting a space or a user takes its bots with it. `section_id` is
+ * nullable because a bot need not be in a section, and the only nullable
+ * foreign key in this file; `on delete set null` is what keeps that honest when
+ * a section is deleted.
+ *
+ * `spawn_key` is the bot's idempotency key: creating the same bot twice cannot
+ * insert twice, because the unique index is scoped `(space_id, spawn_key)` on
+ * NOT NULL columns. In the reference schema that constraint sat on a nullable
+ * column, which made it vacuous; here a caller must supply the key.
+ */
+
+export const botSection = pgTable(
+  "bot_section",
+  {
+    id: primaryKeyId(),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => space.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").notNull().default(0),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("bot_section_space_user_name_unique").on(table.spaceId, table.userId, table.name),
+    index("bot_section_user_id_idx").on(table.userId),
+    index("bot_section_space_user_position_idx").on(
+      table.spaceId,
+      table.userId,
+      table.position,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const bot = pgTable(
+  "bot",
+  {
+    id: primaryKeyId(),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => space.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    title: text("title").notNull().default(""),
+    description: text("description").notNull().default(""),
+    instructions: text("instructions").notNull().default(""),
+    color: text("color").notNull(),
+    pinned: boolean("pinned").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    sectionId: uuid("section_id").references(() => botSection.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    spawnKey: text("spawn_key").notNull(),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("bot_space_spawn_key_unique").on(table.spaceId, table.spawnKey),
+    index("bot_section_id_idx").on(table.sectionId),
+    index("bot_user_id_idx").on(table.userId),
+    index("bot_space_user_archived_pinned_updated_idx").on(
+      table.spaceId,
+      table.userId,
+      table.archivedAt,
+      table.pinned,
+      table.updatedAt,
+    ),
+  ],
+);

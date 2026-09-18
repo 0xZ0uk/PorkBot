@@ -20,6 +20,7 @@
     "db:migrate": "node src/migrate-cli.ts"
   },
   "dependencies": {
+    "@porkbot/core": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "8.23.0"
   },
