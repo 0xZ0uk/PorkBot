@@ -88,3 +88,63 @@ export type {
   MessageDecision,
   SendMessageRequest,
 } from "./messaging-policy.ts";
+
+export {
+  AgentCannotDeleteMemory,
+  decideMemoryWrite,
+  EmptyMemoryContent,
+  EmptyMemoryTitle,
+  isMemoryKind,
+  isMemoryWriteOrigin,
+  MAX_MEMORY_CONTENT_LENGTH,
+  MAX_MEMORY_DOCUMENT_ID_LENGTH,
+  MAX_MEMORY_DOCUMENTS_PER_BOT,
+  MAX_MEMORY_REASON_LENGTH,
+  MAX_MEMORY_TITLE_LENGTH,
+  MEMORY_KINDS,
+  MEMORY_WRITE_ORIGINS,
+  MemoryContentTooLong,
+  MemoryDocumentExists,
+  MemoryDocumentIdTooLong,
+  MemoryDocumentLimitReached,
+  MemoryReasonTooLong,
+  MemoryRuleError,
+  MemoryTitleTooLong,
+  MissingMemoryAuthor,
+  MissingMemoryDocumentId,
+  MissingMemoryReason,
+  UnknownMemoryAction,
+  UnknownMemoryDocument,
+  UnknownMemoryKind,
+  UnknownMemoryOrigin,
+} from "./memory-rules.ts";
+export type {
+  MemoryDocument,
+  MemoryKind,
+  MemoryRevision,
+  MemoryWrite,
+  MemoryWriteContext,
+  MemoryWriteDecision,
+  MemoryWriteOrigin,
+  MemoryWriteRequest,
+} from "./memory-rules.ts";
+
+export {
+  assertMemoryPreserved,
+  CompactionRuleError,
+  CONVERSATION_ROLES,
+  DuplicateConversationMessage,
+  isConversationRole,
+  MemoryCreatedByCompaction,
+  MemoryDeletionByCompaction,
+  MemoryRewriteByCompaction,
+  MissingConversationMessageId,
+  planCompaction,
+  UnknownConversationRole,
+} from "./compaction-policy.ts";
+export type {
+  CompactionPlan,
+  CompactionRequest,
+  ConversationMessage,
+  ConversationRole,
+} from "./compaction-policy.ts";
