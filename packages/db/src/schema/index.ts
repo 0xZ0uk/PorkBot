@@ -30,6 +30,7 @@ export { externalEffect } from "./external-effects.ts";
 export { memoryDocument, memoryRevision } from "./memory.ts";
 export { oauthState, webhookDelivery } from "./ingress.ts";
 export { message } from "./messages.ts";
+export { routine, routineOccurrence } from "./routines.ts";
 export { attempt, run } from "./runs.ts";
 export { steeringMessage } from "./steering-messages.ts";
 export { task } from "./tasks.ts";

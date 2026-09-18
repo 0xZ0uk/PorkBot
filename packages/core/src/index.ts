@@ -125,6 +125,20 @@ export type {
 } from "./messaging-policy.ts";
 
 export {
+  decideRoutineDue,
+  InvalidRoutineCron,
+  InvalidRoutineTimezone,
+  isRoutineTimezone,
+  nextRoutineFire,
+  parseRoutineCron,
+  ROUTINE_CRON_FIELDS,
+  ROUTINE_MISS_GRACE_MS,
+  RoutineScheduleError,
+  UnreachableRoutineSchedule,
+} from "./routine-schedule.ts";
+export type { RoutineCron, RoutineDueDecision, RoutineDueInput } from "./routine-schedule.ts";
+
+export {
   AgentCannotDeleteMemory,
   decideMemoryWrite,
   EmptyMemoryContent,

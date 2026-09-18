@@ -634,20 +634,61 @@ The registry is also where "payloads never carry the work" is enforced: each
 job's parser accepts only its addressing fields, so a producer that tries to
 smuggle a prompt or a tool call into a job is refused at delivery. Slice 6.1
 ends at the fence check — the claim, heartbeat and execution arrive through the
-`RunExecutor` seam in 6.2, and nothing enqueues `run.execute` before run creation
-wires the producer in 6.5.
+`RunExecutor` seam in 6.2; the routine tick (8.4) enqueues `run.execute` for a
+scheduled slot, and the message path's producer arrives in 6.5.
 
 The worker connects with its own database role. `packages/db/migrations/0004_database_roles.sql`
 creates `porkbot_api` and `porkbot_worker` and grants each only its own work:
 the API writes the application schema and cannot read the queue, and the worker
-reads the run state it executes and owns the `graphile_worker` schema while
-writing no domain row. `packages/db/test/integration/roles.integration.test.ts`
+reads the run state it executes, creates the run one scheduled routine slot
+produced (8.4) and owns the `graphile_worker` schema. `packages/db/test/integration/roles.integration.test.ts`
 asks the database for that division and then really performs both denied
 operations, and `apps/worker/test/integration/worker.integration.test.ts`
 delivers real jobs through a real queue. `pnpm db:migrate` creates the roles and
 sets their passwords from `PORKBOT_API_DB_PASSWORD` and
 `PORKBOT_WORKER_DB_PASSWORD`; the local stack's `migrate` service runs the same
 command before the api and the worker start.
+
+## Routines
+
+A routine is a first-class row (PRD decision 22, slice 8.4): an owner, a bot, an
+instruction, an IANA timezone and a five-field cron expression, plus the
+`next_run_at` instant the scheduler is waiting on.
+`packages/db/src/schema/routines.ts` defines it beside `routine_occurrence`, the
+ledger of settled slots: an occurrence with a `run_id` is a fire whose outcome
+is the run's own status, and an occurrence with a null `run_id` is a missed
+schedule. That shape is what makes a missed slot a row a client can render
+instead of an inference from a gap in timestamps, and it keeps one authority —
+the run — for how a fire ended.
+
+The grammar and the DST rules live in `@porkbot/core`'s `routine-schedule.ts`,
+which is pure and clock-injected. `nextRoutineFire` treats the wall clock as the
+schedule's clock in the routine's zone: a nonexistent spring-forward time fires
+once at the transition instant, an ambiguous fall-back time fires once on its
+first occurrence, and the day-of-month and day-of-week fields combine with OR.
+`decideRoutineDue` is the scheduler's rule: a slot up to five minutes late still
+runs, and a slot older than that is recorded missed with the schedule jumping to
+the next future fire — a downtime is visible, never replayed as a burst.
+
+`apps/worker/src/jobs/routine-schedule.ts` is the minute tick. It scans due rows
+across spaces (address-only, like the lease watchdog), derives a `SystemActor`
+for each row's space, and settles at most one slot: a fire calls the same
+run-creation command the message path uses and enqueues `run.execute`, so a
+scheduled run is an ordinary run under the same lease, heartbeat and watchdog; a
+miss writes the ledger row and advances the cursor. Both commands lock the
+routine row and dedupe the slot on `(routine_id, scheduled_for)`, and the run's
+client nonce is derived from the same pair, so a retried tick is answered by the
+row. Every tick also re-addresses routine runs that sat queued and unowned past
+the dispatch grace, so an enqueue that died with the process cannot strand a
+scheduled run silently.
+
+Disabling stops future runs because the scan and the locked re-read both filter
+`enabled`; deleting is a tombstone (`deleted_at`), so the routine's thread, runs
+and ledger survive while every operator read treats it as gone. The worker's
+role gains exactly what the scheduler needs in
+`packages/db/migrations/0012_routine_grants.sql`: SELECT on `routine` and UPDATE
+on its cursor columns only — a job cannot rewrite an instruction or a cron
+expression — plus INSERT on the ledger, `task` and `run`.
 
 ## URL safety
 

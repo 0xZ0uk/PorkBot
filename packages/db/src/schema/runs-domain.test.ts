@@ -7,6 +7,7 @@ import { attemptStatus, effectStatus, runStatus, taskStatus } from "./enums.ts";
 import { event } from "./events.ts";
 import { externalEffect } from "./external-effects.ts";
 import { message } from "./messages.ts";
+import { routine, routineOccurrence } from "./routines.ts";
 import { attempt, run } from "./runs.ts";
 import { steeringMessage } from "./steering-messages.ts";
 import { task } from "./tasks.ts";
@@ -23,7 +24,9 @@ import { task } from "./tasks.ts";
  *     `constraints.test.ts` and applies to every table);
  *   - the run lease is a monotonically usable integer, the checkpoint is never
  *     NULL, and the claim scan is indexed;
- *   - message and event ordering is indexed by (thread, seq).
+ *   - message and event ordering is indexed by (thread, seq);
+ *   - a routine's cursor is NOT NULL, its ledger's slot key is NOT NULL and
+ *     uniquely scoped, and the due scan is a partial index over live rows.
  */
 
 function configOf(table: PgTable) {
@@ -195,6 +198,48 @@ describe("the run lease and checkpoint", () => {
       "status",
       "lease_expires_at",
     ]);
+  });
+});
+
+describe("routine scheduling", () => {
+  it("keeps the cursor NOT NULL so a live routine always has a next fire", () => {
+    const nextRunAt = columnOf(routine, "next_run_at");
+
+    expect(nextRunAt.columnType).toBe("PgTimestamp");
+    expect(nextRunAt.notNull).toBe(true);
+    expect(columnOf(routine, "enabled").notNull).toBe(true);
+    expect(columnOf(routine, "enabled").default).toBe(true);
+    expect(columnOf(routine, "deleted_at").notNull).toBe(false);
+    expect(columnOf(routine, "cron").columnType).toBe("PgText");
+    expect(columnOf(routine, "timezone").columnType).toBe("PgText");
+  });
+
+  it("scopes a settled slot uniquely on the routine and the slot instant", () => {
+    uniqueIndexOf(routineOccurrence, "routine_occurrence_routine_scheduled_unique");
+    expect(indexColumns(routineOccurrence, "routine_occurrence_routine_scheduled_unique")).toEqual([
+      "routine_id",
+      "scheduled_for",
+    ]);
+    expect(columnOf(routineOccurrence, "scheduled_for").notNull).toBe(true);
+    // A null run id is the missed marker, not a nullable link that could be
+    // vacuous: it is deliberately outside the unique key.
+    expect(columnOf(routineOccurrence, "run_id").notNull).toBe(false);
+  });
+
+  it("indexes the minute due scan over exactly the live, enabled rows", () => {
+    const index = configOf(routine).indexes.find(
+      (candidate) => candidate.config.name === "routine_due_idx",
+    );
+
+    expect(index).toBeDefined();
+    expect(index?.config.unique).toBe(false);
+    expect(index?.config.where).toBeDefined();
+  });
+
+  it("rejects a blank instruction, cron or timezone at the database", () => {
+    const checks = configOf(routine).checks.map((check) => check.name);
+
+    expect(checks).toContain("routine_identifiers_check");
   });
 });
 
