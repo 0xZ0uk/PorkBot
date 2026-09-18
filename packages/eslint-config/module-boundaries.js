@@ -61,7 +61,10 @@ export const workspacePackages = {
       "@porkbot/effect",
       "@porkbot/logging",
     ],
-    testImports: ["@porkbot/testkit"],
+    // The auth integration suite drives reset and verification mail through the
+    // shipped offline emulator (slice 3.5), with no key and no network. The
+    // edge is test-only: shipped auth code still names adapter-kit alone.
+    testImports: ["@porkbot/testkit", "@porkbot/adapters"],
   },
   "@porkbot/effect": {
     role: "shared layers, service tags, transport error mapping",
