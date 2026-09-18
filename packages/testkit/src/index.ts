@@ -1,7 +1,7 @@
 export const moduleInfo = {
   name: "@porkbot/testkit",
   summary:
-    "Test policy (tier presets, timeouts, quarantine ledger, flake reporter) plus emulators, harness CLI and database-per-suite isolation.",
+    "Test policy (tier presets, timeouts, quarantine ledger, dependency pins, flake reporter) plus emulators, harness CLI and database-per-suite isolation.",
 } as const;
 
 // The test tiers, their timeouts, their retry policy and the quarantine ledger
@@ -56,6 +56,14 @@ export type {
   Tier,
 } from "./quarantine/ledger.ts";
 export { findRepoRoot, isInside, workspaceMarker } from "./paths.ts";
+
+// Dependency provenance. The register, the manifests, the lockfile and every
+// image reference are checked by `checkRepository`, which the `dependencies`
+// CI tier runs before the install; `dependencies.json` is the register itself.
+export { checkRepository, lockfileName } from "./dependencies/policy.ts";
+export type { RepositoryCheck, WorkspaceManifest } from "./dependencies/policy.ts";
+export { dependencyRegisterFileName } from "./dependencies/register.ts";
+export type { DependencyRegister, PinnedImage, PinnedPackage } from "./dependencies/register.ts";
 
 // Postgres-per-suite isolation. A suite calls `createSuiteDatabase` (or
 // `startPostgresHarness` when it needs several databases in one file); the CLI

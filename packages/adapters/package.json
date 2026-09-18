@@ -25,5 +25,8 @@
     "eslint": "10.10.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.85.1"
   }
 }

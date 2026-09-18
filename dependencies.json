@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "name": "@earendil-works/pi-agent-core",
+      "version": "0.85.1",
+      "reason": "Pi owns the agent loop (PRD decisions 13 and 31) and is adapted at the RunSession seam in slice 5.3. Pinned exactly so an upgrade is a reviewed change paired with the golden-corpus replay, never a silent lockfile move."
+    }
+  ],
+  "images": [
+    {
+      "name": "postgres",
+      "reference": "postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280",
+      "reason": "The production major (PRD stack decision 11). The testkit harness boots it and the integration tier pulls it; the digest keeps both on the image the tier was proven against."
+    }
+  ]
+}
