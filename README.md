@@ -730,6 +730,20 @@ role gains exactly what the scheduler needs in
 on its cursor columns only — a job cannot rewrite an instruction or a cron
 expression — plus INSERT on the ledger, `task` and `run`.
 
+The operator's half of the same rows is the routines contract (slice 8.5):
+`routines.list`, `routines.create`, `routines.update`, `routines.remove`,
+`routines.preview`, `routines.testRun` and `routines.outcomes`.
+`preview` answers the next fire times from the database's clock before a row
+exists, so a schedule mistake is visible in the editor rather than after a
+saved routine; `testRun` fires the instruction once outside the schedule — an
+ordinary queued run in the routine's thread, deduped by the caller's nonce,
+with no occurrence and no cursor move — and `outcomes` is the ledger with each
+slot's result and its run link. A malformed cron, an unknown IANA zone and an
+unreachable expression are the typed `InvalidRoutineScheduleError`, which the
+API boundary maps to the contract's `BAD_REQUEST` rather than a 500. The
+routine editor screen itself waits for the web shell (slice 11.1), which owns
+the first client.
+
 ## Notifications
 
 The notification seam (slice 8.6, PRD decision 33; story 35) is declared in

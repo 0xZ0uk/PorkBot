@@ -69,6 +69,23 @@ export {
   sectionsUpdateContract,
 } from "./sections.ts";
 
+// The routine authoring surface (slice 8.5, PRD decision 22): the operator's
+// list, create, edit, pause and tombstone, the next-fire preview, the manual
+// test run and the outcome history the editor renders.
+export {
+  routineOutcomeSchema,
+  routineOutcomeStatusSchema,
+  routineSchema,
+  routinesCreateContract,
+  routinesListContract,
+  routinesOutcomesContract,
+  routinesPreviewContract,
+  routinesRemoveContract,
+  routinesTestRunContract,
+  routinesUpdateContract,
+} from "./routines.ts";
+export type { Routine, RoutineOutcome, RoutineOutcomeStatus } from "./routines.ts";
+
 export { runEventSchema, threadsEventsContract } from "./threads.ts";
 export type { RunEventMessage } from "./threads.ts";
 

@@ -5,6 +5,7 @@ import {
   CredentialMissingError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidRoutineScheduleError,
   LeaseLostError,
   NameConflictError,
   NotFoundError,
@@ -120,5 +121,20 @@ describe("the typed blocked-url error", () => {
     expect(error.message).toContain("example.com");
     expect(error.message).toContain("127.0.0.1");
     expect(error.message).not.toContain("https://");
+  });
+});
+
+describe("the typed invalid-routine-schedule error", () => {
+  it("carries the scheduler's rejection reason and sentence", () => {
+    const error = new InvalidRoutineScheduleError(
+      "invalid_cron",
+      'The routine cron expression "nope" is invalid: expected 5 fields',
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error._tag).toBe("InvalidRoutineScheduleError");
+    expect(error.reason).toBe("invalid_cron");
+    expect(error.message).toContain("nope");
+    expect(error.message).toContain("invalid");
   });
 });

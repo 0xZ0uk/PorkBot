@@ -12,10 +12,11 @@ import { withTransaction } from "./transaction.ts";
  * `task`, a `run` or the links between them.
  *
  * The reference implementation grew 13–17 near-duplicate creation sites, each
- * with its own idea of ordering, status and idempotency. Here there are two
- * commands for the two triggers — a message and a routine — and they share
- * this module, this ordering and this idempotency discipline, so a third
- * trigger is a third command here rather than a new insert elsewhere.
+ * with its own idea of ordering, status and idempotency. Here there are three
+ * commands for the three ways a run begins — a message, a due routine slot and
+ * an operator's test run — and they share this module, this ordering and this
+ * idempotency discipline, so a fourth trigger is a fourth command here rather
+ * than a new insert elsewhere.
  *
  * `createRunAndTask` is the message-triggered command: one call builds the
  * user message, the task, the run and the links between them. The database
@@ -174,6 +175,158 @@ async function createOnce(
 
     return { run: insertedRow(linkedRows), task, message };
   });
+}
+
+/**
+ * A test run an operator triggers from the editor: the routine to fire now,
+ * and the caller's idempotency key.
+ *
+ * This is the third run-creation command and it is deliberately here beside
+ * the other two: the test run is the routine's instruction executed as an
+ * ordinary run in the routine's own thread, so the module that owns "how a run
+ * begins" owns this too. It settles no occurrence and moves no cursor — the
+ * schedule is untouched — which is what distinguishes a test run from a fire.
+ */
+export interface NewRoutineTestRun {
+  readonly routineId: string;
+  /** The caller's idempotency key; a retried submission returns the same run. */
+  readonly clientNonce: string;
+}
+
+/**
+ * The deterministic nonce a test run stores, shaped like the scheduler's
+ * `routine:<id>:<slot>` keys: the routine and the caller's key both bind, so a
+ * test run can never collide with a scheduled fire or with another routine's
+ * test in the run table's `(space, client_nonce)` unique index.
+ */
+export function routineTestRunNonce(routineId: string, clientNonce: string): string {
+  return `routine-test:${routineId}:${clientNonce}`;
+}
+
+/**
+ * Fires a routine once, now, outside its schedule.
+ *
+ * The operator's counterpart of the scheduler's fire: it reads the same four
+ * fields from the routine row (so the caller supplies no prompt and addresses
+ * no bot), creates the task and the run with the routine trigger, and writes
+ * no occurrence — there was no slot, and the outcome history is the ledger of
+ * slots. The run is queued and unowned like every new run, so the ordinary
+ * dispatcher reconciliation picks it up and no second executor exists; the
+ * `routine-test:` nonce makes a resubmission a replay instead of a second run.
+ *
+ * A routine outside the actor's space and a routine that does not exist are
+ * the same `NotFoundError`. A deleted routine is not testable; a disabled one
+ * is, because validating a paused routine is a reason to use this.
+ */
+export async function createRoutineTestRun(
+  actor: UserActor,
+  database: Queryable,
+  input: NewRoutineTestRun,
+): Promise<RunRecord> {
+  const created = await testRoutineOnce(actor, database, input).catch((error: unknown) => {
+    if (error instanceof TestRunSettled) {
+      return undefined;
+    }
+
+    throw error;
+  });
+
+  if (created !== undefined) {
+    return created;
+  }
+
+  const existing = await readRunByNonce(
+    database,
+    actor.spaceId,
+    routineTestRunNonce(input.routineId, input.clientNonce),
+  );
+
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  throw new NotFoundError("routine", input.routineId);
+}
+
+/**
+ * Thrown inside the transaction when the run's unique nonce already exists, so
+ * the transaction rolls the task back; the catch outside replays the winner.
+ * It never escapes this module.
+ */
+class TestRunSettled extends Error {
+  constructor() {
+    super("the routine test run did not insert a run");
+    this.name = "TestRunSettled";
+  }
+}
+
+async function testRoutineOnce(
+  actor: UserActor,
+  database: Queryable,
+  input: NewRoutineTestRun,
+): Promise<RunRecord> {
+  return withTransaction(database, async (transaction) => {
+    const { rows: routineRows } = await transaction.query<FiringRoutine>(
+      'select id, bot_id as "botId", thread_id as "threadId", user_id as "userId", instruction ' +
+        "from routine where id = $1 and space_id = $2 and deleted_at is null",
+      [input.routineId, actor.spaceId],
+    );
+
+    const routine = routineRows[0];
+    if (routine === undefined) {
+      throw new NotFoundError("routine", input.routineId);
+    }
+
+    const { rows: taskRows } = await transaction.query<TaskRecord>(
+      "insert into task (space_id, bot_id, thread_id, user_id, prompt, status) " +
+        "values ($1, $2, $3, $4, $5, 'queued') " +
+        `returning ${taskColumns}`,
+      [actor.spaceId, routine.botId, routine.threadId, routine.userId, routine.instruction],
+    );
+
+    const task = insertedRow(taskRows);
+
+    const { rows: runRows } = await transaction.query<RunRecord>(
+      "insert into run (space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce) " +
+        "values ($1, $2, $3, $4, $5, $6::run_status, 'routine', $7) " +
+        "on conflict (space_id, client_nonce) do nothing " +
+        `returning ${runColumns}`,
+      [
+        actor.spaceId,
+        routine.botId,
+        routine.threadId,
+        task.id,
+        routine.userId,
+        INITIAL_RUN_STATUS,
+        routineTestRunNonce(input.routineId, input.clientNonce),
+      ],
+    );
+
+    const run = runRows[0];
+    if (run === undefined) {
+      throw new TestRunSettled();
+    }
+
+    return run;
+  });
+}
+
+/**
+ * The run a `(space, nonce)` pair already created, if any. The scheduler's
+ * fire reads its own replay through the same table; this is the operator's
+ * side of the same idempotency.
+ */
+async function readRunByNonce(
+  database: Queryable,
+  spaceId: string,
+  clientNonce: string,
+): Promise<RunRecord | undefined> {
+  const { rows } = await database.query<RunRecord>(
+    `select ${runColumns} from run where space_id = $1 and client_nonce = $2`,
+    [spaceId, clientNonce],
+  );
+
+  return rows[0];
 }
 
 /**
