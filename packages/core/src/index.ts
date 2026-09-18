@@ -19,6 +19,7 @@ export {
 export type { RunStatus, TransitionResult } from "./run-state.ts";
 
 export {
+  ApprovalConflict,
   createThreadSnapshot,
   IllegalEventTransition,
   MessageConflict,
@@ -29,6 +30,7 @@ export {
   UnknownToolCall,
 } from "./event-reducer.ts";
 export type {
+  ApprovalSnapshot,
   CreateThreadSnapshotOptions,
   MessageSnapshot,
   ReduceRunEventResult,
@@ -49,6 +51,8 @@ export {
   UnknownSchemaVersion,
 } from "./run-events.ts";
 export type {
+  ApprovalRequestedEvent,
+  ApprovalResolvedEvent,
   RunCancelledEvent,
   RunCompletedEvent,
   RunEvent,
@@ -63,6 +67,18 @@ export type {
   ToolRequestedEvent,
   ToolResultArtifact,
 } from "./run-events.ts";
+
+export {
+  APPROVAL_DECISIONS,
+  APPROVAL_POLL_INTERVAL_MS,
+  APPROVAL_STATUSES,
+  APPROVAL_VOTES,
+  DEFAULT_APPROVAL_TIMEOUT_MS,
+  isApprovalDecision,
+  isApprovalStatus,
+  isPendingApproval,
+} from "./approvals.ts";
+export type { ApprovalDecision, ApprovalStatus, ApprovalVote } from "./approvals.ts";
 
 export {
   DEFAULT_TOOL_RESULT_LIMITS,

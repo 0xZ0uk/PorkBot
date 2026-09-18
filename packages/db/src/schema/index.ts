@@ -14,7 +14,15 @@ export { primaryKeyId, timestamps } from "./columns.ts";
 export { account, session, user, verification } from "./identity.ts";
 export { deploymentSettings, space, spaceMember, spaceMemberRole } from "./tenancy.ts";
 export { botSection, bot } from "./bots.ts";
-export { attemptStatus, effectStatus, messageRole, runStatus, taskStatus } from "./enums.ts";
+export {
+  approvalStatus,
+  attemptStatus,
+  effectStatus,
+  messageRole,
+  runStatus,
+  taskStatus,
+} from "./enums.ts";
+export { approval } from "./approvals.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
 export { oauthState, webhookDelivery } from "./ingress.ts";

@@ -28,6 +28,19 @@ const validEvents: Record<RunEventType, RunEvent> = {
     tool: "shell",
     arguments: { command: "ls" },
   },
+  "approval.requested": {
+    ...base(10),
+    type: "approval.requested",
+    callId: "call-1",
+    expiresAt: "2026-09-18T12:00:00.000Z",
+  },
+  "approval.resolved": {
+    ...base(11),
+    type: "approval.resolved",
+    callId: "call-1",
+    decision: "denied",
+    reason: "not this one",
+  },
   "tool.completed": {
     ...base(3),
     type: "tool.completed",
@@ -269,6 +282,67 @@ describe("parseRunEvent", () => {
     expect(
       parseRunEvent({ ...base(2), type: "tool.completed", callId: "c", result: null }).ok,
     ).toBe(true);
+  });
+
+  it("rejects malformed approval events", () => {
+    expect(parseFailure({ ...base(1), type: "approval.requested", expiresAt: "x" }).reason).toBe(
+      "callId must be a non-empty string",
+    );
+    expect(parseFailure({ ...base(1), type: "approval.requested", callId: "c" }).reason).toBe(
+      "expiresAt must be an ISO 8601 UTC timestamp",
+    );
+    expect(
+      parseFailure({ ...base(1), type: "approval.requested", callId: "c", expiresAt: "soon" })
+        .reason,
+    ).toBe("expiresAt must be an ISO 8601 UTC timestamp");
+
+    // The contract's `z.iso.datetime()` is stricter than `Date.parse`: a date
+    // without a time, a non-UTC offset or an impossible day is refused here too.
+    for (const expiresAt of [
+      "2026-09-18",
+      "2026-09-18T12:00:00",
+      "2026-09-18T12:00:00+02:00",
+      "2026-09-18T12:00:00.000+02:00",
+      "2026-13-40T00:00:00Z",
+    ]) {
+      expect(
+        parseFailure({ ...base(1), type: "approval.requested", callId: "c", expiresAt }).reason,
+      ).toBe("expiresAt must be an ISO 8601 UTC timestamp");
+    }
+
+    expect(
+      parseFailure({
+        ...base(1),
+        type: "approval.resolved",
+        callId: "c",
+        decision: "maybe",
+      }).reason,
+    ).toBe("decision must be one of approved, denied, timed_out");
+    expect(parseFailure({ ...base(1), type: "approval.resolved", callId: "c" }).reason).toBe(
+      "decision must be one of approved, denied, timed_out",
+    );
+    expect(
+      parseFailure({
+        ...base(1),
+        type: "approval.resolved",
+        callId: "c",
+        decision: "approved",
+        reason: "",
+      }).reason,
+    ).toBe("reason must be a non-empty string");
+  });
+
+  it("omits an absent resolved reason instead of inventing one", () => {
+    const resolved = parseRunEvent({
+      ...base(1),
+      type: "approval.resolved",
+      callId: "c",
+      decision: "timed_out",
+    });
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) {
+      expect("reason" in resolved.event).toBe(false);
+    }
   });
 
   it("carries a tool call's timing and its oversized-result pointer", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
   DeploymentSettingsConflictError,
@@ -55,6 +56,17 @@ describe("the typed gate-timeout error", () => {
     expect(error.callId).toBe("call-1");
     expect(error.message).toContain("call-1");
     expect(error.message).toContain("timed out");
+  });
+});
+
+describe("the typed approval-store error", () => {
+  it("names the operation that could not be completed", () => {
+    const error = new ApprovalStoreError("time_out");
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error._tag).toBe("ApprovalStoreError");
+    expect(error.operation).toBe("time_out");
+    expect(error.message).toBe("the approval store could not time out the approval");
   });
 });
 

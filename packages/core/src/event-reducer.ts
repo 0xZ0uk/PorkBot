@@ -1,7 +1,10 @@
 import { INITIAL_RUN_STATUS, transition } from "./run-state.ts";
 import type { RunStatus } from "./run-state.ts";
+import type { ApprovalStatus } from "./approvals.ts";
 import { RunEventError, parseRunEvent } from "./run-events.ts";
 import type {
+  ApprovalRequestedEvent,
+  ApprovalResolvedEvent,
   RunCancelledEvent,
   RunCompletedEvent,
   RunEvent,
@@ -47,6 +50,20 @@ export interface ToolCallSnapshot {
   readonly error?: string;
   /** Wall-clock duration of the call once it settled, in milliseconds. */
   readonly durationMs?: number;
+  /** The gate on this call, once one is requested. Absent when the call is not gated. */
+  readonly approval?: ApprovalSnapshot;
+}
+
+/**
+ * One tool call's gate as the client renders it. `pending` carries the durable
+ * deadline the run will deny at, so the countdown is the server's and not a
+ * client-side guess; a resolved snapshot carries the operator's reason when one
+ * was given, and `timed_out` says the system denied it rather than a person.
+ */
+export interface ApprovalSnapshot {
+  readonly status: ApprovalStatus;
+  readonly expiresAt: string;
+  readonly reason?: string;
 }
 
 export interface RunFailureSnapshot {
@@ -118,11 +135,35 @@ export class UnknownToolCall extends RunEventError {
 
 export class ToolCallConflict extends RunEventError {
   readonly callId: string;
-  readonly reason: "duplicate_request" | "already_resolved";
+  readonly reason: "duplicate_request" | "already_resolved" | "awaiting_approval" | "denied";
 
-  constructor(callId: string, reason: "duplicate_request" | "already_resolved") {
+  constructor(
+    callId: string,
+    reason: "duplicate_request" | "already_resolved" | "awaiting_approval" | "denied",
+  ) {
     super(`Tool call "${callId}" is in conflict: ${reason}`);
     this.name = "ToolCallConflict";
+    this.callId = callId;
+    this.reason = reason;
+  }
+}
+
+/**
+ * An approval event that cannot be folded onto the tool call it names: a second
+ * request for a call that already has a gate, a resolution for a call with no
+ * gate, or a resolution for one that is already settled. Each is a contradiction
+ * in the stream rather than something to repair silently.
+ */
+export class ApprovalConflict extends RunEventError {
+  readonly callId: string;
+  readonly reason: "duplicate_request" | "unknown_approval" | "already_resolved";
+
+  constructor(
+    callId: string,
+    reason: "duplicate_request" | "unknown_approval" | "already_resolved",
+  ) {
+    super(`Approval for tool call "${callId}" is in conflict: ${reason}`);
+    this.name = "ApprovalConflict";
     this.callId = callId;
     this.reason = reason;
   }
@@ -192,12 +233,23 @@ type RunStep =
   | { readonly ok: true; readonly snapshot: ThreadSnapshot; readonly run: RunSnapshot }
   | { readonly ok: false; readonly error: RunEventError };
 
+function hasPendingApproval(run: RunSnapshot): boolean {
+  return run.toolCalls.some((call) => call.approval?.status === "pending");
+}
+
 function asRunning(snapshot: ThreadSnapshot, runId: string): RunStep {
   const existing = findRun(snapshot, runId);
   const run = existing ?? { runId, status: INITIAL_RUN_STATUS, toolCalls: [] };
 
   if (run.status === "running") {
     return { ok: true, snapshot: existing === undefined ? withRun(snapshot, run) : snapshot, run };
+  }
+
+  // A gated run stays gated: an event that arrives while an approval is pending
+  // — a token delta, a second tool call's request — does not clear the gate and
+  // report progress the operator has not allowed.
+  if (run.status === "waiting_approval" && hasPendingApproval(run)) {
+    return { ok: true, snapshot, run };
   }
 
   const outcome = transition(run.status, "running");
@@ -326,6 +378,85 @@ function reduceToolRequested(
   return { ok: true, snapshot: withRun(running.snapshot, run) };
 }
 
+function reduceApprovalRequested(
+  snapshot: ThreadSnapshot,
+  event: ApprovalRequestedEvent,
+): ReduceRunEventResult {
+  const running = asRunning(snapshot, event.runId);
+  if (!running.ok) {
+    return running;
+  }
+
+  const call = running.run.toolCalls.find((candidate) => candidate.callId === event.callId);
+  if (call === undefined) {
+    return failure(new UnknownToolCall(event.callId));
+  }
+
+  if (call.approval !== undefined) {
+    return failure(new ApprovalConflict(event.callId, "duplicate_request"));
+  }
+
+  const approval: ApprovalSnapshot = { status: "pending", expiresAt: event.expiresAt };
+  const toolCalls = running.run.toolCalls.map((candidate) =>
+    candidate.callId === event.callId ? { ...candidate, approval } : candidate,
+  );
+  let run: RunSnapshot = { ...running.run, toolCalls };
+
+  if (run.status !== "waiting_approval") {
+    const outcome = transition(run.status, "waiting_approval");
+    if (!outcome.ok) {
+      return failure(new IllegalEventTransition(run.status, "waiting_approval"));
+    }
+
+    run = { ...run, status: outcome.status };
+  }
+
+  return { ok: true, snapshot: withRun(running.snapshot, run) };
+}
+
+function reduceApprovalResolved(
+  snapshot: ThreadSnapshot,
+  event: ApprovalResolvedEvent,
+): ReduceRunEventResult {
+  const run = findRun(snapshot, event.runId);
+  const call = run?.toolCalls.find((candidate) => candidate.callId === event.callId);
+
+  if (run === undefined || call === undefined) {
+    return failure(new UnknownToolCall(event.callId));
+  }
+
+  if (call.approval === undefined) {
+    return failure(new ApprovalConflict(event.callId, "unknown_approval"));
+  }
+
+  if (call.approval.status !== "pending") {
+    return failure(new ApprovalConflict(event.callId, "already_resolved"));
+  }
+
+  const approval: ApprovalSnapshot = {
+    ...call.approval,
+    status: event.decision,
+    ...(event.reason === undefined ? {} : { reason: event.reason }),
+  };
+  const toolCalls = run.toolCalls.map((candidate) =>
+    candidate.callId === event.callId ? { ...candidate, approval } : candidate,
+  );
+  let resolved: RunSnapshot = { ...run, toolCalls };
+
+  // The last gate closing is what returns the run to running; while another
+  // approval is still pending the run stays parked.
+  if (resolved.status === "waiting_approval" && !hasPendingApproval(resolved)) {
+    const outcome = transition("waiting_approval", "running");
+    if (!outcome.ok) {
+      return failure(new IllegalEventTransition("waiting_approval", "running"));
+    }
+
+    resolved = { ...resolved, status: outcome.status };
+  }
+
+  return { ok: true, snapshot: withRun(snapshot, resolved) };
+}
+
 function reduceToolResolution(
   snapshot: ThreadSnapshot,
   event: ToolCompletedEvent | ToolFailedEvent,
@@ -338,6 +469,21 @@ function reduceToolResolution(
 
   if (call.status !== "requested") {
     return failure(new ToolCallConflict(event.callId, "already_resolved"));
+  }
+
+  // A gate is a barrier, not a decoration: a call cannot resolve while its
+  // approval is pending, and a denied or timed-out call cannot report success.
+  // The runtime answers a denial with `tool.failed`, so anything else is a
+  // contradiction in the stream.
+  if (call.approval?.status === "pending") {
+    return failure(new ToolCallConflict(event.callId, "awaiting_approval"));
+  }
+
+  if (
+    event.type === "tool.completed" &&
+    (call.approval?.status === "denied" || call.approval?.status === "timed_out")
+  ) {
+    return failure(new ToolCallConflict(event.callId, "denied"));
   }
 
   const resolved: ToolCallSnapshot =
@@ -435,6 +581,10 @@ function applyEvent(snapshot: ThreadSnapshot, event: RunEvent): ReduceRunEventRe
       return reduceTokenDelta(snapshot, event);
     case "tool.requested":
       return reduceToolRequested(snapshot, event);
+    case "approval.requested":
+      return reduceApprovalRequested(snapshot, event);
+    case "approval.resolved":
+      return reduceApprovalResolved(snapshot, event);
     case "tool.completed":
     case "tool.failed":
       return reduceToolResolution(snapshot, event);

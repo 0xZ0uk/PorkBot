@@ -2,6 +2,7 @@ import { Cause, FiberId } from "effect";
 import { ORPCError } from "@porkbot/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
   CursorRejectedError,
@@ -35,6 +36,11 @@ const samples = {
   RunGoneError: { error: new RunGoneError("run-1"), code: "NOT_FOUND", status: 404 },
   LeaseLostError: { error: new LeaseLostError("run-1"), code: "CONFLICT", status: 409 },
   GateTimeoutError: { error: new GateTimeoutError("call-1"), code: "TIMEOUT", status: 408 },
+  ApprovalStoreError: {
+    error: new ApprovalStoreError("open"),
+    code: "SERVICE_UNAVAILABLE",
+    status: 503,
+  },
   DeploymentSettingsConflictError: {
     error: new DeploymentSettingsConflictError(2),
     code: "SERVICE_UNAVAILABLE",

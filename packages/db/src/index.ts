@@ -141,3 +141,12 @@ export { createExternalEffectLedger } from "./tool-call-ledger.ts";
 // these rows; this is what makes a tool-call timeline survive a reload. The
 // seam it implements is declared in `@porkbot/effect`.
 export { createRunEventSink } from "./run-event-sink.ts";
+
+// The durable half of the approval gate (slice 5.7, PRD decision 13): the
+// `approval` rows keyed by `(run_id, call_id)`, opened by a job and voted on by
+// an operator. The factory splits by actor exactly as `createRepositories`
+// does — a job opens gates and settles deadlines, a user votes and reads the
+// timeline — and every statement binds the actor's space. The seams it
+// implements (`ApprovalStore`, `ApprovalDecisions`) are declared in
+// `@porkbot/effect`.
+export { createApprovalStore } from "./approval-store.ts";
