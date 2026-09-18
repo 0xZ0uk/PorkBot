@@ -1,0 +1,20 @@
+# The build context stays small, and no host-built artifact or local state can
+# leak into the image: everything listed here is regenerated inside the build.
+
+.git
+.github
+.worktrees
+.opencode
+.testkit
+.turbo
+**/.turbo
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+**/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo
+.env
+.env.*
