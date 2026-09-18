@@ -9,14 +9,16 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@porkbot/core": "workspace:*",
     "@porkbot/db": "workspace:*",
     "@porkbot/effect": "workspace:*",
     "@porkbot/health": "workspace:*",
-    "@porkbot/logging": "workspace:*"
+    "@porkbot/logging": "workspace:*",
+    "graphile-worker": "0.18.0"
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",

@@ -45,6 +45,21 @@ export {
 export type { MigrationRunOptions, MigrationRunReport } from "./migrate.ts";
 export { runMigrations } from "./run-migrations.ts";
 
+// The two service roles and their credentials. The migration
+// (`0004_database_roles.sql`) creates the roles and owns their grants; this
+// module is how the deployment supplies their passwords without committing
+// one, and the names the worker's integration suite signs in with.
+export {
+  apiRole,
+  apiRolePasswordEnvVar,
+  graphileWorkerSchema,
+  readRolePasswords,
+  setRolePasswords,
+  workerRole,
+  workerRolePasswordEnvVar,
+} from "./roles.ts";
+export type { RolePasswords } from "./roles.ts";
+
 // The actor and the repository factory: how data access is scoped. Nothing
 // else in this package takes a space or user id as an argument — the scope is
 // the actor a repository was built from, and the typed not-found it throws is
@@ -52,6 +67,10 @@ export { runMigrations } from "./run-migrations.ts";
 // `runs.create` is the single run-creation command (slice 2.10); the command
 // itself stays unexported so the actor-bound repository is the only way in.
 export type { Actor, SpaceMemberRole, SystemActor, UserActor } from "./actor.ts";
+// The one-connection seam repositories are built on. A consumer outside this
+// package (the worker's job context) hands a checked-out connection to
+// `createRepositories` through this type rather than naming `pg`.
+export type { Queryable } from "./queryable.ts";
 export { createRepositories } from "./repositories.ts";
 export type {
   BotPatch,
