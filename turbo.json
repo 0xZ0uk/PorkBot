@@ -45,5 +45,5 @@
       "persistent": true
     }
   },
-  "globalPassThroughEnv": ["GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY"]
+  "globalPassThroughEnv": ["DATABASE_URL", "GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY"]
 }

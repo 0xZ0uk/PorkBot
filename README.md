@@ -39,6 +39,8 @@ pnpm testkit:migrate  # apply SQL migrations to the harness template database
 pnpm testkit:snapshot # clone the template into a fresh suite database
 pnpm testkit:destroy  # drop the suites and template, remove the container
 pnpm testkit:benchmark # measure start, migrate and per-suite clone cost
+pnpm db:generate      # diff the schema, write a migration a reviewer can read
+pnpm db:migrate       # apply the migrations to $DATABASE_URL; safe to run twice
 pnpm dev              # run the always-on processes (api, worker, web, supervisor)
 pnpm format           # rewrite files with Prettier
 pnpm format:check     # verify formatting (CI runs this)
@@ -216,6 +218,46 @@ run.error("run failed", { error }); // error serialized + redacted
 `packages/logging` has no workspace imports and no dependencies; it is a leaf
 like `packages/core`, so every package can log without a cycle.
 
+## Migrations
+
+`packages/db` owns the schema and the migration workflow. Postgres 18 is the
+production major (PRD stack decision 16), and the testkit harness boots the
+same major, so a migration is exercised on the server it will run on.
+
+```sh
+pnpm db:generate   # diff src/schema against migrations/meta, write the SQL
+pnpm db:migrate    # apply migrations/meta/_journal.json to $DATABASE_URL
+```
+
+`packages/db/migrations` is drizzle-kit output and is committed like source;
+`pnpm db:migrate` reads the journal, applies what the ledger
+(`drizzle.__drizzle_migrations`) does not have yet, records it in the same
+transaction, and is safe to run twice — the second run applies nothing.
+
+The rules are checks, not conventions:
+
+- **Generated output is the migration.** The unit tier copies the committed
+  migrations to a scratch directory, runs `drizzle-kit generate` against the
+  current schema and requires the trees to match, so a schema change that was
+  not generated and committed fails. Hand-editing generated SQL is the exception
+  and needs a `-- hand-edited:` comment saying why, which review sees.
+- **A destructive change is its own labelled migration.** A file containing
+  `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, a column type change or similar must
+  be named `destructive_*` and must not also contain additive statements; the
+  migration suite fails otherwise, so a destructive change is a file a reviewer
+  can reason about and an operator can apply deliberately.
+- **Primary keys are UUIDv7.** Every table's id comes from `primaryKeyId()`,
+  which defaults to Postgres 18's `uuidv7()`, and the schema suite checks every
+  exported table follows it.
+- **Every lookup foreign key is indexed.** An integration test reads
+  `pg_catalog` for foreign keys whose referencing columns are not the leading
+  columns of an index — Postgres does not index them for you — and fails while
+  it finds any. A fixture proves the check can fail before it is trusted.
+
+The baseline migration is deliberately empty: slice 2.1 lands the workflow
+before any domain table, and slices 2.2 (identity and tenancy) and 2.3 (runs)
+are the first migrations with tables in them.
+
 ## CI
 
 `.github/workflows/ci.yml` runs one job per tier, so a red tier is a red check
@@ -255,8 +297,8 @@ tests. It is the only tier that retries.
 ### Postgres-per-suite harness
 
 `packages/testkit` boots one Postgres of the production major per run and
-migrates a template database from the SQL files in `packages/db/migrations`
-(slice 2.1 adds the first application migrations). Each suite asks for a
+migrates a template database from the SQL files in `packages/db/migrations` —
+the drizzle journal, applied in filename order. Each suite asks for a
 database cloned from that template with `CREATE DATABASE ... TEMPLATE`, so two
 suites running in parallel have the same schema and cannot see each other's
 rows:
@@ -445,25 +487,34 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 2.4 of epic E2 (M1 — Data & Domain Core): `packages/core` owns
-the run state machine as one transition map, readable in one screen, with
-`queued`, `running`, `waiting_approval`, `completed`, `failed` and `cancelled`
-states. An illegal transition returns a typed `IllegalTransition` — there is no
-silent status write — and cancellation, approval-gate suspension and failure
-paths are edges in the map. An exhaustive table-driven test covers every state
-pair, and the module imports nothing: no framework, no I/O, no database.
+This is slice 2.1 of epic E2 (M1 — Data & Domain Core), landing beside slice
+2.4: `packages/db` owns the Drizzle migration workflow, and `packages/core`
+owns the run state machine as one transition map over `queued`, `running`,
+`waiting_approval`, `completed`, `failed` and `cancelled`, where an illegal
+transition returns a typed `IllegalTransition` and an exhaustive table-driven
+test covers every state pair.
 
-Under it, slice 1.8's `pnpm stack:up` starts the whole local stack — Postgres
-18, api, worker, web and supervisor — and waits for every healthcheck before it
-returns; the same command is what CI's integration tier runs, with the testkit
-harness attaching to the stack's Postgres for the suite clones. Slice 1.6's
-structured logger and slice 1.5's Postgres-per-suite harness are unchanged. The
-workspace, build, typecheck, lint and test wiring are real and the CI gate runs
-them as separate blocking tiers. `apps/web`, `apps/desktop` and
-`apps/www` are placeholders that the M10 surface slices replace with the real
-clients; `apps/api` currently serves a single `/healthz` endpoint,
-`apps/worker` is an idle process, and `apps/supervisor` is a placeholder for the
-Docker socket owner, replaced by slices 6.1 and 7.1.
+`pnpm db:generate` diffs `src/schema` against the committed snapshots and
+`pnpm db:migrate` applies the journal to `$DATABASE_URL` through drizzle's
+ledger, safe to run twice; the baseline migration is deliberately empty, and
+slices 2.2 (identity and tenancy) and 2.3 (runs) are the first migrations with
+tables in them. The rules are checked: the migration suite regenerates and
+compares the committed output, labels and separates destructive migrations, the
+schema suite pins every primary key to `uuidv7()` through `primaryKeyId()`, and
+an integration test reads `pg_catalog` to fail on a lookup foreign key no index
+leads with.
+
+Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
+stack — Postgres 18, api, worker, web and supervisor — and waits for every
+healthcheck, and the same command is what CI's integration tier runs; the
+testkit harness attaches to the stack's Postgres for the suite clones, so
+integration tests run against the production major. The structured logger,
+Postgres-per-suite isolation, the dependency pin register and the CI gate are
+unchanged. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
+M10 surface slices replace with the real clients; `apps/api` currently serves a
+single `/healthz` endpoint, `apps/worker` is an idle process, and
+`apps/supervisor` is a placeholder for the Docker socket owner, replaced by
+slices 6.1 and 7.1.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
