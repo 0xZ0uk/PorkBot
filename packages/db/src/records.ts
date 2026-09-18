@@ -115,6 +115,48 @@ export interface RunRecord {
   readonly updatedAt: Date;
 }
 
+/** A routine row: the schedule and the instruction the scheduler fires. */
+export interface RoutineRecord {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly botId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly instruction: string;
+  readonly cron: string;
+  readonly timezone: string;
+  readonly enabled: boolean;
+  readonly nextRunAt: Date;
+  readonly deletedAt: Date | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/** One settled schedule slot: a fire linked to its run, or a missed schedule. */
+export interface RoutineOccurrenceRecord {
+  readonly id: string;
+  readonly routineId: string;
+  readonly scheduledFor: Date;
+  readonly runId: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * How a fire ended, read from the run's own status rather than copied into a
+ * second column. `running` covers every non-terminal run status, including the
+ * queued moment before a worker claims it and the approval wait.
+ */
+export type RoutineOutcomeStatus = "success" | "failure" | "cancelled" | "missed" | "running";
+
+/** One row of a routine's outcome history: the slot and what became of it. */
+export interface RoutineOutcomeRecord {
+  readonly occurrenceId: string;
+  readonly scheduledFor: Date;
+  readonly runId: string | null;
+  readonly status: RoutineOutcomeStatus;
+}
+
 export const botColumns =
   'id, space_id as "spaceId", user_id as "userId", name, title, description, instructions, ' +
   'color, pinned, position, section_id as "sectionId", archived_at as "archivedAt", ' +
@@ -137,6 +179,15 @@ export const messageColumns =
 export const eventColumns =
   'id, space_id as "spaceId", thread_id as "threadId", seq, type, payload, ' +
   'run_id as "runId", created_at as "createdAt"';
+
+export const routineColumns =
+  'id, space_id as "spaceId", bot_id as "botId", user_id as "userId", thread_id as "threadId", ' +
+  'instruction, cron, timezone, enabled, next_run_at as "nextRunAt", deleted_at as "deletedAt", ' +
+  'created_at as "createdAt", updated_at as "updatedAt"';
+
+export const routineOccurrenceColumns =
+  'id, routine_id as "routineId", scheduled_for as "scheduledFor", run_id as "runId", ' +
+  'created_at as "createdAt", updated_at as "updatedAt"';
 
 export const runColumns =
   'id, space_id as "spaceId", bot_id as "botId", thread_id as "threadId", ' +

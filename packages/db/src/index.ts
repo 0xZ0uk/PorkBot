@@ -109,7 +109,37 @@ export type {
   ThreadWriter,
   UserRepositories,
 } from "./repositories.ts";
-export type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
+export { routineRunNonce } from "./run-creation.ts";
+export type {
+  CreatedRoutineRun,
+  CreatedRunAndTask,
+  NewRoutineRun,
+  NewRunAndTask,
+} from "./run-creation.ts";
+
+// The durable half of routines (slice 8.4, PRD decision 22): the schedule
+// rows, the occurrence ledger that makes a missed schedule a visible row, and
+// the operator's CRUD beside the scheduler's two commands. The factory splits
+// by actor exactly as `createRepositories` does; the cross-space scheduler
+// scans take no actor and are documented exceptions, like `findExpiredLeases`.
+export {
+  createRoutineStore,
+  findQueuedRoutineRuns,
+  listDueRoutines,
+  ROUTINE_DISPATCH_GRACE_SECONDS,
+  ROUTINE_OUTCOME_DEFAULT_LIMIT,
+  ROUTINE_SCHEDULER_BATCH_LIMIT,
+} from "./routines.ts";
+export type {
+  DueRoutine,
+  MissedRoutineOccurrence,
+  NewRoutine,
+  QueuedRoutineRun,
+  RoutinePatch,
+  RoutineReader,
+  RoutineScheduler,
+  RoutineWriter,
+} from "./routines.ts";
 export {
   expiredLeaseReason,
   findExpiredLeases,
@@ -125,6 +155,10 @@ export type {
   EventRecord,
   MessageRecord,
   MessageRole,
+  RoutineOccurrenceRecord,
+  RoutineOutcomeRecord,
+  RoutineOutcomeStatus,
+  RoutineRecord,
   RunRecord,
   TaskRecord,
   TaskStatus,

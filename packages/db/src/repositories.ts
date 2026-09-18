@@ -4,6 +4,8 @@ import { botColumns, eventColumns, runColumns, threadColumns } from "./records.t
 import type { BotRecord, EventRecord, RunRecord, ThreadRecord } from "./records.ts";
 import { createRunAndTask } from "./run-creation.ts";
 import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
+import { createRoutineStore } from "./routines.ts";
+import type { RoutineReader, RoutineScheduler, RoutineWriter } from "./routines.ts";
 import {
   abandonAttempt,
   adoptRun,
@@ -53,15 +55,17 @@ export type {
  * no row instead of relying on a check-then-insert race.
  *
  * The factory hands a `UserActor` writes that carry a user of record, while a
- * `SystemActor` receives only the fenced run writes that carry no user: claim,
- * reclaim, heartbeat and execution updates. A job still cannot create a bot,
- * thread or run by borrowing a user identity it does not have.
+ * `SystemActor` receives only the fenced run writes that carry no user (claim,
+ * reclaim, heartbeat, execution updates) and the routine scheduler's half
+ * (settle one slot). A job still cannot create a bot, thread or routine by
+ * borrowing a user identity it does not have.
  *
- * Runs are the exception to the one-method-per-write shape: `runs.create` is
- * the single run-creation command from `run-creation.ts`, and it is the only
- * code path in the package that inserts a run. It builds the user message, the
- * task and the run in one transaction, so no caller has to remember the order
- * or the links.
+ * Runs are the exception to the one-method-per-write shape: the two commands
+ * in `run-creation.ts` — message-triggered and routine-triggered — are the
+ * only code paths in the package that insert a task or a run. Each builds its
+ * rows in one transaction, so no caller has to remember the order or the
+ * links, and the routine command settles the occurrence ledger in the same
+ * transaction as the run it creates.
  */
 
 /**
@@ -184,6 +188,8 @@ export interface SystemRepositories {
   readonly bots: BotReader;
   readonly threads: ThreadReader;
   readonly runs: RunReader & SystemRunWriter;
+  /** The scheduler's half: settle one routine slot through the job's space. */
+  readonly routines: RoutineScheduler;
 }
 
 /** An operator's scope: reads plus the writes that carry a user of record. */
@@ -193,6 +199,7 @@ export interface UserRepositories {
   readonly threads: ThreadReader & ThreadWriter;
   readonly runs: RunReader & RunWriter;
   readonly events: EventReader;
+  readonly routines: RoutineReader & RoutineWriter;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -222,6 +229,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
         update: (id, lease, patch) => updateClaimedRun(actor, database, id, lease, patch),
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
+      routines: createRoutineStore(actor, database),
     };
   }
 
@@ -241,6 +249,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
       create: (input) => createRunAndTask(actor, database, input),
     },
     events,
+    routines: createRoutineStore(actor, database),
   };
 }
 

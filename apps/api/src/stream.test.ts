@@ -149,6 +149,16 @@ function fakeRepositories(actor: UserActor): UserRepositories {
           .slice(0, limit);
       },
     },
+    routines: {
+      findById: notExercised,
+      list: notExercised,
+      listForBot: notExercised,
+      outcomes: notExercised,
+      lastOutcome: notExercised,
+      create: notExercised,
+      update: notExercised,
+      remove: notExercised,
+    },
   };
 }
 

@@ -138,7 +138,7 @@ describe("the worker role", () => {
     }
   });
 
-  it("may update run leases, settle attempts and reconcile effects, but not create runs", async () => {
+  it("may update run leases, settle attempts and create a scheduled run, but not create a bot", async () => {
     const worker = await connectAs(workerRole);
 
     try {
@@ -156,11 +156,50 @@ describe("the worker role", () => {
       await expect(
         worker.query("update external_effect set status = 'failed' where false"),
       ).resolves.toBeDefined();
+      // Slice 8.4 makes the worker the producer of routine-triggered runs, so
+      // the same insert the API performs is granted to the scheduler; the
+      // boundary that stays is that it cannot author the bot a run belongs to.
       await expect(
         worker.query(
           "insert into run (space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce) " +
             "select space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce from run where false",
         ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "insert into task (space_id, bot_id, thread_id, user_id, prompt, status) " +
+            "select space_id, bot_id, thread_id, user_id, prompt, status from task where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "insert into bot (space_id, user_id, name, color, spawn_key) " +
+            "select space_id, user_id, name, color, spawn_key from bot where false",
+        ),
+      ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
+    } finally {
+      await worker.end();
+    }
+  });
+
+  it("may advance a routine's cursor and write its ledger, but not rewrite its schedule", async () => {
+    const worker = await connectAs(workerRole);
+
+    try {
+      await expect(
+        worker.query("update routine set next_run_at = now(), updated_at = now() where false"),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "insert into routine_occurrence (routine_id, scheduled_for) " +
+            "select id, now() from routine where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query("update routine set cron = '0 0 * * *' where false"),
+      ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
+      await expect(
+        worker.query("update routine set enabled = false where false"),
       ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
     } finally {
       await worker.end();
@@ -267,6 +306,7 @@ describe("the catalog's answer", () => {
       worker_updates_attempt: boolean;
       worker_updates_effects: boolean;
       worker_inserts_run: boolean;
+      worker_inserts_task: boolean;
       worker_reads_users: boolean;
       worker_inserts_approval: boolean;
       worker_reads_approval: boolean;
@@ -277,6 +317,12 @@ describe("the catalog's answer", () => {
       api_writes_approval_deadline: boolean;
       api_inserts_approval: boolean;
       worker_deletes_approval: boolean;
+      worker_reads_routine: boolean;
+      worker_updates_routine_cursor: boolean;
+      worker_updates_routine_schedule: boolean;
+      worker_inserts_occurrence: boolean;
+      api_inserts_routine: boolean;
+      api_reads_occurrence: boolean;
       api_reads_jobs: boolean;
       worker_creates_jobs: boolean;
       api_creates_schemas: boolean;
@@ -291,6 +337,7 @@ describe("the catalog's answer", () => {
         "has_table_privilege($2, 'public.attempt', 'UPDATE') as worker_updates_attempt, " +
         "has_table_privilege($2, 'public.external_effect', 'UPDATE') as worker_updates_effects, " +
         "has_table_privilege($2, 'public.run', 'INSERT') as worker_inserts_run, " +
+        "has_table_privilege($2, 'public.task', 'INSERT') as worker_inserts_task, " +
         "has_table_privilege($2, 'public.\"user\"', 'SELECT') as worker_reads_users, " +
         "has_table_privilege($2, 'public.approval', 'INSERT') as worker_inserts_approval, " +
         "has_table_privilege($2, 'public.approval', 'SELECT') as worker_reads_approval, " +
@@ -305,6 +352,14 @@ describe("the catalog's answer", () => {
         "as api_writes_approval_deadline, " +
         "has_table_privilege($1, 'public.approval', 'INSERT') as api_inserts_approval, " +
         "has_table_privilege($2, 'public.approval', 'DELETE') as worker_deletes_approval, " +
+        "has_table_privilege($2, 'public.routine', 'SELECT') as worker_reads_routine, " +
+        "has_column_privilege($2, 'public.routine', 'next_run_at', 'UPDATE') " +
+        "as worker_updates_routine_cursor, " +
+        "has_column_privilege($2, 'public.routine', 'cron', 'UPDATE') " +
+        "as worker_updates_routine_schedule, " +
+        "has_table_privilege($2, 'public.routine_occurrence', 'INSERT') as worker_inserts_occurrence, " +
+        "has_table_privilege($1, 'public.routine', 'INSERT') as api_inserts_routine, " +
+        "has_table_privilege($1, 'public.routine_occurrence', 'SELECT') as api_reads_occurrence, " +
         `has_schema_privilege($1, '${graphileWorkerSchema}', 'USAGE') as api_reads_jobs, ` +
         `has_schema_privilege($2, '${graphileWorkerSchema}', 'CREATE') as worker_creates_jobs, ` +
         "has_database_privilege($1, current_database(), 'CREATE') as api_creates_schemas, " +
@@ -320,7 +375,8 @@ describe("the catalog's answer", () => {
       worker_reads_attempt: true,
       worker_updates_attempt: true,
       worker_updates_effects: true,
-      worker_inserts_run: false,
+      worker_inserts_run: true,
+      worker_inserts_task: true,
       worker_reads_users: false,
       worker_inserts_approval: true,
       worker_reads_approval: true,
@@ -331,6 +387,12 @@ describe("the catalog's answer", () => {
       api_writes_approval_deadline: false,
       api_inserts_approval: false,
       worker_deletes_approval: false,
+      worker_reads_routine: true,
+      worker_updates_routine_cursor: true,
+      worker_updates_routine_schedule: false,
+      worker_inserts_occurrence: true,
+      api_inserts_routine: true,
+      api_reads_occurrence: true,
       api_reads_jobs: false,
       worker_creates_jobs: true,
       api_creates_schemas: false,

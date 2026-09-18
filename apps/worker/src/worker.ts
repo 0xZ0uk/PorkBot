@@ -4,6 +4,7 @@ import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
 import { leaseWatchdogIdentifier, leaseWatchdogJob } from "./jobs/lease-watchdog.ts";
+import { routineTickIdentifier, routineTickJob } from "./jobs/routine-schedule.ts";
 import { runExecuteJob } from "./jobs/run-execute.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
 
@@ -24,6 +25,19 @@ export const leaseWatchdogSchedule: CronItem = {
   task: leaseWatchdogIdentifier,
   match: "* * * * *",
   identifier: "run-watchdog",
+};
+
+/**
+ * The routine scheduler's schedule: every minute, on the minute, like the
+ * watchdog. A routine's `next_run_at` is an exact instant, so the tick needs
+ * to see each minute; the grace in `@porkbot/core` decides whether a slot the
+ * tick missed is still fired or recorded missed. It is a `CronItem` for the
+ * same reason the watchdog is: the task identifier carries a dot.
+ */
+export const routineSchedule: CronItem = {
+  task: routineTickIdentifier,
+  match: "* * * * *",
+  identifier: "routine-schedule",
 };
 
 /**
@@ -58,15 +72,30 @@ export interface WorkerOptions {
    * are the only expired leases it sees.
    */
   readonly scheduleWatchdog?: boolean;
+  /**
+   * Whether this process schedules the minute routine tick. Defaults to true;
+   * a suite that drives the scheduler by hand turns it off so the only slots
+   * it settles are its own fixtures'.
+   */
+  readonly scheduleRoutines?: boolean;
 }
 
 export async function startWorker(options: WorkerOptions): Promise<Runner> {
   const registry = createJobRegistry({
-    jobs: [defineJob(runExecuteJob(options.executeRun)), defineJob(leaseWatchdogJob())],
+    jobs: [
+      defineJob(runExecuteJob(options.executeRun)),
+      defineJob(leaseWatchdogJob()),
+      defineJob(routineTickJob()),
+    ],
     logger: options.logger,
   });
 
   options.logger.info("worker jobs registered", { jobs: [...registry.identifiers] });
+
+  const cronItems = [
+    ...(options.scheduleWatchdog === false ? [] : [leaseWatchdogSchedule]),
+    ...(options.scheduleRoutines === false ? [] : [routineSchedule]),
+  ];
 
   return run({
     connectionString: options.connectionString,
@@ -75,8 +104,6 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
     pollInterval: options.pollInterval ?? 2000,
     logger: graphileLogger(options.logger),
     noHandleSignals: true,
-    ...(options.scheduleWatchdog === false
-      ? {}
-      : { parsedCronItems: parseCronItems([leaseWatchdogSchedule]) }),
+    ...(cronItems.length === 0 ? {} : { parsedCronItems: parseCronItems(cronItems) }),
   });
 }

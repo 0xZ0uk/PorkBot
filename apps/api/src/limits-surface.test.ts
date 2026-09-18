@@ -184,6 +184,16 @@ describe("the typed answer", () => {
       threads: { findById: notExercised, listForBot: notExercised, createForBot: notExercised },
       runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
       events: { listAfter: notExercised },
+      routines: {
+        findById: notExercised,
+        list: notExercised,
+        listForBot: notExercised,
+        outcomes: notExercised,
+        lastOutcome: notExercised,
+        create: notExercised,
+        update: notExercised,
+        remove: notExercised,
+      },
     };
   }
 
