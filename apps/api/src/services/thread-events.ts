@@ -2,19 +2,24 @@ import type { RealtimeFanout, ThreadSignal } from "@porkbot/adapter-kit";
 import { parseRunEvent, RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import type { EventRecord, UserActor, UserRepositories } from "@porkbot/db";
+import { NotFoundError } from "@porkbot/effect";
 import type { CursorCodec } from "../cursors.ts";
 
 /**
- * The thread subscription service (slice 4.3, PRD decisions 14, 18 and 25).
+ * The thread subscription service (slice 4.3, PRD decisions 14, 18 and 25;
+ * slice 3.3 for the live revocation check).
  *
  * The durable event rows are the stream; the realtime fanout is only a
  * wake-up. A subscribe call re-resolves the thread inside the actor's scope
  * and verifies the resume cursor before a single frame is emitted, so a
  * failure there is the contract's typed `NOT_FOUND` or `BAD_REQUEST` rather
- * than an error mid-stream. From then on the loop replays `seq > cursor` in
- * order, waits for a fanout signal, and re-reads from the cursor — so a
- * duplicated signal costs a query, and a lost one costs latency, never an
- * event.
+ * than an error mid-stream. From then on the loop re-reads the actor's
+ * membership, replays `seq > cursor` in order, re-reads the membership before
+ * each frame is sent, and waits for a fanout signal between passes — so a
+ * duplicated signal costs a query, a lost one costs latency, never an event,
+ * and a membership revoked while the stream is open ends it before another
+ * event is delivered. The client's reconnect is then answered the typed
+ * `NOT_FOUND` at subscribe time.
  *
  * The subscription owns the wire, never the run (PRD decision 25): closing or
  * losing the connection ends this generator and nothing else.
@@ -72,6 +77,14 @@ export function createThreadEventsService(
 
     try {
       while (subscription.signal?.aborted !== true) {
+        // The membership is re-read before every replay step, not only at
+        // subscribe, so a stream that outlives its actor's access ends here
+        // instead of replaying rows the actor may no longer see. Anything but
+        // the typed refusal — an outage, a defect — propagates.
+        if (!(await membershipActive(subscription))) {
+          return;
+        }
+
         const batch = await subscription.repositories.events.listAfter(
           subscription.threadId,
           lastSeq,
@@ -79,6 +92,15 @@ export function createThreadEventsService(
         );
 
         for (const record of batch) {
+          // Re-checked before every frame, not only before every query: a
+          // batch fetched while the membership was live must not deliver an
+          // event after it was revoked. The read is the indexed membership
+          // lookup, and it is the price of a stream that cannot outlive
+          // access.
+          if (!(await membershipActive(subscription))) {
+            return;
+          }
+
           lastSeq = record.seq;
 
           yield {
@@ -104,10 +126,14 @@ export function createThreadEventsService(
 
   return {
     async subscribe(subscription: ThreadSubscription): Promise<AsyncGenerator<ThreadEventFrame>> {
-      // Membership is re-validated on every subscribe and every resume: a
-      // thread the actor cannot see is the same typed NOT_FOUND as one that
-      // does not exist, and a cursor minted before access was revoked cannot
-      // stream past the check.
+      // Membership is re-validated on every subscribe and every resume, beside
+      // the thread read: a thread the actor cannot see and a membership that
+      // was revoked are both the same typed NOT_FOUND, before any frame is
+      // sent. A cursor minted before access was revoked cannot stream past the
+      // check, and the replay loop repeats the check on every step and before
+      // every frame, so a stream that outlives its access ends at the next
+      // wake-up or frame.
+      await subscription.repositories.membership.requireActive();
       await subscription.repositories.threads.findById(subscription.threadId);
 
       const fromSeq =
@@ -122,6 +148,25 @@ export function createThreadEventsService(
       return replay(subscription, fromSeq);
     },
   };
+}
+
+/**
+ * Whether the actor's membership is still alive. The repository's scoped read
+ * answers the typed `NotFoundError` once the row is gone; that refusal is what
+ * ends the stream.
+ */
+async function membershipActive(subscription: ThreadSubscription): Promise<boolean> {
+  try {
+    await subscription.repositories.membership.requireActive();
+
+    return true;
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 /**

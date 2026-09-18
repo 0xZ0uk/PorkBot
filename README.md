@@ -507,7 +507,10 @@ is only a wake-up:
   contract's typed `BAD_REQUEST` before any frame is sent; a thread outside the
   actor's space, or one whose membership was revoked between connect and
   resume, is the same `NOT_FOUND` as a missing row. Subscribe and resume both
-  re-resolve the session and the membership.
+  re-resolve the session and the membership, and the replay loop re-reads the
+  membership before every frame, so a revoked membership ends a subscription
+  that is already open before another event is delivered — the client's
+  reconnect is then refused with the typed `NOT_FOUND`.
 - **Reconnection backs off the core way.** `subscribeThreadEvents` in
   `@porkbot/contracts` (built on `backoffDelayMs` from `@porkbot/core`) resumes
   from the last received id on a network error or 5xx/429 and rethrows a typed
@@ -1189,7 +1192,7 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 3.2 of epic E3 (M2 — Auth, Ownership & Authority), landing on top
+This is slice 3.3 of epic E3 (M2 — Auth, Ownership & Authority), landing on top
 of slice 4.1's transport. `apps/api/src/gate.ts` is the single auth gate: one
 session read per request, resolved through `createActorResolver` in
 `@porkbot/auth` and `resolveUserActor` in `packages/db` into the actor-scoped
@@ -1205,8 +1208,21 @@ read that a cross-space id answers as `NOT_FOUND`.
 The gate's session read is wired into the API process as an injected dependency
 and is fail-closed until operator auth configuration (secret, public origin,
 mail and the API's connection checkout) lands; authenticated procedures answer
-their typed 401 today, and the web shell slice consumes the real flow. The
-authorization matrix over actors, spaces and resources is slice 3.3.
+their typed 401 today, and the web shell slice consumes the real flow.
+
+The authorization matrix over actors, spaces and resources lands with slice
+3.3. `packages/db/test/integration/authorization/matrix.ts` registers every
+space-scoped entity with the probes that exercise its real read and write
+seams — repositories, the memory and notification stores, approval gates, the
+tool-call ledger, the run-event sink and the routine scheduler — and the spec
+beside it runs each probe against another space, asserting the shared
+`NOT_FOUND` with the foreign rows unchanged. A coverage test walks the Drizzle
+schema, so a table that is neither registered nor exempted with a reason fails
+the tier. The transport surfaces are pinned beside their code: a revoked
+membership ends an open SSE stream (`apps/api/src/stream.test.ts`), a webhook
+handler is handed provider data and no actor (`apps/api/src/webhooks.test.ts`),
+and a job whose payload names another space changes no run, task or attempt row
+(`apps/worker/test/integration/worker.integration.test.ts`).
 
 The transport's limits land with slice 4.4: `apps/api/src/limits.ts` is the one
 register, installer and accounting for request budgets, body caps and

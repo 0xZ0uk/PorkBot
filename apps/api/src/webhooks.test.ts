@@ -437,6 +437,24 @@ describe("the mounted surface", () => {
     expect(handled).toEqual([{ source, deliveryId: "delivery-non-json", body: raw }]);
   });
 
+  it("hands a verified handler provider data and nothing actor-shaped", async () => {
+    const handled: WebhookEvent[] = [];
+    const test = harness({
+      handler: (event) => {
+        handled.push(event);
+        return Promise.resolve();
+      },
+    });
+    const app = surface(test);
+
+    await post(app, signedRequest());
+
+    // The ingress is the one unauthenticated write surface: no resolved actor,
+    // no space and no repository rides along, so a handler cannot mistake the
+    // caller for a tenant or reach rows through borrowed authority.
+    expect(Object.keys(handled[0] ?? {}).sort()).toEqual(["body", "deliveryId", "source"]);
+  });
+
   it("caps the webhook body before the signature is read", async () => {
     const test = harness();
     const app = createApiApp({
