@@ -271,6 +271,71 @@ describe("parseRunEvent", () => {
     ).toBe(true);
   });
 
+  it("carries a tool call's timing and its oversized-result pointer", () => {
+    expect(
+      parseRunEvent({
+        ...base(1),
+        type: "tool.completed",
+        callId: "c",
+        result: '{"text":"…"} [truncated]',
+        resultArtifact: { kind: "tool_call", callId: "c", bytes: 9_999 },
+        durationMs: 1_250,
+      }),
+    ).toEqual({
+      ok: true,
+      event: {
+        ...base(1),
+        type: "tool.completed",
+        callId: "c",
+        result: '{"text":"…"} [truncated]',
+        resultArtifact: { kind: "tool_call", callId: "c", bytes: 9_999 },
+        durationMs: 1_250,
+      },
+    });
+
+    expect(
+      parseRunEvent({ ...base(2), type: "tool.failed", callId: "c", error: "boom", durationMs: 7 }),
+    ).toEqual({
+      ok: true,
+      event: { ...base(2), type: "tool.failed", callId: "c", error: "boom", durationMs: 7 },
+    });
+  });
+
+  it("omits absent timing and artifact fields instead of inventing them", () => {
+    const result = parseRunEvent({ ...base(1), type: "tool.completed", callId: "c", result: null });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect("resultArtifact" in result.event).toBe(false);
+      expect("durationMs" in result.event).toBe(false);
+    }
+  });
+
+  it("rejects malformed tool timing and result-pointer fields", () => {
+    const completed = { ...base(1), type: "tool.completed", callId: "c", result: null } as const;
+
+    for (const durationMs of [-1, 1.5, "10", null, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(parseFailure({ ...completed, durationMs }).reason).toBe(
+        "durationMs must be a non-negative integer",
+      );
+    }
+
+    expect(parseFailure({ ...completed, resultArtifact: 5 }).reason).toBe(
+      "resultArtifact must be an object",
+    );
+    expect(
+      parseFailure({ ...completed, resultArtifact: { kind: "blob", callId: "c", bytes: 1 } })
+        .reason,
+    ).toBe('resultArtifact.kind must be "tool_call"');
+    expect(
+      parseFailure({ ...completed, resultArtifact: { kind: "tool_call", callId: "", bytes: 1 } })
+        .reason,
+    ).toBe("callId must be a non-empty string");
+    expect(
+      parseFailure({ ...completed, resultArtifact: { kind: "tool_call", callId: "c", bytes: -1 } })
+        .reason,
+    ).toBe("bytes must be a non-negative integer");
+  });
+
   it("rejects malformed terminal events", () => {
     expect(parseFailure({ ...base(1), type: "run.completed", messageId: "" }).reason).toBe(
       "messageId must be a non-empty string",

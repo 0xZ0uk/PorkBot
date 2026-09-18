@@ -92,6 +92,15 @@ export type {
   ToolRegistrationErrorReason,
 } from "./tool-dispatcher.ts";
 
+// The event stream's durable and live halves (slice 5.6): `RunEventSink` is
+// the append-only write seam `@porkbot/db` implements over the `event` table,
+// and `createRunEventRecorder` is the one transform that redacts tool
+// arguments, points an oversized result at its artifact and stamps a call's
+// duration. Running every event through the recorder before it is persisted
+// or streamed is what keeps the live timeline and the replayed one identical.
+export { createRunEventRecorder } from "./run-events.ts";
+export type { RunEventRecorder, RunEventRecorderOptions, RunEventSink } from "./run-events.ts";
+
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed
 // refusal live here so there is no second policy to drift from.
