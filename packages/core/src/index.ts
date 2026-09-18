@@ -272,3 +272,42 @@ export type {
   NotificationPreferenceSet,
   StoredNotificationPreference,
 } from "./notification-policy.ts";
+
+export {
+  INGESTION_PATH_DEFINITIONS,
+  INGESTION_PATHS,
+  IngestionError,
+  InvalidIngestedContent,
+  isIngestionPath,
+  isUntrustedContent,
+  labelUntrustedContent,
+  MissingContentOrigin,
+  stripOriginCredentials,
+  UNTRUSTED_LABEL,
+  UnlabelledContent,
+  UnknownIngestionPath,
+  untrustedPromptSection,
+} from "./ingestion.ts";
+export type {
+  IngestionPath,
+  IngestionPathDefinition,
+  UntrustedContent,
+  UntrustedContentInput,
+  UntrustedLabel,
+  UntrustedSectionOptions,
+} from "./ingestion.ts";
+
+export {
+  decideEgress,
+  EgressAllowlistError,
+  EMPTY_EGRESS_ALLOWLIST,
+  InvalidEgressHost,
+  isHostAllowed,
+  parseEgressAllowlist,
+} from "./egress-policy.ts";
+export type {
+  EgressAllowlist,
+  EgressDecision,
+  EgressHostRejection,
+  EgressHostRule,
+} from "./egress-policy.ts";

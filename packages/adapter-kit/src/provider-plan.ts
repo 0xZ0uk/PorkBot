@@ -243,15 +243,15 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
     implementations: [
       {
         name: "WebAccessEmulator",
-        slice: "6.9",
+        slice: "10.1",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
       {
         name: "createHttpWebAccessProvider",
         slice: "10.1",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
     ],
   },

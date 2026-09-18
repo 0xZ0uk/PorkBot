@@ -197,6 +197,32 @@ change it without breaking what the boundaries and the CI gate protect.
   that decides "private" is the bug the list exists to prevent. Checked by: test
   (`packages/effect/src/url-safety.test.ts`) and review.
 
+### Untrusted content
+
+- **Ingested content is labelled at the boundary.** A module that receives a
+  web page, a file, an email body or a tool result calls
+  `labelUntrustedContent` from `@porkbot/core` before anything downstream sees
+  it; the path must be one of `INGESTION_PATHS`, and a new path joins that
+  register with its boundary rule and its fixtures before it can carry a label.
+  Checked by: test (`packages/core/src/ingestion.call-sites.test.ts`,
+  `packages/adapters/src/ingestion-fixtures.test.ts`).
+- **External content is data, never instruction.** `composeRunPrompt` renders
+  ingested content in the prompt's `data` channel under the data notice, a tool
+  result carries its label to the model, and the web tools' own descriptions
+  say the content is untrusted. Checked by: test
+  (`packages/core/src/ingestion.test.ts`, `packages/core/src/run-context.test.ts`,
+  `packages/effect/src/web-tools.test.ts`).
+- **Egress is allowlisted per run and gated.** `decideEgress` in `@porkbot/core`
+  decides allowed, needs-approval or refused on the host alone; the web tools
+  open the run's durable approval gate for any host outside the list before a
+  request is made. Checked by: test
+  (`packages/core/src/egress-policy.test.ts`,
+  `packages/effect/src/egress-guard.test.ts`).
+- **Hostile fixtures ship with the path they attack.** The injection fixtures
+  for E10.4 live in `packages/adapters/src/ingestion-fixtures.ts`, one per
+  registered path, with a marker a pass must never observe. Checked by: test
+  (`packages/adapters/src/ingestion-fixtures.test.ts`).
+
 ### Transport limits
 
 - **Every route is limited, and an unknown one is not unlimited.** The policy

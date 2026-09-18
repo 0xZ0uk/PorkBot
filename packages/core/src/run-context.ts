@@ -16,6 +16,8 @@
  * the prompt's shape over a fixed list.
  */
 
+import type { UntrustedContent } from "./ingestion.ts";
+import { untrustedPromptSection } from "./ingestion.ts";
 import type { MemoryDocument } from "./memory-rules.ts";
 import type { ComposedPrompt, PromptBotIdentity, PromptSection } from "./prompt-composition.ts";
 import { composeSystemPrompt } from "./prompt-composition.ts";
@@ -29,6 +31,20 @@ export interface RunPromptInput {
   readonly sections?: readonly PromptSection[] | undefined;
   /** The bot's live documents, in the order the store lists them (oldest first). */
   readonly memory?: readonly MemoryDocument[] | undefined;
+  /**
+   * Content ingested for this run, in the order it should be shown. Each entry
+   * becomes a `data`-channel section under its provenance line, so external
+   * content reaches the model as reference data the notice tells it not to
+   * obey; the caller cannot place it in the instruction channel because it
+   * never builds the section itself.
+   */
+  readonly ingested?: readonly UntrustedContent[] | undefined;
+  /**
+   * Where ingested sections sit among the caller sections; defaults to 900, so
+   * external content follows the deployment's instructions and precedes
+   * memory. Must fall strictly between the identity and memory orders.
+   */
+  readonly ingestedOrder?: number | undefined;
   readonly limits?: RecallLimits | undefined;
 }
 
@@ -41,19 +57,29 @@ export interface RunPrompt {
   readonly memory: PromptMemorySelection;
 }
 
+/** After caller instructions, before memory; both ends are the composer's. */
+const DEFAULT_INGESTED_ORDER = 900;
+
 /**
  * Composes one run's system prompt with the memory lane bounded. The memory
  * records reach the composer as data, never as instructions, and a caller
  * cannot smuggle them into another channel because the composer labels the
- * memory section itself.
+ * memory section itself. Ingested content takes the same route: it is
+ * converted here, from a labelled value into a data section, so a run prompt
+ * can never carry a web page as an instruction.
  */
 export function composeRunPrompt(input: RunPromptInput): RunPrompt {
   const memory = selectPromptMemory(input.memory ?? [], input.limits ?? DEFAULT_RECALL_LIMITS);
+  const ingestedOrder = input.ingestedOrder ?? DEFAULT_INGESTED_ORDER;
+
+  const ingested = (input.ingested ?? []).map((content, index) =>
+    untrustedPromptSection(content, { id: `ingested.${index}`, order: ingestedOrder }),
+  );
 
   const prompt = composeSystemPrompt({
     bot: input.bot,
     instructions: input.instructions,
-    sections: input.sections,
+    sections: [...(input.sections ?? []), ...ingested],
     memory: memory.documents,
   });
 
