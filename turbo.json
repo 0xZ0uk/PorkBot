@@ -1,7 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["NODE_ENV", "PORT"],
+  "globalEnv": ["NODE_ENV", "PORT", "LOG_LEVEL"],
   "globalDependencies": [".nvmrc", "quarantine.json"],
   "tasks": {
     "build": {
