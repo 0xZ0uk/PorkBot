@@ -9,13 +9,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * talk to is a real Postgres of the same major production runs, reached over a
  * real socket, in the same run that gates the merge.
  *
- * The database is a testkit suite — a clone of the migrated template of a
- * Postgres 18 container the harness booted (see packages/testkit/src/harness).
- * There is no DATABASE_URL and no service block in CI: when
- * TESTKIT_HARNESS_STATE points at a run-level harness the clone is cheap; when
- * it does not, this file boots its own container and destroys it afterwards. The
- * template has no application schema yet because slice 2.1 adds
- * packages/db/migrations; the migration ledger is still exercised for real.
+ * The database is a testkit suite — a clone of the migrated template (see
+ * packages/testkit/src/harness). In CI the harness attaches to the local
+ * stack's Postgres; locally it boots its own container unless
+ * TESTKIT_DATABASE_URL says otherwise. Either way the server is the production
+ * major and the template carries the migrations slice 2.1 committed — an empty
+ * baseline today, the identity and runs tables in slices 2.2 and 2.3.
  */
 
 let suite: SuiteDatabase | undefined;

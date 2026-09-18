@@ -20,6 +20,8 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "db:generate": "pnpm --filter @porkbot/db db:generate",
+    "db:migrate": "pnpm --filter @porkbot/db db:migrate",
     "dependencies:check": "node packages/testkit/src/dependencies/cli.ts check",
     "dependencies:diff": "node packages/testkit/src/dependencies/cli.ts diff --base origin/main",
     "dev": "turbo run dev",
