@@ -25,9 +25,8 @@ import { startWorker } from "../../src/worker.ts";
  *     space, both complete without the executor ever being called — the queue's
  *     answer and the row fence's answer are both authoritative.
  *
- * The executor here is the test's: it records the call and moves the run's
- * fence the way slice 6.2's claim will, so the second delivery meets a row
- * whose owner changed.
+ * The executor here records the call after the production claim has moved the
+ * fence, so the second delivery meets a row whose owner changed.
  */
 
 const suiteName = "worker_jobs";
@@ -57,7 +56,6 @@ beforeAll(async () => {
     connectionString: connectionStringForRole(suite.connectionString, workerRole),
     executeRun: async (execution) => {
       executions.push(execution);
-      await db().query("update run set lease_fence = lease_fence + 1 where id = $1", [runId]);
     },
     logger: createLogger({ service: "@porkbot/worker", write: () => {} }),
     pollInterval: 100,
@@ -197,9 +195,10 @@ describe("the worker's run-execute job", () => {
 
     expect(executions).toHaveLength(1);
     expect(executions[0]?.run.id).toBe(runId);
+    expect(executions[0]?.run.leaseFence).toBe(1);
 
-    // The first delivery's executor moved the row's fence, as 6.2's claim will.
-    // The queue still has no idea; it is the handler's re-read that decides.
+    // The first delivery claimed the row. The queue still has no idea; it is
+    // the handler's re-read that decides.
     await deliver({ runId, fence: 0, spaceId });
 
     expect(executions).toHaveLength(1);

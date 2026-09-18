@@ -12,8 +12,8 @@ import { systemActorForJob } from "../system-actor.ts";
  * The payload addresses a run and states the fence the producer believed it was
  * holding; it carries no prompt, no model, no tool call and no checkpoint. The
  * handler never trusts it either: it re-reads the run through a `SystemActor`
- * for the payload's space, and only the row's current fence decides whether the
- * work is still this delivery's to do.
+ * for the payload's space, verifies the row's current fence, and atomically
+ * claims the next fence before handing work to the executor.
  *
  * Three properties fall out of that shape:
  *
@@ -25,8 +25,8 @@ import { systemActorForJob } from "../system-actor.ts";
  *     what makes every registered job idempotent by construction: the second
  *     delivery's decision comes from the row, not from the delivery.
  *
- * What the executor does with a verified run — claim, heartbeat, execute — is
- * slice 6.2's; this handler's contract ends at "the row still says this fence".
+ * The executor therefore receives a claimed run. Heartbeats and all execution
+ * writes use that returned owner/fence through the same scoped repository.
  */
 
 /** The run-execute payload: addressing only, never work. */
@@ -89,10 +89,9 @@ export interface RunExecution {
 }
 
 /**
- * The seam slice 6.2 fills. It is handed an already-verified run and the
- * `SystemActor`'s repositories, never a raw connection, so the executor cannot
- * step outside the job's space. Passing it in keeps the handler's fence rule
- * testable without a run executor existing yet.
+ * The execution seam is handed an atomically claimed run and the `SystemActor`'s
+ * repositories, never a raw connection, so every later write must go through
+ * the claimed run's owner and fence without stepping outside the job's space.
  */
 export type RunExecutor = (execution: RunExecution) => Promise<void>;
 
@@ -120,7 +119,15 @@ export function runExecuteJob(executeRun: RunExecutor): JobDefinition<RunExecute
           return;
         }
 
-        await executeRun({ actor, run, repositories, logger });
+        const claimed = await repositories.runs.claim(run.id, payload.fence, context.jobId);
+        if (claimed === undefined) {
+          logger.info("run job skipped: another worker owns the run", {
+            payloadFence: payload.fence,
+          });
+          return;
+        }
+
+        await executeRun({ actor, run: claimed, repositories, logger });
       });
     },
   };

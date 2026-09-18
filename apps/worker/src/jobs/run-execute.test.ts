@@ -54,7 +54,11 @@ function fakeClient(row: RunRecord | undefined): FakeClient {
       async query<Row>(text: string, values: readonly unknown[] = []) {
         calls.push({ text, values });
 
-        return { rows: (row === undefined ? [] : [row]) as unknown as readonly Row[] };
+        const result =
+          row === undefined
+            ? []
+            : [text.startsWith("with claimed as") ? runRecord({ ...row, leaseFence: 1 }) : row];
+        return { rows: result as unknown as readonly Row[] };
       },
     },
   };
@@ -143,7 +147,9 @@ describe("the run-execute handler", () => {
       spaceId: "space-1",
     });
     expect(recorded.executions[0]?.run.id).toBe("run-1");
+    expect(recorded.executions[0]?.run.leaseFence).toBe(1);
     expect(client.calls[0]?.values).toEqual(["run-1", "space-1"]);
+    expect(client.calls[1]?.values).toEqual(["run-1", "space-1", 0, "job-1", 120]);
   });
 
   it("exits without side effects when the row fence moved on", async () => {
@@ -182,6 +188,9 @@ describe("the run-execute handler", () => {
     const client: Queryable = {
       async query<Row>(text: string) {
         calls.push(text);
+        if (text.startsWith("with claimed as")) {
+          row = runRecord({ status: "running", leaseOwner: "job-1", leaseFence: 1 });
+        }
 
         return { rows: [row] as unknown as readonly Row[] };
       },
@@ -189,18 +198,16 @@ describe("the run-execute handler", () => {
     const { context, recorded } = contextFor(client);
     const job = runExecuteJob(async (execution) => {
       recorded.executions.push(execution);
-      // What slice 6.2's claim does: the first delivery takes the row's fence.
-      row = runRecord({ leaseFence: 1 });
     });
 
     await job.handle({ runId: "run-1", fence: 0, spaceId: "space-1" }, context);
     await job.handle({ runId: "run-1", fence: 0, spaceId: "space-1" }, context);
 
     expect(recorded.executions).toHaveLength(1);
-    // The duplicate's statements are reads: the handler never writes, so a
-    // redelivery cannot duplicate work on its own.
-    expect(calls).toHaveLength(2);
-    expect(calls.every((text) => text.trimStart().startsWith("select"))).toBe(true);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]?.trimStart().startsWith("select")).toBe(true);
+    expect(calls[1]?.trimStart().startsWith("with claimed as")).toBe(true);
+    expect(calls[2]?.trimStart().startsWith("select")).toBe(true);
   });
 
   it("is registered under a run-execute identifier", () => {

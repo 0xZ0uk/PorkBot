@@ -120,12 +120,23 @@ describe("the worker role", () => {
     }
   });
 
-  it("may not write a domain row", async () => {
+  it("may update run leases and insert attempts, but not create runs", async () => {
     const worker = await connectAs(workerRole);
 
     try {
       await expect(
-        worker.query("insert into space (name) values ('worker write')"),
+        worker.query("update run set updated_at = now() where false"),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "insert into attempt (run_id, fence, status) select id, 1, 'running' from run where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "insert into run (space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce) " +
+            "select space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce from run where false",
+        ),
       ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
     } finally {
       await worker.end();
@@ -202,6 +213,10 @@ describe("the catalog's answer", () => {
     const { rows } = await db().query<{
       api_inserts_bot: boolean;
       worker_inserts_bot: boolean;
+      worker_updates_run: boolean;
+      worker_inserts_attempt: boolean;
+      worker_reads_attempt: boolean;
+      worker_inserts_run: boolean;
       worker_reads_users: boolean;
       api_reads_jobs: boolean;
       worker_creates_jobs: boolean;
@@ -211,6 +226,10 @@ describe("the catalog's answer", () => {
       "select " +
         "has_table_privilege($1, 'public.bot', 'INSERT') as api_inserts_bot, " +
         "has_table_privilege($2, 'public.bot', 'INSERT') as worker_inserts_bot, " +
+        "has_table_privilege($2, 'public.run', 'UPDATE') as worker_updates_run, " +
+        "has_table_privilege($2, 'public.attempt', 'INSERT') as worker_inserts_attempt, " +
+        "has_table_privilege($2, 'public.attempt', 'SELECT') as worker_reads_attempt, " +
+        "has_table_privilege($2, 'public.run', 'INSERT') as worker_inserts_run, " +
         "has_table_privilege($2, 'public.\"user\"', 'SELECT') as worker_reads_users, " +
         `has_schema_privilege($1, '${graphileWorkerSchema}', 'USAGE') as api_reads_jobs, ` +
         `has_schema_privilege($2, '${graphileWorkerSchema}', 'CREATE') as worker_creates_jobs, ` +
@@ -222,6 +241,10 @@ describe("the catalog's answer", () => {
     expect(rows[0]).toEqual({
       api_inserts_bot: true,
       worker_inserts_bot: false,
+      worker_updates_run: true,
+      worker_inserts_attempt: true,
+      worker_reads_attempt: true,
+      worker_inserts_run: false,
       worker_reads_users: false,
       api_reads_jobs: false,
       worker_creates_jobs: true,

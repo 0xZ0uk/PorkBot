@@ -85,8 +85,9 @@ export type { RolePasswords } from "./roles.ts";
 // else in this package takes a space or user id as an argument — the scope is
 // the actor a repository was built from, and the typed not-found it throws is
 // the shared one from `@porkbot/effect` so the transport mapping can name it.
-// `runs.create` is the single run-creation command (slice 2.10); the command
-// itself stays unexported so the actor-bound repository is the only way in.
+// `runs.create` is the single run-creation command (slice 2.10), while a system
+// actor receives only fence-guarded lease and execution writes. The commands
+// stay unexported so the actor-bound repository is the only way in.
 export type { Actor, SpaceMemberRole, SystemActor, UserActor } from "./actor.ts";
 // The one-connection seam repositories are built on. A consumer outside this
 // package (the worker's job context) hands a checked-out connection to
@@ -101,6 +102,7 @@ export type {
   NewBot,
   Repositories,
   RunReader,
+  SystemRunWriter,
   RunWriter,
   SystemRepositories,
   ThreadReader,
@@ -108,6 +110,12 @@ export type {
   UserRepositories,
 } from "./repositories.ts";
 export type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
+export {
+  RUN_HEARTBEAT_GRACE_SECONDS,
+  RUN_HEARTBEAT_INTERVAL_SECONDS,
+  RUN_LEASE_TTL_SECONDS,
+} from "./run-leases.ts";
+export type { FencedRunPatch, RunLease } from "./run-leases.ts";
 export type {
   BotRecord,
   EventRecord,

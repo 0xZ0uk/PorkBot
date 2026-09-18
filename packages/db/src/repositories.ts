@@ -4,6 +4,8 @@ import { botColumns, eventColumns, runColumns, threadColumns } from "./records.t
 import type { BotRecord, EventRecord, RunRecord, ThreadRecord } from "./records.ts";
 import { createRunAndTask } from "./run-creation.ts";
 import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
+import { claimRun, heartbeatRun, reclaimRun, updateClaimedRun } from "./run-leases.ts";
+import type { FencedRunPatch, RunLease } from "./run-leases.ts";
 import { insertedRow, requiredRow } from "./rows.ts";
 
 export type {
@@ -43,11 +45,10 @@ export type {
  * `insert ... select` over that parent's row, so a cross-space insert matches
  * no row instead of relying on a check-then-insert race.
  *
- * The factory hands a `UserActor` write capabilities and a `SystemActor` reads
- * only: a row that must carry a user (`bot.user_id`, `thread.user_id`) cannot
- * be created without an actor that *is* a user, and a job has no user to
- * borrow. Slice 6.2 adds the system writes that carry no user — run claims and
- * heartbeats — to `SystemRepositories`.
+ * The factory hands a `UserActor` writes that carry a user of record, while a
+ * `SystemActor` receives only the fenced run writes that carry no user: claim,
+ * reclaim, heartbeat and execution updates. A job still cannot create a bot,
+ * thread or run by borrowing a user identity it does not have.
  *
  * Runs are the exception to the one-method-per-write shape: `runs.create` is
  * the single run-creation command from `run-creation.ts`, and it is the only
@@ -140,12 +141,21 @@ export interface RunWriter {
   create(input: NewRunAndTask): Promise<CreatedRunAndTask>;
 }
 
+export interface SystemRunWriter {
+  /** Returns undefined when this delivery lost the atomic claim race. */
+  claim(id: string, expectedFence: number, owner: string): Promise<RunRecord | undefined>;
+  /** Returns undefined until the active owner's TTL has elapsed, or after a lost race. */
+  reclaim(id: string, expectedFence: number, owner: string): Promise<RunRecord | undefined>;
+  heartbeat(id: string, lease: RunLease): Promise<RunRecord>;
+  update(id: string, lease: RunLease, patch: FencedRunPatch): Promise<RunRecord>;
+}
+
 /** A job's scope: it may read the space its payload names and nothing else. */
 export interface SystemRepositories {
   readonly actor: SystemActor;
   readonly bots: BotReader;
   readonly threads: ThreadReader;
-  readonly runs: RunReader;
+  readonly runs: RunReader & SystemRunWriter;
 }
 
 /** An operator's scope: reads plus the writes that carry a user of record. */
@@ -169,7 +179,19 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
   const events = readEvents(actor, database);
 
   if (actor.kind === "system") {
-    return { actor, bots, threads, runs };
+    return {
+      actor,
+      bots,
+      threads,
+      runs: {
+        ...runs,
+        claim: (id, expectedFence, owner) => claimRun(actor, database, id, expectedFence, owner),
+        reclaim: (id, expectedFence, owner) =>
+          reclaimRun(actor, database, id, expectedFence, owner),
+        heartbeat: (id, lease) => heartbeatRun(actor, database, id, lease),
+        update: (id, lease, patch) => updateClaimedRun(actor, database, id, lease, patch),
+      },
+    };
   }
 
   return {
