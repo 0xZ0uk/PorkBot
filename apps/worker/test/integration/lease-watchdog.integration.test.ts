@@ -211,6 +211,28 @@ function required<Value>(value: Value | undefined, what: string): Value {
 }
 
 describe("the lease watchdog", () => {
+  it("boots a runner with the minute schedule registered", async () => {
+    // The schedule is parsed by Graphile while `run` boots, so a schedule the
+    // runner refuses fails here rather than in a deployment. It is this suite's
+    // first test so the short-lived runner never sees an expired fixture.
+    if (suite === undefined) {
+      throw new Error("the suite's database was not created; the beforeAll hook failed first");
+    }
+
+    const probe = await startWorker({
+      connectionString: connectionStringForRole(suite.connectionString, workerRole),
+      executeRun: async () => undefined,
+      logger: createLogger({ service: "@porkbot/worker", write: () => {} }),
+      pollInterval: 100,
+    });
+
+    try {
+      expect(typeof probe.stop).toBe("function");
+    } finally {
+      await probe.stop("the schedule probe is done");
+    }
+  });
+
   it("recovers a killed worker's run from its checkpoint without re-running the dead fence", async () => {
     const runId = await insertRun(spaceId, "resume");
     let sawCheckpoint: unknown;

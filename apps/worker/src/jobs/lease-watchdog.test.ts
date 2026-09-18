@@ -1,9 +1,10 @@
 import type { ExpiredLease, Queryable, RunRecord } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
+import { parseCronItems } from "graphile-worker";
 import { JobPayloadError } from "../job-registry.ts";
 import type { JobContext } from "../job-registry.ts";
-import { leaseWatchdogCrontab } from "../worker.ts";
+import { leaseWatchdogSchedule } from "../worker.ts";
 import {
   leaseWatchdogIdentifier,
   leaseWatchdogJob,
@@ -160,7 +161,15 @@ describe("the lease watchdog payload", () => {
   });
 
   it("is scheduled every minute under the registered identifier", () => {
-    expect(leaseWatchdogCrontab).toBe(`* * * * * ${leaseWatchdogIdentifier}`);
+    expect(leaseWatchdogSchedule).toMatchObject({
+      task: leaseWatchdogIdentifier,
+      match: "* * * * *",
+    });
+
+    // Graphile's crontab parser rejects the dotted identifier, so the schedule
+    // must survive the programmatic parser the worker hands the runner.
+    const [parsed] = parseCronItems([leaseWatchdogSchedule]);
+    expect(parsed?.task).toBe(leaseWatchdogIdentifier);
   });
 });
 
