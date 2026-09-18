@@ -45,3 +45,22 @@ export class DeploymentSettingsConflictError extends Error {
     this.rows = rows;
   }
 }
+
+/**
+ * An adapter asked the credential store for a secret the deployment does not
+ * hold, and the provider fails closed rather than sending anything unauthenticated
+ * (PRD decision 28 maps this to `PRECONDITION`). The name identifies which
+ * credential is missing; the value never existed to leak.
+ */
+export class CredentialMissingError extends Error {
+  readonly credentialName: string;
+
+  constructor(credentialName: string) {
+    super(
+      `credential "${credentialName}" is not configured. ` +
+        "Store it through the deployment's credential source before enabling the provider.",
+    );
+    this.name = "CredentialMissingError";
+    this.credentialName = credentialName;
+  }
+}

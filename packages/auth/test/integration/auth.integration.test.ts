@@ -1,4 +1,4 @@
-import type { TransactionalEmailMessage, TransactionalEmailProvider } from "@porkbot/adapter-kit";
+import { MailEmulator } from "@porkbot/adapters";
 import { createLogger } from "@porkbot/logging";
 import {
   account as accountTable,
@@ -54,14 +54,11 @@ let handle: DatabaseHandle | undefined;
 let instance: Auth | undefined;
 
 const grants: SignupGrant[] = [];
-const mailbox: TransactionalEmailMessage[] = [];
 
-const mail: TransactionalEmailProvider = {
-  send(message) {
-    mailbox.push(message);
-    return Promise.resolve({ id: `message-${mailbox.length}` });
-  },
-};
+// The offline emulator from @porkbot/adapters (the package's one test-only
+// import): the auth flows deliver into a mailbox this suite reads, with no key
+// and no network, which is the adapter's acceptance criterion exercised in place.
+const mail = new MailEmulator();
 
 function database(): PostgresDatabase {
   if (handle === undefined) {
@@ -111,7 +108,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   grants.length = 0;
-  mailbox.length = 0;
+  mail.clear();
 
   // Deleting a user cascades to its sessions and accounts; verification rows
   // and the settings row stand alone.
@@ -417,7 +414,7 @@ describe("mail flows", () => {
 
     expect(resetRequest.status).toBe(200);
 
-    const message = mailbox.at(-1);
+    const message = mail.lastMessage();
 
     expect(message?.to).toBe(adminEmail);
     expect(message?.subject).toBe("Reset your PorkBot password");
@@ -450,7 +447,7 @@ describe("mail flows", () => {
 
     expect(verificationRequest.status).toBe(200);
 
-    const message = mailbox.at(-1);
+    const message = mail.lastMessage();
 
     expect(message?.to).toBe(adminEmail);
     expect(message?.subject).toBe("Verify your PorkBot email");
