@@ -1,0 +1,29 @@
+{
+  "threadId": "thread-pi-corpus",
+  "runs": [
+    {
+      "runId": "run-pi-corpus",
+      "status": "completed",
+      "toolCalls": [
+        {
+          "callId": "call-explode-1",
+          "tool": "explode",
+          "arguments": {},
+          "status": "failed",
+          "error": "the corpus tool failed on purpose"
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "assistant-2",
+      "runId": "run-pi-corpus",
+      "role": "assistant",
+      "text": "Recovered from the failure.",
+      "complete": true
+    }
+  ],
+  "lastSeq": 5,
+  "pendingEvents": []
+}

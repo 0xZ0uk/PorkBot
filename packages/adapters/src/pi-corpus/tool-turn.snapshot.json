@@ -1,0 +1,41 @@
+{
+  "threadId": "thread-pi-corpus",
+  "runs": [
+    {
+      "runId": "run-pi-corpus",
+      "status": "completed",
+      "toolCalls": [
+        {
+          "callId": "call-echo-1",
+          "tool": "echo",
+          "arguments": {
+            "text": "hi"
+          },
+          "status": "completed",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "hi"
+              }
+            ],
+            "details": {
+              "echoed": true
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "assistant-2",
+      "runId": "run-pi-corpus",
+      "role": "assistant",
+      "text": "Echoed hi.",
+      "complete": true
+    }
+  ],
+  "lastSeq": 5,
+  "pendingEvents": []
+}

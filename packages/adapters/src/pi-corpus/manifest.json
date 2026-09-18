@@ -1,0 +1,35 @@
+{
+  "piVersion": "0.85.1",
+  "sessions": [
+    {
+      "name": "text-turn",
+      "description": "One assistant turn of streamed text that completes the run.",
+      "events": "text-turn.events.ts",
+      "snapshot": "text-turn.snapshot.json"
+    },
+    {
+      "name": "tool-turn",
+      "description": "A tool call, its successful execution, then a completing answer.",
+      "events": "tool-turn.events.ts",
+      "snapshot": "tool-turn.snapshot.json"
+    },
+    {
+      "name": "tool-failure",
+      "description": "A tool that throws, reported as a failed call, then a recovery answer.",
+      "events": "tool-failure.events.ts",
+      "snapshot": "tool-failure.snapshot.json"
+    },
+    {
+      "name": "agent-error",
+      "description": "The model turn fails, which Pi reports as an error stop reason.",
+      "events": "agent-error.events.ts",
+      "snapshot": "agent-error.snapshot.json"
+    },
+    {
+      "name": "aborted",
+      "description": "The operator stops a live run; Pi closes it as an aborted turn.",
+      "events": "aborted.events.ts",
+      "snapshot": "aborted.snapshot.json"
+    }
+  ]
+}

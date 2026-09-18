@@ -48,3 +48,40 @@ export { InProcessRealtimeFanout } from "./realtime.ts";
 // network. Slice 5.3 adapts Pi to the same seam in this package.
 export { EmulatorScriptError, emulatorAgentRuntimeLayer } from "./agent-runtime-emulator.ts";
 export type { EmulatorStep } from "./agent-runtime-emulator.ts";
+
+// The Pi adapter (slice 5.3, PRD decision 13). Pi's async iterator of
+// canonical events is adapted to the same duplex `RunSession` seam, through an
+// explicit mapping table that fails typed on an unknown event, and tested
+// against a golden corpus of recorded sessions on every pin change. The live
+// launch that builds a `PiRunSource` from a real Pi `Agent` belongs with the
+// run executor; `recordedPiRunSource` is the offline source the corpus replays.
+export {
+  MalformedPiEvent,
+  PI_EVENT_MAPPING,
+  PiEventError,
+  PiEventSequenceError,
+  PiRunTranslator,
+  parsePiEvent,
+  UnknownPiEventField,
+  UnknownPiEventType,
+  UnknownPiMessageEventType,
+} from "./pi-events.ts";
+export type {
+  ParsedPiEvent,
+  PiAssistantMessageEventType,
+  PiEventMapping,
+  PiEventParseResult,
+  PiEventType,
+  PiStopReason,
+  PiTranslationBase,
+  PiTranslationResult,
+} from "./pi-events.ts";
+export {
+  piAgentRuntimeLayer,
+  PiRunControlError,
+  PiRunError,
+  PiRunSourceEnded,
+  PiRunSourceError,
+  recordedPiRunSource,
+} from "./pi-run-source.ts";
+export type { PiApprovalDecision, PiRunControls, PiRunSource } from "./pi-run-source.ts";

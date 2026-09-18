@@ -1,0 +1,16 @@
+{
+  "threadId": "thread-pi-corpus",
+  "runs": [
+    {
+      "runId": "run-pi-corpus",
+      "status": "failed",
+      "toolCalls": [],
+      "failure": {
+        "message": "the model turn failed"
+      }
+    }
+  ],
+  "messages": [],
+  "lastSeq": 2,
+  "pendingEvents": []
+}

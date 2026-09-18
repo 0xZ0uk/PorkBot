@@ -1,0 +1,22 @@
+{
+  "threadId": "thread-pi-corpus",
+  "runs": [
+    {
+      "runId": "run-pi-corpus",
+      "status": "cancelled",
+      "toolCalls": [],
+      "cancelReason": "the operator stopped the run"
+    }
+  ],
+  "messages": [
+    {
+      "id": "assistant-1",
+      "runId": "run-pi-corpus",
+      "role": "assistant",
+      "text": "working",
+      "complete": true
+    }
+  ],
+  "lastSeq": 3,
+  "pendingEvents": []
+}
