@@ -9,6 +9,8 @@ name: CI
 #   typecheck    tsc --noEmit everywhere
 #   build        tsc emit, the artifact every later tier and every deploy uses
 #   quarantine   the quarantine ledger is valid and nothing in it is stale
+#   dependencies the pin register, manifests, lockfile and image digests agree, and the
+#                lockfile delta is written to the job summary on a pull request
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  integration tests against the Postgres 18 the local stack boots
 #   e2e          whole-process tests against the built output; the only tier that retries
@@ -86,6 +88,32 @@ jobs:
         timeout-minutes: 2
         run: node packages/testkit/src/quarantine/cli.ts check
 
+  # Dependency provenance. Like quarantine, this reads files and no toolchain,
+  # so a moved pin or an unpinned image is a red check by name rather than a
+  # line in someone's install log. The diff step is the reviewer's view of the
+  # lockfile: it never fails the tier, it makes the change readable.
+  dependencies:
+    name: dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The lockfile diff compares against the base branch revision.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Check pins, provenance and image digests
+        timeout-minutes: 2
+        run: node packages/testkit/src/dependencies/cli.ts check
+      - name: Surface lockfile changes
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 5
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: node packages/testkit/src/dependencies/cli.ts diff --base "$BASE_REF"
+
   # The build job populates the turbo cache that typecheck, unit, e2e and
   # integration then restore, which is why they wait for it rather than racing it.
   build:
@@ -150,7 +178,8 @@ jobs:
       # The same command a developer runs. It builds the app images, starts
       # Postgres, api, worker, web and supervisor, and blocks on `--wait` until
       # every healthcheck passes, so a stack that starts here is the one the
-      # README documents.
+      # README documents. Every image it builds from or runs is pinned by digest
+      # in dependencies.json, which the `dependencies` tier checks.
       - name: Start the local stack
         timeout-minutes: 25
         run: pnpm stack:up
@@ -209,7 +238,7 @@ jobs:
     # required check would never report and the pull request would hang instead
     # of failing.
     if: always()
-    needs: [format, lint, typecheck, build, quarantine, unit, integration, e2e]
+    needs: [format, lint, typecheck, build, quarantine, dependencies, unit, integration, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -223,6 +252,7 @@ jobs:
             echo "| typecheck | ${{ needs.typecheck.result }} |"
             echo "| build | ${{ needs.build.result }} |"
             echo "| quarantine | ${{ needs.quarantine.result }} |"
+            echo "| dependencies | ${{ needs.dependencies.result }} |"
             echo "| unit | ${{ needs.unit.result }} |"
             echo "| integration | ${{ needs.integration.result }} |"
             echo "| e2e | ${{ needs.e2e.result }} |"

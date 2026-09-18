@@ -11,6 +11,7 @@ import {
   requireDocker,
   startPostgresContainer,
 } from "./docker.ts";
+import { postgresImage, productionPostgresMajor } from "./images.ts";
 import { applyMigrations } from "./migrations.ts";
 import type { MigrationReport } from "./migrations.ts";
 import {
@@ -43,10 +44,7 @@ import type { HarnessState, HarnessSuiteRecord, HarnessTimings } from "./state.t
  * drives the same API across separate process invocations.
  */
 
-/** Production runs Postgres 18 (PRD stack decision 11). One number, one place. */
-export const productionPostgresMajor = 18;
-
-export const postgresImage = `postgres:${productionPostgresMajor}`;
+export { postgresImage, productionPostgresMajor } from "./images.ts";
 
 export const harnessUser = "porkbot";
 export const harnessPassword = "porkbot";
@@ -137,7 +135,7 @@ export function assertProductionMajor(serverMajor: number, source: string): void
   if (serverMajor !== productionPostgresMajor) {
     throw new Error(
       `${source} runs Postgres ${serverMajor}, but production runs ${productionPostgresMajor}. ` +
-        `The harness must exercise the same major as production; use postgres:${productionPostgresMajor} ` +
+        `The harness must exercise the same major as production; the default image is ${postgresImage} ` +
         "(or set TESTKIT_POSTGRES_IMAGE to an image of that major).",
     );
   }

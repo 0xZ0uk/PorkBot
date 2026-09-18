@@ -28,6 +28,8 @@ pnpm test:coverage    # unit tests with coverage: the tier CI actually runs
 pnpm test:integration # tests that need a real Postgres
 pnpm test:e2e         # end-to-end tests (the only tier that retries)
 pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
+pnpm dependencies:check # validate dependencies.json, manifests, lockfile and image digests
+pnpm dependencies:diff  # print the lockfile delta against origin/main
 pnpm stack:up         # build the stack, start it, wait for every healthcheck
 pnpm stack:logs       # follow the stack's logs
 pnpm stack:status     # show the stack's services, states and ports
@@ -151,6 +153,29 @@ config weakens one of them.
 Formatting has one answer: `pnpm format` rewrites the repo with Prettier, `pnpm
 format:check` verifies it, and CI runs the check.
 
+## Dependencies
+
+`dependencies.json` at the repository root is the pin register: every package
+pinned to an exact version and every container image pinned to a `@sha256:`
+digest, each with the reason it is pinned. `.npmrc` sets `save-exact=true`, so
+`pnpm add` writes exact versions by default.
+
+Three things have to agree, and `pnpm dependencies:check` — the `dependencies`
+CI tier, which reads files and runs before any install — fails when they do not:
+
+- the register says one exact version for a pinned package;
+- the workspace manifest that declares it writes exactly that version;
+- `pnpm-lock.yaml` resolves exactly that version, and every resolved package
+  carries the `integrity` hash its tarball was fetched under.
+
+Every image reference a build reads — `FROM` in a Dockerfile, `image:` in a
+Compose file, `docker pull` in a workflow — must name a digest registered in
+`dependencies.json`, and the testkit harness's Postgres image is cross-checked
+the same way. `pnpm dependencies:diff`, and the CI job on every pull request,
+writes the lockfile delta against the base branch to the job summary, so a
+dependency change is reviewed as a diff. Adding a dependency states the reason
+in the pull request's Dependencies section.
+
 ## Logging
 
 `packages/logging` is the only writer of logs. Every line is one JSON object:
@@ -201,6 +226,7 @@ with a name instead of a step index buried in one long log.
 - `typecheck` — `tsc --noEmit` everywhere
 - `build` — `tsc` emit, the artifact the later tiers and every deploy consume
 - `quarantine` — `quarantine.json` is valid and nothing in it has expired
+- `dependencies` — the pin register, manifests, lockfile integrity and image digests agree
 - `unit` — unit tests with coverage
 - `integration` — the tests that need a real Postgres, against the local stack the job starts
 - `e2e` — whole-process tests against the built output
@@ -215,10 +241,12 @@ cannot land in some tiers and not others.
 The `integration` job declares no service: it starts the local stack with
 `pnpm stack:up`, the same command a developer runs, and the testkit harness
 then attaches to that stack's Postgres — the production major — instead of
-booting its own container. A tier that runs against the wrong database proves
-nothing, and a tier that skips itself when the runtime is missing is worse than
-no tier, so a missing Docker daemon (and no `TESTKIT_DATABASE_URL`) fails the
-suite rather than skipping it.
+booting its own container. The stack's Postgres image is pinned by digest in
+`dependencies.json`, so the tier and production run the image that was proven.
+A tier that runs against the wrong database proves nothing, and a tier that
+skips itself when the runtime is missing is worse than no tier, so a missing
+Docker daemon (and no `TESTKIT_DATABASE_URL`) fails the suite rather than
+skipping it.
 
 The e2e tier carries the placeholder spec later slices replace. The job exists
 now so the wiring is proven on its own rather than introduced alongside new
@@ -290,7 +318,7 @@ scenario or canary clones from it.
 Locally the tier needs Docker and the image; CI pre-pulls it:
 
 ```sh
-docker pull postgres:18
+docker pull postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
 pnpm test:integration
 ```
 

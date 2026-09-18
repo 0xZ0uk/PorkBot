@@ -15,6 +15,13 @@ this slice changes. Not "the agent was asked to". Link the issue. -->
 <!-- The change in prose: the modules touched, the decisions made, and anything
 a reviewer should disagree with now rather than later. Keep it short. -->
 
+## Dependencies
+
+<!-- Every dependency this change adds, removes, upgrades or pins, one line
+each: the package, the exact version, and the reason it is needed. Write "none"
+when no dependency changes. A new dependency without a stated reason is
+rejected (AGENTS.md, Dependencies). -->
+
 ## How tested
 
 <!-- What you ran, in words, and the outcome. Name the tiers (format, lint,
@@ -24,6 +31,7 @@ not covered, say so and why. -->
 ## Checklist
 
 - [ ] Every acceptance criterion in the linked issue is addressed or explicitly deferred
+- [ ] New or upgraded dependencies are named above with their reason, or this change adds none
 - [ ] CI and review bots on the head commit are terminal and the pr-watch completion gate holds
 - [ ] No secrets, credentials, personal data, or machine/account identifiers in the diff or this description
 - [ ] UI changes link the CI screenshot that shows the change, or say why none exists
