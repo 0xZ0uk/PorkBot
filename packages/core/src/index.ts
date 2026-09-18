@@ -148,3 +148,31 @@ export type {
   ConversationMessage,
   ConversationRole,
 } from "./compaction-policy.ts";
+
+export {
+  AmbiguousSectionPrecedence,
+  BlankMemoryRecord,
+  composeSystemPrompt,
+  DATA_CHANNEL_NOTICE,
+  EmptyBotName,
+  EmptySectionContent,
+  EmptySectionHeading,
+  EmptySectionId,
+  PROMPT_SECTION_CHANNELS,
+  PromptCompositionError,
+  ReservedSectionId,
+  SectionOrderOutOfRange,
+  SYSTEM_SECTION_IDS,
+  SYSTEM_SECTION_ORDERS,
+  UnknownSectionChannel,
+} from "./prompt-composition.ts";
+export type {
+  ComposePromptInput,
+  ComposedPrompt,
+  ComposedPromptSection,
+  PromptBotIdentity,
+  PromptMemoryDocument,
+  PromptSection,
+  PromptSectionChannel,
+  SystemSectionId,
+} from "./prompt-composition.ts";
