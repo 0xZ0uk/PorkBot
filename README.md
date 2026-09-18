@@ -251,6 +251,8 @@ procedure, and no client-side type is written or updated by hand.
 // packages/contracts/src/contract.ts — the contract tree
 export const appContract = {
   deployment: { status: deploymentStatusContract },
+  account: { me: accountMeContract },
+  bots: { get: botsGetContract },
 };
 
 // packages/contracts/src/client.ts — the derived client
@@ -269,7 +271,7 @@ wire.
 
 ```ts
 // apps/api/src/routers/deployment.ts — one screen, no business logic
-const status = appImplementer.deployment.status.handler(async ({ errors }) => {
+const status = publicOnly.deployment.status.handler(async ({ errors }) => {
   const result = await service.status();
   if (result.kind === "misconfigured") throw errors.SERVICE_UNAVAILABLE();
   return { signups: result.kind };
@@ -287,6 +289,48 @@ belong to `@porkbot/api`.
 The API process reads `DATABASE_URL` and exits when it is missing. The local
 stack supplies it in `compose.yaml`; unit tests inject a service, and the e2e
 spec starts the process with a placeholder URL it never dials.
+
+## Auth gate
+
+PRD decision 7 makes authorization structure rather than discipline, and slice
+3.2 is the structure: `apps/api/src/gate.ts` is the single auth gate.
+`openProcedureContext()` reads the session once through `createActorResolver` in
+`@porkbot/auth` (session cookie to user id, `resolveUserActor` in
+`packages/db` to the membership row), and builds the actor-scoped repositories
+that are the only data access a handler can reach. The context carries an
+`Actor` and repositories; no contract input names a space, and a by-id read is
+the repository's scoped read, so a row in another space and a row that does not
+exist are the same typed `NOT_FOUND`.
+
+Two implementers hang off one contract, so access is decided at registration:
+
+- `authenticated` is the default. Its middleware answers the procedure's own
+  typed `UNAUTHORIZED` when there is no actor and hands the handler a context
+  whose `actor` and `repositories` are non-null.
+- `publicOnly` is the deliberate exception and fails closed unless the contract
+  marks the procedure with `publicProcedure`.
+
+```ts
+// packages/contracts/src/account.ts — an authenticated procedure
+export const accountMeContract = authenticatedProcedure.route({ ... }).output( ... );
+
+// apps/api/src/routers/account.ts — registered through the gate
+const me = authenticated.account.me.handler(({ context }) => ({ ...context.actor }));
+```
+
+`packages/contracts/src/contract.ts` lists every public procedure in
+`publicProcedures`, and `access.test.ts` fails when the list and the contract
+drift or an authenticated procedure forgets its 401. In the API, `implement(...)`
+is called only in `gate.ts`; `packages/eslint-config/auth-gate.js` fails lint for
+a router that registers procedures itself, and the PR checklist asks a reviewer
+to account for every public procedure. Public procedures today are exactly
+`deployment.status`.
+
+The gate's dependencies are injected: tests compose a fake session resolver and
+fake repositories, and the process' fail-closed default answers "no session" so
+every authenticated procedure is a typed 401 until the operator auth
+configuration (secret, public origin, mail and the API's connection checkout)
+is wired in a later slice.
 
 ## URL safety
 
@@ -599,15 +643,24 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 4.1 of epic E4 (M3 — Transport). `packages/contracts` stops being
-a stub and becomes the transport's single source of truth: the deployment
-status procedure is defined there with its input/output and typed errors, the
-`AppClient` type is derived from the contract, and the OpenAPI document is
-generated from the same object and asserted in a test. `apps/api` is a Hono app
-whose oRPC router implements that contract at `/rpc`; routers delegate to
-injected services and the request boundary keeps the correlation-id, redaction
-and error-logging behavior the raw `node:http` server had. The API process now
-requires `DATABASE_URL`, which `compose.yaml` supplies to the stack.
+This is slice 3.2 of epic E3 (M2 — Auth, Ownership & Authority), landing on top
+of slice 4.1's transport. `apps/api/src/gate.ts` is the single auth gate: one
+session read per request, resolved through `createActorResolver` in
+`@porkbot/auth` and `resolveUserActor` in `packages/db` into the actor-scoped
+repositories a handler may use. Every procedure is authenticated by default;
+`publicProcedure` in `packages/contracts` marks the exception, the public paths
+are listed in `publicProcedures`, and both the contracts suite and an
+`apps/api` test fail when the marking, the list and the registration path drift.
+The lint rule in `packages/eslint-config/auth-gate.js` fails a router that calls
+`implement(...)` itself. The first authenticated procedures ship with it:
+`account.me` reports the resolved actor, and `bots.get` demonstrates the by-id
+read that a cross-space id answers as `NOT_FOUND`.
+
+The gate's session read is wired into the API process as an injected dependency
+and is fail-closed until operator auth configuration (secret, public origin,
+mail and the API's connection checkout) lands; authenticated procedures answer
+their typed 401 today, and the web shell slice consumes the real flow. The
+authorization matrix over actors, spaces and resources is slice 3.3.
 
 Below the transport, the earlier slices are in place: `packages/db` owns the
 Drizzle migration workflow and the runs-domain schema — bots, sections, threads,
@@ -638,7 +691,7 @@ integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
 unchanged. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
 M10 surface slices replace with the real clients; `apps/api` serves `/healthz`
-and the contract's deployment status procedure, `apps/worker` is an idle
+and the contract's procedures behind the auth gate, `apps/worker` is an idle
 process, and `apps/supervisor` is a placeholder for the Docker socket owner,
 replaced by slices 6.1 and 7.1.
 

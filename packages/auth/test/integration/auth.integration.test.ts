@@ -5,6 +5,8 @@ import {
   deploymentSettings,
   openDatabase,
   session as sessionTable,
+  space as spaceTable,
+  spaceMember as spaceMemberTable,
   user as userTable,
   verification as verificationTable,
 } from "@porkbot/db";
@@ -13,6 +15,7 @@ import { createSuiteDatabase } from "@porkbot/testkit";
 import type { SuiteDatabase } from "@porkbot/testkit";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  createActorResolver,
   createAuth,
   secureSessionCookieName,
   sessionCookieName,
@@ -115,6 +118,7 @@ beforeEach(async () => {
   await database().delete(userTable);
   await database().delete(verificationTable);
   await database().delete(deploymentSettings);
+  await database().delete(spaceTable);
 });
 
 interface RequestOptions {
@@ -462,5 +466,72 @@ describe("mail flows", () => {
     const users = await database().select().from(userTable);
 
     expect(users[0]?.emailVerified).toBe(true);
+  });
+});
+
+describe("actor resolution", () => {
+  async function signUpWithCookie(
+    email: string = adminEmail,
+  ): Promise<{ readonly userId: string; readonly cookie: string }> {
+    await configure({ signupsEnabled: true, adminEmail });
+
+    const response = await signUp(email);
+    const cookie = sessionCookie(response)?.split(";")[0];
+
+    expect(cookie).toBeDefined();
+
+    const session = await auth().api.getSession({
+      headers: new Headers({ cookie: cookie ?? "" }),
+    });
+
+    return { userId: session?.user.id ?? "", cookie: cookie ?? "" };
+  }
+
+  async function membershipFor(userId: string, role: "owner" | "member"): Promise<string> {
+    const spaces = await database()
+      .insert(spaceTable)
+      .values({ name: "My space" })
+      .returning({ id: spaceTable.id });
+    const spaceId = spaces[0]?.id;
+
+    if (spaceId === undefined) {
+      throw new Error("the space insert returned no id");
+    }
+
+    await database().insert(spaceMemberTable).values({ spaceId, userId, role });
+
+    return spaceId;
+  }
+
+  it("resolves a real session into the membership's actor", async () => {
+    const { userId, cookie } = await signUpWithCookie();
+    const spaceId = await membershipFor(userId, "owner");
+    const resolve = createActorResolver({ auth: auth(), database: database() });
+
+    await expect(resolve(new Headers({ cookie }))).resolves.toEqual({
+      kind: "user",
+      spaceId,
+      userId,
+      role: "owner",
+    });
+
+    await expect(resolve(new Headers())).resolves.toBeNull();
+  });
+
+  it("refuses a signed-in user who holds no membership", async () => {
+    const { cookie } = await signUpWithCookie();
+    const resolve = createActorResolver({ auth: auth(), database: database() });
+
+    await expect(resolve(new Headers({ cookie }))).resolves.toBeNull();
+  });
+
+  it("stops resolving once the membership is revoked", async () => {
+    const { userId, cookie } = await signUpWithCookie();
+    await membershipFor(userId, "member");
+    await database().delete(spaceMemberTable);
+
+    const resolve = createActorResolver({ auth: auth(), database: database() });
+
+    await expect(resolve(new Headers({ cookie }))).resolves.toBeNull();
   });
 });

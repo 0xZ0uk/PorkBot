@@ -39,6 +39,27 @@ change it without breaking what the boundaries and the CI gate protect.
   (`@porkbot/*/**` pattern, `import-x/no-relative-packages` and
   `import-x/consistent-type-specifier-style`).
 
+### Authorization
+
+- **Every procedure goes through the gate.** `apps/api/src/gate.ts` is the only
+  file in the API that calls `implement(...)`; routers register through the
+  `authenticated` or `publicOnly` implementers it exports, so a procedure cannot
+  be added on an un-authenticated path. Checked by: lint (`no-restricted-syntax`,
+  proven by `packages/eslint-config/fixtures/api-raw-implement.ts`).
+- **Authenticated by default; public is explicit.** A contract procedure is
+  authenticated unless it is built with `publicProcedure`, every procedure
+  carries an access marker, and the public paths are compared against the
+  hand-written list in `packages/contracts/src/contract.ts`. Checked by: test
+  (`packages/contracts/src/access.test.ts`) and review
+  (`.github/pull_request_template.md`).
+- **Handlers receive an actor, never a tenant id.** The procedure context
+  carries the resolved `Actor` and actor-scoped repositories, a by-id fetch is
+  the repository's scoped read, and no contract input names a space. Checked by:
+  test (`apps/api/src/gate.test.ts`).
+- **One session read.** Sessions resolve to an `Actor` in `@porkbot/auth`, and
+  the API calls that resolver in `apps/api/src/gate.ts` only. Checked by: test
+  (`apps/api/src/gate.test.ts`).
+
 ### Provider neutrality
 
 - **One interface per capability.** Declarations live in `@porkbot/adapter-kit`,

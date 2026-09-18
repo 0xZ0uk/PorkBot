@@ -100,6 +100,14 @@ const boundaryViolations = [
     ruleId: "no-restricted-imports",
     message: /"@porkbot\/testkit" is outside the "@porkbot\/core" boundary/,
   },
+  {
+    // The auth gate: a router that registers procedures through `implement`
+    // itself bypasses the authenticated default.
+    fixture: "api-raw-implement.ts",
+    package: "@porkbot/api",
+    ruleId: "no-restricted-syntax",
+    message: /Register procedures through the auth gate in apps\/api\/src\/gate\.ts/,
+  },
 ];
 
 // These fixtures are lint-clean on purpose: they catch a rule that fires on
@@ -107,6 +115,7 @@ const boundaryViolations = [
 const allowedFixtures = [
   { fixture: "clean/core.ts", package: "@porkbot/core" },
   { fixture: "clean/api.ts", package: "@porkbot/api" },
+  { fixture: "clean/api-router.ts", package: "@porkbot/api" },
   { fixture: "clean/web.ts", package: "@porkbot/web" },
   { fixture: "core-testkit-in-test.test.ts", package: "@porkbot/core" },
 ];

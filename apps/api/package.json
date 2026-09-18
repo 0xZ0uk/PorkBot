@@ -17,6 +17,7 @@
     "@orpc/openapi": "1.15.1",
     "@orpc/server": "1.15.1",
     "@orpc/zod": "1.15.1",
+    "@porkbot/auth": "workspace:*",
     "@porkbot/contracts": "workspace:*",
     "@porkbot/core": "workspace:*",
     "@porkbot/db": "workspace:*",
