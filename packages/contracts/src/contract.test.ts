@@ -35,7 +35,14 @@ describe("the client type", () => {
     >;
     type Codes = ErrorCodes<StatusErrors>;
 
-    expectTypeOf<Codes>().toEqualTypeOf<"SERVICE_UNAVAILABLE">();
+    expectTypeOf<Codes>().toEqualTypeOf<"SERVICE_UNAVAILABLE" | "RATE_LIMITED">();
+  });
+
+  it("types the rate-limit error's retry delay, not an opaque payload", () => {
+    type MeErrors = ErrorFromErrorMap<(typeof appContract.account.me)["~orpc"]["errorMap"]>;
+    type RateLimited = Extract<MeErrors, { code: "RATE_LIMITED" }>;
+
+    expectTypeOf<RateLimited["data"]>().toEqualTypeOf<{ retryAfterSeconds: number }>();
   });
 
   it("updates from a contract edit with no second declaration", () => {

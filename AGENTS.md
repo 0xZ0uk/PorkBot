@@ -154,6 +154,24 @@ change it without breaking what the boundaries and the CI gate protect.
   that decides "private" is the bug the list exists to prevent. Checked by: test
   (`packages/effect/src/url-safety.test.ts`) and review.
 
+### Transport limits
+
+- **Every route is limited, and an unknown one is not unlimited.** The policy
+  register and the accounting in `apps/api/src/limits.ts` are the only place a
+  request budget, a body cap or a stream slot is decided; a path the register
+  does not name draws the anonymous budget, and a test walks the contract tree
+  and the route list so a new procedure or route fails until it is covered.
+  Checked by: test (`apps/api/src/limits-surface.test.ts`) and review.
+- **A refusal is typed and retryable.** An RPC caller sees the contract's
+  `RATE_LIMITED` with `retryAfterSeconds` and a `Retry-After` header, never an
+  opaque 500 or an unlimited retry loop. Checked by: test
+  (`apps/api/src/limits-surface.test.ts`) and review.
+- **A body cap rejects before parsing, and a stream holds a slot until it
+  closes.** An oversized payload is refused from its length or while streaming,
+  and every `text/event-stream` response holds a per-principal slot that a
+  close, an error or a client disconnect releases. Checked by: test
+  (`apps/api/src/limits-surface.test.ts`) and review.
+
 ### UI
 
 - **Colours come from `@porkbot/tokens`.** No hardcoded hex, `rgb()` or `hsl()`

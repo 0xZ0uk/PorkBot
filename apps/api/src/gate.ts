@@ -1,11 +1,13 @@
 import { createORPCErrorConstructorMap, implement } from "@orpc/server";
 import type { ErrorMap, Router } from "@orpc/server";
 import { appContract } from "@porkbot/contracts";
-import type { AppContract } from "@porkbot/contracts";
+import type { AppContract, rateLimitedDataSchema } from "@porkbot/contracts";
 import { mapError } from "@porkbot/effect";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
+import { actorPrincipal, clientPrincipal } from "./limits.ts";
+import type { LimitPrincipal, RateLimits } from "./limits.ts";
 
 /**
  * The single auth gate (PRD decision 7).
@@ -38,18 +40,29 @@ import type { ResolveActor } from "@porkbot/auth";
  * The per-request context. Before the gate middleware runs, `actor` and
  * `repositories` are null for an anonymous request; after it, the authenticated
  * implementer narrows both to non-null for the handler.
+ *
+ * `principal` is the key the rate limiter and the stream slots account
+ * against, `limits` is the process-wide accounting object, and
+ * `responseHeaders` is the channel a middleware uses to add a header (the 429's
+ * `Retry-After`) to whatever response the procedure produces.
  */
 export interface ProcedureContext {
   readonly logger: Logger;
   readonly requestId: string;
   readonly actor: UserActor | null;
   readonly repositories: UserRepositories | null;
+  readonly principal: LimitPrincipal;
+  readonly limits: RateLimits;
+  readonly responseHeaders: Headers;
 }
 
 export interface OpenContextOptions {
   readonly headers: Headers;
   readonly logger: Logger;
   readonly requestId: string;
+  /** The client address, for the anonymous budget and the stream cap. */
+  readonly clientKey: string;
+  readonly limits: RateLimits;
   readonly resolveActor: ResolveActor;
   readonly repositoriesFor: (actor: UserActor) => UserRepositories;
 }
@@ -68,18 +81,31 @@ export async function openProcedureContext(options: OpenContextOptions): Promise
     requestId: options.requestId,
     actor,
     repositories: actor === null ? null : options.repositoriesFor(actor),
+    principal: actor === null ? clientPrincipal(options.clientKey) : actorPrincipal(actor),
+    limits: options.limits,
+    responseHeaders: new Headers(),
   };
 }
 
 /**
- * The error map an authenticated procedure is required to carry: the gate can
- * answer `UNAUTHORIZED` for any of them, and `access.test.ts` in
- * `@porkbot/contracts` fails when one forgets. The cast below is what lets the
- * shared middleware construct the procedure's own declared error at runtime
- * without widening the context type for every public procedure.
+ * The error maps a procedure is required to carry. An authenticated procedure
+ * declares `UNAUTHORIZED`; every procedure, public or not, declares
+ * `RATE_LIMITED` because the limiter middleware below runs before the access
+ * decision. `access.test.ts` in `@porkbot/contracts` fails when a builder stops
+ * declaring either. The casts are what let the shared middleware construct the
+ * procedure's own declared error at runtime without widening the context type
+ * for every public procedure.
  */
 type AuthenticatedErrorMap = ErrorMap & {
   readonly UNAUTHORIZED: { readonly status?: number; readonly message?: string };
+};
+
+type RateLimitedErrorMap = ErrorMap & {
+  readonly RATE_LIMITED: {
+    readonly status?: number;
+    readonly message?: string;
+    readonly data: typeof rateLimitedDataSchema;
+  };
 };
 
 function misregistration(path: string, realm: "authenticated" | "public"): Error {
@@ -90,6 +116,28 @@ function misregistration(path: string, realm: "authenticated" | "public"): Error
 }
 
 const baseImplementer = implement(appContract).$context<ProcedureContext>();
+
+/**
+ * The one rate-limit decision for the contract. It is registered before the
+ * access middleware on purpose: a flood is capped before the access check and
+ * before any handler work, and a public procedure answers the same 429 as an
+ * authenticated one. The budget is the actor's for a resolved session and the
+ * client address's otherwise, so one actor cannot spend another's. The refusal
+ * is an oRPC error, so it travels through `errorBoundary` untouched.
+ */
+const limited = baseImplementer.use(async ({ context, next, procedure }) => {
+  const outcome = context.limits.enforceRpc(context.principal);
+
+  if (!outcome.allowed) {
+    const { errorMap } = procedure["~orpc"];
+    const errors = createORPCErrorConstructorMap(errorMap as RateLimitedErrorMap);
+
+    context.responseHeaders.set("retry-after", String(outcome.retryAfterSeconds));
+    throw errors.RATE_LIMITED({ data: { retryAfterSeconds: outcome.retryAfterSeconds } });
+  }
+
+  return next();
+});
 
 /**
  * The transport error boundary (PRD decision 28), applied inside the gate's
@@ -113,7 +161,7 @@ const errorBoundary = baseImplementer.middleware(async ({ next, procedure }) => 
 });
 
 /** The default path: an actor and actor-scoped repositories, or a typed 401. */
-export const authenticated = baseImplementer
+export const authenticated = limited
   .use(async ({ context, next, procedure }) => {
     const { route, meta, errorMap } = procedure["~orpc"];
     const path = route.path ?? "an unnamed procedure";
@@ -133,7 +181,7 @@ export const authenticated = baseImplementer
   .use(errorBoundary);
 
 /** The explicit exception: only a contract marked `publicProcedure` gets here. */
-export const publicOnly = baseImplementer
+export const publicOnly = limited
   .use(async ({ next, procedure }) => {
     const { route, meta } = procedure["~orpc"];
     const path = route.path ?? "an unnamed procedure";
