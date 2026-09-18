@@ -224,13 +224,13 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         name: "LocalStorageProvider",
         slice: "7.7",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
       {
         name: "S3CompatibleStorageProvider",
         slice: "7.7",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
     ],
   },
@@ -302,6 +302,10 @@ export const PROVIDER_SHAPES: readonly ProviderShape[] = [
   {
     module: "./storage.ts",
     interfaces: ["StorageObject", "StoragePutRequest", "StorageBody"],
+  },
+  {
+    module: "./home-sync.ts",
+    interfaces: ["ComputerHomeSyncStory"],
   },
   {
     module: "./web-access.ts",

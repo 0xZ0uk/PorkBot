@@ -336,6 +336,49 @@ describe("safeFetch", () => {
     expect(error).toMatchObject({ reason: "blocked_address", address: "127.0.0.1" });
     expect(trap.connections).toEqual([]);
   });
+
+  it("writes a streamed request body to the socket in order", async () => {
+    const hops: RecordedHop[] = [];
+    const fetcher = createSafeFetch({
+      resolve: publicAnswer,
+      request: scriptedRequest([{ status: 200 }], hops),
+    });
+
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield Buffer.from("first ", "utf8");
+      yield Buffer.from("second", "utf8");
+    }
+
+    const response = await fetcher("https://api.example.invalid/upload", {
+      method: "PUT",
+      body: chunks(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(hops).toHaveLength(1);
+    expect(hops[0]?.body).toBe("first second");
+  });
+
+  it("destroys the request when the body source fails, so a partial upload never completes", async () => {
+    const hops: RecordedHop[] = [];
+    const fetcher = createSafeFetch({
+      resolve: publicAnswer,
+      request: scriptedRequest([{ status: 200 }], hops),
+    });
+
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield Buffer.from("partial", "utf8");
+      throw new Error("the source failed");
+    }
+
+    const error = await rejection(
+      fetcher("https://api.example.invalid/upload", { method: "PUT", body: chunks() }),
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("the source failed");
+    expect(hops).toEqual([]);
+  });
 });
 
 interface ScriptedHop {
@@ -349,20 +392,56 @@ interface RecordedHop {
   readonly method: string | undefined;
   readonly authorization: string | undefined;
   readonly cookie: string | undefined;
+  readonly contentLength: string | undefined;
+  readonly contentType: string | undefined;
+  readonly body: string;
+}
+
+function toBuffer(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk);
+  }
+
+  return Buffer.from(typeof chunk === "string" ? chunk : "", "utf8");
 }
 
 /**
  * A scripted `https.request`: it runs the guarded lookup the fetcher passes in
  * — so every hop in a redirect test is still gated at the connection — then
- * answers with the next scripted hop instead of a socket.
+ * answers with the next scripted hop instead of a socket. Written chunks are
+ * collected so a test can assert a streamed body reached the wire in order.
  */
 function scriptedRequest(script: ScriptedHop[], hops: RecordedHop[]): typeof httpsRequest {
   return ((url: URL, options: RequestOptions, callback: (response: IncomingMessage) => void) => {
     const emitter = new EventEmitter() as unknown as ClientRequest;
     const authorization = requestHeader(options, "authorization");
     const cookie = requestHeader(options, "cookie");
+    const contentLength = requestHeader(options, "content-length");
+    const contentType = requestHeader(options, "content-type");
+    const chunks: Buffer[] = [];
 
-    emitter.end = (() => {
+    (emitter as { write: (chunk: unknown) => boolean }).write = (chunk) => {
+      chunks.push(toBuffer(chunk));
+      return true;
+    };
+
+    emitter.destroy = ((cause?: Error) => {
+      if (cause !== undefined) {
+        emitter.emit("error", cause);
+      }
+
+      return emitter;
+    }) as ClientRequest["destroy"];
+
+    emitter.end = ((chunk?: unknown) => {
+      if (chunk !== undefined) {
+        chunks.push(toBuffer(chunk));
+      }
+
       options.lookup?.(url.hostname, { all: true }, (error) => {
         if (error !== null) {
           emitter.emit("error", error);
@@ -382,6 +461,9 @@ function scriptedRequest(script: ScriptedHop[], hops: RecordedHop[]): typeof htt
           method: options.method,
           authorization,
           cookie,
+          contentLength,
+          contentType,
+          body: Buffer.concat(chunks).toString("utf8"),
         });
 
         callback(response);
@@ -526,12 +608,71 @@ describe("safeFetch redirects", () => {
 
     const response = await fetcher("https://api.example.invalid/submit", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "content-length": "7",
+      },
       body: '{"a":1}',
     });
 
     expect(response.status).toBe(200);
     expect(hops.map((hop) => hop.method)).toEqual(["POST", "GET"]);
+    expect(hops[1]?.body).toBe("");
+    expect(hops[1]?.contentLength).toBeUndefined();
+    expect(hops[1]?.contentType).toBeUndefined();
+  });
+
+  it("drops a streamed body when a 303 turns the request into a bodyless GET", async () => {
+    const hops: RecordedHop[] = [];
+    const fetcher = createSafeFetch({
+      resolve: publicAnswer,
+      request: scriptedRequest(
+        [
+          { status: 303, headers: { location: "https://api.example.invalid/result" } },
+          { status: 200, body: "done" },
+        ],
+        hops,
+      ),
+    });
+
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield Buffer.from("upload", "utf8");
+    }
+
+    const response = await fetcher("https://api.example.invalid/submit", {
+      method: "POST",
+      body: chunks(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(hops.map((hop) => hop.method)).toEqual(["POST", "GET"]);
+    expect(hops[1]?.body).toBe("");
+  });
+
+  it("refuses a redirect that would have to replay a streamed body", async () => {
+    const hops: RecordedHop[] = [];
+    const fetcher = createSafeFetch({
+      resolve: publicAnswer,
+      request: scriptedRequest(
+        [
+          { status: 307, headers: { location: "https://api.example.invalid/moved" } },
+          { status: 200 },
+        ],
+        hops,
+      ),
+    });
+
+    async function* chunks(): AsyncGenerator<Uint8Array> {
+      yield Buffer.from("upload", "utf8");
+    }
+
+    const error = await rejection(
+      fetcher("https://api.example.invalid/upload", { method: "PUT", body: chunks() }),
+    );
+
+    expect(error).toBeInstanceOf(TypeError);
+    expect(String((error as Error).message)).toContain("streaming request body");
+    expect(hops).toHaveLength(1);
   });
 
   it("returns the redirect untouched in manual mode and throws in error mode", async () => {

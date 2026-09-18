@@ -147,6 +147,7 @@ export type {
   ResolveHost,
   ResolvedAddress,
   SafeFetch,
+  SafeFetchBody,
   SafeFetchInit,
   UrlSafetyOptions,
 } from "./url-safety.ts";
