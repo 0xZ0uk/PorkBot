@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "space_member_owner_unique" ON "space_member" USING btree ("space_id") WHERE "space_member"."role" = 'owner';

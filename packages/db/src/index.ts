@@ -20,6 +20,13 @@ export { openDatabase } from "./database.ts";
 export type { DatabaseHandle, PostgresDatabase } from "./database.ts";
 export { readDeploymentSettings } from "./deployment-settings.ts";
 
+// The signup bootstrap: the pre-actor write that turns a registration into the
+// operator's space and a membership in it, idempotently. It takes a user id and
+// a role, never a space id, and returns the `UserActor` the membership resolves
+// to — which is the scope `createRepositories` is built from.
+export { bootstrapSignup, defaultSpaceName } from "./bootstrap.ts";
+export type { BootstrapInput, BootstrapResult } from "./bootstrap.ts";
+
 // Applying migrations, exported so the API, the worker and scripts share one
 // implementation with the `db:migrate` command rather than each shelling out.
 export {
