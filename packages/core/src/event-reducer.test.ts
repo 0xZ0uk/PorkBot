@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ApprovalConflict,
   IllegalEventTransition,
   MessageConflict,
   ToolCallConflict,
@@ -11,6 +12,8 @@ import {
 } from "./event-reducer.ts";
 import { RUN_EVENT_SCHEMA_VERSION, UnknownEventType, UnknownSchemaVersion } from "./run-events.ts";
 import type {
+  ApprovalRequestedEvent,
+  ApprovalResolvedEvent,
   RunCancelledEvent,
   RunCompletedEvent,
   RunEventError,
@@ -23,6 +26,7 @@ import type {
   ToolRequestedEvent,
   ToolResultArtifact,
 } from "./run-events.ts";
+import type { ApprovalDecision } from "./approvals.ts";
 import type { ThreadSnapshot } from "./event-reducer.ts";
 
 const threadId = "thread-1";
@@ -59,6 +63,33 @@ function toolCompleted(
   extra: { readonly resultArtifact?: ToolResultArtifact; readonly durationMs?: number } = {},
 ): ToolCompletedEvent {
   return { ...base(seq, run), type: "tool.completed", callId, result, ...extra };
+}
+
+const expiresAt = "2026-09-18T12:00:00.000Z";
+
+function approvalRequested(
+  seq: number,
+  callId: string,
+  deadline = expiresAt,
+  run = runId,
+): ApprovalRequestedEvent {
+  return { ...base(seq, run), type: "approval.requested", callId, expiresAt: deadline };
+}
+
+function approvalResolved(
+  seq: number,
+  callId: string,
+  decision: ApprovalDecision,
+  reason?: string,
+  run = runId,
+): ApprovalResolvedEvent {
+  return {
+    ...base(seq, run),
+    type: "approval.resolved",
+    callId,
+    decision,
+    ...(reason === undefined ? {} : { reason }),
+  };
 }
 
 function toolFailed(seq: number, callId: string, error: string, run = runId): ToolFailedEvent {
@@ -362,6 +393,184 @@ describe("tool calls", () => {
     if (error instanceof ToolCallConflict) {
       expect(error.reason).toBe("already_resolved");
     }
+  });
+});
+
+describe("approvals", () => {
+  const gated = [
+    started(1),
+    toolRequested(2, "call-1", "shell", { command: "rm -rf" }),
+    approvalRequested(3, "call-1"),
+  ];
+
+  it("parks a gated run and returns it to running when the gate resolves", () => {
+    const parked = reduceAll(createThreadSnapshot(threadId), gated);
+    const parkedRun = parked.runs[0];
+    expect(parkedRun?.status).toBe("waiting_approval");
+    expect(parkedRun?.toolCalls[0]?.approval).toEqual({ status: "pending", expiresAt });
+
+    const resumed = reduceAll(parked, [
+      approvalResolved(4, "call-1", "approved"),
+      toolCompleted(5, "call-1", { exitCode: 0 }),
+      completed(6),
+    ]);
+
+    expect(resumed.runs[0]?.status).toBe("completed");
+    expect(resumed.runs[0]?.toolCalls[0]).toMatchObject({
+      status: "completed",
+      approval: { status: "approved", expiresAt },
+    });
+  });
+
+  it("renders a timeout as the system's decision and carries the operator's deny reason", () => {
+    const timedOut = reduceAll(createThreadSnapshot(threadId), [
+      ...gated,
+      approvalResolved(4, "call-1", "timed_out"),
+      toolFailed(5, "call-1", "the operator was offline"),
+    ]);
+
+    expect(timedOut.runs[0]?.status).toBe("running");
+    expect(timedOut.runs[0]?.toolCalls[0]?.approval).toEqual({
+      status: "timed_out",
+      expiresAt,
+    });
+
+    const denied = reduceAll(createThreadSnapshot(threadId), [
+      ...gated,
+      approvalResolved(4, "call-1", "denied", "too dangerous"),
+    ]);
+
+    expect(denied.runs[0]?.toolCalls[0]?.approval).toEqual({
+      status: "denied",
+      expiresAt,
+      reason: "too dangerous",
+    });
+  });
+
+  it("keeps the run parked until the last pending gate resolves", () => {
+    const twoGates = [
+      started(1),
+      toolRequested(2, "call-1", "shell", {}),
+      approvalRequested(3, "call-1"),
+      toolRequested(4, "call-2", "web", {}),
+      approvalRequested(5, "call-2"),
+      approvalResolved(6, "call-1", "approved"),
+    ];
+
+    const half = reduceAll(createThreadSnapshot(threadId), twoGates);
+    expect(half.runs[0]?.status).toBe("waiting_approval");
+
+    const all = reduceAll(half, [approvalResolved(7, "call-2", "denied", "no")]);
+    expect(all.runs[0]?.status).toBe("running");
+  });
+
+  it("does not clear a pending gate when progress events arrive", () => {
+    const withDelta = reduceAll(createThreadSnapshot(threadId), [
+      ...gated,
+      token(4, "msg-1", "still thinking"),
+    ]);
+
+    expect(withDelta.runs[0]?.status).toBe("waiting_approval");
+    expect(withDelta.messages).toEqual([
+      { id: "msg-1", runId, role: "assistant", text: "still thinking", complete: false },
+    ]);
+  });
+
+  it("buffers a gate resolution that arrives before its request", () => {
+    const snapshot = reduceAll(createThreadSnapshot(threadId), [
+      approvalResolved(4, "call-1", "approved"),
+      approvalRequested(3, "call-1"),
+      toolRequested(2, "call-1", "shell", {}),
+      started(1),
+    ]);
+
+    expect(snapshot.lastSeq).toBe(4);
+    expect(snapshot.runs[0]?.status).toBe("running");
+    expect(snapshot.runs[0]?.toolCalls[0]?.approval?.status).toBe("approved");
+  });
+
+  it("refuses to resolve a call while its gate is pending", () => {
+    const parked = reduceAll(createThreadSnapshot(threadId), gated);
+
+    for (const resolution of [
+      toolCompleted(4, "call-1", { exitCode: 0 }),
+      toolFailed(4, "call-1", "boom"),
+    ]) {
+      const conflict = expectFailure(parked, resolution);
+      expect(conflict).toBeInstanceOf(ToolCallConflict);
+      if (conflict instanceof ToolCallConflict) {
+        expect(conflict.reason).toBe("awaiting_approval");
+      }
+    }
+  });
+
+  it("refuses a completed call whose gate denied it", () => {
+    const denied = reduceAll(createThreadSnapshot(threadId), [
+      ...gated,
+      approvalResolved(4, "call-1", "denied"),
+    ]);
+
+    const conflict = expectFailure(denied, toolCompleted(5, "call-1", { exitCode: 0 }));
+    expect(conflict).toBeInstanceOf(ToolCallConflict);
+    if (conflict instanceof ToolCallConflict) {
+      expect(conflict.reason).toBe("denied");
+    }
+
+    // The runtime answers a denial with a failed call, which is allowed.
+    expect(
+      reduceAll(denied, [toolFailed(5, "call-1", "the operator denied this tool call")]).runs[0]
+        ?.toolCalls[0]?.status,
+    ).toBe("failed");
+  });
+
+  it("rejects contradictions around a gate", () => {
+    const parked = reduceAll(createThreadSnapshot(threadId), gated);
+
+    const duplicate = expectFailure(parked, approvalRequested(4, "call-1"));
+    expect(duplicate).toBeInstanceOf(ApprovalConflict);
+    if (duplicate instanceof ApprovalConflict) {
+      expect(duplicate.reason).toBe("duplicate_request");
+    }
+
+    expect(expectFailure(parked, approvalRequested(4, "missing"))).toBeInstanceOf(UnknownToolCall);
+    expect(expectFailure(parked, approvalResolved(4, "missing", "approved"))).toBeInstanceOf(
+      UnknownToolCall,
+    );
+  });
+
+  it("rejects a resolution for a call that never had a gate, and a second one for a resolved gate", () => {
+    const ungated = reduceAll(createThreadSnapshot(threadId), [
+      started(1),
+      toolRequested(2, "call-1", "shell", {}),
+    ]);
+
+    expect(expectFailure(ungated, approvalResolved(3, "call-1", "approved"))).toBeInstanceOf(
+      ApprovalConflict,
+    );
+
+    const resolved = reduceAll(ungated, [
+      approvalRequested(3, "call-1"),
+      approvalResolved(4, "call-1", "approved"),
+    ]);
+
+    const second = expectFailure(resolved, approvalResolved(5, "call-1", "denied"));
+    expect(second).toBeInstanceOf(ApprovalConflict);
+    if (second instanceof ApprovalConflict) {
+      expect(second.reason).toBe("already_resolved");
+    }
+  });
+
+  it("rejects a gate on a run that already ended", () => {
+    const ended = reduceAll(createThreadSnapshot(threadId), [
+      started(1),
+      toolRequested(2, "call-1", "shell", {}),
+      toolCompleted(3, "call-1", {}),
+      completed(4),
+    ]);
+
+    expect(expectFailure(ended, approvalRequested(5, "call-1"))).toBeInstanceOf(
+      IllegalEventTransition,
+    );
   });
 });
 

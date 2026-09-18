@@ -9,6 +9,7 @@ export const moduleInfo = {
 // class is an Effect `Data.TaggedError`: throwable from promise code, catchable
 // by tag in an Effect program, and keyable in the mapping table.
 export {
+  ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
   CursorRejectedError,
@@ -70,6 +71,26 @@ export type {
   RunSession,
   RunStartRequest,
 } from "./agent-runtime.ts";
+
+// The durable approval gate (slice 5.7, PRD decision 13; audit P0 item 1).
+// Approval is pending state, not a live socket: `open` records the durable row
+// (reopening the same one after a restart), `waitFor` polls that row until an
+// operator decision or the deadline settles it, and a timeout is the typed
+// `GateTimeoutError` the run answers as a deny. The store is a seam
+// `@porkbot/db` implements over the `approval` rows; `ApprovalDecisions` is the
+// operator's half the API records votes through; this package declares both.
+export { createApprovalGate } from "./approval-gate.ts";
+export type {
+  ApprovalDecisions,
+  ApprovalGateError,
+  ApprovalGateOptions,
+  ApprovalGateShape,
+  ApprovalRecord,
+  ApprovalRequest,
+  ApprovalStore,
+  ApprovalVoteInput,
+  ApprovalVoteResult,
+} from "./approval-gate.ts";
 
 // Tool dispatch (slice 5.5, PRD decision 26; audit section 3). One registration
 // carries a tool's metadata and its handler, so the list the model sees is

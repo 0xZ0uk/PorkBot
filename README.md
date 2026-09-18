@@ -257,6 +257,41 @@ the sink over a recording fake; the `packages/db` integration suite drives both
 on Postgres, reads the rows back through the actor-scoped repository, and
 resolves the artifact to the full result.
 
+## Approval gates
+
+Approval is durable pending state, not a live socket (PRD decision 13). A gated
+tool call has a durable `callId`, and `createApprovalGate` in `packages/effect`
+records a row for it before the run waits: the gate opens (or reopens, on the
+original deadline) the `approval` row, and `waitFor` polls it until an operator
+decision or the deadline settles it. Polling is the wake-up on purpose — a
+decision taken in another process is visible on the next read, so there is no
+signal to lose and the interval is a latency knob, not a correctness one.
+
+The deadline is the store's, not the waiter's. `resolveTimeout` is a guarded
+compare-and-set on `status = 'pending'` with `expires_at <= now()` as the
+server's clock, so a timeout can never fire early; when it wins, the run answers
+the typed `GateTimeoutError`, which is a deny — never a crash and never a hang.
+A store that cannot record the gate fails closed with `ApprovalStoreError`
+instead of running a tool behind an approval nobody can see.
+
+Decisions are durable too. `packages/db` implements the seam over the `approval`
+table keyed by `(run_id, call_id)`, with `createApprovalStore` split by actor:
+a job opens gates and settles deadlines, an operator votes and reads the
+timeline, and the grants in `0008_approval_grants.sql` are column-level so a job
+cannot vote in a user's name and the API cannot move a deadline. A vote and a
+timeout are both compare-and-sets, so concurrent approve/deny resolves exactly
+once and the loser answers from the stored row. The resolution check makes the
+audit structural: an approved or denied row always carries the deciding user and
+the instant, and a `timed_out` row carries the instant with no user at all.
+
+The wire vocabulary carries the gate to the client: `approval.requested` names
+the call and its deadline, `approval.resolved` carries `approved`, `denied` or
+`timed_out`, and the shared reducer attaches the gate to the tool call it
+belongs to — so the same event list always renders the same gate. A reloading
+client reads the durable rows through `listForRun` and replays the recorded
+stream from the `event` table, so the gate it sees is the one the run recorded,
+not the one a connection happened to hold.
+
 ## Dependencies
 
 `dependencies.json` at the repository root is the pin register: every package

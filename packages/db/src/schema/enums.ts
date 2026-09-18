@@ -1,4 +1,4 @@
-import { RUN_STATUSES } from "@porkbot/core";
+import { APPROVAL_STATUSES, RUN_STATUSES } from "@porkbot/core";
 import { pgEnum } from "drizzle-orm/pg-core";
 
 /**
@@ -50,3 +50,12 @@ export const effectStatus = pgEnum("effect_status", [
  * messages — so a row cannot claim a role the wire vocabulary cannot express.
  */
 export const messageRole = pgEnum("message_role", ["user", "assistant"]);
+
+/**
+ * The approval lifecycle, built from `@porkbot/core`'s vocabulary for the same
+ * reason run status is: the gate's domain and the database must not disagree
+ * about what "pending" means or about which decisions exist. A resolved row is
+ * `approved` or `denied` by an operator of record, or `timed_out` by the
+ * deadline with no operator at all.
+ */
+export const approvalStatus = pgEnum("approval_status", APPROVAL_STATUSES);

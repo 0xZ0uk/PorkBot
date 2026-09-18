@@ -1,6 +1,7 @@
 import { Cause, Chunk } from "effect";
 import { ORPCError } from "@porkbot/contracts";
 import {
+  ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
   CursorRejectedError,
@@ -68,6 +69,11 @@ export const errorMappings = {
     code: "TIMEOUT",
     message: "The approval gate timed out.",
     matches: (error: unknown): error is GateTimeoutError => error instanceof GateTimeoutError,
+  },
+  ApprovalStoreError: {
+    code: "SERVICE_UNAVAILABLE",
+    message: "The approval record is not available.",
+    matches: (error: unknown): error is ApprovalStoreError => error instanceof ApprovalStoreError,
   },
   DeploymentSettingsConflictError: {
     code: "SERVICE_UNAVAILABLE",
