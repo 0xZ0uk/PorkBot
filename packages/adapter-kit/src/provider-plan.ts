@@ -143,7 +143,7 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         name: "ModelEmulator",
         slice: "5.4",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
       {
         name: "createOpenAiCompatibleModelRuntime",
