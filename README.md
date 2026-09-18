@@ -28,6 +28,11 @@ pnpm test:coverage    # unit tests with coverage: the tier CI actually runs
 pnpm test:integration # tests that need a real Postgres
 pnpm test:e2e         # end-to-end tests (the only tier that retries)
 pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
+pnpm testkit:start    # boot the harness Postgres container, record its state
+pnpm testkit:migrate  # apply SQL migrations to the harness template database
+pnpm testkit:snapshot # clone the template into a fresh suite database
+pnpm testkit:destroy  # drop the suites and template, remove the container
+pnpm testkit:benchmark # measure start, migrate and per-suite clone cost
 pnpm dev              # run the always-on processes (api, worker)
 pnpm format           # rewrite files with Prettier
 pnpm format:check     # verify formatting (CI runs this)
@@ -57,7 +62,7 @@ packages/
   ui/           design-system components
   tokens/       design tokens
   logging/      JSON logs, levels, correlation ids, redaction
-  testkit/      tier presets, timeouts, quarantine ledger, flake reporter, harness CLI
+  testkit/      tier presets, quarantine ledger, flake reporter, Postgres-per-suite harness CLI
   eslint-config/     internal: shared ESLint flat config
   typescript-config/ internal: shared tsconfig bases
 ```
@@ -109,7 +114,7 @@ with a name instead of a step index buried in one long log.
 - `build` — `tsc` emit, the artifact the later tiers and every deploy consume
 - `quarantine` — `quarantine.json` is valid and nothing in it has expired
 - `unit` — unit tests with coverage
-- `integration` — the tests that need a real Postgres
+- `integration` — the tests that need a real Postgres, which the testkit harness boots
 - `e2e` — whole-process tests against the built output
 - `gate` — green only when every tier above is green
 
@@ -119,21 +124,85 @@ rather than rebuilding the workspace. Every tier asserts the Node major instead
 of assuming it, and the toolchain lives in `.github/actions/setup` so a bump
 cannot land in some tiers and not others.
 
-The `integration` job starts `postgres:18`, the production major, and the suite
-asserts the server major rather than trusting the image tag. A tier that runs
-against the wrong database proves nothing, and a tier that skips itself when the
-service is missing is worse than no tier, so an unset `DATABASE_URL` fails the
-suite rather than skipping it. Locally:
-
-```sh
-docker run --rm -p 5432:5432 -e POSTGRES_USER=porkbot \
-  -e POSTGRES_PASSWORD=porkbot -e POSTGRES_DB=porkbot postgres:18
-DATABASE_URL=postgres://porkbot:porkbot@127.0.0.1:5432/porkbot pnpm test:integration
-```
+The `integration` job declares no service: the testkit harness boots
+`postgres:18`, the production major, itself. A tier that runs against the wrong
+database proves nothing, and a tier that skips itself when the runtime is
+missing is worse than no tier, so a missing Docker daemon (and no
+`TESTKIT_DATABASE_URL`) fails the suite rather than skipping it.
 
 The e2e tier carries the placeholder spec later slices replace. The job exists
 now so the wiring is proven on its own rather than introduced alongside new
 tests. It is the only tier that retries.
+
+### Postgres-per-suite harness
+
+`packages/testkit` boots one Postgres of the production major per run and
+migrates a template database from the SQL files in `packages/db/migrations`
+(slice 2.1 adds the first application migrations). Each suite asks for a
+database cloned from that template with `CREATE DATABASE ... TEMPLATE`, so two
+suites running in parallel have the same schema and cannot see each other's
+rows:
+
+```ts
+import { createSuiteDatabase } from "@porkbot/testkit";
+import { Client } from "pg";
+
+const suite = await createSuiteDatabase({ suite: "my_suite" });
+const client = new Client({ connectionString: suite.connectionString });
+// ... the suite's own rows, in the suite's own database ...
+await client.end();
+await suite.destroy();
+```
+
+A file that needs several databases in one run calls `startPostgresHarness()`
+instead; it returns the same handles plus `migrate()`, `createSuite()` and
+`stop()`. The runtime is the `docker` binary itself — no client library and no
+reaper image, so the only thing pulled is Postgres. The container gets an
+ephemeral loopback port and is removed with `docker rm -f -v` on destroy. A
+harness a test process owns also removes it on process exit and on
+`SIGINT`/`SIGTERM`; a harness the CLI started outlives the process and is
+recorded in `.testkit/harness.json`, which is what later commands — and a human
+after a hard kill — use to find it. `docker rm -f $(docker ps -aq --filter
+label=porkbot.testkit=1)` sweeps anything a hard kill left behind.
+
+The CLI is the same actions as separate commands, which is what later slices
+script scenarios and canaries with:
+
+```sh
+pnpm testkit:start          # boot the container, create the template database
+pnpm testkit:migrate        # apply packages/db/migrations to the template
+pnpm testkit:snapshot       # clone the template; prints the suite's URL
+pnpm testkit:destroy        # drop the suites and template, remove the container
+pnpm testkit:benchmark      # measure the costs below, then destroy
+```
+
+Printed connection strings are redacted by default — `--show-credentials` opts
+into the password, which the state file (mode 0600) already holds — and a failed
+`docker` command redacts `--env` values whose names look like secrets, so that
+neither CI logs nor error messages carry a credential.
+
+`TESTKIT_DATABASE_URL` attaches to an existing server of the production major
+instead of booting a container (the role needs `CREATEDB`), and
+`TESTKIT_HARNESS_STATE` points a suite at a run-level harness the CLI started:
+that is how CI pays for the container and the migration once per run while every
+suite still gets a fresh clone. `TESTKIT_POSTGRES_IMAGE` overrides the image,
+but the server major is asserted, not trusted.
+
+**Measured startup cost** (2026-09-18, `pnpm testkit:benchmark`, Docker 29 on
+Linux, warm image): container start ~0.5 s, Postgres ready ~1.6 s, a two-file
+migration ~10 ms, per-suite clone ~55-130 ms (median ~60 ms), destroy ~1.7 s.
+The first run on a machine without the image adds the pull; CI pre-pulls it. The
+integration tier measures the same phases on every CI run and writes them into
+the job summary. The number that shapes the design is the clone: a suite costs a
+clone, not a container, so one harness is started per run and every suite,
+scenario or canary clones from it.
+
+Locally the tier needs Docker and the image; CI pre-pulls it:
+
+```sh
+docker pull postgres:18
+pnpm test:integration
+```
 
 ### Flake management
 
@@ -258,15 +327,17 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 1.4 of epic E1 (M0 — Foundation): the CI gate now also carries the
-flake policy — e2e-only retries with the retry counts reported, timeouts on every
-tier, and a quarantine ledger whose entries expire on a date CI enforces. The
-workspace, build, typecheck, lint and test wiring are real and the CI gate runs
-them as separate blocking tiers. `apps/web`,
-`apps/desktop` and `apps/www` are placeholders that the
-M10 surface slices replace with the real clients; `apps/api` currently serves a single
-`/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices 6.1 and
-later.
+This is slice 1.5 of epic E1 (M0 — Foundation): integration tests now run against
+a real Postgres 18 that the testkit harness boots itself — one container per run,
+a migrated template database, and a clone per suite — with a harness CLI for
+scripted scenarios and canaries. The CI gate still carries the flake policy from
+slice 1.4 (e2e-only retries with the retry counts reported, timeouts on every
+tier, a quarantine ledger whose entries expire on a date CI enforces), and the
+workspace, build, typecheck, lint and test wiring remain real blocking tiers.
+`apps/web`, `apps/desktop` and `apps/www` are placeholders that the M10 surface
+slices replace with the real clients; `apps/api` currently serves a single
+`/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices
+6.1 and later.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
