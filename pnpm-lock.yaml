@@ -252,6 +252,12 @@ importers:
       '@earendil-works/pi-agent-core':
         specifier: 0.85.1
         version: 0.85.1(ws@8.21.3)(zod@4.6.5)
+      '@porkbot/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
+      '@porkbot/effect':
+        specifier: workspace:*
+        version: link:../effect
     devDependencies:
       '@porkbot/eslint-config':
         specifier: workspace:*
@@ -296,6 +302,9 @@ importers:
         specifier: 1.7.5
         version: 1.7.5(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0))(pg@8.23.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.1)
     devDependencies:
+      '@porkbot/adapters':
+        specifier: workspace:*
+        version: link:../adapters
       '@porkbot/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config

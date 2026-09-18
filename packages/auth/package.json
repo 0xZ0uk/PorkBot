@@ -25,6 +25,7 @@
     "better-auth": "1.7.5"
   },
   "devDependencies": {
+    "@porkbot/adapters": "workspace:*",
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
