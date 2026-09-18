@@ -9,10 +9,11 @@ import type { BotRecord, UserActor, UserRepositories } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
-import { createApiApp, serviceName } from "./app.ts";
+import { createApiApp, rpcPath, serviceName } from "./app.ts";
 import type { ApiServices } from "./app.ts";
 import { authenticated, publicOnly } from "./gate.ts";
 import type { ProcedureContext } from "./gate.ts";
+import { clientPrincipal, createRateLimits, resolveLimits, routeRules } from "./limits.ts";
 import { createApiServer } from "./server.ts";
 import type { DeploymentStatus } from "./services/deployment.ts";
 
@@ -254,6 +255,9 @@ describe("the registration path", () => {
     requestId: "test-request",
     actor: null,
     repositories: null,
+    principal: clientPrincipal("test-client"),
+    limits: createRateLimits(resolveLimits(), routeRules(rpcPath)),
+    responseHeaders: new Headers(),
   };
 
   it("refuses a public procedure registered on the authenticated path", async () => {

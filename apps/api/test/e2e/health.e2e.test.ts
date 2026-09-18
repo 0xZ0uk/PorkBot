@@ -3,7 +3,10 @@ import type { ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { describe, expect, it } from "vitest";
 
-function startApi(): { child: ChildProcess; port: Promise<number> } {
+function startApi(env: Readonly<Record<string, string>> = {}): {
+  child: ChildProcess;
+  port: Promise<number>;
+} {
   const child = spawn(process.execPath, ["src/main.ts"], {
     // LOG_LEVEL is pinned so an ambient level above info cannot filter the
     // startup line this test waits for. DATABASE_URL is a placeholder: the
@@ -14,6 +17,7 @@ function startApi(): { child: ChildProcess; port: Promise<number> } {
       PORT: "0",
       LOG_LEVEL: "info",
       DATABASE_URL: "postgres://porkbot:e2e-placeholder@127.0.0.1:5432/porkbot",
+      ...env,
     },
     stdio: ["ignore", "pipe", "inherit"],
   });
@@ -60,5 +64,31 @@ describe("api process", () => {
 
     await stopped;
     expect(child.exitCode).toBe(0);
+  }, 15_000);
+
+  it("enforces the environment's limits on the real process", async () => {
+    const { child, port } = startApi({ PORKBOT_LIMIT_PROBE_PER_MINUTE: "1" });
+
+    try {
+      const base = `http://127.0.0.1:${await port}`;
+      const first = await fetch(`${base}/healthz`);
+
+      expect(first.status).toBe(200);
+
+      const second = await fetch(`${base}/healthz`);
+
+      expect(second.status).toBe(429);
+      expect(second.headers.get("retry-after")).toBe("60");
+      expect(await second.json()).toEqual({ error: "rate_limited", retryAfterSeconds: 60 });
+    } finally {
+      child.kill("SIGTERM");
+    }
+  }, 15_000);
+
+  it("refuses to boot on a limit that is not a positive integer", async () => {
+    const { child, port } = startApi({ PORKBOT_LIMIT_MAX_BODY_BYTES: "nope" });
+
+    await expect(port).rejects.toThrow(/api exited before listening/);
+    expect(child.exitCode).toBe(1);
   }, 15_000);
 });

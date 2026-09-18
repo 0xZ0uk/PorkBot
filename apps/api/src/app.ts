@@ -12,6 +12,8 @@ import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import { assembleRouter, openProcedureContext } from "./gate.ts";
+import { httpRateLimited, installLimits, resolveLimits, routeRules } from "./limits.ts";
+import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
@@ -52,12 +54,25 @@ export interface ApiAppOptions {
    * data scope.
    */
   readonly repositoriesFor?: (actor: UserActor) => UserRepositories;
+  /**
+   * Overrides for the rate limits, body caps and stream caps in
+   * `./limits.ts`. Unset fields take the registered defaults; `main.ts`
+   * supplies operator values from the environment.
+   */
+  readonly limits?: LimitsOverrides;
+  /**
+   * The client address a request is keyed by when no actor resolved. It
+   * defaults to one shared "unknown" key, which is fail-closed (all anonymous
+   * clients share a budget); `createApiServer` supplies the socket address.
+   */
+  readonly clientKey?: (context: Context<ApiEnv>) => string;
 }
 
-interface ApiEnv {
+interface ApiEnv extends LimitEnv {
   Variables: {
     logger: Logger;
     requestId: string;
+    principal: LimitPrincipal | undefined;
   };
 }
 
@@ -74,6 +89,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const generateRequestId = options.generateRequestId ?? randomUUID;
   const resolveActor = options.resolveActor ?? noSession;
   const repositoriesFor = options.repositoriesFor ?? refuseRepositories;
+  const clientKey = options.clientKey ?? (() => "unknown");
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
@@ -116,6 +132,15 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
 
   app.use("*", requestBoundary(logger, generateRequestId));
 
+  // The one place limits, body caps and stream caps are installed. It is
+  // registered before every route, so a route added below — or by a test —
+  // cannot be silently unlimited.
+  const limits = installLimits(app, {
+    config: resolveLimits(options.limits),
+    rules: routeRules(rpcPath),
+    clientKey,
+  });
+
   app.get(healthPath, (context) =>
     context.json({
       status: "ok",
@@ -132,6 +157,8 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
       headers: context.req.raw.headers,
       logger: context.get("logger"),
       requestId: context.get("requestId"),
+      clientKey: clientKey(context),
+      limits,
       resolveActor,
       repositoriesFor,
     });
@@ -142,7 +169,21 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     });
 
     if (matched) {
+      // The gate puts a header on a typed refusal (the 429's `Retry-After`)
+      // without naming the transport; the RPC response is where it lands.
+      context.set("principal", procedureContext.principal);
+
+      procedureContext.responseHeaders.forEach((value, name) => response.headers.set(name, value));
+
       return context.newResponse(response.body, response);
+    }
+
+    // An RPC path the contract does not name draws the unmatched-path budget:
+    // the gate's own limiter only runs once a procedure matched.
+    const outcome = limits.enforceRoute("fallback", clientKey(context));
+
+    if (!outcome.allowed) {
+      return httpRateLimited(context, outcome.retryAfterSeconds);
     }
 
     return next();
