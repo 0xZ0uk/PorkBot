@@ -791,8 +791,8 @@ with no occurrence and no cursor move — and `outcomes` is the ledger with each
 slot's result and its run link. A malformed cron, an unknown IANA zone and an
 unreachable expression are the typed `InvalidRoutineScheduleError`, which the
 API boundary maps to the contract's `BAD_REQUEST` rather than a 500. The
-routine editor screen itself waits for the web shell (slice 11.1), which owns
-the first client.
+routine editor screen itself waits for the console surfaces (slice 11.2), which
+land on the web shell's routing and session.
 
 ## Notifications
 
@@ -883,6 +883,41 @@ carrying the marker a pass must never observe. A call-site suite in
 a module that touches a registered boundary without labelling, and the fixtures
 suite fails a registered path with no fixture, so a new ingestion surface cannot
 slip past either check.
+
+## Web shell
+
+`apps/web` is the product's client: TanStack Start in static SPA mode
+(`spa.enabled` in `vite.config.ts`), so the build prerenders one `_shell.html`
+and the router boots from it. `pnpm build` emits `dist/client` — HTML, JS and
+CSS — and no SSR process is required at run time. The same directory is what
+the `web` image serves and what the Electron wrapper packages (slice 11.6), so
+there is one client build and no fork. The app's own server
+(`apps/web/src/host.ts`) is a file server with the SPA contract: an existing
+file is streamed with its content type, an extension-less path with no file
+answers the shell and lets the router resolve it, a missing asset stays a 404,
+`/healthz` answers the container probe, and a path that escapes the root is
+refused rather than answered with the shell.
+
+Auth has three states, not two. `createSessionController` resolves the session
+through `account.me` — the contract's first authenticated procedure — and the
+`bootstrapping`, `signed-out`, `signed-in` and `unavailable` states are what the
+route guards branch on, so a session read that failed shows a "can't reach the
+server" screen with one retry instead of a sign-in form that cannot work. The
+credential exchange posts to Better Auth's routes under `/api/auth` (slice 12.1
+mounts the handler), the session cookie stays `HttpOnly` and JavaScript never
+reads it, and `deployment.status` decides whether sign-in offers registration.
+
+Colour and type come from `@porkbot/tokens`: `theme.ts` turns the semantic
+tokens into `--pb-*` custom properties inlined into the shell's first paint, and
+the surfaces and stylesheet name only those properties. The lint rule in
+`@porkbot/eslint-config` fails a hardcoded colour in `@porkbot/web`, so a theme
+change stays one file. The screens are labelled and keyboard-reachable: labels
+bind to inputs, the refusal is a `role="alert"` that takes focus, and a skip
+link leads to the focused `#main`. The e2e tier
+(`apps/web/test/e2e/static-build.e2e.test.ts`) builds the artifact, serves it
+with the static host and asserts the shell's asset references exist, the
+bootstrapping state is in the prerendered HTML, and an unknown route is
+rewritten rather than 404ed.
 
 ## Migrations
 
@@ -1269,14 +1304,26 @@ separates destructive migrations, the schema suite pins every primary key to
 columns and every foreign key from dangling, and an integration test reads
 `pg_catalog` to fail on a lookup foreign key no index leads with.
 
+The first client lands with slice 11.1: `apps/web` is a TanStack Start SPA —
+`pnpm build` prerenders `_shell.html` and emits `dist/client`, a static
+directory no SSR process is needed to serve, and the same artifact the Electron
+wrapper will package (slice 11.6). The shell ships routing with the
+`bootstrapping`, `signed-out`, `signed-in` and `unavailable` states, a sign-in
+and a registration screen on the contract's `deployment.status` for
+availability, the semantic tokens from `@porkbot/tokens` inlined into the first
+paint, and the static host the `web` image runs. The artifact is proven in the
+e2e tier: the built shell's asset references resolve, the bootstrapping state is
+in the prerendered HTML, an unknown route is rewritten to the shell and a
+missing asset stays a 404.
+
 Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
 stack — Postgres 18, the migrate one-shot, api, worker, web and supervisor — and
 waits for every healthcheck, and the same command is what CI's integration tier
 runs; the testkit harness attaches to the stack's Postgres for the suite clones,
 so integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
-unchanged. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
-M10 surface slices replace with the real clients; `apps/api` serves `/healthz`
+unchanged. `apps/desktop` and `apps/www` are placeholders that the M10 surface
+slices replace with the real clients; `apps/api` serves `/healthz`
 and the contract's procedures behind the auth gate, `apps/worker` boots Graphile
 Worker over the job registry, re-reads each run through the job's `SystemActor`
 and checks its fence under the worker's own database role (slice 6.1), and

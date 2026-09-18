@@ -4,25 +4,40 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/main.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "dev": "vite dev",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "serve": "node dist/host/main.js",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@porkbot/contracts": "workspace:*",
     "@porkbot/health": "workspace:*",
-    "@porkbot/logging": "workspace:*"
+    "@porkbot/logging": "workspace:*",
+    "@porkbot/tokens": "workspace:*",
+    "@porkbot/ui": "workspace:*",
+    "@tanstack/react-router": "1.170.38",
+    "@tanstack/react-start": "1.168.56",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
+    "@types/jsdom": "30.0.0",
     "@types/node": "24.13.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
     "@vitest/coverage-v8": "5.0.1",
     "eslint": "10.10.0",
+    "jsdom": "30.1.0",
     "typescript": "7.0.2",
+    "vite": "8.3.0",
     "vitest": "5.0.1"
   }
 }

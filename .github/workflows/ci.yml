@@ -222,12 +222,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # Placeholder spec today (apps/api/test/e2e). Later slices add real
-      # end-to-end coverage here; the job exists now so the wiring is proven
-      # rather than introduced alongside new tests.
-      #
-      # This is the only tier that retries (twice, from the e2e preset), and the
-      # shared flake reporter annotates every retried test on the pull request.
+      # Whole-process tests against built output: apps/api's suite covers the
+      # process lifecycle (start, probe, SIGTERM) and apps/web's serves the
+      # static SPA artifact and asserts the shell, its asset references and the
+      # rewrite. This is the only tier that retries (twice, from the e2e
+      # preset), and the shared flake reporter annotates every retried test on
+      # the pull request.
       - name: End-to-end tests
         timeout-minutes: 15
         run: pnpm test:e2e
