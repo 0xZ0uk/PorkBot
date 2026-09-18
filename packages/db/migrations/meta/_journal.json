@@ -22,6 +22,13 @@
       "when": 1789718792583,
       "tag": "0002_runs_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789723961909,
+      "tag": "0003_space_bootstrap",
+      "breakpoints": true
     }
   ]
 }

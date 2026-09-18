@@ -13,11 +13,12 @@ import type { spaceMemberRole } from "./schema/tenancy.ts";
  *
  * The types below are the whole enforcement surface: a repository factory takes
  * an `Actor` and nothing else names a space, so there is no call shape that
- * takes a raw tenant id. Actors are minted at the two places that can prove
- * them — the auth gate (session + membership, slice 3.2) and the job dispatcher
- * (a job payload's space, slice 6.1) — and `packages/db` deliberately exposes
- * no constructor that accepts a tenant id, so this package can never become the
- * third place one is invented.
+ * takes a raw tenant id. The auth gate resolves actors from a session plus a
+ * membership (slice 3.2) and the job dispatcher from a job payload's space
+ * (slice 6.1); the one actor this package resolves itself is
+ * `bootstrapSignup`'s, for the user whose membership it just wrote, from the
+ * user id the auth layer reported — and it too never accepts a space id, so
+ * `packages/db` still has no constructor that invents a tenant.
  */
 
 /** The membership roles `space_member_role` allows, derived from the schema. */
