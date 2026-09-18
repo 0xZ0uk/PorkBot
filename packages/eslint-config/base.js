@@ -5,6 +5,7 @@ import turboPlugin from "eslint-plugin-turbo";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import { boundaryConfigsFor } from "./module-boundaries.js";
+import { uiColorConfigsFor } from "./ui-colors.js";
 
 const sourceFiles = ["**/*.ts", "**/*.tsx"];
 const allFiles = [...sourceFiles, "**/*.js", "**/*.mjs", "**/*.cjs"];
@@ -62,6 +63,7 @@ export function defineConfig({ package: packageName }) {
       },
     },
     ...boundaryConfigsFor(packageName),
+    ...uiColorConfigsFor(packageName),
     eslintConfigPrettier,
   ];
 }
