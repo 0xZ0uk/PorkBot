@@ -91,4 +91,23 @@ describe("api process", () => {
     await expect(port).rejects.toThrow(/api exited before listening/);
     expect(child.exitCode).toBe(1);
   }, 15_000);
+
+  it("mounts the webhook ingress and refuses an unsigned delivery", async () => {
+    const { child, port } = startApi();
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${await port}/webhooks/github`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "opened" }),
+      });
+
+      // No source is registered, so the deployment fails closed before it
+      // touches the database; the placeholder URL is never dialled.
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    } finally {
+      child.kill("SIGTERM");
+    }
+  }, 15_000);
 });

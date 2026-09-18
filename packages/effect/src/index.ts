@@ -87,3 +87,24 @@ export type {
   SafeFetchInit,
   UrlSafetyOptions,
 } from "./url-safety.ts";
+
+// Webhook signature verification (slice 4.5, PRD decision 24). The ingress
+// calls this over the raw body before anything parses it, so an unsigned or
+// wrongly-signed request never reaches a handler, and the digest comparison is
+// constant-time and tolerates any length.
+export {
+  defaultSignatureToleranceSeconds,
+  parseWebhookSignature,
+  signWebhookBody,
+  timingSafeEqualBytes,
+  verifyWebhookSignature,
+  webhookDeliveryHeader,
+  webhookSignatureHeader,
+} from "./webhook-signature.ts";
+export type {
+  ParsedWebhookSignature,
+  SignWebhookInput,
+  VerifyWebhookSignatureInput,
+  WebhookSignatureCheck,
+  WebhookSignatureFailure,
+} from "./webhook-signature.ts";

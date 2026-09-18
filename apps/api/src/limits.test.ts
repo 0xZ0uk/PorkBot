@@ -20,10 +20,11 @@ import {
 describe("the route register", () => {
   const rules = routeRules("/rpc");
 
-  it("names the health probe and the whole RPC surface", () => {
+  it("names the health probe, the whole RPC surface and the webhook ingress", () => {
     expect(rules).toEqual([
       { method: "GET", path: "/healthz", family: "probe" },
       { method: "ALL", path: "/rpc/*", family: "rpc" },
+      { method: "POST", path: "/webhooks/*", family: "webhook" },
     ]);
   });
 
@@ -38,8 +39,14 @@ describe("the route register", () => {
     expect(routeRuleFor(rules, "POST", "/healthz")).toBeUndefined();
   });
 
+  it("matches the webhook ingress by prefix, so a source name is not enumerated", () => {
+    expect(routeRuleFor(rules, "POST", "/webhooks/github")?.family).toBe("webhook");
+    expect(routeRuleFor(rules, "POST", "/webhooks/anything-else")?.family).toBe("webhook");
+    expect(routeRuleFor(rules, "GET", "/webhooks/github")).toBeUndefined();
+  });
+
   it("does not invent a rule for an unknown path", () => {
-    expect(routeRuleFor(rules, "POST", "/webhooks/github")).toBeUndefined();
+    expect(routeRuleFor(rules, "POST", "/webhookish/github")).toBeUndefined();
     expect(routeRuleFor(rules, "GET", "/rpcish")).toBeUndefined();
   });
 });
