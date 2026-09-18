@@ -289,8 +289,8 @@ describe("the thread repository", () => {
   it("scopes findById and listForBot", async () => {
     await expect(aliceRepositories.threads.findById(threadB)).rejects.toBeInstanceOf(NotFoundError);
 
-    const foreign = await aliceRepositories.threads.listForBot(botB);
-    const own = await aliceRepositories.threads.listForBot(botA);
+    const foreign = await aliceRepositories.threads.listForBot(botB, { limit: 20 });
+    const own = await aliceRepositories.threads.listForBot(botA, { limit: 20 });
 
     expect(foreign).toEqual([]);
     expect(own.map((row) => row.id)).toContain(threadA);

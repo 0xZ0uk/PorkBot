@@ -110,6 +110,7 @@ export type {
   SystemRunWriter,
   RunWriter,
   SystemRepositories,
+  ThreadPage,
   ThreadReader,
   ThreadWriter,
   UserRepositories,
@@ -122,6 +123,31 @@ export type {
   NewRoutineTestRun,
   NewRunAndTask,
 } from "./run-creation.ts";
+
+// The message store (slice 6.5): the transcript reads the thread surface pages
+// through, the operator's steering command, and the worker's assistant-message
+// command. It owns the sequence allocation and the insert every message writer
+// shares, including the run-creation command. Its commands are built by
+// `createRepositories` from an actor; the two primitives below are exported for
+// the run-creation command, which writes its user message in its own
+// transaction.
+export {
+  allocateMessageSeq,
+  clearThread,
+  createAssistantMessageStore,
+  createSteeringMessageStore,
+  insertMessage,
+  readMessages,
+} from "./messages.ts";
+export type {
+  AssistantMessageWriter,
+  MessagePage,
+  MessageReader,
+  NewAssistantMessage,
+  NewMessage,
+  NewSteeringMessage,
+  SteeringMessageWriter,
+} from "./messages.ts";
 
 // The durable half of routines (slice 8.4, PRD decision 22): the schedule
 // rows, the occurrence ledger that makes a missed schedule a visible row, and

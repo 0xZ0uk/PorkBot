@@ -8,9 +8,11 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidMessageError,
   InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
+  MessageNonceReusedError,
   NameConflictError,
   NotFoundError,
   RunGoneError,
@@ -87,6 +89,16 @@ const samples = {
     error: new ToolLedgerError("begin"),
     code: "SERVICE_UNAVAILABLE",
     status: 503,
+  },
+  InvalidMessageError: {
+    error: new InvalidMessageError("empty"),
+    code: "BAD_REQUEST",
+    status: 400,
+  },
+  MessageNonceReusedError: {
+    error: new MessageNonceReusedError("message-1", "different_text"),
+    code: "CONFLICT",
+    status: 409,
   },
   InvalidRoutineScheduleError: {
     error: new InvalidRoutineScheduleError("invalid_cron", "the cron expression is invalid"),

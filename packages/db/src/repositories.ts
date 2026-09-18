@@ -1,6 +1,14 @@
+import { ACTIVE_RUN_STATUSES } from "@porkbot/core";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import type { NotificationPreferences, NotificationRecipients } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
+import {
+  clearThread,
+  createAssistantMessageStore,
+  createSteeringMessageStore,
+  readMessages,
+} from "./messages.ts";
+import type { AssistantMessageWriter, MessageReader, SteeringMessageWriter } from "./messages.ts";
 import type { Queryable } from "./queryable.ts";
 import { createNotificationStore } from "./notification-store.ts";
 import {
@@ -185,19 +193,44 @@ export interface SectionWriter {
   delete(id: string): Promise<BotSectionRecord>;
 }
 
+/**
+ * One page of a bot's threads. The keyset cursor is the ordering key itself —
+ * `(updated_at desc, id desc)` — so a page boundary is a position rather than
+ * an offset that shifts when a thread is touched, and a thread updated between
+ * pages cannot make the walk skip a row or repeat one silently.
+ */
+export interface ThreadPage {
+  readonly limit: number;
+  readonly before?: { readonly updatedAt: Date; readonly id: string } | undefined;
+}
+
 export interface ThreadReader {
   findById(id: string): Promise<ThreadRecord>;
-  listForBot(botId: string): Promise<readonly ThreadRecord[]>;
+  /** Most recently active first, scoped to the actor's space. */
+  listForBot(botId: string, page: ThreadPage): Promise<readonly ThreadRecord[]>;
 }
 
 export interface ThreadWriter {
   /** Fails closed when the bot is outside the actor's space; nothing is inserted. */
   createForBot(botId: string): Promise<ThreadRecord>;
+  /**
+   * Empties the thread's transcript and its event stream and resets both
+   * counters, in one transaction. The thread row survives, its runs survive,
+   * and the bot's memory documents are not touched: clearing is a reset of the
+   * conversation, never a deletion of what the bot knows.
+   */
+  clear(threadId: string): Promise<ThreadRecord>;
 }
 
 export interface RunReader {
   findById(id: string): Promise<RunRecord>;
   listForThread(threadId: string): Promise<readonly RunRecord[]>;
+  /**
+   * The thread's newest non-terminal run, when one exists. The send path asks
+   * before it creates anything, so a message that reaches a live run is a
+   * steer rather than a second concurrent run (PRD story 20).
+   */
+  findActiveForThread(threadId: string): Promise<RunRecord | undefined>;
 }
 
 /**
@@ -267,6 +300,8 @@ export interface SystemRepositories {
   readonly bots: BotReader;
   readonly threads: ThreadReader;
   readonly runs: RunReader & SystemRunWriter;
+  /** The run's own output: the assistant messages it produced. */
+  readonly messages: AssistantMessageWriter;
   /** The scheduler's half: settle one routine slot through the job's space. */
   readonly routines: RoutineScheduler;
   /**
@@ -285,6 +320,8 @@ export interface UserRepositories {
   readonly threads: ThreadReader & ThreadWriter;
   readonly runs: RunReader & RunWriter;
   readonly events: EventReader;
+  /** The transcript: page reads, the nonce lookup, and sending a steer. */
+  readonly messages: MessageReader & SteeringMessageWriter;
   readonly routines: RoutineReader & RoutineWriter;
   /** The operator's own notification switches (slice 8.6). */
   readonly notifications: NotificationPreferences;
@@ -300,6 +337,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
   const threads = readThreads(actor, database);
   const runs = readRuns(actor, database);
   const events = readEvents(actor, database);
+  const messages = readMessages(actor, database);
 
   if (actor.kind === "system") {
     return {
@@ -317,10 +355,13 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
         update: (id, lease, patch) => updateClaimedRun(actor, database, id, lease, patch),
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
+      messages: createAssistantMessageStore(actor, database),
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),
     };
   }
+
+  const steering = createSteeringMessageStore(actor, database);
 
   return {
     actor,
@@ -342,12 +383,17 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
     threads: {
       ...threads,
       createForBot: (botId) => createThread(actor, database, botId),
+      clear: (threadId) => clearThread(actor, database, threadId),
     },
     runs: {
       ...runs,
       create: (input) => createRunAndTask(actor, database, input),
     },
     events,
+    messages: {
+      ...messages,
+      steer: (input) => steering.steer(input),
+    },
     routines: createRoutineStore(actor, database),
     notifications: createNotificationStore(actor, database),
   };
@@ -418,11 +464,26 @@ function readThreads(actor: Actor, database: Queryable): ThreadReader {
       return requiredRow(rows, "thread", id);
     },
 
-    async listForBot(botId: string): Promise<readonly ThreadRecord[]> {
+    async listForBot(botId: string, page: ThreadPage): Promise<readonly ThreadRecord[]> {
+      const values: unknown[] = [actor.spaceId, botId];
+      let cursor = "";
+
+      // The row comparison is the keyset: `(updated_at, id) < (cursor)` under
+      // the same order the query sorts by, so the cursor names a position, not
+      // an offset. Both halves are compared together, which is what makes the
+      // order total even when two threads share an instant.
+      if (page.before !== undefined) {
+        values.push(page.before.updatedAt, page.before.id);
+        cursor = ` and (updated_at, id) < ($3::timestamptz, $4::uuid)`;
+      }
+
+      values.push(page.limit);
+
       const { rows } = await database.query<ThreadRecord>(
-        `select ${threadColumns} from thread where space_id = $1 and bot_id = $2 ` +
-          "order by updated_at desc, id desc",
-        [actor.spaceId, botId],
+        `select ${threadColumns} from thread ` +
+          `where space_id = $1 and bot_id = $2${cursor} ` +
+          `order by updated_at desc, id desc limit $${values.length}`,
+        values,
       );
 
       return rows;
@@ -449,6 +510,17 @@ function readRuns(actor: Actor, database: Queryable): RunReader {
       );
 
       return rows;
+    },
+
+    async findActiveForThread(threadId: string): Promise<RunRecord | undefined> {
+      const { rows } = await database.query<RunRecord>(
+        `select ${runColumns} from run where space_id = $1 and thread_id = $2 ` +
+          "and status = any($3::run_status[]) " +
+          "order by created_at desc, id desc limit 1",
+        [actor.spaceId, threadId, ACTIVE_RUN_STATUSES],
+      );
+
+      return rows[0];
     },
   };
 }

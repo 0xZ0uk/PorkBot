@@ -311,6 +311,64 @@ export class ApprovalStoreError extends Data.TaggedError("ApprovalStoreError")<{
 }
 
 /**
+ * Why a send was refused before anything was written: the text or the nonce
+ * broke a rule `@porkbot/core` owns. The reasons are the core rule's own
+ * vocabulary, translated at the boundary instead of parsing an error message.
+ */
+export type InvalidMessageReason = "empty" | "too_long" | "missing_nonce" | "nonce_too_long";
+
+function invalidMessageText(reason: InvalidMessageReason): string {
+  switch (reason) {
+    case "empty":
+      return "a message must carry text";
+    case "too_long":
+      return "the message text is longer than the send limit";
+    case "missing_nonce":
+      return "a message requires a client nonce";
+    case "nonce_too_long":
+      return "the client nonce is longer than the send limit";
+  }
+}
+
+/**
+ * A send that core's message rules refuse: blank text, text over the limit, or
+ * a missing or oversized client nonce. It is the caller's own input coming
+ * back, answered as a typed `BAD_REQUEST` rather than a 500 (PRD decision 28).
+ */
+export class InvalidMessageError extends Data.TaggedError("InvalidMessageError")<{
+  readonly reason: InvalidMessageReason;
+  readonly message: string;
+}> {
+  constructor(reason: InvalidMessageReason) {
+    super({ reason, message: invalidMessageText(reason) });
+  }
+}
+
+/**
+ * A client nonce that already names a different send: it was reused for other
+ * text, or for a message on another thread. The nonce is the send's
+ * idempotency key, so the refusal is a typed `CONFLICT` — the caller's retry
+ * answer is the first message, and a resubmission with new text is a new
+ * nonce, never a silent overwrite (PRD decision 5).
+ */
+export class MessageNonceReusedError extends Data.TaggedError("MessageNonceReusedError")<{
+  readonly messageId: string;
+  readonly reason: "different_text" | "another_thread";
+  readonly message: string;
+}> {
+  constructor(messageId: string, reason: "different_text" | "another_thread") {
+    super({
+      messageId,
+      reason,
+      message:
+        reason === "different_text"
+          ? `client nonce was already used by message ${messageId} for different text`
+          : `client nonce was already used by message ${messageId} on another thread`,
+    });
+  }
+}
+
+/**
  * Why a routine schedule was refused. The reasons are distinct because an
  * operator acts on them differently: `invalid_cron` and `invalid_timezone` are
  * fields to correct, while `unreachable` is a syntactically valid expression
@@ -359,6 +417,8 @@ export type TypedError =
   | InvalidToolCallError
   | ToolCallConflictError
   | ToolLedgerError
+  | InvalidMessageError
+  | MessageNonceReusedError
   | InvalidRoutineScheduleError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */
