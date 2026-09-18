@@ -23,4 +23,9 @@ export default defineConfig({
     }),
     viteReact(),
   ],
+  // The prerender boots Vite's preview server and fetches it over loopback.
+  // Pin the listener to IPv4 because `localhost` can resolve to `::1` for the
+  // bind and `127.0.0.1` for the fetch — inside a container it does — and the
+  // build then dies with ECONNREFUSED before writing the shell.
+  preview: { host: "127.0.0.1" },
 });
