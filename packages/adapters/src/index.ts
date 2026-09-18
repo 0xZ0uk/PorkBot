@@ -85,3 +85,19 @@ export {
   recordedPiRunSource,
 } from "./pi-run-source.ts";
 export type { PiApprovalDecision, PiRunControls, PiRunSource } from "./pi-run-source.ts";
+
+// Memory retrieval (slice 8.1, PRD decision 21). The interface lives in
+// @porkbot/adapter-kit; this package ships the two implementations the rule
+// requires plus the recall composition between them. The emulator is the
+// deterministic lexical index the product runs on with no provider configured;
+// the HTTP provider is reached by URL and credential name like every other
+// seam; `MemoryRecall` prefers the real provider and degrades to the emulator
+// on a classified provider failure, so no run depends on a hosted vendor to
+// remember something.
+export { MemoryEmulator } from "./memory-emulator.ts";
+export { MemoryConfigurationError, MemoryProviderError } from "./memory-errors.ts";
+export type { MemoryConfigurationReason } from "./memory-errors.ts";
+export { createHttpMemoryProvider } from "./http-memory.ts";
+export type { HttpMemoryProviderOptions } from "./http-memory.ts";
+export { MemoryRecall } from "./memory-recall.ts";
+export type { MemoryRecallOperation, MemoryRecallOptions } from "./memory-recall.ts";

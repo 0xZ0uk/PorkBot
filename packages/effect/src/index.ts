@@ -130,6 +130,19 @@ export type {
 export { createRunEventRecorder } from "./run-events.ts";
 export type { RunEventRecorder, RunEventRecorderOptions, RunEventSink } from "./run-events.ts";
 
+// The durable half of memory (slice 8.1, PRD decision 21). Documents and
+// revisions live in Postgres; the provider seam in `@porkbot/adapter-kit` is
+// only an index over them. `createMemoryStore` in `@porkbot/db` implements
+// these interfaces in one module — the only module that names the memory
+// tables — and the factory splits by actor: an operator writes deliberately
+// and reads history, an agent proposes create-or-rewrite and can never delete.
+export type {
+  MemoryDocuments,
+  MemoryProposals,
+  MemoryReader,
+  MemoryWriteInput,
+} from "./memory-store.ts";
+
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed
 // refusal live here so there is no second policy to drift from.

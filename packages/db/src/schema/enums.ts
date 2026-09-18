@@ -1,4 +1,4 @@
-import { APPROVAL_STATUSES, RUN_STATUSES } from "@porkbot/core";
+import { APPROVAL_STATUSES, MEMORY_KINDS, MEMORY_WRITE_ORIGINS, RUN_STATUSES } from "@porkbot/core";
 import { pgEnum } from "drizzle-orm/pg-core";
 
 /**
@@ -59,3 +59,12 @@ export const messageRole = pgEnum("message_role", ["user", "assistant"]);
  * deadline with no operator at all.
  */
 export const approvalStatus = pgEnum("approval_status", APPROVAL_STATUSES);
+
+/**
+ * The memory document's closed kind and write-path vocabularies, built from
+ * `@porkbot/core`'s constants for the same reason run status is: the domain
+ * rules, the database and (through the seam) the index provider must not
+ * disagree about what a "preference" is or where a write came from.
+ */
+export const memoryKind = pgEnum("memory_kind", MEMORY_KINDS);
+export const memoryWriteOrigin = pgEnum("memory_write_origin", MEMORY_WRITE_ORIGINS);
