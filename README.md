@@ -445,17 +445,21 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 1.8 of epic E1 (M0 — Foundation): one command, `pnpm stack:up`,
-starts the whole local stack — Postgres 18, api, worker, web and supervisor —
-with Docker Compose, and waits for every service's healthcheck before it
-returns; `pnpm stack:down` removes the containers, network and volume, so a
-re-run starts clean. The same command is what CI's integration tier runs, and
-the testkit harness attaches to the stack's Postgres for the suite clones.
-Under it, slice 1.6's structured logger — one JSON object per line, a
-`LOG_LEVEL`, correlation ids and redaction wired into the request and error logs
-`apps/api` writes — and slice 1.5's Postgres-per-suite harness are unchanged.
-The workspace, build, typecheck, lint and test wiring are real and the CI gate
-runs them as separate blocking tiers. `apps/web`, `apps/desktop` and
+This is slice 2.4 of epic E2 (M1 — Data & Domain Core): `packages/core` owns
+the run state machine as one transition map, readable in one screen, with
+`queued`, `running`, `waiting_approval`, `completed`, `failed` and `cancelled`
+states. An illegal transition returns a typed `IllegalTransition` — there is no
+silent status write — and cancellation, approval-gate suspension and failure
+paths are edges in the map. An exhaustive table-driven test covers every state
+pair, and the module imports nothing: no framework, no I/O, no database.
+
+Under it, slice 1.8's `pnpm stack:up` starts the whole local stack — Postgres
+18, api, worker, web and supervisor — and waits for every healthcheck before it
+returns; the same command is what CI's integration tier runs, with the testkit
+harness attaching to the stack's Postgres for the suite clones. Slice 1.6's
+structured logger and slice 1.5's Postgres-per-suite harness are unchanged. The
+workspace, build, typecheck, lint and test wiring are real and the CI gate runs
+them as separate blocking tiers. `apps/web`, `apps/desktop` and
 `apps/www` are placeholders that the M10 surface slices replace with the real
 clients; `apps/api` currently serves a single `/healthz` endpoint,
 `apps/worker` is an idle process, and `apps/supervisor` is a placeholder for the
