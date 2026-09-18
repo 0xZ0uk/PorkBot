@@ -1,8 +1,16 @@
+import { Data } from "effect";
+
 /**
  * The shared typed-error vocabulary the transport boundary maps from (PRD
  * decision 28). Errors live here rather than beside the code that throws them,
  * because `@porkbot/effect` owns the one `Cause -> ORPCError` table and must be
  * able to name every error it maps without importing a data layer.
+ *
+ * Each class is an Effect `Data.TaggedError`: it is a real `Error` that can be
+ * thrown from ordinary promise code, and it carries a literal `_tag` so an
+ * Effect program can catch it by tag and the mapping table can key on it.
+ * Adding a class to `TypedError` below without a mapping row fails the build,
+ * which is what keeps "every typed error has a status" true over time.
  *
  * Nothing here carries secret material or an operator-visible hint: a typed
  * error is a fact the caller already had, not a diagnostic.
@@ -14,15 +22,58 @@
  * the same error, so a response can never confirm that a guessed id exists
  * somewhere else (PRD decision 7).
  */
-export class NotFoundError extends Error {
+export class NotFoundError extends Data.TaggedError("NotFoundError")<{
   readonly resource: string;
   readonly id: string;
-
+  readonly message: string;
+}> {
   constructor(resource: string, id: string) {
-    super(`${resource} ${id} was not found`);
-    this.name = "NotFoundError";
-    this.resource = resource;
-    this.id = id;
+    super({ resource, id, message: `${resource} ${id} was not found` });
+  }
+}
+
+/**
+ * A run the caller asked for is no longer there: the row was purged, or the
+ * run belongs to a space the caller cannot see. Distinct from `NotFoundError`
+ * because the run lifecycle answers it differently — "this run is gone" ends a
+ * subscription or a steering attempt, while "no such bot" is a plain miss.
+ */
+export class RunGoneError extends Data.TaggedError("RunGoneError")<{
+  readonly runId: string;
+  readonly message: string;
+}> {
+  constructor(runId: string) {
+    super({ runId, message: `run ${runId} no longer exists` });
+  }
+}
+
+/**
+ * This process no longer owns a run it was working on: the lease expired and
+ * another worker reclaimed it, or a competing heartbeat advanced the fence.
+ * The loser must stop rather than write, so the fact is a typed `CONFLICT`
+ * (PRD decision 1); the error names the run and nothing about the winner.
+ */
+export class LeaseLostError extends Data.TaggedError("LeaseLostError")<{
+  readonly runId: string;
+  readonly message: string;
+}> {
+  constructor(runId: string) {
+    super({ runId, message: `the lease on run ${runId} was lost to another worker` });
+  }
+}
+
+/**
+ * An approval gate ran out its timeout, so the run resolves the decision to
+ * deny rather than waiting forever (PRD decision 13). The tool call id keeps
+ * the fact durable and addressable; the timeout policy itself lives in
+ * `@porkbot/core`.
+ */
+export class GateTimeoutError extends Data.TaggedError("GateTimeoutError")<{
+  readonly callId: string;
+  readonly message: string;
+}> {
+  constructor(callId: string) {
+    super({ callId, message: `approval for tool call ${callId} timed out` });
   }
 }
 
@@ -33,16 +84,19 @@ export class NotFoundError extends Error {
  * misconfiguration surfaced to the operator, never a coin flip between rows,
  * and never a silently-open deployment.
  */
-export class DeploymentSettingsConflictError extends Error {
+export class DeploymentSettingsConflictError extends Data.TaggedError(
+  "DeploymentSettingsConflictError",
+)<{
   readonly rows: number;
-
+  readonly message: string;
+}> {
   constructor(rows: number) {
-    super(
-      `deployment_settings holds ${rows} rows; exactly one configuration is expected. ` +
+    super({
+      rows,
+      message:
+        `deployment_settings holds ${rows} rows; exactly one configuration is expected. ` +
         "Remove the extra rows and keep the one the operator wrote.",
-    );
-    this.name = "DeploymentSettingsConflictError";
-    this.rows = rows;
+    });
   }
 }
 
@@ -52,16 +106,17 @@ export class DeploymentSettingsConflictError extends Error {
  * (PRD decision 28 maps this to `PRECONDITION`). The name identifies which
  * credential is missing; the value never existed to leak.
  */
-export class CredentialMissingError extends Error {
+export class CredentialMissingError extends Data.TaggedError("CredentialMissingError")<{
   readonly credentialName: string;
-
+  readonly message: string;
+}> {
   constructor(credentialName: string) {
-    super(
-      `credential "${credentialName}" is not configured. ` +
+    super({
+      credentialName,
+      message:
+        `credential "${credentialName}" is not configured. ` +
         "Store it through the deployment's credential source before enabling the provider.",
-    );
-    this.name = "CredentialMissingError";
-    this.credentialName = credentialName;
+    });
   }
 }
 
@@ -110,16 +165,30 @@ function blockedUrlMessage(
  * a URL may embed a credential or a secret query parameter, and an error is
  * serialized into logs.
  */
-export class BlockedUrlError extends Error {
+export class BlockedUrlError extends Data.TaggedError("BlockedUrlError")<{
   readonly reason: BlockedUrlReason;
   readonly host: string | undefined;
   readonly address: string | undefined;
-
+  readonly message: string;
+}> {
   constructor(reason: BlockedUrlReason, host?: string, address?: string) {
-    super(blockedUrlMessage(reason, host, address));
-    this.name = "BlockedUrlError";
-    this.reason = reason;
-    this.host = host;
-    this.address = address;
+    super({ reason, host, address, message: blockedUrlMessage(reason, host, address) });
   }
 }
+
+/**
+ * Every error that has a row in the mapping table. A new member fails the
+ * `satisfies` check in `mapping.ts` until it has a status, and that is the
+ * exhaustiveness the table's test suite then proves at runtime.
+ */
+export type TypedError =
+  | NotFoundError
+  | RunGoneError
+  | LeaseLostError
+  | GateTimeoutError
+  | DeploymentSettingsConflictError
+  | CredentialMissingError
+  | BlockedUrlError;
+
+/** The literal tag of every typed error, i.e. the table's key space. */
+export type TypedErrorTag = TypedError["_tag"];

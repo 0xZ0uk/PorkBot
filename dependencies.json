@@ -42,6 +42,11 @@
       "reason": "Email/password, sessions and verification for the one auth gate (slice 3.1, PRD decision 8). Pinned exactly because it owns password hashing, session-cookie issuance and origin checks, where an implicit upgrade is a security change nobody reviewed; the identity schema was generated for this library's table shape."
     },
     {
+      "name": "effect",
+      "version": "3.22.2",
+      "reason": "The orchestration layer (PRD decision 12): provider services and their layers, retries, timeouts, resource safety, structured concurrency and typed error channels. Pinned exactly because its Cause, Layer and Context semantics are the error-mapping and lifetime contract every later service is written against; the major is chosen deliberately (3.x stable, not the 4.x release candidate)."
+    },
+    {
       "name": "hono",
       "version": "4.13.8",
       "reason": "The API's HTTP surface (slice 4.1, PRD decision 14: oRPC over Hono), mounted through the RPC handler and composed by every later route, stream and webhook. Pinned exactly because routing, middleware order and header handling are user-visible behaviors an implicit upgrade could move."
