@@ -6,8 +6,15 @@ import { describe, expect, it } from "vitest";
 function startApi(): { child: ChildProcess; port: Promise<number> } {
   const child = spawn(process.execPath, ["src/main.ts"], {
     // LOG_LEVEL is pinned so an ambient level above info cannot filter the
-    // startup line this test waits for.
-    env: { ...process.env, PORT: "0", LOG_LEVEL: "info" },
+    // startup line this test waits for. DATABASE_URL is a placeholder: the
+    // process constructs its pool without connecting, and this spec never
+    // calls a data-backed procedure.
+    env: {
+      ...process.env,
+      PORT: "0",
+      LOG_LEVEL: "info",
+      DATABASE_URL: "postgres://porkbot:e2e-placeholder@127.0.0.1:5432/porkbot",
+    },
     stdio: ["ignore", "pipe", "inherit"],
   });
 
