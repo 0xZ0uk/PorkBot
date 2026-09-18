@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@porkbot/core": "workspace:*",
+    "@porkbot/effect": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "8.23.0"
   },
