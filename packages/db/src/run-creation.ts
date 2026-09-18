@@ -1,10 +1,12 @@
 import { INITIAL_RUN_STATUS } from "@porkbot/core";
+import type { MessageBlock } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
 import type { SystemActor, UserActor } from "./actor.ts";
+import { allocateMessageSeq, insertMessage } from "./messages.ts";
 import type { Queryable } from "./queryable.ts";
 import { messageColumns, runColumns, taskColumns } from "./records.ts";
 import type { MessageRecord, RunRecord, TaskRecord } from "./records.ts";
-import { insertedRow, requiredRow } from "./rows.ts";
+import { insertedRow } from "./rows.ts";
 import { withTransaction } from "./transaction.ts";
 
 /**
@@ -59,8 +61,8 @@ export interface NewRunAndTask {
    */
   readonly clientNonce: string;
   readonly prompt: string;
-  /** The user message's content, stored as jsonb; its shape is the wire's. */
-  readonly blocks: readonly unknown[];
+  /** The user message's content, as the block vocabulary core owns. */
+  readonly blocks: readonly MessageBlock[];
 }
 
 /** The three rows one accepted submission creates, already linked. */
@@ -147,25 +149,20 @@ async function createOnce(
       throw new SubmissionSettled();
     }
 
-    const { rows: seqRows } = await transaction.query<{ readonly seq: number }>(
-      "update thread set next_message_seq = next_message_seq + 1 " +
-        "where id = $1 and space_id = $2 " +
-        "returning next_message_seq - 1 as seq",
-      [input.threadId, actor.spaceId],
-    );
-
     // The thread row the task was built from is gone: a concurrent delete wins,
-    // and the whole submission rolls back as not-found.
-    const seq = requiredRow(seqRows, "thread", input.threadId).seq;
+    // and the whole submission rolls back as not-found. The sequence allocation
+    // and the insert are the message store's, so this command and every other
+    // message writer order the transcript identically.
+    const seq = await allocateMessageSeq(transaction, actor.spaceId, input.threadId);
 
-    const { rows: messageRows } = await transaction.query<MessageRecord>(
-      "insert into message (thread_id, seq, role, blocks, client_nonce, run_id) " +
-        "values ($1, $2, 'user', $3::jsonb, $4, $5) " +
-        `returning ${messageColumns}`,
-      [input.threadId, seq, JSON.stringify(input.blocks), input.clientNonce, run.id],
-    );
-
-    const message = insertedRow(messageRows);
+    const message = await insertMessage(transaction, {
+      threadId: input.threadId,
+      seq,
+      role: "user",
+      blocks: input.blocks,
+      clientNonce: input.clientNonce,
+      runId: run.id,
+    });
 
     const { rows: linkedRows } = await transaction.query<RunRecord>(
       "update run set source_message_id = $1 where id = $2 and space_id = $3 " +

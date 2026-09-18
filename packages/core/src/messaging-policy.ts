@@ -32,10 +32,15 @@ export interface ActiveRun {
   readonly status: RunStatus;
 }
 
-/** What an earlier send with the same client nonce produced. */
+/**
+ * What an earlier send with the same client nonce produced. `runId` is null
+ * when the message is a steer whose addressed run row no longer exists: the
+ * transcript keeps the message, and the replay says so instead of inventing a
+ * run. Every message that started a run carries its id.
+ */
 export interface ExistingSend {
   readonly messageId: string;
-  readonly runId: string;
+  readonly runId: string | null;
   /** The request that created it, so a nonce stays bound to its content. */
   readonly request: SendMessageRequest;
 }
@@ -59,7 +64,7 @@ export interface MessageContext {
 export type MessageAction =
   | { readonly action: "start_run" }
   | { readonly action: "steer"; readonly runId: string }
-  | { readonly action: "replay"; readonly messageId: string; readonly runId: string };
+  | { readonly action: "replay"; readonly messageId: string; readonly runId: string | null };
 
 export type MessageDecision =
   | { readonly ok: true; readonly action: MessageAction }

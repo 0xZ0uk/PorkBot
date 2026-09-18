@@ -144,8 +144,19 @@ function fakeRepositories(actor: UserActor): UserRepositories {
       },
       listForBot: notExercised,
       createForBot: notExercised,
+      clear: notExercised,
     },
-    runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
+    runs: {
+      findById: notExercised,
+      listForThread: notExercised,
+      findActiveForThread: notExercised,
+      create: notExercised,
+    },
+    messages: {
+      listForThread: notExercised,
+      findByNonce: notExercised,
+      steer: notExercised,
+    },
     events: {
       async listAfter(threadId: string, afterSeq: number, limit: number): Promise<EventRecord[]> {
         return store.events

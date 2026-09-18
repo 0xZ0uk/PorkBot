@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVE_RUN_STATUSES,
   IllegalTransition,
   INITIAL_RUN_STATUS,
   RUN_STATUSES,
@@ -98,6 +99,11 @@ describe("run state rules", () => {
         expect(canTransition(status, to)).toBe(false);
       }
     }
+  });
+
+  it("lists exactly the active statuses, derived from the same rule", () => {
+    expect([...ACTIVE_RUN_STATUSES]).toEqual(RUN_STATUSES.filter(isActiveStatus));
+    expect([...ACTIVE_RUN_STATUSES]).toEqual(["queued", "running", "waiting_approval"]);
   });
 
   it("recognizes every declared status and nothing else", () => {

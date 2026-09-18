@@ -5,6 +5,7 @@ export const moduleInfo = {
 } as const;
 
 export {
+  ACTIVE_RUN_STATUSES,
   assertTransition,
   canTransition,
   IllegalTransition,
@@ -123,6 +124,9 @@ export type {
   MessageDecision,
   SendMessageRequest,
 } from "./messaging-policy.ts";
+
+export { isMessageBlock, messageText, textMessageBlocks } from "./message-blocks.ts";
+export type { MessageBlock, TextMessageBlock } from "./message-blocks.ts";
 
 export {
   decideRoutineDue,
