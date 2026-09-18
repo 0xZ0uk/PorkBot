@@ -23,7 +23,6 @@ export const workspacePackages = {
     role: "pure domain: rules, state machine, reducer, policies",
     imports: [],
     testImports: ["@porkbot/testkit"],
-    testImports: ["@porkbot/testkit"],
   },
   "@porkbot/contracts": {
     role: "schemas and transport types",
@@ -112,6 +111,7 @@ export const workspacePackages = {
       "@porkbot/core",
       "@porkbot/db",
       "@porkbot/effect",
+      "@porkbot/health",
       "@porkbot/logging",
     ],
     testImports: ["@porkbot/testkit"],
@@ -188,9 +188,25 @@ export const workspacePackages = {
 // orchestration layer is used by api, worker, adapters and effect itself.
 export const restrictedLibraries = [
   {
-    category: "web framework or transport library",
+    category: "web framework",
     owners: ["@porkbot/api"],
-    names: ["hono", "@orpc"],
+    names: ["hono", "@hono/node-server"],
+  },
+  {
+    // The contract and client half of oRPC: defining procedures and calling
+    // them. It belongs with @porkbot/contracts, which is the single source of
+    // transport truth, so a client package imports the contract rather than a
+    // transport library (PRD decisions 14 and 15).
+    category: "oRPC contract and client library",
+    owners: ["@porkbot/contracts"],
+    names: ["@orpc/contract", "@orpc/client"],
+  },
+  {
+    // The server half: implementing the contract, matching requests, and
+    // generating the OpenAPI document. It belongs to the HTTP surface.
+    category: "oRPC server and OpenAPI library",
+    owners: ["@porkbot/api"],
+    names: ["@orpc/server", "@orpc/openapi", "@orpc/zod"],
   },
   {
     category: "React UI library",
