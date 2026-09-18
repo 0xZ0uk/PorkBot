@@ -39,6 +39,12 @@ function fakeHelpers(options: { readonly jobId?: string; readonly attempts?: num
       return { rows: [] as readonly Row[] };
     },
   };
+  const enqueued: Array<{
+    readonly identifier: string;
+    readonly payload: Record<string, unknown>;
+    readonly jobKey?: string;
+    readonly jobKeyMode?: string;
+  }> = [];
 
   const helpers = {
     job: {
@@ -47,9 +53,21 @@ function fakeHelpers(options: { readonly jobId?: string; readonly attempts?: num
       task_identifier: "example.job",
     },
     withPgClient: async <T>(work: (pgClient: Queryable) => Promise<T>): Promise<T> => work(client),
+    addJob: async (
+      identifier: string,
+      payload: Record<string, unknown>,
+      taskOptions?: { readonly jobKey?: string; readonly jobKeyMode?: string },
+    ) => {
+      enqueued.push({
+        identifier,
+        payload,
+        ...(taskOptions?.jobKey === undefined ? {} : { jobKey: taskOptions.jobKey }),
+        ...(taskOptions?.jobKeyMode === undefined ? {} : { jobKeyMode: taskOptions.jobKeyMode }),
+      });
+    },
   } as unknown as JobHelpers;
 
-  return { helpers, client };
+  return { helpers, client, enqueued };
 }
 
 function silentLogger() {
@@ -127,5 +145,35 @@ describe("a job registry", () => {
       registry.taskList["example.job"]?.({ prompt: "do the thing" }, helpers),
     ).rejects.toThrow(/carries work/);
     expect(job.recorded.payloads).toEqual([]);
+  });
+
+  it("enqueues a registered job with its job key and refuses an unregistered one", async () => {
+    const target = recordingJob("later.job", (payload) => payload);
+    const caller = recordingJob("example.job", (payload) => payload);
+    const { logger } = silentLogger();
+    const registry = createJobRegistry({
+      jobs: [target.definition, caller.definition],
+      logger,
+    });
+    const { helpers, enqueued } = fakeHelpers();
+
+    await registry.taskList["example.job"]?.({}, helpers);
+    const context = caller.recorded.contexts[0];
+
+    await context?.enqueue(
+      "later.job",
+      { runId: "run-1" },
+      { jobKey: "run-1", jobKeyMode: "replace" },
+    );
+    expect(enqueued).toEqual([
+      {
+        identifier: "later.job",
+        payload: { runId: "run-1" },
+        jobKey: "run-1",
+        jobKeyMode: "replace",
+      },
+    ]);
+
+    await expect(context?.enqueue("missing.job", {})).rejects.toThrow(/no job is registered/);
   });
 });

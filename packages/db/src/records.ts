@@ -1,5 +1,5 @@
 import type { RunStatus } from "@porkbot/core";
-import type { messageRole, taskStatus } from "./schema/enums.ts";
+import type { attemptStatus, messageRole, taskStatus } from "./schema/enums.ts";
 
 /**
  * The row shapes and column projections every query in this package shares.
@@ -45,6 +45,9 @@ export type TaskStatus = (typeof taskStatus.enumValues)[number];
 
 /** The message roles the schema's enum allows, derived from it. */
 export type MessageRole = (typeof messageRole.enumValues)[number];
+
+/** The attempt statuses the schema's enum allows, derived from it. */
+export type AttemptStatus = (typeof attemptStatus.enumValues)[number];
 
 /** A task row: the durable unit of requested work a run executes. */
 export interface TaskRecord {

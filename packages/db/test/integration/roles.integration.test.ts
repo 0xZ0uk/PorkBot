@@ -138,7 +138,7 @@ describe("the worker role", () => {
     }
   });
 
-  it("may update run leases and insert attempts, but not create runs", async () => {
+  it("may update run leases, settle attempts and reconcile effects, but not create runs", async () => {
     const worker = await connectAs(workerRole);
 
     try {
@@ -149,6 +149,12 @@ describe("the worker role", () => {
         worker.query(
           "insert into attempt (run_id, fence, status) select id, 1, 'running' from run where false",
         ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query("update attempt set error = 'reclaimed' where false"),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query("update external_effect set status = 'failed' where false"),
       ).resolves.toBeDefined();
       await expect(
         worker.query(
@@ -258,6 +264,8 @@ describe("the catalog's answer", () => {
       worker_updates_run: boolean;
       worker_inserts_attempt: boolean;
       worker_reads_attempt: boolean;
+      worker_updates_attempt: boolean;
+      worker_updates_effects: boolean;
       worker_inserts_run: boolean;
       worker_reads_users: boolean;
       worker_inserts_approval: boolean;
@@ -280,6 +288,8 @@ describe("the catalog's answer", () => {
         "has_table_privilege($2, 'public.run', 'UPDATE') as worker_updates_run, " +
         "has_table_privilege($2, 'public.attempt', 'INSERT') as worker_inserts_attempt, " +
         "has_table_privilege($2, 'public.attempt', 'SELECT') as worker_reads_attempt, " +
+        "has_table_privilege($2, 'public.attempt', 'UPDATE') as worker_updates_attempt, " +
+        "has_table_privilege($2, 'public.external_effect', 'UPDATE') as worker_updates_effects, " +
         "has_table_privilege($2, 'public.run', 'INSERT') as worker_inserts_run, " +
         "has_table_privilege($2, 'public.\"user\"', 'SELECT') as worker_reads_users, " +
         "has_table_privilege($2, 'public.approval', 'INSERT') as worker_inserts_approval, " +
@@ -308,6 +318,8 @@ describe("the catalog's answer", () => {
       worker_updates_run: true,
       worker_inserts_attempt: true,
       worker_reads_attempt: true,
+      worker_updates_attempt: true,
+      worker_updates_effects: true,
       worker_inserts_run: false,
       worker_reads_users: false,
       worker_inserts_approval: true,

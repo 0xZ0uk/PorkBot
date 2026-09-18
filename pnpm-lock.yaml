@@ -200,10 +200,16 @@ importers:
       '@porkbot/logging':
         specifier: workspace:*
         version: link:../../packages/logging
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
       graphile-worker:
         specifier: 0.18.0
         version: 0.18.0(typescript@7.0.2)
     devDependencies:
+      '@porkbot/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@porkbot/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config

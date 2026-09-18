@@ -292,6 +292,36 @@ client reads the durable rows through `listForRun` and replays the recorded
 stream from the `event` table, so the gate it sees is the one the run recorded,
 not the one a connection happened to hold.
 
+## Fenced runs, reclaim and resume
+
+A run is executed inside `withRunFence` in `packages/effect`: it heartbeats on
+the shared interval, and the first beat that cannot be renewed — a typed
+`LeaseLostError`, or any failure at all, because work that cannot be renewed
+cannot be committed — completes a fence-loss signal that interrupts the run's
+whole fiber tree. The adapter inside cancels and reports; it never finishes a
+tool call and commits a side effect the next owner already owns. The worker's
+execution harness (`apps/worker/src/run-execution.ts`) wraps that fence around
+the run's work and settles the run and its attempt in one fenced statement:
+`completed` on success, `failed` with the work's message on failure, and on a
+lost lease no run write at all — only the best-effort closing of its own attempt
+as `abandoned`.
+
+Recovery is a reclaim, never a restart. A `run.watchdog` job scheduled every
+minute scans `findExpiredLeases` — the one deliberate cross-space read in the
+database package, addressing only — re-reads each candidate through a
+`SystemActor` for its space, and reclaims it with the same CAS every other
+reclaimer uses, so two watchdogs produce one winner. The reclaim is one
+statement that moves the fence, closes the superseded attempt as `abandoned`
+with the reason, and settles every tool-call row the old owner left `pending` or
+`running` as `failed` with the same reason. A run whose stored checkpoint carries
+session state is handed off to a fresh `run.execute` delivery, which adopts the
+live lease by the exact `(fence, owner)` pair the watchdog held; a run that
+stopped before its first checkpoint is failed with a typed reason
+(`checkpoint_absent`, `checkpoint_unreadable`) from `@porkbot/core`'s
+`decideReclaim`, never silently restarted. The resume therefore sees
+`resumed: true`, its checkpoint, and replayed tool-call outcomes instead of a
+second side effect.
+
 ## Dependencies
 
 `dependencies.json` at the repository root is the pin register: every package
