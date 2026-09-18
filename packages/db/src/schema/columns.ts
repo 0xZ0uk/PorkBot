@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { uuid } from "drizzle-orm/pg-core";
+import { timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
  * The primary-key convention every table in this schema follows: a UUIDv7,
@@ -16,4 +16,19 @@ export function primaryKeyId() {
   return uuid("id")
     .primaryKey()
     .default(sql`uuidv7()`);
+}
+
+/**
+ * The timestamp convention every table follows: `created_at` and `updated_at`
+ * as `timestamptz`, both NOT NULL with a server-side default, so a row's age is
+ * always answerable and "when" never depends on the app host's clock.
+ *
+ * The property keys are camelCase to match the Better Auth field names the
+ * drizzle adapter looks up, while the SQL names stay snake_case.
+ */
+export function timestamps() {
+  return {
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  };
 }
