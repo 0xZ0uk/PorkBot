@@ -1,5 +1,5 @@
 {
-  "name": "@porkbot/worker",
+  "name": "@porkbot/supervisor",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@porkbot/core": "workspace:*",
-    "@porkbot/db": "workspace:*",
-    "@porkbot/effect": "workspace:*",
     "@porkbot/health": "workspace:*",
     "@porkbot/logging": "workspace:*"
   },

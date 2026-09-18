@@ -1,0 +1,79 @@
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createHealthListener, createHealthServer, healthPath } from "./index.ts";
+
+const service = "@porkbot/test-health";
+const server: Server = createHealthServer({ service });
+let baseUrl = "";
+
+beforeAll(async () => {
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+
+  if (address === null || typeof address === "string") {
+    throw new Error("expected a TCP address");
+  }
+
+  baseUrl = `http://127.0.0.1:${address.port}`;
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+});
+
+describe("the health listener", () => {
+  it("claims the probe and leaves every other request alone", () => {
+    const listener = createHealthListener({ service });
+    const writes: string[] = [];
+    const response = {
+      writeHead(status: number): void {
+        writes.push(`status:${status}`);
+      },
+      end(body?: string): void {
+        writes.push(`end:${body ?? ""}`);
+      },
+    } as unknown as ServerResponse;
+
+    expect(listener({ method: "GET", url: "/" } as IncomingMessage, response)).toBe(false);
+    expect(listener({ method: "POST", url: healthPath } as IncomingMessage, response)).toBe(false);
+    expect(writes).toEqual([]);
+
+    expect(listener({ method: "GET", url: healthPath } as IncomingMessage, response)).toBe(true);
+    expect(writes).toEqual(["status:200", `end:${JSON.stringify({ status: "ok", service })}`]);
+  });
+});
+
+describe("the health server", () => {
+  it("answers the probe with the service identity", async () => {
+    const response = await fetch(`${baseUrl}${healthPath}`);
+    const body = (await response.json()) as { status: string; service: string };
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ status: "ok", service });
+  });
+
+  it("rejects methods other than GET", async () => {
+    const response = await fetch(`${baseUrl}${healthPath}`, { method: "POST" });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("answers unknown routes with 404", async () => {
+    const response = await fetch(`${baseUrl}/unknown`);
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
+  });
+});

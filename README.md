@@ -28,12 +28,16 @@ pnpm test:coverage    # unit tests with coverage: the tier CI actually runs
 pnpm test:integration # tests that need a real Postgres
 pnpm test:e2e         # end-to-end tests (the only tier that retries)
 pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
+pnpm stack:up         # build the stack, start it, wait for every healthcheck
+pnpm stack:logs       # follow the stack's logs
+pnpm stack:status     # show the stack's services, states and ports
+pnpm stack:down       # stop the stack; remove containers, network and volumes
 pnpm testkit:start    # boot the harness Postgres container, record its state
 pnpm testkit:migrate  # apply SQL migrations to the harness template database
 pnpm testkit:snapshot # clone the template into a fresh suite database
 pnpm testkit:destroy  # drop the suites and template, remove the container
 pnpm testkit:benchmark # measure start, migrate and per-suite clone cost
-pnpm dev              # run the always-on processes (api, worker)
+pnpm dev              # run the always-on processes (api, worker, web, supervisor)
 pnpm format           # rewrite files with Prettier
 pnpm format:check     # verify formatting (CI runs this)
 ```
@@ -46,11 +50,12 @@ build the workspace dependencies they need first, so a clean checkout only needs
 
 ```
 apps/
-  api/       HTTP and streaming surface over the domain
-  worker/    always-on background worker, durable jobs
-  web/       static SPA surface
-  desktop/   Electron client of the same API
-  www/       public landing and documentation site
+  api/         HTTP and streaming surface over the domain
+  worker/      always-on background worker, durable jobs
+  supervisor/  Docker socket owner: placeholder until slice 7.1
+  web/         static SPA surface
+  desktop/     Electron client of the same API
+  www/         public landing and documentation site
 packages/
   core/         pure domain: rules, state machine, reducer, policies
   db/           Drizzle schema, migrations, actor-scoped repositories
@@ -62,6 +67,7 @@ packages/
   ui/           design-system components
   tokens/       design tokens
   logging/      JSON logs, levels, correlation ids, redaction
+  health/       health endpoints for always-on processes
   testkit/      tier presets, quarantine ledger, flake reporter, Postgres-per-suite harness CLI
   eslint-config/     internal: shared ESLint flat config
   typescript-config/ internal: shared tsconfig bases
@@ -70,6 +76,48 @@ packages/
 Every package is private, ESM, `"type": "module"`, and exports built `dist` output
 (`exports` maps `types` + `default`). Packages import each other with the `workspace:*`
 protocol, so a package can only use what it declares.
+
+## Local stack
+
+`docker compose` (repository-root `compose.yaml`) brings up the whole product:
+Postgres 18, `api`, `worker`, `web` and `supervisor`, each with a healthcheck.
+One command starts it and waits:
+
+```sh
+pnpm stack:up      # build, start, wait for every healthcheck
+pnpm stack:logs    # follow the logs of every service
+pnpm stack:status  # what is running, and on which ports
+pnpm stack:down    # stop; remove containers, network and Postgres volume
+```
+
+`stack:up` returns only once every healthcheck passes, so whatever runs after it
+can trust the stack; a service that never reports healthy fails the command and
+prints the recent logs. `stack:down` removes the containers, the network and the
+Postgres volume, so a shut down and a re-run leave nothing behind.
+
+- **No key, no vendor, no egress.** The processes ship no provider endpoint or
+  credential, and the only images pulled are Node and Postgres; provider calls
+  are replaced by offline emulators as the adapter slices land (5.4, 6.9, 7.3).
+  The stack runs offline.
+- **Ports.** `web` on 3000, `api` on 3001, Postgres on 5432, all published on
+  loopback only; `worker` and `supervisor` answer only inside the compose
+  network. Override the published ports with `PORKBOT_WEB_PORT`,
+  `PORKBOT_API_PORT`, `PORKBOT_POSTGRES_PORT`, and the health wait budget with
+  `PORKBOT_STACK_WAIT_SECONDS`.
+- **CI runs the same command.** The integration tier starts the stack with
+  `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
+  of booting its own container, runs the integration suites against it, and
+  removes the stack with `if: always()`. There is no CI-only compose file or
+  boot script.
+- **The five processes are the point.** The api serves one route, the worker and
+  supervisor are idle, and Postgres has no application schema yet, but story 44
+  is one command that starts the real topology: a later slice replaces a
+  process's body, never its place in the stack.
+
+Each service image builds from the root `Dockerfile`; the shared build stage
+installs and builds the workspace once and `pnpm deploy`s each app into its own
+runtime image. Every process answers `/healthz` — `packages/health` is the
+shared route, `apps/api` keeps its own because its listener also logs requests.
 
 ## Boundaries
 
@@ -154,7 +202,7 @@ with a name instead of a step index buried in one long log.
 - `build` — `tsc` emit, the artifact the later tiers and every deploy consume
 - `quarantine` — `quarantine.json` is valid and nothing in it has expired
 - `unit` — unit tests with coverage
-- `integration` — the tests that need a real Postgres, which the testkit harness boots
+- `integration` — the tests that need a real Postgres, against the local stack the job starts
 - `e2e` — whole-process tests against the built output
 - `gate` — green only when every tier above is green
 
@@ -164,11 +212,13 @@ rather than rebuilding the workspace. Every tier asserts the Node major instead
 of assuming it, and the toolchain lives in `.github/actions/setup` so a bump
 cannot land in some tiers and not others.
 
-The `integration` job declares no service: the testkit harness boots
-`postgres:18`, the production major, itself. A tier that runs against the wrong
-database proves nothing, and a tier that skips itself when the runtime is
-missing is worse than no tier, so a missing Docker daemon (and no
-`TESTKIT_DATABASE_URL`) fails the suite rather than skipping it.
+The `integration` job declares no service: it starts the local stack with
+`pnpm stack:up`, the same command a developer runs, and the testkit harness
+then attaches to that stack's Postgres — the production major — instead of
+booting its own container. A tier that runs against the wrong database proves
+nothing, and a tier that skips itself when the runtime is missing is worse than
+no tier, so a missing Docker daemon (and no `TESTKIT_DATABASE_URL`) fails the
+suite rather than skipping it.
 
 The e2e tier carries the placeholder spec later slices replace. The job exists
 now so the wiring is proven on its own rather than introduced alongside new
@@ -367,20 +417,21 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 1.6 of epic E1 (M0 — Foundation): `packages/logging` now ships
-the structured logger the rest of the product uses — one JSON object per line
-with a level, an ISO timestamp and a request/run correlation id, a `LOG_LEVEL`
-setting that defaults to `info`, and redaction wired into the request and error
-logs `apps/api` writes rather than left as an unused helper. Slice 1.5 is in
-place with it: integration tests run against a real Postgres 18 that the testkit
-harness boots itself — one container per run, a migrated template database and a
-clone per suite — with a harness CLI for scripted scenarios and canaries. The
-workspace, build, typecheck, lint and test wiring are real and the CI gate runs
-them as separate blocking tiers. `apps/web`,
-`apps/desktop` and `apps/www` are placeholders that the
-M10 surface slices replace with the real clients; `apps/api` currently serves a single
-`/healthz` endpoint and `apps/worker` is an idle process, both replaced by slices 6.1 and
-later.
+This is slice 1.8 of epic E1 (M0 — Foundation): one command, `pnpm stack:up`,
+starts the whole local stack — Postgres 18, api, worker, web and supervisor —
+with Docker Compose, and waits for every service's healthcheck before it
+returns; `pnpm stack:down` removes the containers, network and volume, so a
+re-run starts clean. The same command is what CI's integration tier runs, and
+the testkit harness attaches to the stack's Postgres for the suite clones.
+Under it, slice 1.6's structured logger — one JSON object per line, a
+`LOG_LEVEL`, correlation ids and redaction wired into the request and error logs
+`apps/api` writes — and slice 1.5's Postgres-per-suite harness are unchanged.
+The workspace, build, typecheck, lint and test wiring are real and the CI gate
+runs them as separate blocking tiers. `apps/web`, `apps/desktop` and
+`apps/www` are placeholders that the M10 surface slices replace with the real
+clients; `apps/api` currently serves a single `/healthz` endpoint,
+`apps/worker` is an idle process, and `apps/supervisor` is a placeholder for the
+Docker socket owner, replaced by slices 6.1 and 7.1.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
