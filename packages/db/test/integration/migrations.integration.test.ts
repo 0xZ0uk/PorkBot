@@ -19,12 +19,12 @@ import { migrationsDirectory, readSqlMigrationFiles } from "../../src/migrations
  *   - `pnpm db:migrate` applies the committed journal, records it in drizzle's
  *     ledger and does nothing on a second run;
  *   - the uuidv7 default the schema convention relies on exists on that server;
- *   - the foreign-key index check reads `pg_catalog` and can actually fail,
- *     proven by fixtures that violate it before they satisfy it.
+ *   - the foreign-key index check reads `pg_catalog`, examines the runs-domain
+ *     foreign keys the template now carries, and can actually fail, proven by
+ *     fixtures that violate it before they satisfy it.
  */
 
 const packageRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
-
 let suite: SuiteDatabase | undefined;
 let client: Client | undefined;
 
@@ -76,6 +76,15 @@ describe("the migrated template", () => {
   });
 
   it("has no unindexed foreign keys in the application schema", async () => {
+    // The runs-domain migration landed real foreign keys, so the rule is no
+    // longer vacuously true: the check below has constraints to inspect.
+    const { rows: foreignKeys } = await db().query<{ count: number }>(
+      "select count(*)::int as count from pg_constraint " +
+        "where contype = 'f' and connamespace = 'public'::regnamespace",
+    );
+
+    expect(foreignKeys[0]?.count ?? 0).toBeGreaterThan(0);
+
     const violations = await findUnindexedForeignKeys(db(), "public");
 
     expect(violations, formatUnindexedForeignKeys(violations)).toEqual([]);
