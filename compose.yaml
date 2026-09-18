@@ -62,6 +62,9 @@ services:
     environment:
       PORT: "3001"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The API's own connection, over the compose network. Credentials are the
+      # local-stack defaults, the same ones the Postgres service above uses.
+      DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:-porkbot-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
     ports:
       - "127.0.0.1:${PORKBOT_API_PORT:-3001}:3001"
     depends_on:

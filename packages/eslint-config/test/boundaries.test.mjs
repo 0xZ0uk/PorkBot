@@ -42,7 +42,7 @@ const boundaryViolations = [
     fixture: "core-framework-import.ts",
     package: "@porkbot/core",
     ruleId: "no-restricted-imports",
-    message: /"hono" is a web framework or transport library owned by @porkbot\/api/,
+    message: /"hono" is a web framework owned by @porkbot\/api/,
   },
   {
     fixture: "core-node-built-in.ts",

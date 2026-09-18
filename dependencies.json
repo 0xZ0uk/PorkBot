@@ -7,9 +7,49 @@
       "reason": "Pi owns the agent loop (PRD decisions 13 and 31) and is adapted at the RunSession seam in slice 5.3. Pinned exactly so an upgrade is a reviewed change paired with the golden-corpus replay, never a silent lockfile move."
     },
     {
+      "name": "@hono/node-server",
+      "version": "2.1.1",
+      "reason": "The Node adapter between the API's fetch surface and node:http (slice 4.1). Pinned exactly because it owns how every request and response crosses that boundary, so an implicit upgrade is a change to request handling nobody reviewed."
+    },
+    {
+      "name": "@orpc/client",
+      "version": "1.15.1",
+      "reason": "The typed client and RPC link the contract's consumers call through (slice 4.1, PRD decisions 14 and 15). Pinned exactly because it owns the wire encoding on the client side; an implicit upgrade can change what a deployed client sends."
+    },
+    {
+      "name": "@orpc/contract",
+      "version": "1.15.1",
+      "reason": "The contract builder every procedure in packages/contracts is defined with (slice 4.1, PRD decisions 14 and 15). Pinned exactly because the contract is the single source of transport truth: a version move changes procedure, error and wire semantics for both client and server at once."
+    },
+    {
+      "name": "@orpc/openapi",
+      "version": "1.15.1",
+      "reason": "Generates the OpenAPI document from the same contract the router implements, asserted in the unit suite (slice 4.1, PRD decision 14). Pinned exactly because the generator decides the published document's shape, which is the promise the contract-first design makes."
+    },
+    {
+      "name": "@orpc/server",
+      "version": "1.15.1",
+      "reason": "Implements the contract, matches RPC requests and turns procedure errors into responses (slice 4.1, PRD decisions 14 and 28). Pinned exactly because it owns the server side of the wire protocol and the error envelope clients parse."
+    },
+    {
+      "name": "@orpc/zod",
+      "version": "1.15.1",
+      "reason": "Converts the contract's Zod schemas into JSON Schema for the OpenAPI document (slice 4.1). Pinned exactly because the conversion decides the document's schema output, and it must agree with the validation the same schemas perform at runtime."
+    },
+    {
       "name": "better-auth",
       "version": "1.7.5",
       "reason": "Email/password, sessions and verification for the one auth gate (slice 3.1, PRD decision 8). Pinned exactly because it owns password hashing, session-cookie issuance and origin checks, where an implicit upgrade is a security change nobody reviewed; the identity schema was generated for this library's table shape."
+    },
+    {
+      "name": "hono",
+      "version": "4.13.8",
+      "reason": "The API's HTTP surface (slice 4.1, PRD decision 14: oRPC over Hono), mounted through the RPC handler and composed by every later route, stream and webhook. Pinned exactly because routing, middleware order and header handling are user-visible behaviors an implicit upgrade could move."
+    },
+    {
+      "name": "zod",
+      "version": "4.6.5",
+      "reason": "The schema library every contract procedure is declared with and the one @orpc/zod converts into the OpenAPI document (slice 4.1, PRD decision 15). Pinned exactly because the same schemas validate requests at runtime and describe them publicly, so a move changes both validation behavior and the published document."
     }
   ],
   "images": [

@@ -218,6 +218,56 @@ run.error("run failed", { error }); // error serialized + redacted
 `packages/logging` has no workspace imports and no dependencies; it is a leaf
 like `packages/core`, so every package can log without a cycle.
 
+## Transport
+
+`packages/contracts` is the single source of transport truth (PRD decisions 14
+and 15). Every procedure's input, output and typed errors live there as Zod
+schemas composed with oRPC's contract builder; `appContract` is the tree the API
+implements, and `AppClient` is derived from it — adding a procedure is an edit
+to `contract.ts`, the server fails to compile until it implements the new
+procedure, and no client-side type is written or updated by hand.
+
+```ts
+// packages/contracts/src/contract.ts — the contract tree
+export const appContract = {
+  deployment: { status: deploymentStatusContract },
+};
+
+// packages/contracts/src/client.ts — the derived client
+export type AppClient = ContractRouterClient<AppContract>;
+export function createApiClient(options: { url: string | URL }): AppClient;
+```
+
+`apps/api` mounts the implemented router on Hono at `/rpc`, keeps `/healthz` as
+the process probe, and owns the request boundary: every response gets a
+correlation id and a redacted request line, and a defect is logged redacted and
+answered as a 500. Routers live in `apps/api/src/routers/`, delegate to the
+services `main.ts` injects, and stay one screen each; contract schemas are the
+only validation layer, so a handler sees parsed input and returns the declared
+output — an output that violates its schema is rejected before it reaches the
+wire.
+
+```ts
+// apps/api/src/routers/deployment.ts — one screen, no business logic
+const status = appImplementer.deployment.status.handler(async ({ errors }) => {
+  const result = await service.status();
+  if (result.kind === "misconfigured") throw errors.SERVICE_UNAVAILABLE();
+  return { signups: result.kind };
+});
+```
+
+The OpenAPI document is generated from that same `appContract` object with
+`createOpenApiDocument()`, and a test asserts the procedure's path, method,
+operation id, success response and typed error in it. The transport libraries
+are pinned in `dependencies.json` and owned by exactly one package in the module
+map: `@orpc/contract` and `@orpc/client` belong to `@porkbot/contracts`, and
+Hono, `@hono/node-server`, `@orpc/server`, `@orpc/openapi` and `@orpc/zod`
+belong to `@porkbot/api`.
+
+The API process reads `DATABASE_URL` and exits when it is missing. The local
+stack supplies it in `compose.yaml`; unit tests inject a service, and the e2e
+spec starts the process with a placeholder URL it never dials.
+
 ## Migrations
 
 `packages/db` owns the schema and the migration workflow. Postgres 18 is the
@@ -513,15 +563,25 @@ this repository public to enable this feature`). The decision for now is to
 
 ## Status
 
-This is slice 2.3 of epic E2 (M1 — Data & Domain Core), landing after slices
-2.1 and 2.4–2.5: `packages/db` owns the Drizzle migration workflow and the
-runs-domain schema — bots, sections, threads, messages, events, tasks, runs,
-attempts, steering messages and external effects, with typed statuses,
-NOT NULL idempotency keys and the lease/fence and checkpoint columns reclaim
-depends on — and `packages/core` owns the run state machine as one transition
-map over `queued`, `running`, `waiting_approval`, `completed`, `failed` and
-`cancelled`, where an illegal transition returns a typed `IllegalTransition`,
-and the event reducer that folds run events into a thread snapshot.
+This is slice 4.1 of epic E4 (M3 — Transport). `packages/contracts` stops being
+a stub and becomes the transport's single source of truth: the deployment
+status procedure is defined there with its input/output and typed errors, the
+`AppClient` type is derived from the contract, and the OpenAPI document is
+generated from the same object and asserted in a test. `apps/api` is a Hono app
+whose oRPC router implements that contract at `/rpc`; routers delegate to
+injected services and the request boundary keeps the correlation-id, redaction
+and error-logging behavior the raw `node:http` server had. The API process now
+requires `DATABASE_URL`, which `compose.yaml` supplies to the stack.
+
+Below the transport, the earlier slices are in place: `packages/db` owns the
+Drizzle migration workflow and the runs-domain schema — bots, sections, threads,
+messages, events, tasks, runs, attempts, steering messages and external effects,
+with typed statuses, NOT NULL idempotency keys and the lease/fence and
+checkpoint columns reclaim depends on — and `packages/core` owns the run state
+machine as one transition map over `queued`, `running`, `waiting_approval`,
+`completed`, `failed` and `cancelled`, where an illegal transition returns a
+typed `IllegalTransition`, and the event reducer that folds run events into a
+thread snapshot.
 
 `pnpm db:generate` diffs `src/schema` against the committed snapshots and
 `pnpm db:migrate` applies the journal to `$DATABASE_URL` through drizzle's
@@ -541,10 +601,10 @@ testkit harness attaches to the stack's Postgres for the suite clones, so
 integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
 unchanged. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
-M10 surface slices replace with the real clients; `apps/api` currently serves a
-single `/healthz` endpoint, `apps/worker` is an idle process, and
-`apps/supervisor` is a placeholder for the Docker socket owner, replaced by
-slices 6.1 and 7.1.
+M10 surface slices replace with the real clients; `apps/api` serves `/healthz`
+and the contract's deployment status procedure, `apps/worker` is an idle
+process, and `apps/supervisor` is a placeholder for the Docker socket owner,
+replaced by slices 6.1 and 7.1.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
