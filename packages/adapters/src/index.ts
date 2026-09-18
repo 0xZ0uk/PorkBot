@@ -144,3 +144,28 @@ export {
 export type { NotificationConfigurationReason } from "./notification-errors.ts";
 export { createHttpNotificationProvider } from "./http-notification.ts";
 export type { HttpNotificationProviderOptions } from "./http-notification.ts";
+
+// Web access (slices 6.9 and 10.1, PRD decision 30). The interface lives in
+// @porkbot/adapter-kit; this package ships the two implementations the rule
+// requires, held to one conformance suite. The emulator is the deterministic
+// scripted web the product runs on with nothing configured; the HTTP provider
+// dials every page through the URL-safety module's `safeFetch` by default and
+// reaches search by URL and credential name. Both return raw pages on purpose:
+// the tool layer that consumes them labels the content untrusted and holds it
+// out of the instruction channel (slice 10.1).
+export { WebAccessEmulator } from "./web-access-emulator.ts";
+export type { EmulatedFailure, EmulatedPage } from "./web-access-emulator.ts";
+export { WebAccessConfigurationError, WebAccessProviderError } from "./web-access-errors.ts";
+export type { WebAccessConfigurationReason } from "./web-access-errors.ts";
+export { createHttpWebAccessProvider } from "./http-web-access.ts";
+export type { HttpWebAccessOptions, HttpWebAccessSearchOptions } from "./http-web-access.ts";
+
+// The adversarial fixtures for the injection-resistance suite (slice 10.1, for
+// E10.4): hostile content as each ingestion path receives it, labelled through
+// the same boundary the product uses, with a marker that must never surface as
+// an instruction or an action. The coverage test beside them fails when an
+// `INGESTION_PATHS` entry has no fixture. They live beside the emulators for
+// the same reason the recorded Pi corpus does: a fixture that ships with the
+// adapter is the one the offline suite can replay.
+export { fixturesFor, INJECTION_FIXTURES, labelledFixture } from "./ingestion-fixtures.ts";
+export type { InjectionFixture } from "./ingestion-fixtures.ts";
