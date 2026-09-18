@@ -26,20 +26,30 @@ export { runMigrations } from "./run-migrations.ts";
 // else in this package takes a space or user id as an argument — the scope is
 // the actor a repository was built from, and the typed not-found it throws is
 // the shared one from `@porkbot/effect` so the transport mapping can name it.
+// `runs.create` is the single run-creation command (slice 2.10); the command
+// itself stays unexported so the actor-bound repository is the only way in.
 export type { Actor, SpaceMemberRole, SystemActor, UserActor } from "./actor.ts";
 export { createRepositories } from "./repositories.ts";
 export type {
   BotPatch,
   BotReader,
-  BotRecord,
   BotWriter,
   NewBot,
   Repositories,
   RunReader,
-  RunRecord,
+  RunWriter,
   SystemRepositories,
   ThreadReader,
-  ThreadRecord,
   ThreadWriter,
   UserRepositories,
 } from "./repositories.ts";
+export type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
+export type {
+  BotRecord,
+  MessageRecord,
+  MessageRole,
+  RunRecord,
+  TaskRecord,
+  TaskStatus,
+  ThreadRecord,
+} from "./records.ts";

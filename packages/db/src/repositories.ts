@@ -1,7 +1,20 @@
-import { NotFoundError } from "@porkbot/effect";
-import type { RunStatus } from "@porkbot/core";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
+import { botColumns, runColumns, threadColumns } from "./records.ts";
+import type { BotRecord, RunRecord, ThreadRecord } from "./records.ts";
+import { createRunAndTask } from "./run-creation.ts";
+import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
+import { insertedRow, requiredRow } from "./rows.ts";
+
+export type {
+  BotRecord,
+  MessageRecord,
+  MessageRole,
+  RunRecord,
+  TaskRecord,
+  TaskStatus,
+  ThreadRecord,
+} from "./records.ts";
 
 /**
  * The actor-scoped repository layer: the only way `packages/db` touches rows.
@@ -25,78 +38,13 @@ import type { Queryable } from "./queryable.ts";
  * be created without an actor that *is* a user, and a job has no user to
  * borrow. Slice 6.2 adds the system writes that carry no user — run claims and
  * heartbeats — to `SystemRepositories`.
+ *
+ * Runs are the exception to the one-method-per-write shape: `runs.create` is
+ * the single run-creation command from `run-creation.ts`, and it is the only
+ * code path in the package that inserts a run. It builds the user message, the
+ * task and the run in one transaction, so no caller has to remember the order
+ * or the links.
  */
-
-const botColumns =
-  'id, space_id as "spaceId", user_id as "userId", name, title, description, instructions, ' +
-  'color, pinned, position, section_id as "sectionId", archived_at as "archivedAt", ' +
-  'spawn_key as "spawnKey", created_at as "createdAt", updated_at as "updatedAt"';
-
-const threadColumns =
-  'id, space_id as "spaceId", bot_id as "botId", user_id as "userId", ' +
-  'next_event_seq as "nextEventSeq", next_message_seq as "nextMessageSeq", ' +
-  'created_at as "createdAt", updated_at as "updatedAt"';
-
-const runColumns =
-  'id, space_id as "spaceId", bot_id as "botId", thread_id as "threadId", ' +
-  'task_id as "taskId", user_id as "userId", status::text as "status", "trigger", error, ' +
-  'error_code as "errorCode", lease_owner as "leaseOwner", lease_fence as "leaseFence", ' +
-  'lease_expires_at as "leaseExpiresAt", checkpoint, client_nonce as "clientNonce", ' +
-  'source_message_id as "sourceMessageId", started_at as "startedAt", ' +
-  'completed_at as "completedAt", created_at as "createdAt", updated_at as "updatedAt"';
-
-/** A bot row as the schema stores it; timestamps are the server's, never the host's. */
-export interface BotRecord {
-  readonly id: string;
-  readonly spaceId: string;
-  readonly userId: string;
-  readonly name: string;
-  readonly title: string;
-  readonly description: string;
-  readonly instructions: string;
-  readonly color: string;
-  readonly pinned: boolean;
-  readonly position: number;
-  readonly sectionId: string | null;
-  readonly archivedAt: Date | null;
-  readonly spawnKey: string;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-}
-
-export interface ThreadRecord {
-  readonly id: string;
-  readonly spaceId: string;
-  readonly botId: string;
-  readonly userId: string;
-  readonly nextEventSeq: number;
-  readonly nextMessageSeq: number;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-}
-
-export interface RunRecord {
-  readonly id: string;
-  readonly spaceId: string;
-  readonly botId: string;
-  readonly threadId: string;
-  readonly taskId: string;
-  readonly userId: string;
-  readonly status: RunStatus;
-  readonly trigger: string;
-  readonly error: string | null;
-  readonly errorCode: string | null;
-  readonly leaseOwner: string | null;
-  readonly leaseFence: number;
-  readonly leaseExpiresAt: Date | null;
-  readonly checkpoint: Record<string, unknown>;
-  readonly clientNonce: string;
-  readonly sourceMessageId: string | null;
-  readonly startedAt: Date | null;
-  readonly completedAt: Date | null;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-}
 
 /**
  * What a caller must supply to create a bot. There is deliberately no `spaceId`
@@ -151,6 +99,25 @@ export interface RunReader {
   listForThread(threadId: string): Promise<readonly RunRecord[]>;
 }
 
+/** The single run-creation command; nothing else in the package inserts a run. */
+export interface RunWriter {
+  /**
+   * Creates the user message, the task and the run in one transaction.
+   *
+   * Submitting the same `(space, clientNonce)` twice returns the first result;
+   * the conflict is resolved by the run's unique index, so a resubmission is a
+   * replay and never a second run, sequential or concurrent. The nonce is
+   * scoped to the space, not the thread, so a replay can return a run created
+   * for another thread. A thread outside the actor's space is a
+   * `NotFoundError`, and nothing is written.
+   *
+   * `database` must be one connection for the duration of the call — a
+   * `pg.Client`, or a client checked out of a pool and released afterwards —
+   * because the command opens a transaction on it.
+   */
+  create(input: NewRunAndTask): Promise<CreatedRunAndTask>;
+}
+
 /** A job's scope: it may read the space its payload names and nothing else. */
 export interface SystemRepositories {
   readonly actor: SystemActor;
@@ -164,7 +131,7 @@ export interface UserRepositories {
   readonly actor: UserActor;
   readonly bots: BotReader & BotWriter;
   readonly threads: ThreadReader & ThreadWriter;
-  readonly runs: RunReader;
+  readonly runs: RunReader & RunWriter;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -192,33 +159,11 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
       ...threads,
       createForBot: (botId) => createThread(actor, database, botId),
     },
-    runs,
+    runs: {
+      ...runs,
+      create: (input) => createRunAndTask(actor, database, input),
+    },
   };
-}
-
-function requiredRow<Row>(rows: readonly Row[], resource: string, id: string): Row {
-  const row = rows[0];
-
-  if (row === undefined) {
-    throw new NotFoundError(resource, id);
-  }
-
-  return row;
-}
-
-/**
- * `insert ... returning` yields exactly one row or throws; an empty result is a
- * `Queryable` that is not a Postgres client, not a missing row, so it must not
- * masquerade as a not-found.
- */
-function insertedRow<Row>(rows: readonly Row[]): Row {
-  const row = rows[0];
-
-  if (row === undefined) {
-    throw new Error("the database returned no row for an insert");
-  }
-
-  return row;
 }
 
 function readBots(actor: Actor, database: Queryable): BotReader {
