@@ -118,7 +118,7 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         name: "ComputerEmulator",
         slice: "6.9",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
       {
         name: "createDockerComputerProvider",

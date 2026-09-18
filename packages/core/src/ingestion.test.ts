@@ -34,8 +34,14 @@ const sample = (overrides: Partial<Parameters<typeof labelUntrustedContent>[0]> 
   });
 
 describe("the ingestion path register", () => {
-  it("names the four paths the product ingests through", () => {
-    expect(INGESTION_PATHS).toEqual(["web_fetch", "file_read", "email", "mcp_output"]);
+  it("names the five paths the product ingests through", () => {
+    expect(INGESTION_PATHS).toEqual([
+      "web_fetch",
+      "file_read",
+      "email",
+      "mcp_output",
+      "computer_output",
+    ]);
   });
 
   it("describes every path and its seam exactly once", () => {

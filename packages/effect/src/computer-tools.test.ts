@@ -1,0 +1,384 @@
+import { Effect } from "effect";
+import type {
+  ComputerExecRequest,
+  ComputerExecResult,
+  ComputerFrame,
+  ComputerProvider,
+  ComputerRef,
+  ComputerSnapshot,
+  ComputerStatus,
+} from "@porkbot/adapter-kit";
+import { describe, expect, it } from "vitest";
+import { createComputerTools, MAX_COMPUTER_OUTPUT_BYTES } from "./computer-tools.ts";
+import { createToolDispatcher } from "./tool-dispatcher.ts";
+import type {
+  ToolCall,
+  ToolCallAdmission,
+  ToolCallLedger,
+  ToolOutcome,
+} from "./tool-dispatcher.ts";
+
+/**
+ * The computer tools (slice 6.9): five registrations over one `exec` door. The
+ * tests drive them through a recording provider, so they pin the command each
+ * tool sends — the contract the emulator and a real container both implement —
+ * and the result each tool hands the model: the exit code, the streams, and
+ * the label that keeps file bytes, shell output and page text data rather than
+ * instructions.
+ */
+
+const computer: ComputerRef = { computerId: "computer-1", botId: "bot-1" };
+
+class RecordingProvider implements ComputerProvider {
+  readonly requests: ComputerExecRequest[] = [];
+  readonly results: ComputerExecResult[] = [];
+  #next = 0;
+
+  queue(result: Partial<ComputerExecResult>): this {
+    this.results.push({ exitCode: 0, stdout: "", stderr: "", ...result });
+    return this;
+  }
+
+  async ensure(computer: ComputerRef): Promise<ComputerStatus> {
+    return { computer, state: "running" };
+  }
+
+  async status(computer: ComputerRef): Promise<ComputerStatus> {
+    return { computer, state: "running" };
+  }
+
+  async exec(request: ComputerExecRequest): Promise<ComputerExecResult> {
+    this.requests.push(request);
+    const result = this.results[this.#next] ?? { exitCode: 0, stdout: "", stderr: "" };
+    this.#next += 1;
+    return result;
+  }
+
+  async snapshot(): Promise<ComputerSnapshot> {
+    return { snapshotId: "snapshot-1", key: "snapshots/1" };
+  }
+
+  async restore(computer: ComputerRef): Promise<ComputerStatus> {
+    return { computer, state: "running" };
+  }
+
+  async destroy(): Promise<void> {}
+
+  frames(): AsyncIterable<ComputerFrame> {
+    return {
+      async *[Symbol.asyncIterator]() {},
+    };
+  }
+
+  async input(): Promise<void> {}
+}
+
+function toolsFor(provider: ComputerProvider, maxDurationMs = 30_000) {
+  const registrations = createComputerTools({ provider, computer, maxDurationMs });
+  const byName = new Map(registrations.map((registration) => [registration.name, registration]));
+
+  return {
+    registrations,
+    byName,
+    run: (name: string, args: unknown) => {
+      const registration = byName.get(name);
+
+      if (registration === undefined) {
+        throw new Error(`no registration named ${name}`);
+      }
+
+      const call: ToolCall = { runId: "run-1", callId: "call-1", tool: name, arguments: args };
+
+      return Effect.runPromise(registration.execute(call));
+    },
+  };
+}
+
+function expectLabel(value: unknown): { content: string; origin: string; path: string } {
+  const labelled = value as { content: string; label: string; origin: string; path: string };
+
+  expect(labelled.label).toBe("untrusted");
+  return labelled;
+}
+
+describe("the shell tool", () => {
+  it("sends the command with the declared budget and labels its output", async () => {
+    const provider = new RecordingProvider().queue({ stdout: "hello\n", exitCode: 0 });
+    const tools = toolsFor(provider, 12_345);
+
+    const result = await tools.run("shell", { command: "printf 'hello\\n'" });
+
+    expect(provider.requests).toEqual([
+      { computer, command: "printf 'hello\\n'", timeoutMs: 12_345 },
+    ]);
+    expect(result).toMatchObject({ ok: true, exitCode: 0, stderr: "" });
+    expectLabel((result as { stdout: unknown }).stdout);
+    expect((result as { stdout: { content: string } }).stdout.content).toBe("hello\n");
+  });
+
+  it("reports a non-zero exit as a completed call the model can read", async () => {
+    const provider = new RecordingProvider().queue({ exitCode: 2, stderr: "bad flags" });
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("shell", { command: "ls --nope" })).resolves.toMatchObject({
+      ok: false,
+      exitCode: 2,
+      stderr: "bad flags",
+    });
+  });
+
+  it("refuses a blank or oversized command without reaching the machine", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("shell", { command: "  " })).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_arguments",
+    });
+    await expect(tools.run("shell", { command: "x".repeat(20_000) })).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_arguments",
+    });
+    expect(provider.requests).toEqual([]);
+  });
+
+  it("truncates output past the inline budget instead of carrying it whole", async () => {
+    const provider = new RecordingProvider().queue({
+      stdout: "x".repeat(MAX_COMPUTER_OUTPUT_BYTES + 100),
+    });
+    const tools = toolsFor(provider);
+
+    const result = (await tools.run("shell", { command: "cat big" })) as {
+      stdout: { content: string };
+      stdoutTruncated?: boolean;
+    };
+
+    expect(result.stdoutTruncated).toBe(true);
+    expect(result.stdout.content).toContain("[truncated]");
+    expect(new TextEncoder().encode(result.stdout.content).byteLength).toBeLessThanOrEqual(
+      MAX_COMPUTER_OUTPUT_BYTES + " [truncated]".length,
+    );
+  });
+});
+
+describe("the file tools", () => {
+  it("reads a file through cat and labels it with the path it asked for", async () => {
+    const provider = new RecordingProvider().queue({ stdout: "notes" });
+    const tools = toolsFor(provider);
+
+    const result = await tools.run("file_read", { path: "notes/todo.md" });
+
+    expect(provider.requests[0]?.command).toBe("cat -- 'notes/todo.md'");
+    expect(result).toMatchObject({ ok: true, path: "notes/todo.md", bytes: 5 });
+    const labelled = expectLabel((result as { content: unknown }).content);
+    expect(labelled.path).toBe("file_read");
+    expect(labelled.origin).toBe("home:notes/todo.md");
+  });
+
+  it("attributes an absolute read to the machine, not the home lane", async () => {
+    const provider = new RecordingProvider().queue({ stdout: "x" });
+    const tools = toolsFor(provider);
+
+    const result = (await tools.run("file_read", { path: "/etc/hosts" })) as {
+      content: { origin: string };
+    };
+
+    expect(result.content.origin).toBe("computer:/etc/hosts");
+  });
+
+  it("reports a missing file as not_found without throwing", async () => {
+    const provider = new RecordingProvider().queue({
+      exitCode: 1,
+      stderr: "cat: nope: No such file or directory\n",
+    });
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("file_read", { path: "nope" })).resolves.toMatchObject({
+      ok: false,
+      reason: "not_found",
+    });
+  });
+
+  it("writes base64 so no shell metacharacter in the content is interpreted", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+    const content = "line one\n$(rm -rf /) && 'quoted' \"double\" `backtick`";
+
+    const result = await tools.run("file_write", { path: "notes/x.txt", content });
+
+    const command = provider.requests[0]?.command ?? "";
+    expect(command.startsWith("mkdir -p 'notes' && printf '%s' '")).toBe(true);
+    expect(command).toContain("| base64 -d > 'notes/x.txt'");
+
+    const encoded = /printf '%s' '([^']*)' \| base64 -d/.exec(command)?.[1] ?? "";
+    expect(Buffer.from(encoded, "base64").toString("utf8")).toBe(content);
+    expect(result).toMatchObject({
+      ok: true,
+      path: "notes/x.txt",
+      bytes: Buffer.byteLength(content, "utf8"),
+    });
+  });
+
+  it("writes to a top-level path without inventing a parent", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+
+    await tools.run("file_write", { path: "note.txt", content: "" });
+
+    expect(provider.requests[0]?.command).not.toContain("mkdir -p");
+    expect(provider.requests[0]?.command).toContain("> 'note.txt'");
+  });
+
+  it("lists a directory, defaulting to the home directory, with a labelled listing", async () => {
+    const provider = new RecordingProvider().queue({ stdout: "a.txt\nb.txt\n" });
+    const tools = toolsFor(provider);
+
+    const result = (await tools.run("file_list", {})) as {
+      ok: boolean;
+      path: string;
+      names: readonly string[];
+      listing: unknown;
+    };
+
+    expect(result).toMatchObject({ ok: true, path: ".", names: ["a.txt", "b.txt"] });
+    expectLabel(result.listing);
+    expect(provider.requests[0]?.command).toBe("ls");
+
+    const provider2 = new RecordingProvider().queue({ stdout: "nested\n" });
+    const tools2 = toolsFor(provider2);
+
+    await expect(tools2.run("file_list", { path: "notes" })).resolves.toMatchObject({
+      ok: true,
+      path: "notes",
+      names: ["nested"],
+    });
+    expect(provider2.requests[0]?.command).toBe("ls -- 'notes'");
+  });
+});
+
+describe("the browser tool", () => {
+  it("sends the action as one JSON argument and labels the page text", async () => {
+    const provider = new RecordingProvider().queue({
+      stdout: JSON.stringify({
+        ok: true,
+        action: "open",
+        url: "https://example.invalid/page",
+        title: "Example",
+        text: "body text",
+      }),
+    });
+    const tools = toolsFor(provider);
+
+    const result = await tools.run("browser", {
+      action: "open",
+      url: "https://example.invalid/page",
+    });
+
+    expect(provider.requests[0]?.command).toBe(
+      `browser '{"action":"open","url":"https://example.invalid/page"}'`,
+    );
+    const labelled = expectLabel((result as { text: unknown }).text);
+    expect(labelled.path).toBe("computer_output");
+    expect(labelled.origin).toBe("https://example.invalid/page");
+    expect(labelled.content).toContain("body text");
+  });
+
+  it("requires a url, a selector or text for the action that needs it", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("browser", { action: "open" })).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_arguments",
+    });
+    await expect(tools.run("browser", { action: "click" })).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_arguments",
+    });
+    await expect(tools.run("browser", { action: "type", selector: "#a" })).resolves.toMatchObject({
+      ok: false,
+      reason: "invalid_arguments",
+    });
+    expect(provider.requests).toEqual([]);
+  });
+
+  it("turns a helper refusal into a completed result the model can recover from", async () => {
+    const provider = new RecordingProvider().queue({
+      exitCode: 1,
+      stdout: JSON.stringify({ ok: false, error: 'no click action is scripted for "#missing"' }),
+    });
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("browser", { action: "click", selector: "#missing" })).resolves.toEqual({
+      ok: false,
+      reason: "browser_error",
+      message: 'no click action is scripted for "#missing"',
+    });
+  });
+
+  it("refuses a page record it cannot read rather than passing bytes through", async () => {
+    const provider = new RecordingProvider().queue({ stdout: "not json" });
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("browser", { action: "read" })).resolves.toMatchObject({
+      ok: false,
+      reason: "browser_error",
+    });
+  });
+});
+
+describe("the computer tool registrations", () => {
+  it("offers every tool the model may call, with a schema and a description", () => {
+    const tools = toolsFor(new RecordingProvider());
+
+    expect(tools.registrations.map((registration) => registration.name)).toEqual([
+      "shell",
+      "file_read",
+      "file_write",
+      "file_list",
+      "browser",
+    ]);
+
+    for (const registration of tools.registrations) {
+      expect(registration.description.trim()).not.toBe("");
+      expect(typeof registration.parameters).toBe("object");
+    }
+  });
+
+  it("is accepted by the dispatcher under a run lease that covers the budget", () => {
+    const ledger: ToolCallLedger = {
+      begin: async (): Promise<ToolCallAdmission> => ({ status: "started" }),
+      complete: async (_call, result): Promise<ToolOutcome> => ({ status: "completed", result }),
+      fail: async (_call, error): Promise<ToolOutcome> => ({ status: "failed", error }),
+    };
+
+    const dispatcher = createToolDispatcher({
+      registrations: createComputerTools({
+        provider: new RecordingProvider(),
+        computer,
+        maxDurationMs: 60_000,
+      }),
+      ledger,
+      leaseTtlMs: 120_000,
+      heartbeat: Effect.void,
+    });
+
+    expect(dispatcher.canHandle("shell")).toBe(true);
+    expect(dispatcher.canHandle("file_read")).toBe(true);
+    expect(dispatcher.canHandle("browser")).toBe(true);
+    expect(dispatcher.canHandle("web_fetch")).toBe(false);
+    expect(dispatcher.definitions().map((definition) => definition.name)).toEqual([
+      "shell",
+      "file_read",
+      "file_write",
+      "file_list",
+      "browser",
+    ]);
+  });
+
+  it("refuses a budget that is not a positive integer", () => {
+    expect(() =>
+      createComputerTools({ provider: new RecordingProvider(), computer, maxDurationMs: 0 }),
+    ).toThrow(RangeError);
+  });
+});

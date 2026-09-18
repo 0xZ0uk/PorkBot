@@ -35,10 +35,12 @@ if (connectionString === undefined || connectionString.length === 0) {
 /**
  * The handler has atomically claimed the run before entering this seam, and the
  * harness owns the lease from then on: it heartbeats, interrupts the work on a
- * lost fence, and settles the run and its attempt. The model and tool runtime
- * that fills the work seam arrives with slice 6.9; until then the run records
- * its claim and completes with no output rather than pretending a runtime
- * exists.
+ * lost fence, and settles the run and its attempt. Slice 6.9 lands the
+ * computer tools and proves a full run with real tool execution offline
+ * (`offline-run.test.ts`); the live model launch that fills this seam with a
+ * Pi-backed session arrives with the model runtime adapter (slice 9.2). Until
+ * then the run records its claim and completes with no output rather than
+ * pretending a runtime exists.
  */
 const verifiedRunExecutor: RunExecutor = createRunExecutor({
   work: ({ run, logger: runLogger }) =>

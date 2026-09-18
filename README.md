@@ -257,6 +257,44 @@ the sink over a recording fake; the `packages/db` integration suite drives both
 on Postgres, reads the rows back through the actor-scoped repository, and
 resolves the artifact to the full result.
 
+## A bot's computer
+
+A run's machine is one interface away from any provider: `ComputerProvider` in
+`packages/adapter-kit` declares `ensure`, `status`, `exec`, `snapshot`,
+`restore` and `destroy`, with the v1.1 screen path reserved as the optional
+`frames()` and `input()`. `ComputerEmulator` (slice 6.9) is the offline
+implementation: every computer is an in-process machine with its own
+filesystem, a bounded POSIX-shaped shell and a scripted browser, reached only
+through `exec` exactly as a container is. State persists across commands and is
+isolated per `computerId`; nothing touches the host's filesystem; a snapshot is
+a deep copy that restores into a destroyed machine; `frames()` renders the
+current screen as deterministic SVG and `input()` changes what the next frame
+shows. `packages/adapters/src/computer-conformance.ts` is the suite every
+provider is held to — idempotent `ensure`, `gone` answers, timeout
+classification, persistence across commands, isolation between computers,
+snapshot and restore, the reserved path and the browser protocol — and the
+Docker provider registers it when it lands.
+
+The model reaches that machine through `createComputerTools` in
+`packages/effect`: `shell`, `file_read`, `file_write`, `file_list` and
+`browser` are registrations over `exec`. The computer is bound at construction,
+never chosen by a tool argument; every command carries the run's declared
+budget as its hard `timeoutMs`; file writes travel base64-encoded so no shell
+metacharacter is interpreted; and file bytes, shell stdout and browser page
+text leave as `UntrustedContent` (paths `file_read` and `computer_output`)
+before they can reach a prompt. The browser helper protocol is one `browser`
+command with a JSON argument returning a JSON page record, which is what a real
+provider's image must ship to pass the same suite.
+
+The first full run executes real tools (slice 6.9). The shipped offline runtime
+now takes a `ToolDispatcher` and executes its tool steps through the same
+ledger, budget and failure machinery a Pi-backed run uses, so a run composed
+from the emulated computer, the computer tools and the offline session
+completes with real file, shell and browser effects — no key, no network and no
+Docker. `apps/worker/src/offline-run.test.ts` drives that path under the
+worker's execution harness and observes the run settle completed with the
+written file read back and the page text labelled.
+
 ## Approval gates
 
 Approval is durable pending state, not a live socket (PRD decision 13). A gated
@@ -847,7 +885,7 @@ call sites, so a new one cannot bypass the module.
 The product's core risk is an agent reading the web, a file, an email or a tool
 result that carries instructions. `packages/core/src/ingestion.ts` is the one
 vocabulary for that boundary: `INGESTION_PATHS` lists the ways content enters
-(web fetch, file read, email, MCP output), and the module that received the
+(web fetch, file read, email, MCP output, computer output), and the module that received the
 content calls `labelUntrustedContent` with its path, its origin and the text,
 producing an `UntrustedContent` whose `label` is the literal `"untrusted"`. An
 unregistered path, a blank origin or a non-string payload throws, so content is
@@ -855,6 +893,13 @@ never labelled by assumption. `composeRunPrompt` renders every ingested value as
 a `data`-channel section under its provenance line, and the composer wraps that
 channel in the data notice — a directive inside a page is reference material the
 model is told not to obey, never an instruction.
+
+The machine's half of that boundary lands with slice 6.9: `file_read` labels
+the bytes a file tool returns with the path it asked for, and `computer_output`
+labels shell stdout, directory listings and browser page text with the machine
+or the page they came from. The shell is deliberately on the register too,
+because a shell can read a file the dedicated tool would have labelled and the
+trust boundary must not depend on which tool the model chose.
 
 The web path ships end to end (slice 10.1). `WebAccessEmulator` is the
 deterministic scripted web the product runs on with nothing configured, and
@@ -1282,6 +1327,17 @@ Worker over the job registry, re-reads each run through the job's `SystemActor`
 and checks its fence under the worker's own database role (slice 6.1), and
 `apps/supervisor` is a placeholder for the Docker socket owner, replaced by
 slice 7.1.
+
+The computer emulator and the first run whose tools execute land with slice
+6.9. `ComputerEmulator` implements the whole `ComputerProvider` seam —
+filesystem, bounded shell, scripted browser, snapshots and the reserved
+`frames()`/`input()` path — behind one conformance suite the Docker provider
+registers in E7; `createComputerTools` turns `exec` into the model's `shell`,
+`file_read`, `file_write`, `file_list` and `browser` tools with their content
+labelled at the ingestion boundary; and the offline runtime executes tool steps
+through the dispatcher, so a full run does real work with no key, network or
+daemon. The live model launch that fills the worker's work seam arrives with
+the model runtime adapter (slice 9.2).
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
