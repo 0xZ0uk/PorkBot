@@ -237,3 +237,21 @@ export type {
   WebhookSignatureCheck,
   WebhookSignatureFailure,
 } from "./webhook-signature.ts";
+
+// Untrusted ingestion and egress (slice 10.1, PRD decision 30). The egress
+// guard is the allowlist's enforcement edge: an allowlisted host proceeds, any
+// other destination records a durable approval and waits on the row, and a
+// deadline that passes denies rather than hangs. The web tools are the model's
+// one door to the web, so they guard the fetch, label the page through the
+// ingestion boundary and keep it out of the instruction channel.
+export { createEgressGuard } from "./egress-guard.ts";
+export type { EgressAuthorization, EgressGuardOptions, EgressGuardShape } from "./egress-guard.ts";
+export {
+  createWebTools,
+  MAX_WEB_BYTES,
+  MAX_WEB_QUERY_LENGTH,
+  MAX_WEB_SEARCH_RESULTS,
+  MAX_WEB_URL_LENGTH,
+  WEB_TOOL_NAMES,
+} from "./web-tools.ts";
+export type { WebToolOptions } from "./web-tools.ts";

@@ -42,18 +42,31 @@ const egressPatterns = [
 
 /**
  * True for `fetch(request: WebFetchRequest): Promise<WebFetchResult>` inside an
- * interface or a type literal: the statement starts with `fetch` and the
- * parameter list is followed by a return type. A call that starts its statement
- * ends the parameter list and moves on.
+ * interface or a type literal: the statement starts with `async`, `readonly` or
+ * nothing and the parameter list is followed by a return type. A call that
+ * starts its statement ends the parameter list and moves on.
  */
 function isFetchDeclaration(source: string, index: number): boolean {
   const prefix = source.slice(source.lastIndexOf("\n", index) + 1, index).trim();
 
-  if (!/^(?:async\s+)?(?:readonly\s+)?$/.test(prefix)) {
+  if (!/^(?:async|readonly)?$/.test(prefix)) {
     return false;
   }
 
-  return /^fetch\s*\([\s\S]*?\)\s*:/.test(source.slice(index, index + 240));
+  return /^fetch\s*\([\s\S]*?\)\s*(?::|=>)/.test(source.slice(index, index + 240));
+}
+
+/**
+ * True for a call through the `WebAccessProvider` seam — `provider.fetch(...)`
+ * or `harness.provider.fetch(...)`. Those implementations dial through
+ * `safeFetch`, so the seam is a sanctioned egress path; a call on any other
+ * receiver (`client.fetch(...)`, `notificationProvider.fetch(...)`) stays a
+ * raw transport call, which the self-check below pins.
+ */
+function isProviderSeamCall(source: string, index: number): boolean {
+  const prefix = source.slice(Math.max(0, index - 60), index);
+
+  return /(?:^|\.)provider\s*\.\s*$/.test(prefix);
 }
 
 /** The egress shapes in one file, as notes a failure message can name. */
@@ -62,7 +75,10 @@ function egressNotes(source: string): string[] {
 
   for (const { pattern, note } of egressPatterns) {
     for (const match of source.matchAll(pattern)) {
-      if (note === "a raw fetch call" && isFetchDeclaration(source, match.index)) {
+      if (
+        note === "a raw fetch call" &&
+        (isFetchDeclaration(source, match.index) || isProviderSeamCall(source, match.index))
+      ) {
         continue;
       }
 
@@ -120,6 +136,7 @@ describe("the URL-safety call sites", () => {
       "const response = await fetch(url);",
       "const response = await globalThis.fetch(url);",
       "const response = await client.fetch(url);",
+      "const response = await notificationProvider.fetch(url);",
       "fetch(url);",
       'fetch(url, { method: "POST" });',
       'import { request } from "node:https";',
@@ -140,6 +157,9 @@ describe("the URL-safety call sites", () => {
       "fetch(request: WebFetchRequest): Promise<WebFetchResult>;",
       "  fetch(\n    request: WebFetchRequest,\n  ): Promise<WebFetchResult>;",
       "readonly fetch: (request: WebFetchRequest) => Promise<WebFetchResult>;",
+      "  async fetch(request: WebFetchRequest): Promise<WebFetchResult> {",
+      "const page = await options.provider.fetch({ url });",
+      "const page = await harness.provider.fetch({ url: harness.pageUrl });",
     ];
 
     for (const sample of clean) {
@@ -164,5 +184,15 @@ describe("the URL-safety call sites", () => {
     );
 
     expect(users).toContain("packages/adapters/src/http-mail.ts");
+  });
+
+  it("keeps the web-access provider on the module's transport by default", () => {
+    const source = readFileSync(
+      path.join(repoRoot, "packages/adapters/src/http-web-access.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("safeFetch");
+    expect(source).toContain("options.fetch ?? safeFetch");
   });
 });
