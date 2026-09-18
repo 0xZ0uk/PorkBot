@@ -5,9 +5,17 @@ export type ButtonProps = {
   children: ReactNode;
   tone?: "neutral" | "primary";
   type?: "button" | "submit";
+  onClick?: () => void;
+  disabled?: boolean;
 };
 
-export function Button({ children, tone = "neutral", type = "button" }: ButtonProps) {
+export function Button({
+  children,
+  tone = "neutral",
+  type = "button",
+  onClick,
+  disabled = false,
+}: ButtonProps) {
   const palette =
     tone === "primary"
       ? { background: colors.accent, color: colors.onAccent, borderColor: colors.accent }
@@ -16,6 +24,8 @@ export function Button({ children, tone = "neutral", type = "button" }: ButtonPr
   return (
     <button
       type={type}
+      onClick={onClick}
+      disabled={disabled}
       style={{
         ...palette,
         borderStyle: "solid",
@@ -23,7 +33,8 @@ export function Button({ children, tone = "neutral", type = "button" }: ButtonPr
         borderRadius: radius.md,
         padding: `${space.sm} ${space.md}`,
         fontFamily: font.sans,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {children}

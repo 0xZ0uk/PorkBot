@@ -17,6 +17,11 @@ import { describe, expect, it } from "vitest";
  * signature, not egress. The declaration filter below skips exactly that shape,
  * and the self-check proves it still catches a statement-level call.
  *
+ * The one deliberate exception is the register below: a same-origin transport
+ * dials the deployment's own origin — configuration plus a constant path —
+ * rather than a user-supplied URL, which is what this rule is about. Each entry
+ * carries its reason and must still need its exemption, or the suite fails.
+ *
  * A scanned tree that is empty would make the rule vacuous, so the suite also
  * asserts the tree it reads and that at least one shipped call site actually
  * names `safeFetch`: the invariant and the evidence that it binds.
@@ -27,6 +32,21 @@ const skippedDirectories = new Set(["dist", "node_modules", "coverage", ".turbo"
 
 /** The module that owns egress; the only file allowed to touch a transport. */
 const urlSafetyModule = "packages/effect/src/url-safety.ts";
+
+/**
+ * The sanctioned same-origin transports: files whose only egress goes to the
+ * deployment's own origin, never to a URL from user content. `safeFetch`
+ * guards third-party destinations and lives in this package, which these
+ * clients' module-map entries do not grant them; the exemption is registered
+ * here with its reason rather than left to the scanner's shape heuristics, and
+ * the "narrow, needed and same-origin" test below turns a stale entry red.
+ */
+const sameOriginTransports: ReadonlyMap<string, string> = new Map([
+  [
+    "apps/web/src/transport.ts",
+    "the web shell posts the credential exchange to the deployment's own origin: the origin is configuration and the auth paths are constants",
+  ],
+]);
 
 const fetchCall = /(?<!safe)\bfetch\s*\(/g;
 
@@ -170,12 +190,28 @@ describe("the URL-safety call sites", () => {
   it("routes every shipped egress through the module", () => {
     const offenders = files
       .filter((file) => file !== urlSafetyModule)
+      .filter((file) => !sameOriginTransports.has(file))
       .filter((file) => egressNotes(readFileSync(path.join(repoRoot, file), "utf8")).length > 0);
 
     expect(
       offenders,
       "these files fetch or dial directly; route them through @porkbot/effect's safeFetch",
     ).toEqual([]);
+  });
+
+  it("keeps every same-origin exemption narrow, needed and same-origin", () => {
+    for (const [file, reason] of sameOriginTransports) {
+      const source = readFileSync(path.join(repoRoot, file), "utf8");
+
+      expect(
+        egressNotes(source).length,
+        `${file} no longer fetches directly, so its exemption (${reason}) should be deleted`,
+      ).toBeGreaterThan(0);
+      expect(source, `${file} must dial the configured origin, not a URL of its own`).toContain(
+        'options.origin ?? ""',
+      );
+      expect(source, `${file} must not carry a host literal`).not.toMatch(/https?:\/\//);
+    }
   });
 
   it("has a shipped call site that names the module", () => {
