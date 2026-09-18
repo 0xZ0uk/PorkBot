@@ -113,6 +113,20 @@
       "when": 1789747765822,
       "tag": "0015_notification_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789750544456,
+      "tag": "0016_faithful_paibok",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789750554883,
+      "tag": "0017_credentials_grants",
+      "breakpoints": true
     }
   ]
 }

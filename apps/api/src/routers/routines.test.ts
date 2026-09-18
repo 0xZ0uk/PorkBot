@@ -158,6 +158,12 @@ function stubRepositories(): UserRepositories {
       read: notExercised,
       set: notExercised,
     },
+    credentials: {
+      resolve: notExercised,
+      list: notExercised,
+      store: notExercised,
+      rotate: notExercised,
+    },
   };
 }
 

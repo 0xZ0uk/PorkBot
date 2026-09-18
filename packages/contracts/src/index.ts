@@ -105,6 +105,13 @@ export {
 } from "./threads.ts";
 export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 
+// Stored credentials (slice 9.1, PRD decision 10; stories 14 and 15): the list
+// surface answers masked summaries only. The schema has no field for a value,
+// so "no endpoint returns a full secret" is a property of the contract rather
+// than a promise about a handler.
+export { credentialSchema, credentialsListContract } from "./credentials.ts";
+export type { Credential } from "./credentials.ts";
+
 // The client: a type derived from the contract plus the factory that builds it.
 export { createApiClient } from "./client.ts";
 export type { ApiClientOptions, AppClient } from "./client.ts";

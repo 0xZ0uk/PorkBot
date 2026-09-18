@@ -447,6 +447,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@porkbot/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
       '@porkbot/core':
         specifier: workspace:*
         version: link:../core

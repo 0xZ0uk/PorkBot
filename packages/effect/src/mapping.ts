@@ -4,6 +4,7 @@ import {
   ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
+  CredentialStoreError,
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
@@ -95,6 +96,12 @@ export const errorMappings = {
     message: "The deployment is missing a required credential.",
     matches: (error: unknown): error is CredentialMissingError =>
       error instanceof CredentialMissingError,
+  },
+  CredentialStoreError: {
+    code: "SERVICE_UNAVAILABLE",
+    message: "The credential store could not be read.",
+    matches: (error: unknown): error is CredentialStoreError =>
+      error instanceof CredentialStoreError,
   },
   BlockedUrlError: {
     code: "BAD_REQUEST",

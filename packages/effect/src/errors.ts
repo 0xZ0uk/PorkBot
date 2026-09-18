@@ -138,6 +138,62 @@ export class CredentialMissingError extends Data.TaggedError("CredentialMissingE
 }
 
 /**
+ * Why the encrypted credential store could not answer. The reasons are
+ * distinct because an operator acts on them differently: `locked` means the
+ * deployment was started without its keyring, `unknown_key` means the row was
+ * written under a key this deployment no longer holds — the state rotation
+ * exists to make impossible — and `corrupt` means the ciphertext failed
+ * authentication, which includes a record moved to another row.
+ */
+export type CredentialStoreFailure = "locked" | "unknown_key" | "corrupt";
+
+function credentialStoreMessage(reason: CredentialStoreFailure, keyId: string | undefined): string {
+  switch (reason) {
+    case "locked":
+      return (
+        "the credential store is locked: no encryption keyring is configured. " +
+        "Set PORKBOT_CREDENTIAL_KEYS and PORKBOT_CREDENTIAL_ACTIVE_KEY and restart."
+      );
+    case "unknown_key":
+      return (
+        `the credential was encrypted with key "${keyId ?? "unknown"}", which this keyring does not hold. ` +
+        "Restore that key or re-encrypt the row before the credential can be used."
+      );
+    case "corrupt":
+      return (
+        "the credential ciphertext failed authentication. " +
+        "It was truncated, tampered with, or moved to another record."
+      );
+  }
+}
+
+/**
+ * The encrypted credential store could not read or unlock a value (slice 9.1,
+ * PRD decision 10). The adapter-kit credential seam's `auth_failed` mapping
+ * says a store that cannot unlock itself raises rather than reading past the
+ * failure; this is that raise, and the transport boundary answers it
+ * `SERVICE_UNAVAILABLE` because only an operator can repair a keyring.
+ *
+ * The error names the key id at most — a key id names a slot, not material —
+ * and never the value, the envelope or the database's cause: a decryption
+ * failure is exactly the place a careless message echoes what it failed to
+ * read.
+ */
+export class CredentialStoreError extends Data.TaggedError("CredentialStoreError")<{
+  readonly reason: CredentialStoreFailure;
+  readonly keyId: string | undefined;
+  readonly message: string;
+}> {
+  constructor(reason: CredentialStoreFailure, keyId?: string) {
+    super({
+      reason,
+      keyId,
+      message: credentialStoreMessage(reason, keyId),
+    });
+  }
+}
+
+/**
  * Why a user-supplied URL was refused. The reasons are distinct because a
  * caller can act on them differently: `insecure_scheme` and
  * `embedded_credentials` are configuration mistakes an operator can fix, while
@@ -411,6 +467,7 @@ export type TypedError =
   | ApprovalStoreError
   | DeploymentSettingsConflictError
   | CredentialMissingError
+  | CredentialStoreError
   | BlockedUrlError
   | CursorRejectedError
   | UnknownToolError

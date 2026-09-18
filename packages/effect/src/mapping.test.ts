@@ -5,6 +5,7 @@ import {
   ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
+  CredentialStoreError,
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
@@ -59,6 +60,11 @@ const samples = {
     error: new CredentialMissingError("transactional-mail-api-key"),
     code: "PRECONDITION_FAILED",
     status: 412,
+  },
+  CredentialStoreError: {
+    error: new CredentialStoreError("unknown_key", "k1"),
+    code: "SERVICE_UNAVAILABLE",
+    status: 503,
   },
   BlockedUrlError: {
     error: new BlockedUrlError("blocked_address", "example.com", "127.0.0.1"),

@@ -1,4 +1,5 @@
 import { accountMeContract } from "./account.ts";
+import { credentialsListContract } from "./credentials.ts";
 import {
   botsArchiveContract,
   botsAvatarContract,
@@ -93,6 +94,9 @@ export const appContract = {
     preview: routinesPreviewContract,
     testRun: routinesTestRunContract,
     outcomes: routinesOutcomesContract,
+  },
+  credentials: {
+    list: credentialsListContract,
   },
 };
 
