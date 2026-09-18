@@ -132,13 +132,9 @@
         "account_user_id_user_id_fk": {
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -329,39 +325,27 @@
         "approval_space_id_space_id_fk": {
           "name": "approval_space_id_space_id_fk",
           "tableFrom": "approval",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "approval_run_id_run_id_fk": {
           "name": "approval_run_id_run_id_fk",
           "tableFrom": "approval",
-          "columnsFrom": [
-            "run_id"
-          ],
+          "columnsFrom": ["run_id"],
           "tableTo": "run",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "approval_decided_by_user_id_user_id_fk": {
           "name": "approval_decided_by_user_id_user_id_fk",
           "tableFrom": "approval",
-          "columnsFrom": [
-            "decided_by_user_id"
-          ],
+          "columnsFrom": ["decided_by_user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -458,13 +442,9 @@
         "attempt_run_id_run_id_fk": {
           "name": "attempt_run_id_run_id_fk",
           "tableFrom": "attempt",
-          "columnsFrom": [
-            "run_id"
-          ],
+          "columnsFrom": ["run_id"],
           "tableTo": "run",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -674,39 +654,27 @@
         "bot_space_id_space_id_fk": {
           "name": "bot_space_id_space_id_fk",
           "tableFrom": "bot",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "bot_user_id_user_id_fk": {
           "name": "bot_user_id_user_id_fk",
           "tableFrom": "bot",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "bot_section_id_bot_section_id_fk": {
           "name": "bot_section_id_bot_section_id_fk",
           "tableFrom": "bot",
-          "columnsFrom": [
-            "section_id"
-          ],
+          "columnsFrom": ["section_id"],
           "tableTo": "bot_section",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -849,26 +817,18 @@
         "bot_section_space_id_space_id_fk": {
           "name": "bot_section_space_id_space_id_fk",
           "tableFrom": "bot_section",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "bot_section_user_id_user_id_fk": {
           "name": "bot_section_user_id_user_id_fk",
           "tableFrom": "bot_section",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1054,39 +1014,27 @@
         "event_space_id_space_id_fk": {
           "name": "event_space_id_space_id_fk",
           "tableFrom": "event",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "event_thread_id_thread_id_fk": {
           "name": "event_thread_id_thread_id_fk",
           "tableFrom": "event",
-          "columnsFrom": [
-            "thread_id"
-          ],
+          "columnsFrom": ["thread_id"],
           "tableTo": "thread",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "event_run_id_run_id_fk": {
           "name": "event_run_id_run_id_fk",
           "tableFrom": "event",
-          "columnsFrom": [
-            "run_id"
-          ],
+          "columnsFrom": ["run_id"],
           "tableTo": "run",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -1229,26 +1177,18 @@
         "external_effect_space_id_space_id_fk": {
           "name": "external_effect_space_id_space_id_fk",
           "tableFrom": "external_effect",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "external_effect_run_id_run_id_fk": {
           "name": "external_effect_run_id_run_id_fk",
           "tableFrom": "external_effect",
-          "columnsFrom": [
-            "run_id"
-          ],
+          "columnsFrom": ["run_id"],
           "tableTo": "run",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1378,26 +1318,18 @@
         "message_thread_id_thread_id_fk": {
           "name": "message_thread_id_thread_id_fk",
           "tableFrom": "message",
-          "columnsFrom": [
-            "thread_id"
-          ],
+          "columnsFrom": ["thread_id"],
           "tableTo": "thread",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "message_run_id_run_id_fk": {
           "name": "message_run_id_run_id_fk",
           "tableFrom": "message",
-          "columnsFrom": [
-            "run_id"
-          ],
+          "columnsFrom": ["run_id"],
           "tableTo": "run",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -1530,26 +1462,18 @@
         "oauth_state_space_id_space_id_fk": {
           "name": "oauth_state_space_id_space_id_fk",
           "tableFrom": "oauth_state",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "oauth_state_user_id_user_id_fk": {
           "name": "oauth_state_user_id_user_id_fk",
           "tableFrom": "oauth_state",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1826,78 +1750,54 @@
         "run_space_id_space_id_fk": {
           "name": "run_space_id_space_id_fk",
           "tableFrom": "run",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "run_bot_id_bot_id_fk": {
           "name": "run_bot_id_bot_id_fk",
           "tableFrom": "run",
-          "columnsFrom": [
-            "bot_id"
-          ],
+          "columnsFrom": ["bot_id"],
           "tableTo": "bot",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "run_thread_id_thread_id_fk": {
           "name": "run_thread_id_thread_id_fk",
           "tableFrom": "run",
-          "columnsFrom": [
-            "thread_id"
-          ],
+          "columnsFrom": ["thread_id"],
           "tableTo": "thread",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "run_task_id_task_id_fk": {
           "name": "run_task_id_task_id_fk",
           "tableFrom": "run",
-          "columnsFrom": [
-            "task_id"
-          ],
+          "columnsFrom": ["task_id"],
           "tableTo": "task",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "run_user_id_user_id_fk": {
           "name": "run_user_id_user_id_fk",
           "tableFrom": "run",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "run_source_message_id_message_id_fk": {
           "name": "run_source_message_id_message_id_fk",
           "tableFrom": "run",
-          "columnsFrom": [
-            "source_message_id"
-          ],
+          "columnsFrom": ["source_message_id"],
           "tableTo": "message",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -2005,13 +1905,9 @@
         "session_user_id_user_id_fk": {
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2166,26 +2062,18 @@
         "space_member_space_id_space_id_fk": {
           "name": "space_member_space_id_space_id_fk",
           "tableFrom": "space_member",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "space_member_user_id_user_id_fk": {
           "name": "space_member_user_id_user_id_fk",
           "tableFrom": "space_member",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2317,52 +2205,36 @@
         "steering_message_message_id_message_id_fk": {
           "name": "steering_message_message_id_message_id_fk",
           "tableFrom": "steering_message",
-          "columnsFrom": [
-            "message_id"
-          ],
+          "columnsFrom": ["message_id"],
           "tableTo": "message",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "steering_message_bot_id_bot_id_fk": {
           "name": "steering_message_bot_id_bot_id_fk",
           "tableFrom": "steering_message",
-          "columnsFrom": [
-            "bot_id"
-          ],
+          "columnsFrom": ["bot_id"],
           "tableTo": "bot",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "steering_message_user_id_user_id_fk": {
           "name": "steering_message_user_id_user_id_fk",
           "tableFrom": "steering_message",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "steering_message_run_id_run_id_fk": {
           "name": "steering_message_run_id_run_id_fk",
           "tableFrom": "steering_message",
-          "columnsFrom": [
-            "run_id"
-          ],
+          "columnsFrom": ["run_id"],
           "tableTo": "run",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -2508,52 +2380,36 @@
         "task_space_id_space_id_fk": {
           "name": "task_space_id_space_id_fk",
           "tableFrom": "task",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "task_bot_id_bot_id_fk": {
           "name": "task_bot_id_bot_id_fk",
           "tableFrom": "task",
-          "columnsFrom": [
-            "bot_id"
-          ],
+          "columnsFrom": ["bot_id"],
           "tableTo": "bot",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "task_thread_id_thread_id_fk": {
           "name": "task_thread_id_thread_id_fk",
           "tableFrom": "task",
-          "columnsFrom": [
-            "thread_id"
-          ],
+          "columnsFrom": ["thread_id"],
           "tableTo": "thread",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "task_user_id_user_id_fk": {
           "name": "task_user_id_user_id_fk",
           "tableFrom": "task",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2679,39 +2535,27 @@
         "thread_space_id_space_id_fk": {
           "name": "thread_space_id_space_id_fk",
           "tableFrom": "thread",
-          "columnsFrom": [
-            "space_id"
-          ],
+          "columnsFrom": ["space_id"],
           "tableTo": "space",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "thread_bot_id_bot_id_fk": {
           "name": "thread_bot_id_bot_id_fk",
           "tableFrom": "thread",
-          "columnsFrom": [
-            "bot_id"
-          ],
+          "columnsFrom": ["bot_id"],
           "tableTo": "bot",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "thread_user_id_user_id_fk": {
           "name": "thread_user_id_user_id_fk",
           "tableFrom": "thread",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2965,72 +2809,37 @@
     "public.approval_status": {
       "name": "approval_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "approved",
-        "denied",
-        "timed_out"
-      ]
+      "values": ["pending", "approved", "denied", "timed_out"]
     },
     "public.attempt_status": {
       "name": "attempt_status",
       "schema": "public",
-      "values": [
-        "running",
-        "completed",
-        "failed",
-        "abandoned"
-      ]
+      "values": ["running", "completed", "failed", "abandoned"]
     },
     "public.effect_status": {
       "name": "effect_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "running",
-        "completed",
-        "failed",
-        "cancelled"
-      ]
+      "values": ["pending", "running", "completed", "failed", "cancelled"]
     },
     "public.message_role": {
       "name": "message_role",
       "schema": "public",
-      "values": [
-        "user",
-        "assistant"
-      ]
+      "values": ["user", "assistant"]
     },
     "public.run_status": {
       "name": "run_status",
       "schema": "public",
-      "values": [
-        "queued",
-        "running",
-        "waiting_approval",
-        "completed",
-        "failed",
-        "cancelled"
-      ]
+      "values": ["queued", "running", "waiting_approval", "completed", "failed", "cancelled"]
     },
     "public.space_member_role": {
       "name": "space_member_role",
       "schema": "public",
-      "values": [
-        "owner",
-        "member"
-      ]
+      "values": ["owner", "member"]
     },
     "public.task_status": {
       "name": "task_status",
       "schema": "public",
-      "values": [
-        "queued",
-        "running",
-        "completed",
-        "failed",
-        "cancelled"
-      ]
+      "values": ["queued", "running", "completed", "failed", "cancelled"]
     }
   },
   "schemas": {},
