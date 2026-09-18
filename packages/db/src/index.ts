@@ -118,3 +118,11 @@ export type {
   TaskStatus,
   ThreadRecord,
 } from "./records.ts";
+
+// The durable half of tool dispatch (slice 5.5, PRD decision 26): the
+// `external_effect` ledger keyed by `(run_id, idempotency_key)` — the call's
+// durable `callId` — that makes a retried tool call a replay instead of a
+// second side effect. It is built from a `SystemActor` and binds the actor's
+// space into every statement, exactly like the repositories; the seam it
+// implements is declared in `@porkbot/effect`.
+export { createExternalEffectLedger } from "./tool-call-ledger.ts";
