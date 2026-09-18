@@ -64,7 +64,7 @@ packages/
   core/         pure domain: rules, state machine, reducer, policies
   db/           Drizzle schema, migrations, actor-scoped repositories
   contracts/    schemas and transport types
-  adapter-kit/  provider interfaces only
+  adapter-kit/  provider interfaces, failure vocabulary, two-implementations plan
   adapters/     provider implementations and offline emulators
   auth/         the authentication gate and actor resolution
   effect/       Effect layers, service tags, transport error mapping
@@ -154,6 +154,26 @@ config weakens one of them.
 
 Formatting has one answer: `pnpm format` rewrites the repo with Prettier, `pnpm
 format:check` verifies it, and CI runs the check.
+
+## Provider seams
+
+`packages/adapter-kit` declares one interface per external capability — mail,
+credentials, computers, the model runtime, memory, notifications, realtime
+fanout, storage and web access — plus the shared failure vocabulary (`gone`,
+`not_found`, `rate_limited`, `timed_out`, `auth_failed`) that every adapter
+translates its own errors into. It ships no implementation and imports no vendor
+SDK; implementations and their offline emulators live in `packages/adapters`,
+and lifecycle code branches on the failure kind rather than on a provider's
+error string.
+
+Every declared interface names at least two planned implementations, each pinned
+to the roadmap slice that lands it, in `PROVIDER_INTERFACES` in
+`packages/adapter-kit/src/provider-plan.ts`, and carries a failure mapping that
+documents every kind in the vocabulary. `provider-plan.test.ts` fails when a
+declared interface is missing from the register or the shapes list, carries
+fewer than two implementations, or leaves a failure kind undocumented, so "an
+interface with one implementation is a hypothesis" is a check rather than a
+convention.
 
 ## Dependencies
 
