@@ -29,6 +29,7 @@
   "dependencies": {
     "@orpc/client": "1.15.1",
     "@orpc/contract": "1.15.1",
+    "@porkbot/core": "workspace:*",
     "zod": "4.6.5"
   }
 }

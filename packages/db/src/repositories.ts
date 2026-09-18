@@ -1,13 +1,14 @@
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
-import { botColumns, runColumns, threadColumns } from "./records.ts";
-import type { BotRecord, RunRecord, ThreadRecord } from "./records.ts";
+import { botColumns, eventColumns, runColumns, threadColumns } from "./records.ts";
+import type { BotRecord, EventRecord, RunRecord, ThreadRecord } from "./records.ts";
 import { createRunAndTask } from "./run-creation.ts";
 import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
 import { insertedRow, requiredRow } from "./rows.ts";
 
 export type {
   BotRecord,
+  EventRecord,
   MessageRecord,
   MessageRole,
   RunRecord,
@@ -108,6 +109,18 @@ export interface RunReader {
   listForThread(threadId: string): Promise<readonly RunRecord[]>;
 }
 
+/**
+ * The durable half of a thread subscription (slice 4.3): the events a client
+ * replays from its cursor. The read is actor-scoped like every other one, so a
+ * thread id from another space returns no rows — and the subscription validates
+ * the thread itself first, so a cross-space id is a `NotFoundError` rather than
+ * an idle stream. `afterSeq` is exclusive: a reconnect receives every event
+ * with a position greater than its cursor and nothing it has already seen.
+ */
+export interface EventReader {
+  listAfter(threadId: string, afterSeq: number, limit: number): Promise<readonly EventRecord[]>;
+}
+
 /** The single run-creation command; nothing else in the package inserts a run. */
 export interface RunWriter {
   /**
@@ -141,6 +154,7 @@ export interface UserRepositories {
   readonly bots: BotReader & BotWriter;
   readonly threads: ThreadReader & ThreadWriter;
   readonly runs: RunReader & RunWriter;
+  readonly events: EventReader;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -152,6 +166,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
   const bots = readBots(actor, database);
   const threads = readThreads(actor, database);
   const runs = readRuns(actor, database);
+  const events = readEvents(actor, database);
 
   if (actor.kind === "system") {
     return { actor, bots, threads, runs };
@@ -172,6 +187,7 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
       ...runs,
       create: (input) => createRunAndTask(actor, database, input),
     },
+    events,
   };
 }
 
@@ -237,6 +253,25 @@ function readRuns(actor: Actor, database: Queryable): RunReader {
         `select ${runColumns} from run where space_id = $1 and thread_id = $2 ` +
           "order by created_at desc, id desc",
         [actor.spaceId, threadId],
+      );
+
+      return rows;
+    },
+  };
+}
+
+function readEvents(actor: Actor, database: Queryable): EventReader {
+  return {
+    async listAfter(
+      threadId: string,
+      afterSeq: number,
+      limit: number,
+    ): Promise<readonly EventRecord[]> {
+      const { rows } = await database.query<EventRecord>(
+        `select ${eventColumns} from event ` +
+          "where space_id = $1 and thread_id = $2 and seq > $3 " +
+          "order by seq asc limit $4",
+        [actor.spaceId, threadId, afterSeq, limit],
       );
 
       return rows;

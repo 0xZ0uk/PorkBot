@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { ORPCError } from "@orpc/server";
+import { InProcessRealtimeFanout } from "@porkbot/adapters";
 import { appContract, createApiClient } from "@porkbot/contracts";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
@@ -38,6 +39,7 @@ const services: ApiServices = {
       return { kind: "open" };
     },
   },
+  realtime: new InProcessRealtimeFanout(),
 };
 
 /**
@@ -90,6 +92,7 @@ function contractLeaves(node: unknown, prefix: readonly string[] = []): Contract
 
 const requestBodies: Record<string, string> = {
   "bots.get": JSON.stringify({ json: { id: "bot-1" } }),
+  "threads.events": JSON.stringify({ json: { threadId: "thread-1" } }),
 };
 
 describe("the route list", () => {
@@ -120,6 +123,7 @@ describe("every contract procedure", () => {
       "account.me",
       "bots.get",
       "deployment.status",
+      "threads.events",
     ]);
 
     for (const leaf of leaves) {
@@ -172,6 +176,7 @@ describe("the typed answer", () => {
       },
       threads: { findById: notExercised, listForBot: notExercised, createForBot: notExercised },
       runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
+      events: { listAfter: notExercised },
     };
   }
 

@@ -31,9 +31,18 @@ export type { MemberRole } from "./account.ts";
 export { botsGetContract, botSchema } from "./bots.ts";
 export type { Bot } from "./bots.ts";
 
+export { runEventSchema, threadsEventsContract } from "./threads.ts";
+export type { RunEventMessage } from "./threads.ts";
+
 // The client: a type derived from the contract plus the factory that builds it.
 export { createApiClient } from "./client.ts";
 export type { ApiClientOptions, AppClient } from "./client.ts";
+
+// The client half of a resumable subscription (slice 4.3): consume
+// `threads.events` and reconnect from the last signed cursor with the core
+// backoff policy, so a dropped connection resumes instead of refetching.
+export { subscribeThreadEvents } from "./stream.ts";
+export type { ThreadSubscriptionOptions } from "./stream.ts";
 
 // The error envelope: the oRPC class the boundary mapping in @porkbot/effect
 // constructs, re-exported so no other package imports the transport library.

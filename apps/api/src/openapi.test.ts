@@ -8,7 +8,12 @@ describe("the OpenAPI document", () => {
     expect(document.openapi).toMatch(/^3\.1\./);
     expect(document.info).toMatchObject({ title: "PorkBot API", version: "1.2.3" });
     expect(Object.keys(document.paths ?? {})).toEqual(
-      expect.arrayContaining(["/deployment/status", "/account/me", "/bots/{id}"]),
+      expect.arrayContaining([
+        "/deployment/status",
+        "/account/me",
+        "/bots/{id}",
+        "/threads/{threadId}/events",
+      ]),
     );
   });
 
@@ -39,5 +44,19 @@ describe("the OpenAPI document", () => {
 
     expect(status?.responses?.["429"]).toBeDefined();
     expect(account?.responses?.["429"]).toBeDefined();
+  });
+
+  it("documents the subscription as an event stream with its typed refusals", async () => {
+    const document = await createOpenApiDocument();
+    const events = document.paths?.["/threads/{threadId}/events"]?.get;
+    const success = events?.responses?.["200"];
+
+    expect(events).toMatchObject({ operationId: "threadsEvents" });
+    expect(
+      success !== undefined && "content" in success ? success.content : undefined,
+    ).toHaveProperty("text/event-stream");
+    expect(events?.responses?.["400"]).toBeDefined();
+    expect(events?.responses?.["404"]).toBeDefined();
+    expect(events?.responses?.["429"]).toBeDefined();
   });
 });

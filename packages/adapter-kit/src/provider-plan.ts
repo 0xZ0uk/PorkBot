@@ -203,7 +203,7 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         name: "InProcessRealtimeFanout",
         slice: "4.3",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
       {
         name: "PostgresRealtimeFanout",

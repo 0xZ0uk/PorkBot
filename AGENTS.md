@@ -172,6 +172,26 @@ change it without breaking what the boundaries and the CI gate protect.
   close, an error or a client disconnect releases. Checked by: test
   (`apps/api/src/limits-surface.test.ts`) and review.
 
+### Streaming
+
+- **A subscription resumes from a signed cursor, never a guess.** Every SSE
+  frame's id is an HMAC-signed position bound to the actor, the space and the
+  thread; `Last-Event-ID` is the only resume channel; a malformed, forged or
+  foreign cursor is the contract's typed `BAD_REQUEST`, and a cursor that names
+  another thread or space is refused rather than replayed. Checked by: test
+  (`apps/api/src/stream.test.ts`, `apps/api/src/cursors.test.ts`) and review.
+- **Access is re-resolved on every subscribe and resume.** The gate reads the
+  session per request and the subscription service re-reads the thread inside
+  the actor's scope before a frame is sent, so a revoked membership cannot
+  resume a live stream. Checked by: test (`apps/api/src/stream.test.ts`) and
+  review.
+- **Durable events are the stream; a fanout signal is only a wake-up.** A
+  subscriber replays `seq > cursor` from the actor-scoped repository after
+  every signal, so a lost signal costs latency and a duplicate costs a query —
+  never a missed or repeated event. Checked by: test
+  (`apps/api/src/stream.test.ts`, `packages/adapters/src/realtime.test.ts`) and
+  review.
+
 ### UI
 
 - **Colours come from `@porkbot/tokens`.** No hardcoded hex, `rgb()` or `hsl()`

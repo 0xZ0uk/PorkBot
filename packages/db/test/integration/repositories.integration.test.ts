@@ -165,6 +165,19 @@ async function insertRun(
   return requiredId(rows[0], "a run");
 }
 
+async function insertEvent(
+  spaceId: string,
+  threadId: string,
+  seq: number,
+  runId: string,
+): Promise<void> {
+  await db().query(
+    "insert into event (space_id, thread_id, seq, type, payload, run_id) " +
+      "values ($1, $2, $3, 'run.started', '{}', $4)",
+    [spaceId, threadId, seq, runId],
+  );
+}
+
 describe("the bot repository", () => {
   it("writes a created bot into the actor's space, attributed to the actor", async () => {
     const created = await aliceRepositories.bots.create({
@@ -277,6 +290,31 @@ describe("the run repository", () => {
     expect((await aliceRepositories.runs.listForThread(threadA)).map((row) => row.id)).toContain(
       runA,
     );
+  });
+});
+
+describe("the event replay read", () => {
+  it("reads strictly after the cursor, in order, scoped to the actor's space", async () => {
+    await insertEvent(alice.spaceId, threadA, 1, runA);
+    await insertEvent(alice.spaceId, threadA, 2, runA);
+    await insertEvent(alice.spaceId, threadA, 3, runA);
+    await insertEvent(bob.spaceId, threadB, 1, runB);
+
+    const all = await aliceRepositories.events.listAfter(threadA, 0, 10);
+
+    expect(all.map((row) => row.seq)).toEqual([1, 2, 3]);
+    expect(all[0]).toMatchObject({ threadId: threadA, runId: runA, type: "run.started" });
+
+    const afterCursor = await aliceRepositories.events.listAfter(threadA, 2, 10);
+    expect(afterCursor.map((row) => row.seq)).toEqual([3]);
+
+    const page = await aliceRepositories.events.listAfter(threadA, 0, 2);
+    expect(page.map((row) => row.seq)).toEqual([1, 2]);
+
+    // Another space's event rows and another space's thread both read as
+    // nothing, the same way every other scoped read behaves.
+    expect(await aliceRepositories.events.listAfter(threadB, 0, 10)).toEqual([]);
+    expect(await bobRepositories.events.listAfter(threadB, 0, 10)).toHaveLength(1);
   });
 });
 
