@@ -101,6 +101,7 @@ export type {
   BotSectionPatch,
   BotWriter,
   EventReader,
+  MembershipReader,
   NewBot,
   NewBotSection,
   Repositories,

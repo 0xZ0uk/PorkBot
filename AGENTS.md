@@ -56,6 +56,14 @@ change it without breaking what the boundaries and the CI gate protect.
   carries the resolved `Actor` and actor-scoped repositories, a by-id fetch is
   the repository's scoped read, and no contract input names a space. Checked by:
   test (`apps/api/src/gate.test.ts`).
+- **Every space-scoped row has a cross-space refusal.** The register in
+  `packages/db/test/integration/authorization/matrix.ts` names each entity and
+  the probes that exercise its real read and write seams; the spec beside it
+  runs every probe against another space, asserts the shared `NOT_FOUND` with
+  the foreign rows unchanged, and fails when a schema table is neither
+  registered nor exempted with a reason. Checked by: test
+  (`packages/db/test/integration/authorization/authorization-matrix.integration.test.ts`)
+  and review.
 - **One session read.** Sessions resolve to an `Actor` in `@porkbot/auth`, and
   the API calls that resolver in `apps/api/src/gate.ts` only. Checked by: test
   (`apps/api/src/gate.test.ts`).
@@ -249,11 +257,12 @@ change it without breaking what the boundaries and the CI gate protect.
   foreign cursor is the contract's typed `BAD_REQUEST`, and a cursor that names
   another thread or space is refused rather than replayed. Checked by: test
   (`apps/api/src/stream.test.ts`, `apps/api/src/cursors.test.ts`) and review.
-- **Access is re-resolved on every subscribe and resume.** The gate reads the
-  session per request and the subscription service re-reads the thread inside
-  the actor's scope before a frame is sent, so a revoked membership cannot
-  resume a live stream. Checked by: test (`apps/api/src/stream.test.ts`) and
-  review.
+- **Access is re-resolved on every subscribe, resume and frame.** The gate reads
+  the session per request; the subscription service re-resolves the thread on
+  every subscribe and resume and re-reads the membership before every frame,
+  all inside the actor's scope, so a revoked membership cannot resume a live
+  stream — it ends one that is already open before another event is delivered.
+  Checked by: test (`apps/api/src/stream.test.ts`) and review.
 - **Durable events are the stream; a fanout signal is only a wake-up.** A
   subscriber replays `seq > cursor` from the actor-scoped repository after
   every signal, so a lost signal costs latency and a duplicate costs a query —

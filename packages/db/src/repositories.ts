@@ -332,9 +332,27 @@ export interface RepositoryOptions {
   readonly credentialKeys?: CredentialKeyring | undefined;
 }
 
+/**
+ * The authorization root re-read (slice 3.3): the one fact a long-lived path
+ * re-checks for itself. The gate resolves an actor once per request, and a
+ * request-scoped handler cannot outlive its own resolution; a subscription can,
+ * so its replay loop asks this before each step and ends the stream when the
+ * membership row is gone. No space or user id is an argument — the scope is the
+ * actor the reader was built from, exactly like every other repository read.
+ */
+export interface MembershipReader {
+  /**
+   * Resolves while the actor's `space_member` row still exists and throws the
+   * shared `NotFoundError` once it was revoked. A revoked membership and a
+   * missing one are the same answer, as every scoped read reports them.
+   */
+  requireActive(): Promise<void>;
+}
+
 /** An operator's scope: reads plus the writes that carry a user of record. */
 export interface UserRepositories {
   readonly actor: UserActor;
+  readonly membership: MembershipReader;
   readonly bots: BotReader & BotWriter;
   readonly sections: SectionReader & SectionWriter;
   readonly threads: ThreadReader & ThreadWriter;
@@ -404,6 +422,7 @@ export function createRepositories(
 
   return {
     actor,
+    membership: readMembership(actor, database),
     bots: {
       ...bots,
       create: (input) => createBot(actor, database, input),
@@ -527,6 +546,27 @@ function readThreads(actor: Actor, database: Queryable): ThreadReader {
       );
 
       return rows;
+    },
+  };
+}
+
+/**
+ * The membership re-read: one statement against the authorization root, with
+ * both halves bound from the actor. The row's absence is the shared
+ * `NotFoundError`, so a caller cannot distinguish "revoked" from "never
+ * existed" — and neither can a client.
+ */
+function readMembership(actor: UserActor, database: Queryable): MembershipReader {
+  return {
+    async requireActive(): Promise<void> {
+      const { rows } = await database.query<{ readonly userId: string }>(
+        "select user_id from space_member where space_id = $1 and user_id = $2",
+        [actor.spaceId, actor.userId],
+      );
+
+      if (rows.length === 0) {
+        throw new NotFoundError("space membership", actor.userId);
+      }
     },
   };
 }

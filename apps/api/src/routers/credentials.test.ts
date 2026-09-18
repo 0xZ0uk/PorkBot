@@ -66,6 +66,7 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
 
   return {
     actor,
+    membership: { requireActive: notExercised },
     bots: {
       findById: notExercised,
       list: notExercised,
