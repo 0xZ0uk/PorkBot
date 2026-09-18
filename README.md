@@ -342,6 +342,42 @@ dependency the topology does not need. A test walks the contract tree and fails
 when a procedure has no limit, and another walks the installed routes and fails
 when a route has no rule.
 
+## Resumable streams
+
+`threads.events` is the per-thread subscription (slice 4.3, PRD decisions 14
+and 18; story 19). The durable `event` rows are the stream; the realtime fanout
+is only a wake-up:
+
+- **One subscription per thread.** The contract is `GET
+/threads/{threadId}/events` with an `eventIterator` output, so the derived
+  client types the frames as `RunEvent` and both web and desktop feed the same
+  reducer in `packages/core`. The transport is SSE with oRPC's keep-alive
+  comments.
+- **The cursor is a signed position.** Every frame's SSE `id` is an
+  HMAC-signed `{ actor, space, thread, seq }` minted by
+  `apps/api/src/cursors.ts`; a reconnecting client sends it back as
+  `Last-Event-ID`, which oRPC hands the handler as `lastEventId`. The id is
+  transport metadata: `getEventMeta(event)?.id` on the client.
+- **A refused cursor is typed.** A malformed, forged or foreign cursor is the
+  contract's typed `BAD_REQUEST` before any frame is sent; a thread outside the
+  actor's space, or one whose membership was revoked between connect and
+  resume, is the same `NOT_FOUND` as a missing row. Subscribe and resume both
+  re-resolve the session and the membership.
+- **Reconnection backs off the core way.** `subscribeThreadEvents` in
+  `@porkbot/contracts` (built on `backoffDelayMs` from `@porkbot/core`) resumes
+  from the last received id on a network error or 5xx/429 and rethrows a typed
+  4xx rather than retrying it forever.
+- **A lost signal costs a query.** The subscription subscribes to the fanout,
+  re-reads `seq > cursor` from the actor-scoped repository after every wake-up,
+  and re-reads after the initial replay, so a dropped signal is latency and a
+  duplicate is a no-op. `InProcessRealtimeFanout` ships in `@porkbot/adapters`;
+  the cross-process Postgres `LISTEN`/`NOTIFY` implementation lands in slice
+  6.1 behind the same interface.
+
+The stream holds a per-actor connection slot like any other `text/event-stream`
+response (slice 4.4), and closing the connection ends the subscription, never
+the run (PRD decision 25).
+
 ## Auth gate
 
 PRD decision 7 makes authorization structure rather than discipline, and slice
@@ -767,8 +803,17 @@ per-actor stream slots; the gate answers the contract's typed `RATE_LIMITED`
 with a `Retry-After` header; and a test walks the contract tree and the route
 list, so a new procedure or route cannot ship silently unlimited. The webhook
 family's budget and body cap are installed and tested now, with the ingress
-route itself landing in slice 4.5; the SSE surface that inherits the stream
-slots is slice 4.3.
+route itself landing in slice 4.5.
+
+The subscription transport lands with slice 4.3: `threads.events` streams a
+thread's persisted run events as SSE, each frame's `id` an HMAC-signed cursor
+bound to the actor, the space and the thread. A reconnecting client sends
+`Last-Event-ID` and receives exactly the events after its cursor; a forged or
+foreign cursor is the contract's typed `BAD_REQUEST`; subscribe and resume both
+re-resolve the session and the thread's membership. The durable rows are the
+stream and the realtime fanout is a wake-up, so a lost signal is latency rather
+than a lost event, and `subscribeThreadEvents` in `@porkbot/contracts` reconnects
+on the core backoff policy.
 
 Below the transport, the earlier slices are in place: `packages/db` owns the
 Drizzle migration workflow and the runs-domain schema — bots, sections, threads,

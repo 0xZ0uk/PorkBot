@@ -76,6 +76,7 @@ export type {
   BotPatch,
   BotReader,
   BotWriter,
+  EventReader,
   NewBot,
   Repositories,
   RunReader,
@@ -88,6 +89,7 @@ export type {
 export type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
 export type {
   BotRecord,
+  EventRecord,
   MessageRecord,
   MessageRole,
   RunRecord,

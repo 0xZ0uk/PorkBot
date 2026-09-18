@@ -114,8 +114,9 @@ describe("scoping statements to the actor's space", () => {
     await repositories.threads.listForBot("bot-1");
     await repositories.runs.findById("run-1");
     await repositories.runs.listForThread("thread-1");
+    await repositories.events.listAfter("thread-1", 3, 10);
 
-    expect(database.calls).toHaveLength(6);
+    expect(database.calls).toHaveLength(7);
 
     for (const call of database.calls) {
       expect(call.text).toContain("space_id");
@@ -140,6 +141,24 @@ describe("scoping statements to the actor's space", () => {
 
     expect(database.calls[0]?.values).toContain(owner.userId);
     expect(database.calls[2]?.values).toContain(owner.userId);
+  });
+});
+
+describe("the event replay read", () => {
+  it("reads strictly after the cursor, oldest first, scoped to the actor's space", async () => {
+    const database = fakeDatabase();
+    const repositories = createRepositories(owner, database);
+
+    await repositories.events.listAfter("thread-1", 3, 10);
+
+    const call = database.calls[0];
+
+    expect(call?.text).toContain("from event");
+    expect(call?.text).toContain("space_id = $1");
+    expect(call?.text).toContain("thread_id = $2");
+    expect(call?.text).toContain("seq > $3");
+    expect(call?.text).toContain("order by seq asc");
+    expect(call?.values).toEqual(["space-1", "thread-1", 3, 10]);
   });
 });
 

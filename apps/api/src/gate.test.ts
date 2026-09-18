@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ORPCError, call } from "@orpc/server";
+import { InProcessRealtimeFanout } from "@porkbot/adapters";
 import { createApiClient } from "@porkbot/contracts";
 import type { AppClient } from "@porkbot/contracts";
 import { NotFoundError } from "@porkbot/effect";
@@ -38,6 +39,7 @@ const services: ApiServices = {
       return { kind: "open" };
     },
   },
+  realtime: new InProcessRealtimeFanout(),
 };
 
 const owner: UserActor = { kind: "user", spaceId: "space-1", userId: "user-1", role: "owner" };
@@ -104,6 +106,11 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
         return [];
       },
       create: notExercised,
+    },
+    events: {
+      async listAfter(): Promise<never[]> {
+        return [];
+      },
     },
   };
 }

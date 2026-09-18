@@ -1,4 +1,5 @@
 import process from "node:process";
+import { InProcessRealtimeFanout } from "@porkbot/adapters";
 import { openDatabase, readDeploymentSettings } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { createApiServer, moduleInfo } from "./index.ts";
@@ -34,6 +35,7 @@ const server = createApiServer({
   limits,
   services: {
     deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
+    realtime: new InProcessRealtimeFanout(),
   },
 });
 

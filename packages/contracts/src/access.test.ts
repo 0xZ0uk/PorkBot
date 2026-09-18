@@ -55,6 +55,7 @@ describe("procedure access", () => {
       "deployment.status",
       "account.me",
       "bots.get",
+      "threads.events",
     ]);
   });
 
@@ -105,5 +106,11 @@ describe("procedure access", () => {
     // `bots.get` is the first authenticated by-id read: the client sends the
     // resource id, and the actor's scope comes from the session, never input.
     expectTypeOf<Parameters<AppClient["bots"]["get"]>[0]>().toEqualTypeOf<{ id: string }>();
+
+    // The subscription names the thread it wants and nothing else: the resume
+    // cursor is the Last-Event-ID header, and the space is the actor's.
+    expectTypeOf<Parameters<AppClient["threads"]["events"]>[0]>().toEqualTypeOf<{
+      threadId: string;
+    }>();
   });
 });

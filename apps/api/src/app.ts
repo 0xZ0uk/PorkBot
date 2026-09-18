@@ -10,14 +10,18 @@ import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
+import type { RealtimeFanout } from "@porkbot/adapter-kit";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import { assembleRouter, openProcedureContext } from "./gate.ts";
+import { createCursorCodec } from "./cursors.ts";
 import { httpRateLimited, installLimits, resolveLimits, routeRules } from "./limits.ts";
 import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
+import { createThreadsRouter } from "./routers/threads.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
+import { createThreadEventsService } from "./services/thread-events.ts";
 
 export const serviceName = "@porkbot/api";
 
@@ -31,6 +35,13 @@ export const rpcPath = "/rpc";
  */
 export interface ApiServices {
   readonly deployment: DeploymentStatusService;
+  /**
+   * The live wake-up source for thread subscriptions. Process-scoped, like a
+   * pool or an SDK client: one instance serves every request, and a same-process
+   * publisher wakes the API through it. Durable events are read from the
+   * actor's repositories, so a lost signal is latency rather than a lost event.
+   */
+  readonly realtime: RealtimeFanout;
 }
 
 export interface ApiAppOptions {
@@ -66,6 +77,13 @@ export interface ApiAppOptions {
    * clients share a budget); `createApiServer` supplies the socket address.
    */
   readonly clientKey?: (context: Context<ApiEnv>) => string;
+  /**
+   * The HMAC key resumable cursors are signed with. It defaults to a
+   * per-process random key, so a restart invalidates outstanding cursors and a
+   * client resumes from zero; supply one only to share cursors across
+   * processes. Cursors are bound to the actor, the space and the thread.
+   */
+  readonly cursorSecret?: string | Uint8Array;
 }
 
 interface ApiEnv extends LimitEnv {
@@ -90,10 +108,15 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const resolveActor = options.resolveActor ?? noSession;
   const repositoriesFor = options.repositoriesFor ?? refuseRepositories;
   const clientKey = options.clientKey ?? (() => "unknown");
+  const threadEvents = createThreadEventsService({
+    realtime: options.services.realtime,
+    cursors: createCursorCodec(options.cursorSecret),
+  });
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
     bots: createBotsRouter(),
+    threads: createThreadsRouter(threadEvents),
   });
   const rpc = new RPCHandler(router, {
     interceptors: [

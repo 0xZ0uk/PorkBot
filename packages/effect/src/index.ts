@@ -11,13 +11,14 @@ export const moduleInfo = {
 export {
   BlockedUrlError,
   CredentialMissingError,
+  CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
   LeaseLostError,
   NotFoundError,
   RunGoneError,
 } from "./errors.ts";
-export type { BlockedUrlReason, TypedError, TypedErrorTag } from "./errors.ts";
+export type { BlockedUrlReason, CursorRejection, TypedError, TypedErrorTag } from "./errors.ts";
 
 // The transport boundary (PRD decision 28): one table from every typed error to
 // an oRPC code, one default row for an unmapped defect, and the mapping from an

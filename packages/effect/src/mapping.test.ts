@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   BlockedUrlError,
   CredentialMissingError,
+  CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
   LeaseLostError,
@@ -42,6 +43,11 @@ const samples = {
   },
   BlockedUrlError: {
     error: new BlockedUrlError("blocked_address", "example.com", "127.0.0.1"),
+    code: "BAD_REQUEST",
+    status: 400,
+  },
+  CursorRejectedError: {
+    error: new CursorRejectedError("forged"),
     code: "BAD_REQUEST",
     status: 400,
   },

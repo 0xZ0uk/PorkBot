@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ORPCError } from "@orpc/server";
+import { InProcessRealtimeFanout } from "@porkbot/adapters";
 import { createApiClient } from "@porkbot/contracts";
 import type { AppClient } from "@porkbot/contracts";
 import { createLogger, redactedPlaceholder } from "@porkbot/logging";
@@ -27,6 +28,7 @@ const services: ApiServices = {
       return result as DeploymentStatus;
     },
   },
+  realtime: new InProcessRealtimeFanout(),
 };
 
 const app = createApiApp({ services, logger, generateRequestId: () => "generated-request-id" });

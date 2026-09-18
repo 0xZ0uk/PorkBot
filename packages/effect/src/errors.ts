@@ -177,6 +177,34 @@ export class BlockedUrlError extends Data.TaggedError("BlockedUrlError")<{
 }
 
 /**
+ * Why a resume cursor was refused. The reasons are distinct because they mean
+ * different things to whoever reads a log: `malformed` is not a cursor at all,
+ * `forged` is a reassembled or re-signed one, and `binding` is a genuine cursor
+ * presented for the wrong actor, space or thread — the replay the signature
+ * exists to stop (PRD decision 18).
+ */
+export type CursorRejection = "malformed" | "forged" | "binding";
+
+/**
+ * A resume cursor on an SSE subscription was refused before any event was
+ * replayed. The cursor is an opaque HMAC-signed position bound to the actor,
+ * the space and the thread, so a guessed or stolen event id cannot replay
+ * another space's stream; a rejection is a typed `BAD_REQUEST`, never a 500
+ * and never a silent restart from zero (PRD decision 18, story 19).
+ *
+ * The error deliberately carries no part of the cursor: a cursor encodes tenant
+ * ids, and an error is serialized into logs.
+ */
+export class CursorRejectedError extends Data.TaggedError("CursorRejectedError")<{
+  readonly reason: CursorRejection;
+  readonly message: string;
+}> {
+  constructor(reason: CursorRejection) {
+    super({ reason, message: `the resume cursor was rejected (${reason})` });
+  }
+}
+
+/**
  * Every error that has a row in the mapping table. A new member fails the
  * `satisfies` check in `mapping.ts` until it has a status, and that is the
  * exhaustiveness the table's test suite then proves at runtime.
@@ -188,7 +216,8 @@ export type TypedError =
   | GateTimeoutError
   | DeploymentSettingsConflictError
   | CredentialMissingError
-  | BlockedUrlError;
+  | BlockedUrlError
+  | CursorRejectedError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */
 export type TypedErrorTag = TypedError["_tag"];
