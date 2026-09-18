@@ -28,6 +28,19 @@ export type { SignupAvailability } from "./deployment.ts";
 export { accountMeContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
+// Notification preferences (slice 8.6, PRD decision 33; story 35): the
+// operator's switches over `@porkbot/core`'s event vocabulary. The output is
+// every kind with the quiet defaults filled in, so a settings surface renders
+// the set as given and never infers an absent kind.
+export {
+  notificationKindSchema,
+  notificationPreferenceSchema,
+  notificationPreferencesSchema,
+  notificationsPreferencesContract,
+  notificationsSetPreferenceContract,
+} from "./notifications.ts";
+export type { NotificationPreference, NotificationPreferencesView } from "./notifications.ts";
+
 export {
   avatarContentTypes,
   botAvatarUploadSchema,

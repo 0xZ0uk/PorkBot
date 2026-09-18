@@ -1,4 +1,10 @@
-import { APPROVAL_STATUSES, MEMORY_KINDS, MEMORY_WRITE_ORIGINS, RUN_STATUSES } from "@porkbot/core";
+import {
+  APPROVAL_STATUSES,
+  MEMORY_KINDS,
+  MEMORY_WRITE_ORIGINS,
+  NOTIFICATION_KINDS,
+  RUN_STATUSES,
+} from "@porkbot/core";
 import { pgEnum } from "drizzle-orm/pg-core";
 
 /**
@@ -68,3 +74,12 @@ export const approvalStatus = pgEnum("approval_status", APPROVAL_STATUSES);
  */
 export const memoryKind = pgEnum("memory_kind", MEMORY_KINDS);
 export const memoryWriteOrigin = pgEnum("memory_write_origin", MEMORY_WRITE_ORIGINS);
+
+/**
+ * The events an operator can be notified for, built from `@porkbot/core`'s
+ * vocabulary for the same reason run status is: the quiet defaults, the stored
+ * switches and the delivery gate must not disagree about what a "run.stalled"
+ * is or about which events exist. The enum grows with a migration when a slice
+ * adds a kind, and the store ignores a kind the running code does not know.
+ */
+export const notificationKind = pgEnum("notification_kind", NOTIFICATION_KINDS);

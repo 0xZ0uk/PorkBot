@@ -204,3 +204,15 @@ export { createApprovalStore } from "./approval-store.ts";
 // it implements (`MemoryDocuments`, `MemoryProposals`) are declared in
 // `@porkbot/effect`.
 export { createMemoryStore } from "./memory-store.ts";
+
+// The durable half of notification preferences (slice 8.6, PRD decision 33;
+// stories 35): the per-operator switches behind the settings surface and the
+// delivery path. This module is the only one in the package — and, by the
+// call-site suite beside it, in the shipped source — that names the preference
+// table. The factory splits by actor: an operator reads and writes their own
+// switches, while a job answers one recipient's eligibility through a
+// `space_member` join, so a notification cannot cross a space. The seams it
+// implements (`NotificationPreferences`, `NotificationRecipients`) are declared
+// in `@porkbot/effect`, and `createRepositories` exposes the matching half on
+// each actor's repository set.
+export { createNotificationStore } from "./notification-store.ts";

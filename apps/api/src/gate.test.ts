@@ -144,6 +144,10 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       update: notExercised,
       remove: notExercised,
     },
+    notifications: {
+      read: notExercised,
+      set: notExercised,
+    },
   };
 }
 
