@@ -58,6 +58,8 @@ const bot: BotRecord = {
   sectionId: null,
   archivedAt: null,
   spawnKey: "spawn-1",
+  avatarKey: null,
+  computerId: null,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-02T00:00:00.000Z"),
 };
@@ -88,6 +90,16 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       },
       create: notExercised,
       update: notExercised,
+      archive: notExercised,
+      restore: notExercised,
+      delete: notExercised,
+      setAvatar: notExercised,
+    },
+    sections: {
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      delete: notExercised,
     },
     threads: {
       async findById(id: string): Promise<never> {
@@ -233,6 +245,8 @@ describe("authenticated by default", () => {
       pinned: false,
       position: 0,
       sectionId: null,
+      avatarKey: null,
+      computerId: null,
       archivedAt: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-02T00:00:00.000Z",

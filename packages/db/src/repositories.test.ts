@@ -57,6 +57,8 @@ const bot: BotRecord = {
   sectionId: null,
   archivedAt: null,
   spawnKey: "spawn-1",
+  avatarKey: null,
+  computerId: null,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
@@ -97,8 +99,14 @@ function rejectedSystemWrites(repositories: SystemRepositories): readonly (() =>
     () => repositories.bots.create({ name: "Ada", color: "#000000", spawnKey: "spawn-1" }),
     // @ts-expect-error -- a job cannot update a user-owned bot in this slice.
     () => repositories.bots.update("bot-1", { name: "Grace" }),
+    // @ts-expect-error -- a job cannot archive, restore or delete a user's bot.
+    () => repositories.bots.delete("bot-1"),
+    // @ts-expect-error -- restoring is the operator's act, not a job's.
+    () => repositories.bots.restore("bot-1"),
     // @ts-expect-error -- a job cannot create a thread; it has no user of record.
     () => repositories.threads.createForBot("bot-1"),
+    // @ts-expect-error -- sections are an operator surface; a job reads none.
+    () => repositories.sections.list(),
     () => rejectedRunCreation(repositories),
   ];
 }
@@ -215,6 +223,9 @@ describe("bot writes", () => {
     await repositories.bots.create({ name: "Ada", color: "#4f46e5", spawnKey: "spawn-1" });
 
     expect(database.calls[0]?.text).toContain("insert into bot");
+    expect(database.calls[0]?.text).toContain(
+      "on conflict (space_id, spawn_key) do update set spawn_key = excluded.spawn_key",
+    );
     expect(database.calls[0]?.values).toEqual([
       "space-1",
       "user-1",
@@ -225,8 +236,55 @@ describe("bot writes", () => {
       "#4f46e5",
       false,
       0,
+      null,
       "spawn-1",
+      null,
     ]);
+  });
+
+  it("resolves the section inside the scoped insert, never with a raw id write", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.create({
+      name: "Ada",
+      color: "#4f46e5",
+      spawnKey: "spawn-1",
+      sectionId: "section-1",
+      computerId: "computer-1",
+    });
+
+    expect(database.calls[0]?.text).toContain(
+      "left join bot_section s on s.id = $12::uuid and s.space_id = $1 and s.user_id = $2",
+    );
+    expect(database.calls[0]?.values).toEqual([
+      "space-1",
+      "user-1",
+      "Ada",
+      "",
+      "",
+      "",
+      "#4f46e5",
+      false,
+      0,
+      "computer-1",
+      "spawn-1",
+      "section-1",
+    ]);
+  });
+
+  it("reports a section outside the actor's space as not-found, with nothing inserted", async () => {
+    const database = fakeDatabase(() => []);
+    const repositories = createRepositories(owner, database);
+
+    await expect(
+      repositories.bots.create({
+        name: "Ada",
+        color: "#4f46e5",
+        spawnKey: "spawn-1",
+        sectionId: "section-9",
+      }),
+    ).rejects.toMatchObject({ name: "NotFoundError", resource: "bot section", id: "section-9" });
   });
 
   it("updates only the fields the patch names", async () => {
@@ -279,12 +337,197 @@ describe("bot writes", () => {
     expect(database.calls[0]?.values).toEqual(["bot-1", "space-1"]);
   });
 
+  it("guards a section patch inside the same scoped update", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.update("bot-1", { sectionId: "section-1", computerId: "computer-1" });
+
+    expect(database.calls[0]?.text).toContain("section_id = $1");
+    expect(database.calls[0]?.text).toContain("computer_id = $2");
+    expect(database.calls[0]?.text).toContain("exists (select 1 from bot_section s");
+    expect(database.calls[0]?.values).toEqual([
+      "section-1",
+      "computer-1",
+      "bot-1",
+      "space-1",
+      "user-1",
+    ]);
+  });
+
+  it("separates a missing section from a missing bot on an empty update", async () => {
+    const database = fakeDatabase(() => []);
+    const repositories = createRepositories(owner, database);
+
+    await expect(
+      repositories.bots.update("bot-1", { sectionId: "section-9" }),
+    ).rejects.toMatchObject({ resource: "bot section", id: "section-9" });
+  });
+
+  it("clears a section with a null that the guard accepts", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.update("bot-1", { sectionId: null });
+
+    expect(database.calls[0]?.text).toContain("$1::uuid is null or exists");
+    expect(database.calls[0]?.values).toEqual([null, "bot-1", "space-1", "user-1"]);
+  });
+
   it("treats an empty insert result as a fault, not a missing row", async () => {
     const repositories = createRepositories(owner, fakeDatabase());
 
     await expect(
       repositories.bots.create({ name: "Ada", color: "#000000", spawnKey: "spawn-1" }),
     ).rejects.toThrow("the database returned no row for an insert");
+  });
+
+  it("archives idempotently, keeps the first instant and binds the actor's space", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.archive("bot-1");
+
+    expect(database.calls[0]?.text).toContain("archived_at = coalesce(archived_at, now())");
+    expect(database.calls[0]?.values).toEqual(["bot-1", "space-1"]);
+  });
+
+  it("restores by clearing the archived instant and binds the actor's space", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.restore("bot-1");
+
+    expect(database.calls[0]?.text).toContain("archived_at = null");
+    expect(database.calls[0]?.values).toEqual(["bot-1", "space-1"]);
+  });
+
+  it("deletes by id inside the actor's space and returns the removed row", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    const removed = await repositories.bots.delete("bot-1");
+
+    expect(database.calls[0]?.text).toContain("delete from bot where id = $1 and space_id = $2");
+    expect(removed.id).toBe("bot-1");
+  });
+
+  it("sets and clears the avatar key through the scoped update", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.setAvatar("bot-1", "avatars/space-1/bot-1");
+    await repositories.bots.setAvatar("bot-1", null);
+
+    expect(database.calls[0]?.text).toContain("avatar_key = $1");
+    expect(database.calls[0]?.values).toEqual(["avatars/space-1/bot-1", "bot-1", "space-1"]);
+    expect(database.calls[1]?.values).toEqual([null, "bot-1", "space-1"]);
+  });
+});
+
+describe("the bot list's archived scopes", () => {
+  it("excludes archived bots by default and by the active scope", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.list();
+    await repositories.bots.list("active");
+
+    for (const call of database.calls) {
+      expect(call.text).toContain("archived_at is null");
+      expect(call.values).toEqual(["space-1"]);
+    }
+  });
+
+  it("lists only archived bots for the restore screen, and both for all", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.list("archived");
+    await repositories.bots.list("all");
+
+    expect(database.calls[0]?.text).toContain("archived_at is not null");
+    expect(database.calls[1]?.text).not.toContain("archived_at is");
+    expect(database.calls[1]?.values).toEqual(["space-1"]);
+  });
+});
+
+describe("bot sections", () => {
+  const section = {
+    id: "section-1",
+    spaceId: "space-1",
+    userId: "user-1",
+    name: "Research",
+    position: 0,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+
+  it("lists the actor's sections in position order", async () => {
+    const database = fakeDatabase(() => [section]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.sections.list();
+
+    expect(database.calls[0]?.text).toContain(
+      "from bot_section where space_id = $1 and user_id = $2",
+    );
+    expect(database.calls[0]?.text).toContain("order by position asc");
+    expect(database.calls[0]?.values).toEqual(["space-1", "user-1"]);
+  });
+
+  it("creates a section under the actor's space and user, refusing a taken name", async () => {
+    const database = fakeDatabase(() => []);
+    const repositories = createRepositories(owner, database);
+
+    await expect(repositories.sections.create({ name: "Research" })).rejects.toMatchObject({
+      _tag: "NameConflictError",
+      resource: "bot section",
+      name: "Research",
+    });
+
+    expect(database.calls[0]?.text).toContain("on conflict (space_id, user_id, name) do nothing");
+    expect(database.calls[0]?.values).toEqual(["space-1", "user-1", "Research", 0]);
+  });
+
+  it("creates with the position the caller names", async () => {
+    const database = fakeDatabase(() => [section]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.sections.create({ name: "Research", position: 3 });
+
+    expect(database.calls[0]?.values).toEqual(["space-1", "user-1", "Research", 3]);
+  });
+
+  it("scopes an update to the actor's space and translates a unique violation", async () => {
+    const database = fakeDatabase((call) => {
+      if (call.text.startsWith("update")) {
+        const conflict = new Error("duplicate key value violates unique constraint");
+        Object.assign(conflict, { code: "23505" });
+        throw conflict;
+      }
+
+      return [section];
+    });
+    const repositories = createRepositories(owner, database);
+
+    await expect(repositories.sections.update("section-1", { name: "Work" })).rejects.toMatchObject(
+      { _tag: "NameConflictError", message: 'a bot section named "Work" already exists' },
+    );
+
+    expect(database.calls[0]?.text).toContain("where id = $2 and space_id = $3 and user_id = $4");
+  });
+
+  it("throws not-found when an update or delete matches no row in the space", async () => {
+    const repositories = createRepositories(owner, fakeDatabase());
+
+    await expect(repositories.sections.update("section-1", { name: "Work" })).rejects.toMatchObject(
+      { resource: "bot section", id: "section-1" },
+    );
+    await expect(repositories.sections.delete("section-1")).rejects.toMatchObject({
+      resource: "bot section",
+      id: "section-1",
+    });
   });
 });
 
@@ -295,8 +538,13 @@ describe("system scope", () => {
     expect(repositories.actor).toBe(worker);
     expect("create" in repositories.bots).toBe(false);
     expect("update" in repositories.bots).toBe(false);
+    expect("archive" in repositories.bots).toBe(false);
+    expect("restore" in repositories.bots).toBe(false);
+    expect("delete" in repositories.bots).toBe(false);
+    expect("setAvatar" in repositories.bots).toBe(false);
+    expect("sections" in repositories).toBe(false);
     expect("createForBot" in repositories.threads).toBe(false);
-    expect(rejectedSystemWrites(repositories)).toHaveLength(4);
+    expect(rejectedSystemWrites(repositories)).toHaveLength(7);
   });
 
   it("scopes a job's reads to the job's space", async () => {

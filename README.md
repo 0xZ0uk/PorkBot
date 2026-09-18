@@ -377,7 +377,10 @@ run.error("run failed", { error }); // error serialized + redacted
   become `[redacted]`, sensitive query parameters are stripped from request
   paths, and every string is scrubbed of known shapes — `Bearer …`, `sk-…`,
   JWTs, connection strings with credentials, PEM private keys, `password=…`.
-  Errors are serialized with their message, stack and cause redacted too.
+  Errors are serialized with their message, stack and cause redacted too. A
+  string longer than 4 KiB is replaced whole with `[truncated]` rather than
+  scanned: a validation error carries its input as the error's cause, and
+  logging an unbounded caller-supplied value would make the scanner the target.
 - **Opting out is review-visible.** Keeping one of those fields requires
   `unredacted(value)` at the exact call site. Grep for `unredacted(` to see
   every place a secret is deliberately allowed into a log.
@@ -561,6 +564,43 @@ fake repositories, and the process' fail-closed default answers "no session" so
 every authenticated procedure is a typed 401 until the operator auth
 configuration (secret, public origin, mail and the API's connection checkout)
 is wired in a later slice.
+
+## Bots, sections and avatars
+
+Slice 6.4 is the bot CRUD surface: `bots.list`, `get`, `create`, `update`,
+`archive`, `restore` and `delete`, the avatar operations `bots.setAvatar`,
+`bots.avatar` and `bots.clearAvatar`, and the section operations
+`sections.list`, `create`, `update` and `delete`. Every one is an authenticated
+contract procedure; the handler receives an actor-scoped repository, and the
+input names a bot or a section, never a space.
+
+- **Archiving is a reversible scope.** `archived_at` is a nullable instant and
+  `bots.list` defaults to `active`; `archived` is the restore screen's scope and
+  `all` asks for both. Archiving twice keeps the first instant, restoring clears
+  it, and neither touches the bot's threads.
+- **Deleting has one documented rule.** The row delete cascades to the bot's
+  threads, tasks, runs and steering messages in a single statement; the avatar
+  object is deleted through the storage seam, object first so a storage refusal
+  leaves the bot intact and retryable; and the computer and home directory are
+  deliberately retained until epic E7 owns their lifecycle. A deleted section,
+  by contrast, never deletes bots — `bot.section_id` is `set null`, so they
+  survive unfiled.
+- **A create is idempotent on its spawn key.** `(space_id, spawn_key)` is a NOT
+  NULL unique index and the insert replays the existing row, so a resubmitted
+  create is one bot, not two.
+- **A section is resolved inside the statement that writes it.** The create
+  selects its section under the actor's space _and user_ — matching the
+  schema's `(space, user, name)` unique index — and the update carries the same
+  guard, so another user's section is a typed not-found with nothing written
+  instead of an assignment the foreign key would happily accept.
+- **Avatars live in one storage path.** The row keeps only a storage key,
+  `avatars/<space>/<bot>`, and `apps/api/src/services/bots.ts` is the only code
+  that turns it into bytes. Upload, read, clear and delete all call the same
+  `StorageProvider` from `@porkbot/adapter-kit`, and the upload is bounded in
+  the contract (512 KiB) before anything decodes. The API boots on the local
+  provider (slice 7.7) rooted at the required `PORKBOT_STORAGE_DIR`, a named
+  volume in the local stack; a deployment on the S3-compatible provider answers
+  the same way because the key is the only thing the row carries.
 
 ## Webhook ingress
 

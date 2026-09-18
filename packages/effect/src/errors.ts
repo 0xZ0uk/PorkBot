@@ -33,6 +33,23 @@ export class NotFoundError extends Data.TaggedError("NotFoundError")<{
 }
 
 /**
+ * A name the caller chose is already taken in their scope: a bot section named
+ * "Research" exists, and sections are unique per space and user. The name is
+ * carried because the caller supplied it — the error is their own input coming
+ * back — and the resource is named so one error serves every uniquely-named
+ * row rather than growing a class per table.
+ */
+export class NameConflictError extends Data.TaggedError("NameConflictError")<{
+  readonly resource: string;
+  readonly name: string;
+  readonly message: string;
+}> {
+  constructor(resource: string, name: string) {
+    super({ resource, name, message: `a ${resource} named "${name}" already exists` });
+  }
+}
+
+/**
  * A run the caller asked for is no longer there: the row was purged, or the
  * run belongs to a space the caller cannot see. Distinct from `NotFoundError`
  * because the run lifecycle answers it differently — "this run is gone" ends a
@@ -300,6 +317,7 @@ export class ApprovalStoreError extends Data.TaggedError("ApprovalStoreError")<{
  */
 export type TypedError =
   | NotFoundError
+  | NameConflictError
   | RunGoneError
   | LeaseLostError
   | GateTimeoutError

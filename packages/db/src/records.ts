@@ -25,6 +25,19 @@ export interface BotRecord {
   readonly sectionId: string | null;
   readonly archivedAt: Date | null;
   readonly spawnKey: string;
+  readonly avatarKey: string | null;
+  readonly computerId: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/** A bot section row: the named group a bot may be filed under. */
+export interface BotSectionRecord {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly position: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -160,7 +173,12 @@ export interface RoutineOutcomeRecord {
 export const botColumns =
   'id, space_id as "spaceId", user_id as "userId", name, title, description, instructions, ' +
   'color, pinned, position, section_id as "sectionId", archived_at as "archivedAt", ' +
-  'spawn_key as "spawnKey", created_at as "createdAt", updated_at as "updatedAt"';
+  'spawn_key as "spawnKey", avatar_key as "avatarKey", computer_id as "computerId", ' +
+  'created_at as "createdAt", updated_at as "updatedAt"';
+
+export const botSectionColumns =
+  'id, space_id as "spaceId", user_id as "userId", name, position, ' +
+  'created_at as "createdAt", updated_at as "updatedAt"';
 
 export const threadColumns =
   'id, space_id as "spaceId", bot_id as "botId", user_id as "userId", ' +

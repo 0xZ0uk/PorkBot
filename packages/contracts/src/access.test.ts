@@ -54,7 +54,20 @@ describe("procedure access", () => {
     expect(procedures.map(({ path }) => path)).toEqual([
       "deployment.status",
       "account.me",
+      "bots.list",
       "bots.get",
+      "bots.create",
+      "bots.update",
+      "bots.archive",
+      "bots.restore",
+      "bots.delete",
+      "bots.setAvatar",
+      "bots.avatar",
+      "bots.clearAvatar",
+      "sections.list",
+      "sections.create",
+      "sections.update",
+      "sections.delete",
       "threads.events",
     ]);
   });

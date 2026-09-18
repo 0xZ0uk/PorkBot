@@ -1,7 +1,20 @@
+import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
-import { botColumns, eventColumns, runColumns, threadColumns } from "./records.ts";
-import type { BotRecord, EventRecord, RunRecord, ThreadRecord } from "./records.ts";
+import {
+  botColumns,
+  botSectionColumns,
+  eventColumns,
+  runColumns,
+  threadColumns,
+} from "./records.ts";
+import type {
+  BotRecord,
+  BotSectionRecord,
+  EventRecord,
+  RunRecord,
+  ThreadRecord,
+} from "./records.ts";
 import { createRunAndTask } from "./run-creation.ts";
 import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
 import { createRoutineStore } from "./routines.ts";
@@ -15,10 +28,11 @@ import {
   updateClaimedRun,
 } from "./run-leases.ts";
 import type { FencedRunPatch, ReclaimOptions, RunLease } from "./run-leases.ts";
-import { insertedRow, requiredRow } from "./rows.ts";
+import { insertedRow, isUniqueViolation, requiredRow } from "./rows.ts";
 
 export type {
   BotRecord,
+  BotSectionRecord,
   EventRecord,
   MessageRecord,
   MessageRole,
@@ -77,33 +91,96 @@ export interface NewBot {
   readonly name: string;
   readonly color: string;
   readonly spawnKey: string;
-  readonly title?: string;
-  readonly description?: string;
-  readonly instructions?: string;
-  readonly pinned?: boolean;
-  readonly position?: number;
+  readonly title?: string | undefined;
+  readonly description?: string | undefined;
+  readonly instructions?: string | undefined;
+  readonly pinned?: boolean | undefined;
+  readonly position?: number | undefined;
+  /** A section in the actor's space; one outside it is a `NotFoundError`. */
+  readonly sectionId?: string | null | undefined;
+  /**
+   * The computer assigned to the bot. It is opaque until the `computer` table
+   * lands with epic E7; nothing validates it against a row yet, and that is
+   * documented rather than implied.
+   */
+  readonly computerId?: string | null | undefined;
 }
 
 /** The mutable bot fields; an absent key is left untouched. */
 export interface BotPatch {
-  readonly name?: string;
-  readonly title?: string;
-  readonly description?: string;
-  readonly instructions?: string;
-  readonly color?: string;
-  readonly pinned?: boolean;
-  readonly position?: number;
+  readonly name?: string | undefined;
+  readonly title?: string | undefined;
+  readonly description?: string | undefined;
+  readonly instructions?: string | undefined;
+  readonly color?: string | undefined;
+  readonly pinned?: boolean | undefined;
+  readonly position?: number | undefined;
+  /** `null` unfiles the bot; a section outside the actor's space is not found. */
+  readonly sectionId?: string | null | undefined;
+  /** `null` clears the assignment; E7 adds the reference that validates it. */
+  readonly computerId?: string | null | undefined;
 }
+
+/**
+ * Which archived state a list includes. `active` is the default because an
+ * archived bot is out of the way until it is explicitly asked for; `all` exists
+ * for an operator view that shows both, and `archived` for the restore screen.
+ */
+export type BotListScope = "active" | "archived" | "all";
 
 export interface BotReader {
   /** Throws `NotFoundError` for a missing id and for one in another space alike. */
   findById(id: string): Promise<BotRecord>;
-  list(): Promise<readonly BotRecord[]>;
+  list(scope?: BotListScope): Promise<readonly BotRecord[]>;
 }
 
 export interface BotWriter {
+  /**
+   * Creates the bot, or replays the one already holding the spawn key. The
+   * insert is the duplicate decision — a resubmitted key returns the first
+   * row, never a second bot — and a section outside the actor's space is a
+   * `NotFoundError` with nothing inserted.
+   */
   create(input: NewBot): Promise<BotRecord>;
   update(id: string, patch: BotPatch): Promise<BotRecord>;
+  /** Idempotent: archiving an archived bot keeps the original instant. */
+  archive(id: string): Promise<BotRecord>;
+  /** Idempotent: restoring an active bot is a no-op that returns the row. */
+  restore(id: string): Promise<BotRecord>;
+  /**
+   * Hard-deletes the bot row and everything that dangles from it — its threads,
+   * tasks, runs and steering messages cascade. The caller owns what the
+   * database cannot reach: the avatar object in the storage seam. The deleted
+   * row is returned so that cleanup can name the bot it belongs to.
+   */
+  delete(id: string): Promise<BotRecord>;
+  /** Points the bot at a storage key; `null` clears it. */
+  setAvatar(id: string, avatarKey: string | null): Promise<BotRecord>;
+}
+
+/** What a caller must supply to create a bot section. */
+export interface NewBotSection {
+  readonly name: string;
+  readonly position?: number | undefined;
+}
+
+/** The mutable section fields; an absent key is left untouched. */
+export interface BotSectionPatch {
+  readonly name?: string | undefined;
+  readonly position?: number | undefined;
+}
+
+export interface SectionReader {
+  list(): Promise<readonly BotSectionRecord[]>;
+}
+
+export interface SectionWriter {
+  /** A name already in use by the actor's user is a `NameConflictError`. */
+  create(input: NewBotSection): Promise<BotSectionRecord>;
+  /** Renaming onto a name in use is a `NameConflictError`. */
+  update(id: string, patch: BotSectionPatch): Promise<BotSectionRecord>;
+  /** Deletes the section; its bots stay and become unfiled. */
+  delete(id: string): Promise<BotSectionRecord>;
 }
 
 export interface ThreadReader {
@@ -196,6 +273,7 @@ export interface SystemRepositories {
 export interface UserRepositories {
   readonly actor: UserActor;
   readonly bots: BotReader & BotWriter;
+  readonly sections: SectionReader & SectionWriter;
   readonly threads: ThreadReader & ThreadWriter;
   readonly runs: RunReader & RunWriter;
   readonly events: EventReader;
@@ -239,6 +317,16 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
       ...bots,
       create: (input) => createBot(actor, database, input),
       update: (id, patch) => updateBot(actor, database, id, patch),
+      archive: (id) => archiveBot(actor, database, id),
+      restore: (id) => restoreBot(actor, database, id),
+      delete: (id) => deleteBot(actor, database, id),
+      setAvatar: (id, avatarKey) => setBotAvatar(actor, database, id, avatarKey),
+    },
+    sections: {
+      ...readSections(actor, database),
+      create: (input) => createSection(actor, database, input),
+      update: (id, patch) => updateSection(actor, database, id, patch),
+      delete: (id) => deleteSection(actor, database, id),
     },
     threads: {
       ...threads,
@@ -264,11 +352,42 @@ function readBots(actor: Actor, database: Queryable): BotReader {
       return requiredRow(rows, "bot", id);
     },
 
-    async list(): Promise<readonly BotRecord[]> {
+    async list(scope: BotListScope = "active"): Promise<readonly BotRecord[]> {
+      // One statement per scope rather than a string-built predicate, so the
+      // archived filter is a value the reader chooses and never SQL a caller
+      // can influence.
+      const archived =
+        scope === "active"
+          ? "and archived_at is null"
+          : scope === "archived"
+            ? "and archived_at is not null"
+            : "";
+
       const { rows } = await database.query<BotRecord>(
-        `select ${botColumns} from bot where space_id = $1 ` +
+        `select ${botColumns} from bot where space_id = $1 ${archived} ` +
           "order by pinned desc, position asc, created_at asc, id asc",
         [actor.spaceId],
+      );
+
+      return rows;
+    },
+  };
+}
+
+/**
+ * A section's name is unique per `(space, user)`, so both halves are the scope:
+ * a section belongs to the user who named it, and another member of the space
+ * cannot list, rename or delete it. v1.0 is a single-operator deployment, so
+ * this is also the space's scope in practice; the rule is stated here because
+ * the schema's unique index is the authority for it.
+ */
+function readSections(actor: UserActor, database: Queryable): SectionReader {
+  return {
+    async list(): Promise<readonly BotSectionRecord[]> {
+      const { rows } = await database.query<BotSectionRecord>(
+        `select ${botSectionColumns} from bot_section ` +
+          "where space_id = $1 and user_id = $2 order by position asc, created_at asc, id asc",
+        [actor.spaceId, actor.userId],
       );
 
       return rows;
@@ -341,10 +460,27 @@ function readEvents(actor: Actor, database: Queryable): EventReader {
   };
 }
 
+/**
+ * Creates the bot or replays the one the spawn key already names.
+ *
+ * The section is resolved inside the insert with a scoped join: the selected
+ * row must belong to the actor's space, and when it does not the statement
+ * writes nothing, so a cross-space section can never be assigned and there is
+ * no check-then-insert race. The empty result is then reported as the section
+ * missing — not-found, never forbidden. `on conflict do update` is the replay:
+ * the conflicting insert touches only the key it conflicted on and returns the
+ * existing row, so a resubmitted create is answered by the first result.
+ */
 async function createBot(actor: UserActor, database: Queryable, input: NewBot): Promise<BotRecord> {
+  const sectionId = input.sectionId ?? null;
   const { rows } = await database.query<BotRecord>(
     "insert into bot (space_id, user_id, name, title, description, instructions, color, " +
-      "pinned, position, spawn_key) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) " +
+      "pinned, position, section_id, computer_id, spawn_key) " +
+      "select $1, $2, $3, $4, $5, $6, $7, $8, $9, s.id, $10, $11 " +
+      "from (values (1)) as anchor(n) " +
+      "left join bot_section s on s.id = $12::uuid and s.space_id = $1 and s.user_id = $2 " +
+      "where $12::uuid is null or s.id is not null " +
+      "on conflict (space_id, spawn_key) do update set spawn_key = excluded.spawn_key " +
       `returning ${botColumns}`,
     [
       actor.spaceId,
@@ -356,9 +492,15 @@ async function createBot(actor: UserActor, database: Queryable, input: NewBot): 
       input.color,
       input.pinned ?? false,
       input.position ?? 0,
+      input.computerId ?? null,
       input.spawnKey,
+      sectionId,
     ],
   );
+
+  if (rows[0] === undefined && sectionId !== null) {
+    throw new NotFoundError("bot section", sectionId);
+  }
 
   return insertedRow(rows);
 }
@@ -407,18 +549,196 @@ async function updateBot(
     assignments.push(`position = $${values.length}`);
   }
 
+  let sectionParameter: number | undefined;
+
+  if (patch.sectionId !== undefined) {
+    values.push(patch.sectionId);
+    sectionParameter = values.length;
+    assignments.push(`section_id = $${sectionParameter}`);
+  }
+
+  if (patch.computerId !== undefined) {
+    values.push(patch.computerId);
+    assignments.push(`computer_id = $${values.length}`);
+  }
+
   values.push(id);
   const idParameter = values.length;
   values.push(actor.spaceId);
   const spaceParameter = values.length;
 
+  // The section guard rides in the same statement that writes the column: a
+  // section the actor does not own matches no row, so the update writes nothing
+  // instead of filing the bot under a section it cannot see. The user parameter
+  // is pushed only when the guard exists, so the placeholder count always
+  // matches the statement.
+  let userParameter: number | undefined;
+
+  if (sectionParameter !== undefined) {
+    values.push(actor.userId);
+    userParameter = values.length;
+  }
+
+  const sectionGuard =
+    sectionParameter === undefined || userParameter === undefined
+      ? ""
+      : ` and ($${sectionParameter}::uuid is null or exists (` +
+        `select 1 from bot_section s where s.id = $${sectionParameter} ` +
+        `and s.space_id = $${spaceParameter} and s.user_id = $${userParameter}))`;
+
   const { rows } = await database.query<BotRecord>(
     `update bot set ${assignments.join(", ")} ` +
-      `where id = $${idParameter} and space_id = $${spaceParameter} returning ${botColumns}`,
+      `where id = $${idParameter} and space_id = $${spaceParameter}${sectionGuard} ` +
+      `returning ${botColumns}`,
     values,
   );
 
+  // An empty update with a section in the patch is the section's refusal or the
+  // bot's absence; one scoped read separates them so the caller hears which.
+  if (rows[0] === undefined && patch.sectionId !== undefined && patch.sectionId !== null) {
+    const { rows: sectionRows } = await database.query<{ readonly id: string }>(
+      "select id from bot_section where id = $1 and space_id = $2 and user_id = $3",
+      [patch.sectionId, actor.spaceId, actor.userId],
+    );
+
+    if (sectionRows[0] === undefined) {
+      throw new NotFoundError("bot section", patch.sectionId);
+    }
+  }
+
   return requiredRow(rows, "bot", id);
+}
+
+async function archiveBot(actor: UserActor, database: Queryable, id: string): Promise<BotRecord> {
+  // `coalesce` keeps the first archival instant: archiving an archived bot is
+  // the same state, not a new one, so a retry cannot rewrite its history.
+  const { rows } = await database.query<BotRecord>(
+    "update bot set archived_at = coalesce(archived_at, now()), updated_at = now() " +
+      `where id = $1 and space_id = $2 returning ${botColumns}`,
+    [id, actor.spaceId],
+  );
+
+  return requiredRow(rows, "bot", id);
+}
+
+async function restoreBot(actor: UserActor, database: Queryable, id: string): Promise<BotRecord> {
+  const { rows } = await database.query<BotRecord>(
+    "update bot set archived_at = null, updated_at = now() " +
+      `where id = $1 and space_id = $2 returning ${botColumns}`,
+    [id, actor.spaceId],
+  );
+
+  return requiredRow(rows, "bot", id);
+}
+
+async function deleteBot(actor: UserActor, database: Queryable, id: string): Promise<BotRecord> {
+  const { rows } = await database.query<BotRecord>(
+    `delete from bot where id = $1 and space_id = $2 returning ${botColumns}`,
+    [id, actor.spaceId],
+  );
+
+  // Threads, tasks, runs and steering messages cascade at the database; the
+  // avatar object in the storage seam is the caller's to delete, which is why
+  // the removed row is returned.
+  return requiredRow(rows, "bot", id);
+}
+
+async function setBotAvatar(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+  avatarKey: string | null,
+): Promise<BotRecord> {
+  const { rows } = await database.query<BotRecord>(
+    "update bot set avatar_key = $1, updated_at = now() " +
+      `where id = $2 and space_id = $3 returning ${botColumns}`,
+    [avatarKey, id, actor.spaceId],
+  );
+
+  return requiredRow(rows, "bot", id);
+}
+
+async function createSection(
+  actor: UserActor,
+  database: Queryable,
+  input: NewBotSection,
+): Promise<BotSectionRecord> {
+  const { rows } = await database.query<BotSectionRecord>(
+    "insert into bot_section (space_id, user_id, name, position) values ($1, $2, $3, $4) " +
+      "on conflict (space_id, user_id, name) do nothing " +
+      `returning ${botSectionColumns}`,
+    [actor.spaceId, actor.userId, input.name, input.position ?? 0],
+  );
+
+  const section = rows[0];
+
+  if (section === undefined) {
+    // The only way this insert yields no row is the unique name, because the
+    // actor supplies every other column.
+    throw new NameConflictError("bot section", input.name);
+  }
+
+  return section;
+}
+
+async function updateSection(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+  patch: BotSectionPatch,
+): Promise<BotSectionRecord> {
+  const values: unknown[] = [];
+  const assignments = ["updated_at = now()"];
+
+  if (patch.name !== undefined) {
+    values.push(patch.name);
+    assignments.push(`name = $${values.length}`);
+  }
+
+  if (patch.position !== undefined) {
+    values.push(patch.position);
+    assignments.push(`position = $${values.length}`);
+  }
+
+  values.push(id);
+  const idParameter = values.length;
+  values.push(actor.spaceId);
+  const spaceParameter = values.length;
+  values.push(actor.userId);
+  const userParameter = values.length;
+
+  try {
+    const { rows } = await database.query<BotSectionRecord>(
+      `update bot_section set ${assignments.join(", ")} ` +
+        `where id = $${idParameter} and space_id = $${spaceParameter} ` +
+        `and user_id = $${userParameter} returning ${botSectionColumns}`,
+      values,
+    );
+
+    return requiredRow(rows, "bot section", id);
+  } catch (error) {
+    if (patch.name !== undefined && isUniqueViolation(error)) {
+      throw new NameConflictError("bot section", patch.name);
+    }
+
+    throw error;
+  }
+}
+
+async function deleteSection(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+): Promise<BotSectionRecord> {
+  const { rows } = await database.query<BotSectionRecord>(
+    `delete from bot_section where id = $1 and space_id = $2 and user_id = $3 ` +
+      `returning ${botSectionColumns}`,
+    [id, actor.spaceId, actor.userId],
+  );
+
+  // The section's bots are not deleted: `bot.section_id` is `on delete set
+  // null`, so they survive as unfiled.
+  return requiredRow(rows, "bot section", id);
 }
 
 async function createThread(

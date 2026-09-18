@@ -17,6 +17,7 @@ export {
   GateTimeoutError,
   InvalidToolCallError,
   LeaseLostError,
+  NameConflictError,
   NotFoundError,
   RunGoneError,
   ToolCallConflictError,

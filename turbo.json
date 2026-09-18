@@ -56,5 +56,10 @@
       "persistent": true
     }
   },
-  "globalPassThroughEnv": ["DATABASE_URL", "GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY"]
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "PORKBOT_STORAGE_DIR",
+    "GITHUB_ACTIONS",
+    "GITHUB_STEP_SUMMARY"
+  ]
 }

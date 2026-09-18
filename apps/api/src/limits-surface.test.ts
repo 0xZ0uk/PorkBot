@@ -91,7 +91,24 @@ function contractLeaves(node: unknown, prefix: readonly string[] = []): Contract
 }
 
 const requestBodies: Record<string, string> = {
+  "bots.list": JSON.stringify({ json: { scope: "active" } }),
   "bots.get": JSON.stringify({ json: { id: "bot-1" } }),
+  "bots.create": JSON.stringify({
+    json: { name: "Ada", color: "#4f46e5", spawnKey: "00000000-0000-4000-8000-000000000000" },
+  }),
+  "bots.update": JSON.stringify({ json: { id: "bot-1", name: "Grace" } }),
+  "bots.archive": JSON.stringify({ json: { id: "bot-1" } }),
+  "bots.restore": JSON.stringify({ json: { id: "bot-1" } }),
+  "bots.delete": JSON.stringify({ json: { id: "bot-1" } }),
+  "bots.setAvatar": JSON.stringify({
+    json: { id: "bot-1", contentType: "image/png", data: "aGk=" },
+  }),
+  "bots.avatar": JSON.stringify({ json: { id: "bot-1" } }),
+  "bots.clearAvatar": JSON.stringify({ json: { id: "bot-1" } }),
+  "sections.list": JSON.stringify({ json: {} }),
+  "sections.create": JSON.stringify({ json: { name: "Research" } }),
+  "sections.update": JSON.stringify({ json: { id: "section-1", name: "Work" } }),
+  "sections.delete": JSON.stringify({ json: { id: "section-1" } }),
   "threads.events": JSON.stringify({ json: { threadId: "thread-1" } }),
 };
 
@@ -128,8 +145,21 @@ describe("every contract procedure", () => {
 
     expect(leaves.map((leaf) => leaf.name).sort()).toEqual([
       "account.me",
+      "bots.archive",
+      "bots.avatar",
+      "bots.clearAvatar",
+      "bots.create",
+      "bots.delete",
       "bots.get",
+      "bots.list",
+      "bots.restore",
+      "bots.setAvatar",
+      "bots.update",
       "deployment.status",
+      "sections.create",
+      "sections.delete",
+      "sections.list",
+      "sections.update",
       "threads.events",
     ]);
 
@@ -180,6 +210,16 @@ describe("the typed answer", () => {
         list: notExercised,
         create: notExercised,
         update: notExercised,
+        archive: notExercised,
+        restore: notExercised,
+        delete: notExercised,
+        setAvatar: notExercised,
+      },
+      sections: {
+        list: notExercised,
+        create: notExercised,
+        update: notExercised,
+        delete: notExercised,
       },
       threads: { findById: notExercised, listForBot: notExercised, createForBot: notExercised },
       runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
