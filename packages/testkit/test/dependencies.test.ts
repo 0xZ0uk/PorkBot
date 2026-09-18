@@ -365,11 +365,16 @@ describe("image references", () => {
       `    image: ${reference}`,
       "  cache:",
       '    image: "redis:8" # floating',
+      "  api:",
+      "    build:",
+      "      context: .",
+      "    image: porkbot/api:local",
     ].join("\n");
 
     expect(composeImageReferences(compose)).toEqual([
-      { line: 3, reference },
-      { line: 5, reference: "redis:8" },
+      { line: 3, reference, builtLocally: false },
+      { line: 5, reference: "redis:8", builtLocally: false },
+      { line: 9, reference: "porkbot/api:local", builtLocally: true },
     ]);
   });
 

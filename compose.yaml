@@ -1,0 +1,107 @@
+# The local stack: Postgres, api, worker, web and supervisor on one network,
+# every service with a healthcheck. `pnpm stack:up` builds these images and
+# blocks until each healthcheck passes; `pnpm stack:down` removes the
+# containers, the network and the Postgres volume.
+#
+# Nothing here needs a key, a hosted provider or network egress at run time: no
+# provider endpoint is configured, and the only images pulled are the
+# digest-pinned Node and Postgres images registered in dependencies.json. The
+# provider emulators replace vendor calls as their slices land.
+#
+# Host ports bind to loopback and are overridable so the stack can run beside
+# another Postgres or dev server: PORKBOT_POSTGRES_PORT, PORKBOT_API_PORT,
+# PORKBOT_WEB_PORT.
+
+name: porkbot
+
+x-app: &app
+  restart: unless-stopped
+  healthcheck:
+    # The probe asks the process itself, so "healthy" means the HTTP surface
+    # answered, not merely that a process exists.
+    test:
+      - CMD
+      - node
+      - -e
+      - >-
+        fetch("http://127.0.0.1:" + process.env.PORT + "/healthz").then((response) =>
+        process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))
+    interval: 2s
+    timeout: 3s
+    retries: 30
+    start_period: 5s
+
+services:
+  postgres:
+    image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PORKBOT_POSTGRES_USER:-porkbot}
+      POSTGRES_PASSWORD: ${PORKBOT_POSTGRES_PASSWORD:-porkbot-local}
+      POSTGRES_DB: ${PORKBOT_POSTGRES_DB:-porkbot}
+    ports:
+      # Loopback only: the stack is a local surface, not a network service.
+      - "127.0.0.1:${PORKBOT_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18 keeps the cluster under /var/lib/postgresql, and the image
+      # declares that path as its volume.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  api:
+    <<: *app
+    build:
+      context: .
+      target: api
+    image: porkbot/api:local
+    environment:
+      PORT: "3001"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:${PORKBOT_API_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    build:
+      context: .
+      target: worker
+    image: porkbot/worker:local
+    environment:
+      PORT: "3002"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    build:
+      context: .
+      target: web
+    image: porkbot/web:local
+    environment:
+      PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:${PORKBOT_WEB_PORT:-3000}:3000"
+
+  supervisor:
+    <<: *app
+    build:
+      context: .
+      target: supervisor
+    image: porkbot/supervisor:local
+    environment:
+      PORT: "3003"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+volumes:
+  postgres-data:

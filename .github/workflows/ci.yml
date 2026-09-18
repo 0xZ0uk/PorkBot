@@ -12,7 +12,7 @@ name: CI
 #   dependencies the pin register, manifests, lockfile and image digests agree, and the
 #                lockfile delta is written to the job summary on a pull request
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
-#   integration  integration tests against a Postgres 18 the testkit harness boots itself
+#   integration  integration tests against the Postgres 18 the local stack boots
 #   e2e          whole-process tests against the built output; the only tier that retries
 #   gate         green only when every tier above is green
 #
@@ -21,12 +21,14 @@ name: CI
 # quarantine tier is the named check for the ledger itself, so an expired entry
 # fails with its own name instead of inside a test log.
 #
-# The integration tier gets its Postgres from the testkit harness (slice 1.5):
-# the `integration` job starts one container with the CLI, the specs clone a
-# suite database from the migrated template, and the job destroys the harness
-# with `if: always()` so a red tier does not leave a container behind. The job
-# has no `services:` block on purpose — "works in CI with no external service"
-# is a criterion, so CI is where that is proven.
+# The integration tier gets its Postgres from the local stack (slice 1.8): the
+# job runs `pnpm stack:up`, the same command developers run, so CI proves the
+# images build, every healthcheck passes and the command waits for them. The
+# testkit harness then attaches to the stack's Postgres instead of booting its
+# own container, the specs clone a suite database from the migrated template,
+# and the job removes the stack with `if: always()` so a red tier does not leave
+# a container behind. The job has no `services:` block on purpose — "works in CI
+# with no external service" is a criterion, so CI is where that is proven.
 
 on:
   push:
@@ -168,23 +170,31 @@ jobs:
   integration:
     name: integration
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     needs: [build]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # The harness boots its own Postgres 18 container, so this job declares no
-      # service. Pulling the image here is the only network the tier needs, and
-      # it happens outside the test hooks, where a cold pull would eat a hook
-      # timeout. The tests assert the server major rather than trusting the tag.
-      - name: Pull the production Postgres image
-        run: docker pull postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
-      - name: Start and migrate the testkit harness
+      # The same command a developer runs. It builds the app images, starts
+      # Postgres, api, worker, web and supervisor, and blocks on `--wait` until
+      # every healthcheck passes, so a stack that starts here is the one the
+      # README documents. Every image it builds from or runs is pinned by digest
+      # in dependencies.json, which the `dependencies` tier checks.
+      - name: Start the local stack
+        timeout-minutes: 25
+        run: pnpm stack:up
+      # The harness attaches to the stack's Postgres (the compose defaults are
+      # `porkbot`/`porkbot-local` on 127.0.0.1:5432) and migrates the template,
+      # so the specs clone from the template rather than each booting a
+      # container. The tests assert the server major rather than trusting a tag.
+      - name: Attach the testkit harness to the stack's Postgres
         timeout-minutes: 5
+        env:
+          TESTKIT_DATABASE_URL: postgres://porkbot:porkbot-local@127.0.0.1:5432/porkbot
         run: |
           pnpm testkit:start
           pnpm testkit:migrate
-      - name: Integration tests against the harness
+      - name: Integration tests against the stack
         timeout-minutes: 20
         env:
           # The specs clone the run-level template instead of each booting a
@@ -198,6 +208,11 @@ jobs:
         continue-on-error: true
         timeout-minutes: 5
         run: pnpm testkit:destroy
+      - name: Stop the stack
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        run: pnpm stack:down
 
   e2e:
     name: e2e

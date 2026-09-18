@@ -93,16 +93,77 @@ export function dockerfileImageReferences(text: string): { line: number; referen
   return references;
 }
 
-export function composeImageReferences(text: string): { line: number; reference: string }[] {
-  const references: { line: number; reference: string }[] = [];
+export interface ComposeImage {
+  readonly line: number;
+  readonly reference: string;
+  /** True when the service also builds the image: a local tag, not a pull. */
+  readonly builtLocally: boolean;
+}
+
+/**
+ * A Compose service that builds its own image tags the result with `image:`;
+ * that reference is not a pull and cannot carry a digest. Everything else in
+ * the `services:` block is an external image and must be pinned.
+ */
+export function composeImageReferences(text: string): ComposeImage[] {
+  const references: ComposeImage[] = [];
+  let inServices = false;
+  let service: { hasBuild: boolean; images: { line: number; reference: string }[] } | undefined;
+
+  const flush = (): void => {
+    if (service === undefined) {
+      return;
+    }
+
+    for (const image of service.images) {
+      references.push({ ...image, builtLocally: service.hasBuild });
+    }
+
+    service = undefined;
+  };
 
   text.split(/\r?\n/).forEach((rawLine, index) => {
-    const match = /^\s*image:\s*(.+)$/.exec(rawLine);
+    const line = rawLine.trim();
+
+    if (line === "" || line.startsWith("#")) {
+      return;
+    }
+
+    const indent = rawLine.length - rawLine.trimStart().length;
+
+    if (indent === 0) {
+      flush();
+      inServices = line === "services:";
+      return;
+    }
+
+    if (!inServices) {
+      return;
+    }
+
+    if (indent === 2 && line.endsWith(":")) {
+      flush();
+      service = { hasBuild: false, images: [] };
+      return;
+    }
+
+    if (service === undefined || indent !== 4) {
+      return;
+    }
+
+    if (/^build:/.test(line)) {
+      service.hasBuild = true;
+      return;
+    }
+
+    const match = /^image:\s*(.+)$/.exec(line);
 
     if (match !== null) {
-      references.push({ line: index + 1, reference: unquote(match[1] ?? "") });
+      service.images.push({ line: index + 1, reference: unquote(match[1] ?? "") });
     }
   });
+
+  flush();
 
   return references;
 }
@@ -173,10 +234,12 @@ function scanDirectory(directory: string, repoRoot: string): ImageDiscovery {
       continue;
     }
 
-    const found = isDockerfile(entry.name)
+    const found: { line: number; reference: string }[] = isDockerfile(entry.name)
       ? dockerfileImageReferences(text)
       : isComposeFile(entry.name)
         ? composeImageReferences(text)
+            .filter((image) => !image.builtLocally)
+            .map(({ line, reference }) => ({ line, reference }))
         : workflowImageReferences(text);
 
     references.push(
