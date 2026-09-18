@@ -1,5 +1,5 @@
-import { run } from "graphile-worker";
-import type { Runner } from "graphile-worker";
+import { parseCronItems, run } from "graphile-worker";
+import type { CronItem, Runner } from "graphile-worker";
 import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
@@ -11,10 +11,20 @@ import type { RunExecutor } from "./jobs/run-execute.ts";
  * The watchdog's schedule: every minute, on the minute. PRD decision 26 asks
  * for a minute interval, and the lease TTL already carries a heartbeat grace
  * period, so a run stranded by a crash is recovered within roughly TTL plus one
- * interval. It is a crontab line rather than a self-rescheduling job so the
+ * interval. It is a scheduled job rather than a self-rescheduling one so the
  * schedule survives a process that dies before it can enqueue its successor.
+ *
+ * It is declared as a `CronItem` rather than a crontab line because the task
+ * identifier carries a dot (`run.watchdog`) and Graphile's crontab parser only
+ * accepts `[_a-zA-Z][_a-zA-Z0-9:/_-]*` as a command; the programmatic form
+ * names the same identifier the registry does instead of renaming the job to
+ * fit the file format.
  */
-export const leaseWatchdogCrontab = `* * * * * ${leaseWatchdogIdentifier}`;
+export const leaseWatchdogSchedule: CronItem = {
+  task: leaseWatchdogIdentifier,
+  match: "* * * * *",
+  identifier: "run-watchdog",
+};
 
 /**
  * Booting the worker: Graphile's runner plus the job registry, and nothing
@@ -65,6 +75,8 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
     pollInterval: options.pollInterval ?? 2000,
     logger: graphileLogger(options.logger),
     noHandleSignals: true,
-    ...(options.scheduleWatchdog === false ? {} : { crontab: leaseWatchdogCrontab }),
+    ...(options.scheduleWatchdog === false
+      ? {}
+      : { parsedCronItems: parseCronItems([leaseWatchdogSchedule]) }),
   });
 }
