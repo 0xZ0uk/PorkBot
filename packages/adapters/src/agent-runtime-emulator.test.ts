@@ -1,0 +1,392 @@
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Queue, Stream } from "effect";
+import type { Scope } from "effect";
+import { parseRunEvent } from "@porkbot/core";
+import type { RunEvent } from "@porkbot/core";
+import {
+  AgentRuntime,
+  fenced,
+  LiveRuns,
+  liveRunsLayer,
+  processSingleton,
+  withLiveRun,
+} from "@porkbot/effect";
+import type { LiveRunsShape, LiveRunsTag, RunSession, RunStartRequest } from "@porkbot/effect";
+import { LeaseLostError, RunGoneError } from "@porkbot/effect";
+import { describe, expect, it } from "vitest";
+import { EmulatorScriptError, emulatorAgentRuntimeLayer } from "./agent-runtime-emulator.ts";
+import type { EmulatorStep } from "./agent-runtime-emulator.ts";
+
+/**
+ * The duplex run seam driven end to end through the shipped offline runtime
+ * (PRD decision 13; issue #47).
+ *
+ * Every test below talks to `AgentRuntimeLayer` and `RunSession` and imports
+ * the orchestrator (`withLiveRun`, `LiveRuns`, `fenced`) from
+ * `@porkbot/effect`; the emulator is the second implementation handed to it,
+ * exactly as the Pi adapter will be in slice 5.3. That is the proof the
+ * orchestrator can gain a runtime without changing: it names no implementation,
+ * and this suite swaps one in from outside.
+ *
+ * The tier is unit rather than integration because the emulator is offline and
+ * deterministic — no database, no harness, no clock — yet each test drives the
+ * whole path: run-scoped layer, session, registry, commands, cancellation.
+ */
+
+function startRequest(runId: string): RunStartRequest {
+  return {
+    runId,
+    threadId: "thread-1",
+    startSeq: 1,
+    connection: { baseUrl: "https://model.example.test/v1", credentialName: "model-key" },
+    model: "test-model",
+    messages: [{ role: "user", content: "hello" }],
+  };
+}
+
+function eventTypes(events: readonly RunEvent[]): readonly string[] {
+  return events.map((event) => event.type);
+}
+
+/** Collects a session's events into an unbounded queue until the stream ends. */
+function collectEvents(session: RunSession) {
+  return Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<RunEvent>();
+    const fiber = yield* Effect.fork(
+      Stream.runForEach(session.events, (event) => Queue.offer(queue, event)),
+    );
+    return { queue, fiber };
+  });
+}
+
+/**
+ * Starts one run, hands `send` the registry while it is live, and returns the
+ * events the session emitted. The collector is the stream's only consumer.
+ */
+function driveRun(
+  runId: string,
+  script: readonly EmulatorStep[],
+  send?: (liveRuns: LiveRunsShape) => Effect.Effect<void, RunGoneError>,
+): Effect.Effect<readonly RunEvent[], RunGoneError, LiveRunsTag | Scope.Scope> {
+  return Effect.gen(function* () {
+    const session = yield* Deferred.make<RunSession>();
+    const release = yield* Deferred.make<undefined>();
+
+    const run = yield* Effect.fork(
+      withLiveRun(runId, emulatorAgentRuntimeLayer(startRequest(runId), script), (live) =>
+        Deferred.succeed(session, live).pipe(Effect.zipRight(Deferred.await(release))),
+      ),
+    );
+
+    const live = yield* Deferred.await(session);
+    const { queue, fiber: collector } = yield* collectEvents(live);
+    const liveRuns = yield* LiveRuns;
+
+    if (send !== undefined) {
+      yield* send(liveRuns);
+    }
+
+    yield* Fiber.join(collector);
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(run);
+
+    return Array.from(yield* Queue.takeAll(queue));
+  });
+}
+
+describe("the duplex run seam", () => {
+  it("delivers a steer into the live run and answers it as run.steered", async () => {
+    const script: readonly EmulatorStep[] = [
+      { kind: "await.steer" },
+      { kind: "run.completed", messageId: "assistant-1" },
+    ];
+
+    const events = await Effect.runPromise(
+      driveRun("run-1", script, (liveRuns) =>
+        liveRuns.dispatch("run-1", { type: "steer", text: "keep going" }),
+      ).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    expect(eventTypes(events)).toEqual(["run.started", "run.steered", "run.completed"]);
+    expect(events[1]).toMatchObject({ messageId: "steer-1", text: "keep going" });
+    for (const event of events) {
+      expect(parseRunEvent(event).ok).toBe(true);
+    }
+  });
+
+  it("resolves approval gates from approve and deny commands", async () => {
+    const script: readonly EmulatorStep[] = [
+      {
+        kind: "tool.awaiting_approval",
+        callId: "call-approve",
+        tool: "send_email",
+        arguments: { to: "operator@example.test" },
+        result: { sent: true },
+      },
+      {
+        kind: "tool.awaiting_approval",
+        callId: "call-deny",
+        tool: "delete_file",
+        arguments: { path: "/tmp/report.txt" },
+        result: { deleted: true },
+      },
+      { kind: "run.completed", messageId: "assistant-1" },
+    ];
+
+    const events = await Effect.runPromise(
+      driveRun("run-1", script, (liveRuns) =>
+        liveRuns.dispatch("run-1", { type: "approve", callId: "call-approve" }).pipe(
+          Effect.zipRight(
+            liveRuns.dispatch("run-1", {
+              type: "deny",
+              callId: "call-deny",
+              reason: "not this time",
+            }),
+          ),
+        ),
+      ).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    expect(eventTypes(events)).toEqual([
+      "run.started",
+      "tool.requested",
+      "tool.completed",
+      "tool.requested",
+      "tool.failed",
+      "run.completed",
+    ]);
+    expect(events[2]).toMatchObject({ callId: "call-approve", result: { sent: true } });
+    expect(events[4]).toMatchObject({ callId: "call-deny", error: "not this time" });
+  });
+
+  it("cancels the run on stop and reports the operator's reason", async () => {
+    const script: readonly EmulatorStep[] = [{ kind: "await.steer" }];
+
+    const events = await Effect.runPromise(
+      driveRun("run-1", script, (liveRuns) =>
+        liveRuns.dispatch("run-1", { type: "stop", reason: "operator stopped it" }),
+      ).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    expect(eventTypes(events)).toEqual(["run.started", "run.cancelled"]);
+    expect(events[1]).toMatchObject({ reason: "operator stopped it" });
+  });
+
+  it("answers a command for a run this process does not hold with RunGoneError", async () => {
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const liveRuns = yield* LiveRuns;
+        return yield* liveRuns
+          .dispatch("run-missing", { type: "stop" })
+          .pipe(Effect.timeout("1 second"), Effect.either);
+      }).pipe(Effect.provide(liveRunsLayer)),
+    );
+
+    expect(outcome._tag).toBe("Left");
+    if (outcome._tag === "Left") {
+      expect(outcome.left).toBeInstanceOf(RunGoneError);
+    }
+  });
+
+  it("answers a command for a run that already finished with RunGoneError", async () => {
+    const outcome = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* driveRun("run-1", [{ kind: "run.completed" }]);
+
+          const liveRuns = yield* LiveRuns;
+          expect(yield* liveRuns.isLive("run-1")).toBe(false);
+          expect(eventTypes(events)).toEqual(["run.started", "run.completed"]);
+
+          return yield* liveRuns
+            .dispatch("run-1", { type: "stop" })
+            .pipe(Effect.timeout("1 second"), Effect.either);
+        }).pipe(Effect.provide(liveRunsLayer)),
+      ),
+    );
+
+    expect(outcome._tag).toBe("Left");
+    if (outcome._tag === "Left") {
+      expect(outcome.left).toBeInstanceOf(RunGoneError);
+    }
+  });
+
+  it("losing the fence interrupts the run and the adapter cancels-and-reports", async () => {
+    const script: readonly EmulatorStep[] = [
+      {
+        kind: "tool.awaiting_approval",
+        callId: "call-1",
+        tool: "send_email",
+        arguments: { to: "operator@example.test" },
+        result: { sent: true },
+      },
+      { kind: "run.completed", messageId: "assistant-1" },
+    ];
+
+    const { exit, observations } = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fenceLost = yield* Deferred.make<LeaseLostError>();
+          const session = yield* Deferred.make<RunSession>();
+
+          const run = fenced(
+            fenceLost,
+            withLiveRun("run-1", emulatorAgentRuntimeLayer(startRequest("run-1"), script), (live) =>
+              Deferred.succeed(session, live).pipe(Effect.zipRight(Effect.never)),
+            ),
+          );
+
+          const runFiber = yield* Effect.fork(run);
+          const live = yield* Deferred.await(session);
+          const { queue, fiber: collector } = yield* collectEvents(live);
+
+          const observed: RunEvent[] = [];
+          while (!observed.some((event) => event.type === "tool.requested")) {
+            observed.push(yield* Queue.take(queue));
+          }
+
+          yield* Deferred.succeed(fenceLost, new LeaseLostError("run-1"));
+
+          const runExit = yield* Fiber.await(runFiber);
+          yield* Fiber.join(collector);
+          observed.push(...Array.from(yield* Queue.takeAll(queue)));
+
+          return { exit: runExit, observations: observed };
+        }).pipe(Effect.provide(liveRunsLayer)),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(Option.isSome(failure)).toBe(true);
+      if (Option.isSome(failure)) {
+        expect(failure.value).toBeInstanceOf(LeaseLostError);
+      }
+    }
+
+    expect(eventTypes(observations)).toEqual(["run.started", "tool.requested", "run.cancelled"]);
+    expect(observations.at(-1)).toMatchObject({ type: "run.cancelled", reason: "interrupted" });
+  });
+
+  it("keeps sessions per run: a command reaches only the run it names", async () => {
+    const steered: readonly EmulatorStep[] = [
+      { kind: "await.steer" },
+      { kind: "run.completed", messageId: "assistant-steered" },
+    ];
+    const plain: readonly EmulatorStep[] = [
+      { kind: "token.delta", messageId: "assistant-plain", delta: "done" },
+      { kind: "run.completed", messageId: "assistant-plain" },
+    ];
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const firstSession = yield* Deferred.make<RunSession>();
+          const secondSession = yield* Deferred.make<RunSession>();
+          const firstRelease = yield* Deferred.make<undefined>();
+
+          const first = yield* Effect.fork(
+            withLiveRun(
+              "run-1",
+              emulatorAgentRuntimeLayer(startRequest("run-1"), steered),
+              (live) =>
+                Deferred.succeed(firstSession, live).pipe(
+                  Effect.zipRight(Deferred.await(firstRelease)),
+                ),
+            ),
+          );
+          yield* Effect.fork(
+            withLiveRun("run-2", emulatorAgentRuntimeLayer(startRequest("run-2"), plain), (live) =>
+              Deferred.succeed(secondSession, live).pipe(Effect.zipRight(Effect.never)),
+            ),
+          );
+
+          const liveFirst = yield* Deferred.await(firstSession);
+          const liveSecond = yield* Deferred.await(secondSession);
+          const collectedFirst = yield* collectEvents(liveFirst);
+          const collectedSecond = yield* collectEvents(liveSecond);
+
+          const liveRuns = yield* LiveRuns;
+          yield* liveRuns.dispatch("run-1", { type: "steer", text: "only run one" });
+
+          yield* Deferred.succeed(firstRelease, undefined);
+          yield* Fiber.join(first);
+          yield* Fiber.join(collectedFirst.fiber);
+          yield* Fiber.join(collectedSecond.fiber);
+
+          return {
+            first: Array.from(yield* Queue.takeAll(collectedFirst.queue)),
+            second: Array.from(yield* Queue.takeAll(collectedSecond.queue)),
+          };
+        }).pipe(Effect.provide(liveRunsLayer)),
+      ),
+    );
+
+    expect(eventTypes(result.first)).toContain("run.steered");
+    expect(eventTypes(result.second)).not.toContain("run.steered");
+    expect(result.first[0]).toMatchObject({ runId: "run-1", seq: 1 });
+    expect(result.second[0]).toMatchObject({ runId: "run-2", seq: 1 });
+  });
+
+  it("replays the same script as the same event sequence every run", async () => {
+    const script: readonly EmulatorStep[] = [
+      { kind: "token.delta", messageId: "assistant-1", delta: "thinking" },
+      {
+        kind: "tool.immediate",
+        callId: "call-1",
+        tool: "lookup",
+        arguments: {},
+        result: { ok: true },
+      },
+      { kind: "await.steer" },
+      { kind: "run.completed", messageId: "assistant-1" },
+    ];
+    const send = (liveRuns: LiveRunsShape) =>
+      liveRuns.dispatch("run-1", { type: "steer", text: "carry on" });
+
+    const first = await Effect.runPromise(
+      driveRun("run-1", script, send).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+    const second = await Effect.runPromise(
+      driveRun("run-1", script, send).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    expect(second).toEqual(first);
+  });
+
+  it("fails the event stream when a script runs off its end instead of completing", async () => {
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { session } = yield* AgentRuntime;
+          return yield* Effect.exit(Stream.runCollect(session.events));
+        }).pipe(
+          Effect.provide(
+            emulatorAgentRuntimeLayer(startRequest("run-1"), [
+              { kind: "token.delta", messageId: "assistant-1", delta: "half a thought" },
+            ]),
+          ),
+        ),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const defect = Cause.dieOption(exit.cause);
+      expect(Option.isSome(defect)).toBe(true);
+      if (Option.isSome(defect)) {
+        expect(defect.value).toBeInstanceOf(EmulatorScriptError);
+      }
+    }
+  });
+
+  it("refuses to bless a run runtime layer as a process singleton", () => {
+    const layer = emulatorAgentRuntimeLayer(startRequest("run-1"), []);
+
+    expect(() => {
+      // @ts-expect-error a run runtime layer is request-scoped: blessing it as a
+      // singleton would bake one run's session into the boot path.
+      processSingleton(layer);
+    }).not.toThrow();
+  });
+});

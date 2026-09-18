@@ -27,7 +27,9 @@
     "vitest": "5.0.1"
   },
   "dependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
     "@porkbot/contracts": "workspace:*",
+    "@porkbot/core": "workspace:*",
     "effect": "3.22.2"
   }
 }

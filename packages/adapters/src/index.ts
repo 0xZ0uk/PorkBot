@@ -26,3 +26,11 @@ export type { MemoryCredentialStore } from "./credentials.ts";
 // whatever the fanout forgets; the durable cross-process implementation over
 // Postgres LISTEN/NOTIFY lands in slice 6.1 behind the same interface.
 export { InProcessRealtimeFanout } from "./realtime.ts";
+
+// The offline agent runtime (slice 5.2, PRD decision 13). It speaks the duplex
+// `RunSession` seam from @porkbot/effect over deterministic mailboxes, so the
+// whole run lifecycle — commands reaching a live run, fences interrupting it,
+// cancellation and failure reports — is exercisable with no keys and no
+// network. Slice 5.3 adapts Pi to the same seam in this package.
+export { EmulatorScriptError, emulatorAgentRuntimeLayer } from "./agent-runtime-emulator.ts";
+export type { EmulatorStep } from "./agent-runtime-emulator.ts";

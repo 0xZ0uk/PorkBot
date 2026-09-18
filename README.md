@@ -180,6 +180,30 @@ fewer than two implementations, or leaves a failure kind undocumented, so "an
 interface with one implementation is a hypothesis" is a check rather than a
 convention.
 
+## Run session seam
+
+Steering and approval are writes into a live run, not reads of one, so the run
+interface is duplex. `AgentRuntime` — declared in `packages/effect`, because both
+halves are Effect values and the event vocabulary is `packages/core`'s
+`RunEvent` — exposes a `RunSession` with an `events: Stream<RunEvent>` half and a
+`commands: Mailbox<Steer | Stop | Approve | Deny>` half. The layer that provides
+it is run-scoped (`requestTag` + `requestScoped`, PRD decision 27), so a session
+cannot outlive its run, and it holds no database handle.
+
+`LiveRuns` is the process's registry of live sessions: `dispatch` writes a
+command into the run's mailbox, or answers the typed `RunGoneError` for a run
+this process does not hold — never a hang, never a silent drop. Losing the fence
+is interruption: `fenced` races the run against the worker's fence-loss signal,
+so the whole run fiber tree stops, and the adapter cancels in-flight work and
+reports a terminal `run.cancelled` instead of completing a tool call that would
+commit after the lease moved.
+
+The runtime emulator (`emulatorAgentRuntimeLayer`) in `packages/adapters` is the
+offline implementation: deterministic scripts over mailboxes, no keys, no
+network and no clock, driving the shipped seam end to end in that package's
+suite. Pi implements the same interface in slice 5.3; the orchestrator names no
+implementation.
+
 ## Dependencies
 
 `dependencies.json` at the repository root is the pin register: every package

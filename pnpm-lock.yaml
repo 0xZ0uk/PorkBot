@@ -291,9 +291,15 @@ importers:
       '@porkbot/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
+      '@porkbot/core':
+        specifier: workspace:*
+        version: link:../core
       '@porkbot/effect':
         specifier: workspace:*
         version: link:../effect
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
     devDependencies:
       '@porkbot/eslint-config':
         specifier: workspace:*
@@ -481,9 +487,15 @@ importers:
 
   packages/effect:
     dependencies:
+      '@porkbot/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
       '@porkbot/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@porkbot/core':
+        specifier: workspace:*
+        version: link:../core
       effect:
         specifier: 3.22.2
         version: 3.22.2
