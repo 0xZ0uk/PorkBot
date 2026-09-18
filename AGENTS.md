@@ -87,6 +87,28 @@ change it without breaking what the boundaries and the CI gate protect.
   disclosure over persistent explanation or status chrome, and quote any new
   user-facing copy in the PR with why it is necessary. Checked by: review.
 
+### Dependencies
+
+- **Version choices live in `dependencies.json`.** The register is the only
+  place a pinned version or image digest is chosen, and every entry states why
+  it is pinned, so adding a pin is a one-file, reviewable change. Checked by:
+  the `dependencies` CI tier and `packages/testkit/test/dependencies.test.ts`.
+- **A pinned dependency is exact, declared and resolved.** A pinned package is
+  declared in exactly the version the register names and the lockfile resolves
+  that version with an integrity hash; drift in any of the three fails.
+  Checked by: test (`packages/testkit/test/dependencies.test.ts`).
+- **Container images are pinned by digest.** Every `FROM` in a Dockerfile,
+  `image:` in Compose and `docker pull` in a workflow names a digest registered
+  in `dependencies.json`; `:latest` is rejected even with a digest. Checked by:
+  the `dependencies` CI tier and the test above.
+- **Lockfile changes are surfaced on the pull request.** The `dependencies` job
+  writes the lockfile delta against the base branch to the job summary, so a
+  dependency change is reviewed as a diff instead of discovered in a blob.
+  Checked by: `.github/workflows/ci.yml` (the `dependencies` job).
+- **A dependency is added with a reason.** Every added, removed or upgraded
+  dependency is named in the pull request's Dependencies section with why it is
+  needed. Checked by: review and `.github/pull_request_template.md`.
+
 ### Pull requests
 
 - **Why, What, How tested — in words.** Use

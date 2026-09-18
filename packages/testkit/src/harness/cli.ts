@@ -60,7 +60,7 @@ function usage(): string {
     "  --migrations <dir>   Migration directory (default: <repo-root>/packages/db/migrations).",
     "  --name <suite>       Suite name for snapshot (default: generated).",
     "  --suites <count>     Suite count for benchmark (default: 3).",
-    "  --image <image>      Postgres image for start (default: postgres:18).",
+    "  --image <image>      Postgres image for start (default: the digest-pinned Postgres 18 image).",
     "  --show-credentials   Print connection strings with the password; they are redacted by default.",
     "  --json               Machine-readable output; progress lines go to stderr.",
     "  --help               This text.",
