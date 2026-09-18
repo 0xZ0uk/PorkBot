@@ -108,6 +108,26 @@ describe("run leases", () => {
     expect(database.calls[1]?.text).toContain("and status = 'running'");
   });
 
+  it("maps every run status onto its allowed pre-image and stamps started_at", async () => {
+    const database = fakeDatabase([run]);
+    const repositories = createRepositories(actor, database);
+    const lease = { owner: "worker-a", fence: 1 };
+
+    await repositories.runs.update(run.id, lease, { status: "running" });
+    await repositories.runs.update(run.id, lease, { status: "waiting_approval" });
+    await repositories.runs.update(run.id, lease, { status: "failed" });
+    await repositories.runs.update(run.id, lease, { status: "cancelled" });
+    await repositories.runs.update(run.id, lease, { status: "queued" });
+    await repositories.runs.update(run.id, lease, { started: true });
+
+    expect(database.calls[0]?.text).toContain("and status = 'waiting_approval' ");
+    expect(database.calls[1]?.text).toContain("and status = 'running' ");
+    expect(database.calls[2]?.text).toContain("and status in ('running', 'waiting_approval') ");
+    expect(database.calls[3]?.text).toContain("and status in ('running', 'waiting_approval') ");
+    expect(database.calls[4]?.text).toContain("and false ");
+    expect(database.calls[5]?.text).toContain("started_at = coalesce(started_at, now())");
+  });
+
   it("reports a stale heartbeat or write as typed lease loss", async () => {
     const repositories = createRepositories(actor, fakeDatabase());
     const lease = { owner: "worker-a", fence: 1 };
