@@ -63,9 +63,16 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
     note: "",
   },
   file_read: {
-    symbols: [],
-    rawModules: [],
-    note: "no shipped consumer yet: the computer file tools land with slice 6.9 and every read must label",
+    symbols: ["ComputerExecResult"],
+    rawModules: [
+      "packages/adapter-kit/src/computer.ts",
+      "packages/adapter-kit/src/index.ts",
+      "packages/adapter-kit/src/provider-plan.ts",
+      "packages/adapters/src/computer-conformance.ts",
+      "packages/adapters/src/computer-emulator.ts",
+      "packages/core/src/ingestion.ts",
+    ],
+    note: "",
   },
   email: {
     symbols: ["WebhookEvent"],
@@ -80,6 +87,18 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       "packages/adapters/src/index.ts",
       "packages/adapters/src/pi-events.ts",
       "packages/adapters/src/pi-run-source.ts",
+      "packages/core/src/ingestion.ts",
+    ],
+    note: "",
+  },
+  computer_output: {
+    symbols: ["ComputerExecResult"],
+    rawModules: [
+      "packages/adapter-kit/src/computer.ts",
+      "packages/adapter-kit/src/index.ts",
+      "packages/adapter-kit/src/provider-plan.ts",
+      "packages/adapters/src/computer-conformance.ts",
+      "packages/adapters/src/computer-emulator.ts",
       "packages/core/src/ingestion.ts",
     ],
     note: "",

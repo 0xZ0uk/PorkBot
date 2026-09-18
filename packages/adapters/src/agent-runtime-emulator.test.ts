@@ -4,17 +4,27 @@ import { parseRunEvent } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import {
   AgentRuntime,
+  createToolDispatcher,
   fenced,
   LiveRuns,
   liveRunsLayer,
   processSingleton,
   withLiveRun,
 } from "@porkbot/effect";
-import type { LiveRunsShape, LiveRunsTag, RunSession, RunStartRequest } from "@porkbot/effect";
+import type {
+  LiveRunsShape,
+  LiveRunsTag,
+  RunSession,
+  RunStartRequest,
+  ToolCall,
+  ToolCallAdmission,
+  ToolCallLedger,
+  ToolOutcome,
+} from "@porkbot/effect";
 import { LeaseLostError, RunGoneError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
 import { EmulatorScriptError, emulatorAgentRuntimeLayer } from "./agent-runtime-emulator.ts";
-import type { EmulatorStep } from "./agent-runtime-emulator.ts";
+import type { EmulatorRuntimeOptions, EmulatorStep } from "./agent-runtime-emulator.ts";
 
 /**
  * The duplex run seam driven end to end through the shipped offline runtime
@@ -66,13 +76,14 @@ function driveRun(
   runId: string,
   script: readonly EmulatorStep[],
   send?: (liveRuns: LiveRunsShape) => Effect.Effect<void, RunGoneError>,
+  options?: EmulatorRuntimeOptions,
 ): Effect.Effect<readonly RunEvent[], RunGoneError, LiveRunsTag | Scope.Scope> {
   return Effect.gen(function* () {
     const session = yield* Deferred.make<RunSession>();
     const release = yield* Deferred.make<undefined>();
 
     const run = yield* Effect.fork(
-      withLiveRun(runId, emulatorAgentRuntimeLayer(startRequest(runId), script), (live) =>
+      withLiveRun(runId, emulatorAgentRuntimeLayer(startRequest(runId), script, options), (live) =>
         Deferred.succeed(session, live).pipe(Effect.zipRight(Deferred.await(release))),
       ),
     );
@@ -388,5 +399,192 @@ describe("the duplex run seam", () => {
       // singleton would bake one run's session into the boot path.
       processSingleton(layer);
     }).not.toThrow();
+  });
+});
+
+describe("the offline runtime executing tools", () => {
+  function memoryLedger(): ToolCallLedger {
+    const settled = new Map<string, ToolOutcome>();
+
+    return {
+      begin: async (call): Promise<ToolCallAdmission> =>
+        settled.get(call.callId) ?? { status: "started" },
+      complete: async (call, result): Promise<ToolOutcome> => {
+        const outcome: ToolOutcome = { status: "completed", result };
+        settled.set(call.callId, outcome);
+        return outcome;
+      },
+      fail: async (call, error): Promise<ToolOutcome> => {
+        const outcome: ToolOutcome = { status: "failed", error };
+        settled.set(call.callId, outcome);
+        return outcome;
+      },
+    };
+  }
+
+  function dispatcherWith(registration: {
+    readonly name: string;
+    readonly execute: (call: ToolCall) => Effect.Effect<unknown, unknown>;
+  }) {
+    return createToolDispatcher({
+      registrations: [
+        {
+          name: registration.name,
+          description: "A tool the scripted run may call.",
+          parameters: { type: "object" },
+          maxDurationMs: 1_000,
+          execute: registration.execute,
+        },
+      ],
+      ledger: memoryLedger(),
+      leaseTtlMs: 120_000,
+      heartbeat: Effect.void,
+    });
+  }
+
+  function run(
+    script: readonly EmulatorStep[],
+    tools: ReturnType<typeof dispatcherWith>,
+    send?: (liveRuns: LiveRunsShape) => Effect.Effect<void, RunGoneError>,
+  ) {
+    return Effect.runPromise(
+      driveRun("run-1", script, send, { tools }).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+  }
+
+  it("executes a tool step and emits the machine's real result", async () => {
+    const executed: ToolCall[] = [];
+    const dispatcher = dispatcherWith({
+      name: "lookup",
+      execute: (call) =>
+        Effect.sync(() => {
+          executed.push(call);
+          return { value: 42 };
+        }),
+    });
+
+    const events = await run(
+      [
+        { kind: "tool.immediate", callId: "call-1", tool: "lookup", arguments: { query: "x" } },
+        { kind: "run.completed" },
+      ],
+      dispatcher,
+    );
+
+    expect(eventTypes(events)).toEqual([
+      "run.started",
+      "tool.requested",
+      "tool.completed",
+      "run.completed",
+    ]);
+    expect(events[2]).toMatchObject({ callId: "call-1", result: { value: 42 } });
+    expect(executed).toEqual([
+      { runId: "run-1", callId: "call-1", tool: "lookup", arguments: { query: "x" } },
+    ]);
+  });
+
+  it("executes an approved call and reports the handler's failure as tool.failed", async () => {
+    const executed: string[] = [];
+    const dispatcher = dispatcherWith({
+      name: "lookup",
+      execute: (call) =>
+        Effect.sync(() => {
+          executed.push(call.callId);
+          return { delivered: true };
+        }),
+    });
+
+    const events = await run(
+      [
+        {
+          kind: "tool.awaiting_approval",
+          callId: "call-approved",
+          tool: "lookup",
+          arguments: {},
+        },
+        { kind: "run.completed" },
+      ],
+      dispatcher,
+      (liveRuns) => liveRuns.dispatch("run-1", { type: "approve", callId: "call-approved" }),
+    );
+
+    expect(eventTypes(events)).toEqual([
+      "run.started",
+      "tool.requested",
+      "tool.completed",
+      "run.completed",
+    ]);
+    expect(executed).toEqual(["call-approved"]);
+  });
+
+  it("reports a handler that broke as the call's failure, not the run's", async () => {
+    const dispatcher = dispatcherWith({
+      name: "lookup",
+      execute: () => Effect.fail(new Error("the machine broke")),
+    });
+
+    const events = await run(
+      [
+        { kind: "tool.immediate", callId: "call-1", tool: "lookup", arguments: {} },
+        { kind: "run.completed" },
+      ],
+      dispatcher,
+    );
+
+    expect(eventTypes(events)).toEqual([
+      "run.started",
+      "tool.requested",
+      "tool.failed",
+      "run.completed",
+    ]);
+    expect(events[2]).toMatchObject({ callId: "call-1", error: 'tool "lookup" failed' });
+  });
+
+  it("turns an unregistered tool into a failed call the model can recover from", async () => {
+    const dispatcher = dispatcherWith({ name: "lookup", execute: () => Effect.succeed(null) });
+
+    const events = await run(
+      [
+        { kind: "tool.immediate", callId: "call-1", tool: "missing", arguments: {} },
+        { kind: "run.completed" },
+      ],
+      dispatcher,
+    );
+
+    expect(eventTypes(events)).toEqual([
+      "run.started",
+      "tool.requested",
+      "tool.failed",
+      "run.completed",
+    ]);
+    expect(events[2]).toMatchObject({
+      error: 'the tool "missing" is not registered for this run',
+    });
+  });
+
+  it("refuses a tool step with no result when the runtime holds no dispatcher", async () => {
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { session } = yield* AgentRuntime;
+          return yield* Effect.exit(Stream.runCollect(session.events));
+        }).pipe(
+          Effect.provide(
+            emulatorAgentRuntimeLayer(startRequest("run-1"), [
+              { kind: "tool.immediate", callId: "call-1", tool: "lookup", arguments: {} },
+            ]),
+          ),
+        ),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const defect = Cause.dieOption(exit.cause);
+      expect(Option.isSome(defect)).toBe(true);
+      if (Option.isSome(defect)) {
+        expect(defect.value).toBeInstanceOf(EmulatorScriptError);
+      }
+    }
   });
 });

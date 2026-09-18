@@ -32,7 +32,13 @@ import type { PromptSection } from "./prompt-composition.ts";
  * stand for every caller and the boundary tests need nothing but a value.
  */
 
-export const INGESTION_PATHS = ["web_fetch", "file_read", "email", "mcp_output"] as const;
+export const INGESTION_PATHS = [
+  "web_fetch",
+  "file_read",
+  "email",
+  "mcp_output",
+  "computer_output",
+] as const;
 
 export type IngestionPath = (typeof INGESTION_PATHS)[number];
 
@@ -68,6 +74,12 @@ export const INGESTION_PATH_DEFINITIONS: readonly IngestionPathDefinition[] = [
     id: "mcp_output",
     description: "A result returned by an MCP server or a vendor tool call.",
     seam: "parsePiEvent",
+  },
+  {
+    id: "computer_output",
+    description:
+      "Text a computer tool returned: shell stdout, a directory listing, or the page text a browser action read back.",
+    seam: "ComputerProvider",
   },
 ];
 

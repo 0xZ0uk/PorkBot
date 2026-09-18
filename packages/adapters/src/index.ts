@@ -73,7 +73,7 @@ export type { StorageConfigurationReason } from "./storage-errors.ts";
 // cancellation and failure reports — is exercisable with no keys and no
 // network. Slice 5.3 adapts Pi to the same seam in this package.
 export { EmulatorScriptError, emulatorAgentRuntimeLayer } from "./agent-runtime-emulator.ts";
-export type { EmulatorStep } from "./agent-runtime-emulator.ts";
+export type { EmulatorRuntimeOptions, EmulatorStep } from "./agent-runtime-emulator.ts";
 
 // The Pi adapter (slice 5.3, PRD decision 13). Pi's async iterator of
 // canonical events is adapted to the same duplex `RunSession` seam, through an
@@ -144,6 +144,24 @@ export {
 export type { NotificationConfigurationReason } from "./notification-errors.ts";
 export { createHttpNotificationProvider } from "./http-notification.ts";
 export type { HttpNotificationProviderOptions } from "./http-notification.ts";
+
+// A bot's computer (slice 6.9, PRD decisions 20 and 30; stories 27–30). The
+// interface lives in @porkbot/adapter-kit; this package ships the offline
+// implementation the whole tool path runs on with no daemon, no key and no
+// network, and the first of the seam's three named providers to land. Its
+// filesystem, bounded shell and scripted browser are reached only through
+// `exec`, exactly as a real container is, so the file, shell and browser tools
+// in @porkbot/effect run unchanged against either. `computer-conformance.ts`
+// is the suite every provider is held to, registered here and by the Docker
+// provider when it lands.
+export { ComputerEmulator, DEFAULT_COMPUTER_HOME } from "./computer-emulator.ts";
+export type {
+  ComputerEmulatorOptions,
+  EmulatedBrowserAction,
+  EmulatedComputerPage,
+  RecordedBrowserAction,
+} from "./computer-emulator.ts";
+export { ComputerProviderError } from "./computer-errors.ts";
 
 // Web access (slices 6.9 and 10.1, PRD decision 30). The interface lives in
 // @porkbot/adapter-kit; this package ships the two implementations the rule
