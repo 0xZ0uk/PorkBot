@@ -41,6 +41,32 @@ export type { MemoryCredentialStore } from "./credentials.ts";
 // Postgres LISTEN/NOTIFY lands in slice 6.1 behind the same interface.
 export { InProcessRealtimeFanout } from "./realtime.ts";
 
+// Storage (slice 7.7). The local provider is the self-hosting default: one
+// directory, no endpoint, no key and no network, so nothing in the product
+// requires the S3-compatible implementation to exist. That one signs its own
+// requests (SigV4) over the URL-safety module's egress door and resolves its
+// keys from the credential store by name; the offline emulator is the S3 wire
+// the provider is conformance-tested against, over loopback with no keys that
+// are real.
+export { LocalStorageProvider } from "./local-storage.ts";
+export type { LocalStorageProviderOptions } from "./local-storage.ts";
+export { S3CompatibleStorageProvider } from "./s3-storage.ts";
+export type { S3CompatibleStorageProviderOptions } from "./s3-storage.ts";
+export { S3StorageEmulator } from "./s3-storage-emulator.ts";
+export type {
+  RecordedS3Request,
+  S3StorageEmulatorOptions,
+  StoredS3Object,
+} from "./s3-storage-emulator.ts";
+export { assertStorageKey } from "./storage-keys.ts";
+export {
+  StorageConfigurationError,
+  StorageKeyError,
+  StorageProtocolError,
+  StorageProviderError,
+} from "./storage-errors.ts";
+export type { StorageConfigurationReason } from "./storage-errors.ts";
+
 // The offline agent runtime (slice 5.2, PRD decision 13). It speaks the duplex
 // `RunSession` seam from @porkbot/effect over deterministic mailboxes, so the
 // whole run lifecycle — commands reaching a live run, fences interrupting it,
