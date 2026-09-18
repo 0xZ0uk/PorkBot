@@ -1,3 +1,5 @@
+import { accountMeContract } from "./account.ts";
+import { botsGetContract } from "./bots.ts";
 import { deploymentStatusContract } from "./deployment.ts";
 
 /**
@@ -12,6 +14,22 @@ export const appContract = {
   deployment: {
     status: deploymentStatusContract,
   },
+  account: {
+    me: accountMeContract,
+  },
+  bots: {
+    get: botsGetContract,
+  },
 };
+
+/**
+ * Every procedure a caller may reach without a session, by contract path.
+ *
+ * The list is the reviewable inventory the PRD's "public is an explicit act"
+ * asks for: marking a contract with `publicProcedure` without listing it here —
+ * or listing a path that is not public — fails `access.test.ts`. A new entry is
+ * meant to be argued for in review, not inferred from the absence of a marker.
+ */
+export const publicProcedures = ["deployment.status"] as const;
 
 export type AppContract = typeof appContract;

@@ -1,5 +1,5 @@
-import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { publicProcedure } from "./access.ts";
 
 /**
  * The deployment module: facts a client needs before it has a session.
@@ -8,9 +8,9 @@ import { z } from "zod";
  * sign-in screen can decide whether to offer registration. It is deliberately
  * pre-auth: no actor exists before the gate runs, and the answer is not
  * tenant data (PRD decision 8, and slice 3.1's `readDeploymentSettings`, the
- * one read that takes no tenant id). Making a procedure public is meant to be
- * an explicit act once the gate lands in slice 3.2; this procedure is public
- * by construction and says so here.
+ * one read that takes no tenant id). `publicProcedure` is the explicit act
+ * that says so; the gate refuses to run it on the authenticated path and its
+ * path is listed in `publicProcedures` (slice 3.2).
  */
 
 /** Fail-closed: only an explicit `signupsEnabled: true` reads as open. */
@@ -18,7 +18,7 @@ export const signupAvailabilitySchema = z.enum(["open", "closed"]);
 
 export type SignupAvailability = z.infer<typeof signupAvailabilitySchema>;
 
-export const deploymentStatusContract = oc
+export const deploymentStatusContract = publicProcedure
   .route({
     method: "GET",
     path: "/deployment/status",
