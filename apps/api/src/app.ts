@@ -5,6 +5,7 @@ import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { moduleInfo as contractsModule } from "@porkbot/contracts";
 import { moduleInfo as coreModule } from "@porkbot/core";
+import { boundaryReports } from "@porkbot/effect";
 import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
@@ -81,16 +82,31 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const rpc = new RPCHandler(router, {
     interceptors: [
       onError((error, context) => {
-        // A declared error is part of the contract and the caller's business;
-        // the request line already carries its status. Anything else is a
-        // defect, logged redacted and answered 500 by oRPC.
+        // The gate's boundary mapping (PRD decision 28) answers every handler
+        // error; what it left as a report is the only thing worth logging here,
+        // and it is logged redacted with the request's correlation id. A
+        // declared error is the caller's business and has an empty report.
+        const reports = boundaryReports(error);
+        const path = redactPath(requestPath(context.request.url));
+
+        if (reports !== null) {
+          for (const reported of reports) {
+            context.context.logger.error("request failed", { error: reported, path });
+          }
+
+          return;
+        }
+
+        // An error the boundary never saw — a failure while building the
+        // procedure context, or inside oRPC itself — is still a defect, logged
+        // redacted and answered 500 by oRPC.
         if (error instanceof ORPCError && error.defined) {
           return;
         }
 
         context.context.logger.error("request failed", {
           error,
-          path: redactPath(requestPath(context.request.url)),
+          path,
         });
       }),
     ],
@@ -109,6 +125,9 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   );
 
   app.use(`${rpcPath}/*`, async (context, next) => {
+    // A failure here is before the oRPC boundary exists, so it cannot be a
+    // typed procedure error: it is a defect, and Hono's error handler answers
+    // it 500 with a redacted line (gate.test.ts locks that behavior).
     const procedureContext = await openProcedureContext({
       headers: context.req.raw.headers,
       logger: context.get("logger"),

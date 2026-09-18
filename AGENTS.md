@@ -60,6 +60,24 @@ change it without breaking what the boundaries and the CI gate protect.
   the API calls that resolver in `apps/api/src/gate.ts` only. Checked by: test
   (`apps/api/src/gate.test.ts`).
 
+### Effect services
+
+- **Typed errors reach the boundary through one table.** A router throws a
+  typed error and `apps/api/src/gate.ts` maps it with `mapError` from
+  `@porkbot/effect`; no router inspects a raw error or a cause. The table is
+  exhaustive over `TypedError`, an unmapped defect answers 500 from its default
+  row, and the detailed value reaches only the API's redacted error line —
+  never the client envelope. Checked by: test
+  (`packages/effect/src/mapping.test.ts`, `apps/api/src/gate.test.ts`) and
+  review.
+- **Layer lifetimes are explicit.** A process-scoped service — a pool, an SDK
+  client, configuration — is declared with `processTag` and only
+  `processSingleton` may bless a boot-time layer, so a request-scoped
+  repository cannot be baked into one. Anything data-touching is declared with
+  `requestTag` and built with `requestScoped` inside the request or run scope,
+  where its finalizer runs. Checked by: test
+  (`packages/effect/src/lifetimes.test.ts`) and review.
+
 ### Provider neutrality
 
 - **One interface per capability.** Declarations live in `@porkbot/adapter-kit`,

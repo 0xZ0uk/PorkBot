@@ -28,3 +28,7 @@ export type { Bot } from "./bots.ts";
 // The client: a type derived from the contract plus the factory that builds it.
 export { createApiClient } from "./client.ts";
 export type { ApiClientOptions, AppClient } from "./client.ts";
+
+// The error envelope: the oRPC class the boundary mapping in @porkbot/effect
+// constructs, re-exported so no other package imports the transport library.
+export { ORPCError } from "./errors.ts";
