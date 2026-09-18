@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
+import { Effect } from "effect";
 import {
   AgentCannotDeleteMemory,
   MemoryDocumentExists,
   UnknownMemoryDocument,
 } from "@porkbot/core";
-import { NotFoundError } from "@porkbot/effect";
+import { createMemoryTools, NotFoundError } from "@porkbot/effect";
 import type {
   MemoryDocuments,
   MemoryProposals,
   MemoryWriteInput,
+  ToolRegistration,
   UserActor,
 } from "@porkbot/effect";
 import { createSuiteDatabase } from "@porkbot/testkit";
@@ -370,6 +372,131 @@ describe("concurrent writes", () => {
     expect(
       (await asOperator().list(botId)).filter((doc) => doc.documentId === documentId),
     ).toHaveLength(1);
+  });
+});
+
+describe("the agent's memory tools over the durable store", () => {
+  function toolNamed(tools: readonly ToolRegistration[], name: string): ToolRegistration {
+    const found = tools.find((registration) => registration.name === name);
+
+    if (found === undefined) {
+      throw new Error(`unexpected tool name: ${name}`);
+    }
+
+    return found;
+  }
+
+  function createTools(): readonly ToolRegistration[] {
+    return createMemoryTools({
+      botId,
+      proposals: asAgent(),
+      recall: {
+        index: () => Promise.resolve(),
+        forget: () => Promise.resolve(),
+        search: () => Promise.resolve([]),
+      },
+    });
+  }
+
+  function rememberedDocumentId(result: unknown): string {
+    if (typeof result !== "object" || result === null || !("documentId" in result)) {
+      throw new Error("the remember tool did not return a document id");
+    }
+
+    return (result as { documentId: string }).documentId;
+  }
+
+  it("records a remember call as an agent revision the operator reads", async () => {
+    const tools = createTools();
+
+    const result = await Effect.runPromise(
+      toolNamed(tools, "remember").execute({
+        runId: randomUUID(),
+        callId: "call-remember-1",
+        tool: "remember",
+        arguments: {
+          kind: "fact",
+          title: "Ship address",
+          content: "The parts ship to the workshop",
+          reason: "the operator asked me to remember it",
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({ ok: true, action: "create", revision: 1 });
+    const documentId = rememberedDocumentId(result);
+
+    const history = await asOperator().revisions(botId, documentId);
+    expect(history).toEqual([
+      expect.objectContaining({
+        documentId,
+        revision: 1,
+        origin: "agent_proposed",
+        author: botId,
+        reason: "the operator asked me to remember it",
+        deleted: false,
+      }),
+    ]);
+    expect((await asOperator().find(botId, documentId)).content).toBe(
+      "The parts ship to the workshop",
+    );
+  });
+
+  it("cannot create a second document by replaying the same call", async () => {
+    const tools = createTools();
+    const call = {
+      runId: randomUUID(),
+      callId: "call-replayed",
+      tool: "remember",
+      arguments: {
+        kind: "preference",
+        title: "Reporting cadence",
+        content: "Send the weekly report on Friday",
+        reason: "the operator said so",
+      },
+    };
+
+    const first = await Effect.runPromise(toolNamed(tools, "remember").execute(call));
+    const replay = await Effect.runPromise(toolNamed(tools, "remember").execute(call));
+
+    expect(first).toMatchObject({ ok: true, action: "create" });
+    expect(replay).toMatchObject({ ok: false, reason: "MemoryDocumentExists" });
+    expect(await asOperator().revisions(botId, rememberedDocumentId(first))).toHaveLength(1);
+  });
+
+  it("refuses an agent forget call and leaves the document and its history intact", async () => {
+    const tools = createTools();
+    const remembered = await Effect.runPromise(
+      toolNamed(tools, "remember").execute({
+        runId: randomUUID(),
+        callId: "call-remember-2",
+        tool: "remember",
+        arguments: {
+          kind: "decision",
+          title: "Supplier",
+          content: "Use the workshop supplier",
+          reason: "chosen during the run",
+        },
+      }),
+    );
+    const documentId = rememberedDocumentId(remembered);
+
+    const refused = await Effect.runPromise(
+      toolNamed(tools, "forget").execute({
+        runId: randomUUID(),
+        callId: "call-forget-1",
+        tool: "forget",
+        arguments: { document_id: documentId, reason: "no longer true" },
+      }),
+    );
+
+    expect(refused).toMatchObject({
+      ok: false,
+      documentId,
+      reason: "AgentCannotDeleteMemory",
+    });
+    expect(await asOperator().revisions(botId, documentId)).toHaveLength(1);
+    expect((await asOperator().find(botId, documentId)).revision).toBe(1);
   });
 });
 

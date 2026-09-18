@@ -143,6 +143,26 @@ export type {
   MemoryWriteInput,
 } from "./memory-store.ts";
 
+// The two-lane context policy (slice 8.2, PRD decision 21; stories 23 and 24).
+// The agent's `remember`, `recall` and `forget` tools are registrations built
+// over the proposal half of the store and the recall index, so every write is
+// an agent proposal the operator can see and every recall is bounded. The
+// compactor shortens the conversation lane through the model runtime while the
+// memory lane is read fresh and asserted preserved, and `loadRunPrompt` pairs
+// the scoped memory read with core's composer so a run's prompt has one path.
+export { createMemoryTools, MEMORY_TOOL_NAMES } from "./memory-tools.ts";
+export type { MemoryToolOptions } from "./memory-tools.ts";
+export { createConversationCompactor, CompactionFailure } from "./conversation-compactor.ts";
+export type {
+  CompactionFailureReason,
+  CompactionInput,
+  CompactionOutcome,
+  ConversationCompactor,
+  ConversationCompactorOptions,
+} from "./conversation-compactor.ts";
+export { loadRunPrompt } from "./run-context.ts";
+export type { LoadRunPromptInput } from "./run-context.ts";
+
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed
 // refusal live here so there is no second policy to drift from.
