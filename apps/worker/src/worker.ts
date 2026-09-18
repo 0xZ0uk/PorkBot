@@ -3,8 +3,18 @@ import type { Runner } from "graphile-worker";
 import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
+import { leaseWatchdogIdentifier, leaseWatchdogJob } from "./jobs/lease-watchdog.ts";
 import { runExecuteJob } from "./jobs/run-execute.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
+
+/**
+ * The watchdog's schedule: every minute, on the minute. PRD decision 26 asks
+ * for a minute interval, and the lease TTL already carries a heartbeat grace
+ * period, so a run stranded by a crash is recovered within roughly TTL plus one
+ * interval. It is a crontab line rather than a self-rescheduling job so the
+ * schedule survives a process that dies before it can enqueue its successor.
+ */
+export const leaseWatchdogCrontab = `* * * * * ${leaseWatchdogIdentifier}`;
 
 /**
  * Booting the worker: Graphile's runner plus the job registry, and nothing
@@ -32,11 +42,17 @@ export interface WorkerOptions {
   readonly concurrency?: number;
   /** How long Graphile waits between polls, in milliseconds. Defaults to 2 s. */
   readonly pollInterval?: number;
+  /**
+   * Whether this process schedules the minute lease watchdog. Defaults to true;
+   * a suite that drives the watchdog by hand turns it off so its own fixtures
+   * are the only expired leases it sees.
+   */
+  readonly scheduleWatchdog?: boolean;
 }
 
 export async function startWorker(options: WorkerOptions): Promise<Runner> {
   const registry = createJobRegistry({
-    jobs: [defineJob(runExecuteJob(options.executeRun))],
+    jobs: [defineJob(runExecuteJob(options.executeRun)), defineJob(leaseWatchdogJob())],
     logger: options.logger,
   });
 
@@ -49,5 +65,6 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
     pollInterval: options.pollInterval ?? 2000,
     logger: graphileLogger(options.logger),
     noHandleSignals: true,
+    ...(options.scheduleWatchdog === false ? {} : { crontab: leaseWatchdogCrontab }),
   });
 }

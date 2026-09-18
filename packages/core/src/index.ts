@@ -185,6 +185,14 @@ export type {
 } from "./compaction-policy.ts";
 
 export {
+  decideReclaim,
+  isResumableCheckpoint,
+  reclaimFailureMessage,
+  RUN_RECLAIM_FAILURES,
+} from "./run-recovery.ts";
+export type { ReclaimDecision, RunReclaimFailure } from "./run-recovery.ts";
+
+export {
   AmbiguousSectionPrecedence,
   BlankMemoryRecord,
   composeSystemPrompt,

@@ -289,6 +289,51 @@ describe("a call id that is not a replay", () => {
     expect(retry).toBeInstanceOf(ToolCallConflictError);
     expect((retry as ToolCallConflictError).reason).toBe("in_flight");
   });
+
+  it("settles the claim on reclaim, and the superseded owner can no longer confirm it", async () => {
+    const actor = systemActor(user.spaceId);
+    const reason = "the previous owner's lease expired and no heartbeat renewed it";
+    const ledger = createExternalEffectLedger(actor, db());
+    const claimed = call({ callId: "call-reconciled" });
+    expect(await ledger.begin(claimed)).toEqual({ status: "started" });
+
+    // The owner that admitted the call dies; another worker reclaims the run.
+    const repos = createRepositories(systemActor(user.spaceId), db());
+    const lease = await repos.runs.claim(runId, 0, "worker-a");
+    if (lease === undefined) {
+      throw new Error("expected the queued run to be claimable");
+    }
+
+    await db().query(
+      "update run set lease_expires_at = now() - interval '1 second' where id = $1",
+      [runId],
+    );
+
+    const reclaimer = createRepositories(systemActor(user.spaceId), db());
+    const reclaimed = await reclaimer.runs.reclaim(runId, lease.leaseFence, "worker-b", { reason });
+    expect(reclaimed?.leaseFence).toBe(lease.leaseFence + 1);
+
+    // The superseded owner's completion is refused — the claim is no longer
+    // its to settle — and the row keeps the reconciliation's record.
+    await expect(ledger.complete(claimed, { sent: true })).rejects.toThrow(
+      /no longer holds the claim/,
+    );
+
+    const { rows } = await db().query<{ readonly status: string; readonly result: unknown }>(
+      "select status::text as status, result from external_effect where run_id = $1 and idempotency_key = $2",
+      [runId, "call-reconciled"],
+    );
+    expect(rows[0]?.status).toBe("failed");
+    expect(rows[0]?.result).toEqual({ error: reason });
+
+    // A resume retrying the same call id replays the recorded failure and
+    // never runs the handler.
+    const replayed = await Effect.runPromise(
+      dispatcherOverDatabase(systemActor(user.spaceId)).execute(claimed),
+    );
+    expect(replayed).toEqual({ status: "failed", error: reason });
+    expect(await effectCount("call-reconciled")).toBe(0);
+  });
 });
 
 describe("actor scope", () => {

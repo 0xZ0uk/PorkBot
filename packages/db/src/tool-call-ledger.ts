@@ -21,7 +21,17 @@ import type { Queryable } from "./queryable.ts";
  * settles it as `completed` or `failed`. A claim still `running` when a retry
  * arrives is in flight, and the retry is refused rather than run twice; after a
  * crash the fence and the watchdog own that row (slices 6.2, 6.3), and it is
- * never replayed blindly. `result` is the handler's value on success and
+ * never replayed blindly. Slice 6.3's reclaim settles every in-flight row of a
+ * superseded owner as a recorded failure with the reason, so a resume replays
+ * an outcome instead of being blocked by a claim that can never settle.
+ *
+ * Known limit, for slice 6.9 when the dispatcher is wired to a live run: this
+ * ledger binds the actor's space but not the run's lease, so a `begin` that
+ * lands in the window after a reclaim is not fenced by it. The side effect is
+ * still safe — the dispatcher's awaited heartbeat stops the handler — but the
+ * late claim row would read as in flight to the resume. Binding the ledger to
+ * the run's `(owner, fence)` at construction closes that window, and the
+ * dispatch seam that would carry it is 6.9's to wire. `result` is the handler's value on success and
  * `{ "error": "..." }` on failure, so a replay answers the model the same way
  * the original call did; a value jsonb cannot carry is settled as a fixed
  * failure rather than left claimed, because the alternative is a side effect

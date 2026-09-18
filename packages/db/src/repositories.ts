@@ -4,8 +4,15 @@ import { botColumns, eventColumns, runColumns, threadColumns } from "./records.t
 import type { BotRecord, EventRecord, RunRecord, ThreadRecord } from "./records.ts";
 import { createRunAndTask } from "./run-creation.ts";
 import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
-import { claimRun, heartbeatRun, reclaimRun, updateClaimedRun } from "./run-leases.ts";
-import type { FencedRunPatch, RunLease } from "./run-leases.ts";
+import {
+  abandonAttempt,
+  adoptRun,
+  claimRun,
+  heartbeatRun,
+  reclaimRun,
+  updateClaimedRun,
+} from "./run-leases.ts";
+import type { FencedRunPatch, ReclaimOptions, RunLease } from "./run-leases.ts";
 import { insertedRow, requiredRow } from "./rows.ts";
 
 export type {
@@ -144,10 +151,31 @@ export interface RunWriter {
 export interface SystemRunWriter {
   /** Returns undefined when this delivery lost the atomic claim race. */
   claim(id: string, expectedFence: number, owner: string): Promise<RunRecord | undefined>;
-  /** Returns undefined until the active owner's TTL has elapsed, or after a lost race. */
-  reclaim(id: string, expectedFence: number, owner: string): Promise<RunRecord | undefined>;
+  /**
+   * Returns undefined until the active owner's TTL has elapsed, or after a lost
+   * race. A successful reclaim closes the previous attempt and settles the
+   * previous owner's in-flight tool calls with the same reason.
+   */
+  reclaim(
+    id: string,
+    expectedFence: number,
+    owner: string,
+    options: ReclaimOptions,
+  ): Promise<RunRecord | undefined>;
+  /**
+   * Takes over the live lease held by exactly `previousOwner` at
+   * `expectedFence`; undefined when either guard no longer matches.
+   */
+  adopt(
+    id: string,
+    expectedFence: number,
+    owner: string,
+    previousOwner: string,
+  ): Promise<RunRecord | undefined>;
   heartbeat(id: string, lease: RunLease): Promise<RunRecord>;
   update(id: string, lease: RunLease, patch: FencedRunPatch): Promise<RunRecord>;
+  /** Closes this fence's own attempt after ownership moved on; true when it did. */
+  abandonAttempt(id: string, fence: number, reason: string): Promise<boolean>;
 }
 
 /** A job's scope: it may read the space its payload names and nothing else. */
@@ -186,10 +214,13 @@ export function createRepositories(actor: Actor, database: Queryable): Repositor
       runs: {
         ...runs,
         claim: (id, expectedFence, owner) => claimRun(actor, database, id, expectedFence, owner),
-        reclaim: (id, expectedFence, owner) =>
-          reclaimRun(actor, database, id, expectedFence, owner),
+        reclaim: (id, expectedFence, owner, options) =>
+          reclaimRun(actor, database, id, expectedFence, owner, options),
+        adopt: (id, expectedFence, owner, previousOwner) =>
+          adoptRun(actor, database, id, expectedFence, owner, previousOwner),
         heartbeat: (id, lease) => heartbeatRun(actor, database, id, lease),
         update: (id, lease, patch) => updateClaimedRun(actor, database, id, lease, patch),
+        abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
     };
   }

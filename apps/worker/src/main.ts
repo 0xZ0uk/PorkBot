@@ -1,9 +1,11 @@
 import process from "node:process";
+import { Effect } from "effect";
 import { createHealthServer, healthPath } from "@porkbot/health";
 import { createLogger } from "@porkbot/logging";
 import type { Runner } from "graphile-worker";
 import { moduleInfo } from "./index.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
+import { createRunExecutor } from "./run-execution.ts";
 import { startWorker } from "./worker.ts";
 
 /**
@@ -31,14 +33,19 @@ if (connectionString === undefined || connectionString.length === 0) {
 }
 
 /**
- * The handler has atomically claimed the run before entering this seam. Later
- * execution slices add model/tool work and schedule heartbeats around it; until
- * then, the durable claim and attempt prove ownership without pretending that
- * the orchestration layer already exists.
+ * The handler has atomically claimed the run before entering this seam, and the
+ * harness owns the lease from then on: it heartbeats, interrupts the work on a
+ * lost fence, and settles the run and its attempt. The model and tool runtime
+ * that fills the work seam arrives with slice 6.9; until then the run records
+ * its claim and completes with no output rather than pretending a runtime
+ * exists.
  */
-const verifiedRunExecutor: RunExecutor = async ({ run, logger: runLogger }) => {
-  runLogger.info("run claimed", { fence: run.leaseFence });
-};
+const verifiedRunExecutor: RunExecutor = createRunExecutor({
+  work: ({ run, logger: runLogger }) =>
+    Effect.sync(() => {
+      runLogger.info("run claimed; no model runtime is wired yet", { fence: run.leaseFence });
+    }),
+});
 
 let runner: Runner;
 

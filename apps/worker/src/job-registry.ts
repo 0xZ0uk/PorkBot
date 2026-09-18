@@ -38,11 +38,33 @@ export class JobPayloadError extends Error {
   }
 }
 
+/** How a handler asks for the next delivery of a job. */
+export interface EnqueueOptions {
+  /**
+   * A key that collapses duplicate pending deliveries of the same logical job,
+   * so a sweep that re-addresses work a queue already holds adds a delivery
+   * rather than a pile of them. The row's fence still decides what a delivery
+   * may do; the key only keeps the queue tidy.
+   */
+  readonly jobKey?: string;
+  /**
+   * What a key does to the pending delivery it matches: `replace` (the default
+   * Graphile behaviour, stated explicitly here) refreshes its payload and
+   * schedule, which is what a newer handoff with a newer fence wants. The other
+   * choice, `preserve_run_at`, is for a producer that must not delay a delivery
+   * already scheduled.
+   */
+  readonly jobKeyMode?: "replace" | "preserve_run_at";
+}
+
 /**
  * What a handler is given besides its parsed payload. `jobId` is Graphile's
  * job id (the queue's identity, not the run's); `withPgClient` checks out one
  * connection from the runner's pool, so a handler's reads and writes travel on
- * the connection its role authenticated with.
+ * the connection its role authenticated with. `enqueue` is the write half of
+ * the queue: a handler that decides more work exists (a watchdog handing a
+ * reclaimed run to an executor) schedules it rather than doing it inline, and
+ * the registry refuses an identifier no handler is registered for.
  */
 export interface JobContext {
   readonly jobId: string;
@@ -50,6 +72,11 @@ export interface JobContext {
   readonly attempt: number;
   readonly logger: Logger;
   readonly withPgClient: <Result>(work: (client: Queryable) => Promise<Result>) => Promise<Result>;
+  readonly enqueue: (
+    identifier: string,
+    payload: Record<string, unknown>,
+    options?: EnqueueOptions,
+  ) => Promise<void>;
 }
 
 /** One job: its identifier, its payload parser, and its handler. */
@@ -106,6 +133,20 @@ export function createJobRegistry(options: JobRegistryOptions): JobRegistry {
           task: job.identifier,
         }),
         withPgClient: (work) => helpers.withPgClient((client) => work(client)),
+        enqueue: async (identifier, nextPayload, enqueueOptions) => {
+          if (!Object.hasOwn(taskList, identifier)) {
+            throw new Error(
+              `cannot enqueue "${identifier}": no job is registered under that identifier.`,
+            );
+          }
+
+          await helpers.addJob(identifier, nextPayload, {
+            ...(enqueueOptions?.jobKey === undefined ? {} : { jobKey: enqueueOptions.jobKey }),
+            ...(enqueueOptions?.jobKeyMode === undefined
+              ? {}
+              : { jobKeyMode: enqueueOptions.jobKeyMode }),
+          });
+        },
       });
   }
 
