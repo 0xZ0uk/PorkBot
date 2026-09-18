@@ -20,6 +20,7 @@
     "db:migrate": "node src/migrate-cli.ts"
   },
   "dependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
     "@porkbot/core": "workspace:*",
     "@porkbot/effect": "workspace:*",
     "@porkbot/logging": "workspace:*",

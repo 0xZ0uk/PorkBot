@@ -418,6 +418,12 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       remove: notExercised,
       testRun: notExercised,
     },
+    credentials: {
+      resolve: notExercised,
+      list: notExercised,
+      store: notExercised,
+      rotate: notExercised,
+    },
   };
 }
 

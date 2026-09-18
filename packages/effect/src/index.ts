@@ -12,6 +12,7 @@ export {
   ApprovalStoreError,
   BlockedUrlError,
   CredentialMissingError,
+  CredentialStoreError,
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
@@ -29,6 +30,7 @@ export {
 } from "./errors.ts";
 export type {
   BlockedUrlReason,
+  CredentialStoreFailure,
   CursorRejection,
   InvalidMessageReason,
   RoutineScheduleRejection,
@@ -197,6 +199,14 @@ export type {
   NotificationDeliveryRequest,
   NotificationSuppressionReason,
 } from "./notification-delivery.ts";
+
+// The durable half of stored credentials (slice 9.1, PRD decision 10; stories
+// 14 and 15). The seam extends adapter-kit's `CredentialStore`, so the one
+// object `@porkbot/db` builds over the encrypted rows is both what a provider
+// resolves a key through and what the operator's list rotates. It carries
+// summaries and never values; the store raises the typed
+// `CredentialStoreError` when its keyring cannot unlock a row.
+export type { CredentialRotation, CredentialSummary, Credentials } from "./credential-store.ts";
 
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed

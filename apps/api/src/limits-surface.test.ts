@@ -178,6 +178,7 @@ describe("every contract procedure", () => {
       "bots.restore",
       "bots.setAvatar",
       "bots.update",
+      "credentials.list",
       "deployment.status",
       "notifications.preferences",
       "notifications.setPreference",
@@ -277,6 +278,12 @@ describe("the typed answer", () => {
         steer: notExercised,
       },
       notifications: { read: notExercised, set: notExercised },
+      credentials: {
+        resolve: notExercised,
+        list: notExercised,
+        store: notExercised,
+        rotate: notExercised,
+      },
       routines: {
         findById: notExercised,
         list: notExercised,

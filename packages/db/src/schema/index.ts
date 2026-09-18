@@ -26,6 +26,7 @@ export {
   taskStatus,
 } from "./enums.ts";
 export { approval } from "./approvals.ts";
+export { encryptedCredential } from "./encrypted-credential.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
 export { memoryDocument, memoryRevision } from "./memory.ts";

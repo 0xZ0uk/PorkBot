@@ -114,6 +114,12 @@ function repositoriesFor(actor: UserActor): UserRepositories {
         return readFor(actor);
       },
     },
+    credentials: {
+      resolve: notExercised,
+      list: notExercised,
+      store: notExercised,
+      rotate: notExercised,
+    },
   };
 }
 
