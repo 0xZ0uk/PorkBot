@@ -260,6 +260,9 @@ describe("the rpc surface", () => {
 
     expect(error).toBeInstanceOf(ORPCError);
     expect(error).toMatchObject({ code: "INTERNAL_SERVER_ERROR", status: 500, defined: false });
+    const envelope = JSON.stringify(error);
+    expect(envelope).not.toContain("abc123");
+    expect(envelope).not.toContain("service exploded");
     expect(lines.join("")).not.toContain("abc123");
 
     const record = await waitForRecord((candidate) => candidate["msg"] === "request failed");

@@ -25,5 +25,9 @@
     "eslint": "10.10.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
+  },
+  "dependencies": {
+    "@porkbot/contracts": "workspace:*",
+    "effect": "3.22.2"
   }
 }

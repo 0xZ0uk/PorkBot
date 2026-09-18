@@ -2,6 +2,7 @@ import { createORPCErrorConstructorMap, implement } from "@orpc/server";
 import type { ErrorMap, Router } from "@orpc/server";
 import { appContract } from "@porkbot/contracts";
 import type { AppContract } from "@porkbot/contracts";
+import { mapError } from "@porkbot/effect";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
@@ -90,35 +91,60 @@ function misregistration(path: string, realm: "authenticated" | "public"): Error
 
 const baseImplementer = implement(appContract).$context<ProcedureContext>();
 
-/** The default path: an actor and actor-scoped repositories, or a typed 401. */
-export const authenticated = baseImplementer.use(async ({ context, next, procedure }) => {
-  const { route, meta, errorMap } = procedure["~orpc"];
-  const path = route.path ?? "an unnamed procedure";
+/**
+ * The transport error boundary (PRD decision 28), applied inside the gate's
+ * access middleware so a misregistration or a typed 401 the gate itself raises
+ * is not remapped. Anything a handler or a service throws passes through
+ * `mapError` in `@porkbot/effect`: a typed error becomes the procedure's
+ * declared envelope, and an unmapped defect becomes a 500 whose detailed value
+ * travels only to the API's redacted error line. A router therefore never
+ * inspects a raw error — it throws one and the boundary answers it.
+ */
+const errorBoundary = baseImplementer.middleware(async ({ next, procedure }) => {
+  try {
+    return await next();
+  } catch (error) {
+    const { errorMap } = procedure["~orpc"];
 
-  if (meta.access !== "authenticated") {
-    throw misregistration(path, "authenticated");
+    throw mapError(error, {
+      declaredFor: (code) => errorMap[code],
+    }).error;
   }
-
-  if (context.actor === null || context.repositories === null) {
-    throw createORPCErrorConstructorMap(errorMap as AuthenticatedErrorMap).UNAUTHORIZED();
-  }
-
-  return next({
-    context: { actor: context.actor, repositories: context.repositories },
-  });
 });
+
+/** The default path: an actor and actor-scoped repositories, or a typed 401. */
+export const authenticated = baseImplementer
+  .use(async ({ context, next, procedure }) => {
+    const { route, meta, errorMap } = procedure["~orpc"];
+    const path = route.path ?? "an unnamed procedure";
+
+    if (meta.access !== "authenticated") {
+      throw misregistration(path, "authenticated");
+    }
+
+    if (context.actor === null || context.repositories === null) {
+      throw createORPCErrorConstructorMap(errorMap as AuthenticatedErrorMap).UNAUTHORIZED();
+    }
+
+    return next({
+      context: { actor: context.actor, repositories: context.repositories },
+    });
+  })
+  .use(errorBoundary);
 
 /** The explicit exception: only a contract marked `publicProcedure` gets here. */
-export const publicOnly = baseImplementer.use(async ({ next, procedure }) => {
-  const { route, meta } = procedure["~orpc"];
-  const path = route.path ?? "an unnamed procedure";
+export const publicOnly = baseImplementer
+  .use(async ({ next, procedure }) => {
+    const { route, meta } = procedure["~orpc"];
+    const path = route.path ?? "an unnamed procedure";
 
-  if (meta.access !== "public") {
-    throw misregistration(path, "public");
-  }
+    if (meta.access !== "public") {
+      throw misregistration(path, "public");
+    }
 
-  return next();
-});
+    return next();
+  })
+  .use(errorBoundary);
 
 /**
  * Assembles the root router from the per-domain routers and checks it against
