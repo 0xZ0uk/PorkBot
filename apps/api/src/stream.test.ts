@@ -121,6 +121,16 @@ function fakeRepositories(actor: UserActor): UserRepositories {
       list: notExercised,
       create: notExercised,
       update: notExercised,
+      archive: notExercised,
+      restore: notExercised,
+      delete: notExercised,
+      setAvatar: notExercised,
+    },
+    sections: {
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      delete: notExercised,
     },
     threads: {
       async findById(id: string): Promise<ThreadRecord> {

@@ -1,6 +1,23 @@
 import { accountMeContract } from "./account.ts";
-import { botsGetContract } from "./bots.ts";
+import {
+  botsArchiveContract,
+  botsAvatarContract,
+  botsClearAvatarContract,
+  botsCreateContract,
+  botsDeleteContract,
+  botsGetContract,
+  botsListContract,
+  botsRestoreContract,
+  botsSetAvatarContract,
+  botsUpdateContract,
+} from "./bots.ts";
 import { deploymentStatusContract } from "./deployment.ts";
+import {
+  sectionsCreateContract,
+  sectionsDeleteContract,
+  sectionsListContract,
+  sectionsUpdateContract,
+} from "./sections.ts";
 import { threadsEventsContract } from "./threads.ts";
 
 /**
@@ -19,7 +36,22 @@ export const appContract = {
     me: accountMeContract,
   },
   bots: {
+    list: botsListContract,
     get: botsGetContract,
+    create: botsCreateContract,
+    update: botsUpdateContract,
+    archive: botsArchiveContract,
+    restore: botsRestoreContract,
+    delete: botsDeleteContract,
+    setAvatar: botsSetAvatarContract,
+    avatar: botsAvatarContract,
+    clearAvatar: botsClearAvatarContract,
+  },
+  sections: {
+    list: sectionsListContract,
+    create: sectionsCreateContract,
+    update: sectionsUpdateContract,
+    delete: sectionsDeleteContract,
   },
   threads: {
     events: threadsEventsContract,

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createInterface } from "node:readline";
 import { describe, expect, it } from "vitest";
 
@@ -11,12 +13,14 @@ function startApi(env: Readonly<Record<string, string>> = {}): {
     // LOG_LEVEL is pinned so an ambient level above info cannot filter the
     // startup line this test waits for. DATABASE_URL is a placeholder: the
     // process constructs its pool without connecting, and this spec never
-    // calls a data-backed procedure.
+    // calls a data-backed procedure. The storage root is a path the process
+    // only creates on the first avatar upload, which this spec never makes.
     env: {
       ...process.env,
       PORT: "0",
       LOG_LEVEL: "info",
       DATABASE_URL: "postgres://porkbot:e2e-placeholder@127.0.0.1:5432/porkbot",
+      PORKBOT_STORAGE_DIR: path.join(tmpdir(), "porkbot-e2e-storage"),
       ...env,
     },
     stdio: ["ignore", "pipe", "inherit"],
@@ -87,6 +91,13 @@ describe("api process", () => {
 
   it("refuses to boot on a limit that is not a positive integer", async () => {
     const { child, port } = startApi({ PORKBOT_LIMIT_MAX_BODY_BYTES: "nope" });
+
+    await expect(port).rejects.toThrow(/api exited before listening/);
+    expect(child.exitCode).toBe(1);
+  }, 15_000);
+
+  it("refuses to boot without a storage root", async () => {
+    const { child, port } = startApi({ PORKBOT_STORAGE_DIR: "" });
 
     await expect(port).rejects.toThrow(/api exited before listening/);
     expect(child.exitCode).toBe(1);

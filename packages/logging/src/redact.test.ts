@@ -324,3 +324,28 @@ describe("redactPath", () => {
     expect(redactPath("/cb?apikey=abc123&next=1")).toBe(`/cb?apikey=${redactedPlaceholder}&next=1`);
   });
 });
+
+describe("the logged string length bound", () => {
+  it("replaces an oversized string whole instead of scanning it", () => {
+    const started = Date.now();
+    const output = redactString("A".repeat(2 * 1024 * 1024));
+
+    expect(output).toBe(truncatedPlaceholder);
+    // Before the bound, the assignment scanner was quadratic on a long
+    // separator-free token: this call ran for minutes. The budget is loose
+    // enough for a loaded CI machine and still fails loudly on a regression.
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("keeps a large caller-supplied validation input out of the redacted error", () => {
+    const error = new Error("Input validation failed", {
+      cause: { data: "A".repeat(2 * 1024 * 1024) },
+    });
+    const started = Date.now();
+    const serialized = JSON.stringify(redact({ error }));
+
+    expect(serialized).toContain(truncatedPlaceholder);
+    expect(serialized).not.toContain("A".repeat(64));
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});

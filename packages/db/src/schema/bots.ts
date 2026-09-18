@@ -26,6 +26,14 @@ import { space } from "./tenancy.ts";
  * insert twice, because the unique index is scoped `(space_id, spawn_key)` on
  * NOT NULL columns. In the reference schema that constraint sat on a nullable
  * column, which made it vacuous; here a caller must supply the key.
+ *
+ * `avatar_key` is the key the avatar's bytes live under in the storage seam,
+ * never a URL and never a filesystem path: the API hands the key back to a
+ * `StorageProvider` to read or delete, so a remote storage backend needs no
+ * schema change. `computer_id` is the assignment of a computer to the bot; the
+ * `computer` table lands with epic E7 (M6), and this column becomes its foreign
+ * key then. Until it does, the id is stored opaquely and indexed, and nothing
+ * outside the assignment contract reads it.
  */
 
 export const botSection = pgTable(
@@ -74,11 +82,14 @@ export const bot = pgTable(
     sectionId: uuid("section_id").references(() => botSection.id, { onDelete: "set null" }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     spawnKey: text("spawn_key").notNull(),
+    avatarKey: text("avatar_key"),
+    computerId: uuid("computer_id"),
     ...timestamps(),
   },
   (table) => [
     uniqueIndex("bot_space_spawn_key_unique").on(table.spaceId, table.spawnKey),
     index("bot_section_id_idx").on(table.sectionId),
+    index("bot_computer_id_idx").on(table.computerId),
     index("bot_user_id_idx").on(table.userId),
     index("bot_space_user_archived_pinned_updated_idx").on(
       table.spaceId,

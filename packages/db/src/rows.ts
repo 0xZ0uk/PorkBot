@@ -5,6 +5,21 @@ import { NotFoundError } from "@porkbot/effect";
  * are the same everywhere.
  */
 
+/**
+ * Postgres' unique-violation SQLSTATE. A repository that translates a violated
+ * unique index into the shared `NameConflictError` has to recognize it, and
+ * this is the one place that string lives, so a second translation cannot
+ * invent a second spelling. Only the code is read; the driver's message can
+ * echo the row's values.
+ */
+export function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { readonly code?: unknown }).code === "23505"
+  );
+}
+
 /** `select` that must match: an empty result is the caller's not-found. */
 export function requiredRow<Row>(rows: readonly Row[], resource: string, id: string): Row {
   const row = rows[0];

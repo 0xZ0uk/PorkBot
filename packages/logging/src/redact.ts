@@ -6,10 +6,13 @@
  *      `cookie`) are replaced with `[redacted]`.
  *   2. String values are scrubbed of known secret shapes (`Bearer …`, `sk-…`,
  *      JWTs, database URLs with credentials, PEM private keys, `password=…`).
+ *   3. A string longer than `maxLoggedStringLength` becomes `[truncated]`
+ *      without being scanned, so a large caller-supplied value cannot make the
+ *      scanner itself the attack.
  *
- * Both rules are fail-closed: a secret that matches either rule is removed, and
- * keeping one in the output requires the explicit, review-visible
- * `unredacted()` marker (PRD stack decision 10).
+ * Every rule is fail-closed: a secret matched by a rule is removed, an
+ * oversized value is not logged at all, and keeping one in the output requires
+ * the explicit, review-visible `unredacted()` marker (PRD stack decision 10).
  */
 
 export const redactedPlaceholder = "[redacted]";
@@ -152,8 +155,24 @@ function redactAssignments(value: string): string {
   return result + value.slice(copiedUpTo);
 }
 
+/**
+ * The longest string a redacted log line carries. Anything longer is replaced
+ * whole with `[truncated]` before any pattern scans it. Two reasons, in order:
+ * a secret must not reach a log, so the replacement is fail-closed — a secret
+ * straddling a cut would leak its head — and scanning an unbounded,
+ * caller-supplied string for secret shapes is work the caller chooses. A
+ * validation error carries its input as the error's cause, so without the
+ * bound a large invalid request makes the scanner run for minutes (the
+ * assignment scanner is quadratic on a long separator-free token).
+ */
+export const maxLoggedStringLength = 4_096;
+
 /** Replaces every known secret shape inside a string. */
 export function redactString(value: string): string {
+  if (value.length > maxLoggedStringLength) {
+    return truncatedPlaceholder;
+  }
+
   return secretPatterns.reduce(
     (result, { pattern, replacement }) => result.replace(pattern, replacement),
     redactAssignments(value),

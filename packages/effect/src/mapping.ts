@@ -9,6 +9,7 @@ import {
   GateTimeoutError,
   InvalidToolCallError,
   LeaseLostError,
+  NameConflictError,
   NotFoundError,
   RunGoneError,
   ToolCallConflictError,
@@ -54,6 +55,11 @@ export const errorMappings = {
     code: "NOT_FOUND",
     message: "The requested resource was not found.",
     matches: (error: unknown): error is NotFoundError => error instanceof NotFoundError,
+  },
+  NameConflictError: {
+    code: "CONFLICT",
+    message: "A resource with that name already exists.",
+    matches: (error: unknown): error is NameConflictError => error instanceof NameConflictError,
   },
   RunGoneError: {
     code: "NOT_FOUND",

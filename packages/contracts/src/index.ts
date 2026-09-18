@@ -28,8 +28,33 @@ export type { SignupAvailability } from "./deployment.ts";
 export { accountMeContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
-export { botsGetContract, botSchema } from "./bots.ts";
-export type { Bot } from "./bots.ts";
+export {
+  avatarContentTypes,
+  botAvatarUploadSchema,
+  botListScopeSchema,
+  botSchema,
+  botSectionSchema,
+  botsArchiveContract,
+  botsAvatarContract,
+  botsClearAvatarContract,
+  botsCreateContract,
+  botsDeleteContract,
+  botsGetContract,
+  botsListContract,
+  botsRestoreContract,
+  botsSetAvatarContract,
+  botsUpdateContract,
+  maxAvatarBase64Length,
+  maxAvatarBytes,
+} from "./bots.ts";
+export type { AvatarContentType, Bot, BotSection } from "./bots.ts";
+
+export {
+  sectionsCreateContract,
+  sectionsDeleteContract,
+  sectionsListContract,
+  sectionsUpdateContract,
+} from "./sections.ts";
 
 export { runEventSchema, threadsEventsContract } from "./threads.ts";
 export type { RunEventMessage } from "./threads.ts";

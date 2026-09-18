@@ -1,5 +1,9 @@
 import process from "node:process";
-import { createEnvironmentCredentialStore, InProcessRealtimeFanout } from "@porkbot/adapters";
+import {
+  createEnvironmentCredentialStore,
+  InProcessRealtimeFanout,
+  LocalStorageProvider,
+} from "@porkbot/adapters";
 import { createIngressStore, openDatabase, readDeploymentSettings } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { createApiServer, moduleInfo } from "./index.ts";
@@ -15,6 +19,17 @@ const connectionString = process.env["DATABASE_URL"]?.trim();
 
 if (connectionString === undefined || connectionString.length === 0) {
   logger.error("DATABASE_URL is not set; the api cannot serve its data-backed procedures", {});
+  process.exit(1);
+}
+
+// Avatar bytes need one home. The local provider is the self-hosting default
+// (slice 7.7 adds the S3-compatible one), and the root is required rather than
+// defaulted: a process that guessed a path would silently write a bot's files
+// somewhere an operator never declared or backed up.
+const storageRoot = process.env["PORKBOT_STORAGE_DIR"]?.trim();
+
+if (storageRoot === undefined || storageRoot.length === 0) {
+  logger.error("PORKBOT_STORAGE_DIR is not set; bot avatars have no storage root", {});
   process.exit(1);
 }
 
@@ -38,6 +53,7 @@ const server = createApiServer({
   services: {
     deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
     realtime: new InProcessRealtimeFanout(),
+    storage: new LocalStorageProvider({ root: storageRoot }),
   },
   // The verified ingress: secrets from the environment through the generic
   // credential store, delivery dedupe through the database. No source is
