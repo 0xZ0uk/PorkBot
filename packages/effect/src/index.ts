@@ -49,6 +49,24 @@ export type {
   RequestTag,
 } from "./lifetimes.ts";
 
+// The duplex run seam (slice 5.2, PRD decision 13): a `RunSession`'s events
+// stream and commands mailbox, the run-scoped `AgentRuntime` layer that
+// provides one session, and the process-scoped `LiveRuns` registry that routes
+// operator commands to the live run or answers `RunGoneError`. The vendor
+// implementation (Pi) lives in @porkbot/adapters; nothing here names a vendor.
+export { AgentRuntime, fenced, LiveRuns, liveRunsLayer, withLiveRun } from "./agent-runtime.ts";
+export type {
+  AgentRuntimeFailure,
+  AgentRuntimeLayer,
+  AgentRuntimeShape,
+  AgentRuntimeTag,
+  LiveRunsShape,
+  LiveRunsTag,
+  RunCommand,
+  RunSession,
+  RunStartRequest,
+} from "./agent-runtime.ts";
+
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed
 // refusal live here so there is no second policy to drift from.

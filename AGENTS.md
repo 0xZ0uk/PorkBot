@@ -82,8 +82,12 @@ change it without breaking what the boundaries and the CI gate protect.
 
 - **One interface per capability.** Declarations live in `@porkbot/adapter-kit`,
   implementations and offline emulators in `@porkbot/adapters`, and adding a
-  provider is one adapter plus one registration line. Checked by: lint (the
-  provider SDK restriction) and review.
+  provider is one adapter plus one registration line. An orchestration seam
+  whose halves are Effect values — the duplex `RunSession` beside the service
+  tags in `@porkbot/effect` — is declared where its Effect values and the core
+  event vocabulary it carries can be named, since adapter-kit imports nothing
+  outside its own modules. Checked by: lint (the provider SDK restriction) and
+  review.
 - **An interface with one implementation is a hypothesis.** Ship the second
   implementation or delete the interface; unused contracts are a liability, not
   a hedge. Every interface declared in `@porkbot/adapter-kit` names at least two

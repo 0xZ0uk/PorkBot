@@ -29,6 +29,8 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.85.1",
     "@porkbot/adapter-kit": "workspace:*",
-    "@porkbot/effect": "workspace:*"
+    "@porkbot/core": "workspace:*",
+    "@porkbot/effect": "workspace:*",
+    "effect": "3.22.2"
   }
 }
