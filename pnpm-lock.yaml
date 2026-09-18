@@ -447,6 +447,9 @@ importers:
       '@porkbot/effect':
         specifier: workspace:*
         version: link:../effect
+      '@porkbot/logging':
+        specifier: workspace:*
+        version: link:../logging
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
@@ -499,6 +502,9 @@ importers:
       '@porkbot/core':
         specifier: workspace:*
         version: link:../core
+      '@porkbot/logging':
+        specifier: workspace:*
+        version: link:../logging
       effect:
         specifier: 3.22.2
         version: 3.22.2

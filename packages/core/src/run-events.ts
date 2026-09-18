@@ -53,16 +53,41 @@ export interface ToolRequestedEvent extends RunEventBase {
   readonly arguments: unknown;
 }
 
+/**
+ * Where the full value of an oversized tool result was kept. The event carries
+ * a preview instead of the whole thing; the durable `external_effect` row for
+ * `(runId, callId)` holds the result, so a reader can follow the pointer
+ * instead of losing the value (slice 5.6).
+ */
+export interface ToolResultArtifact {
+  /** The kind of store the artifact lives in. `tool_call` is the effect row. */
+  readonly kind: "tool_call";
+  /** The durable call id whose effect row holds the full result. */
+  readonly callId: string;
+  /** Serialized size of the full result in bytes, so a reader knows its scale. */
+  readonly bytes: number;
+}
+
 export interface ToolCompletedEvent extends RunEventBase {
   readonly type: "tool.completed";
   readonly callId: string;
+  /**
+   * The result, or a preview of it when it exceeded the inline budget.
+   * `resultArtifact`, when present, names where the full value lives; a
+   * truncated result is never delivered without it.
+   */
   readonly result: unknown;
+  readonly resultArtifact?: ToolResultArtifact;
+  /** Wall-clock duration of the call, in milliseconds. */
+  readonly durationMs?: number;
 }
 
 export interface ToolFailedEvent extends RunEventBase {
   readonly type: "tool.failed";
   readonly callId: string;
   readonly error: string;
+  /** Wall-clock duration of the call, in milliseconds. */
+  readonly durationMs?: number;
 }
 
 export interface RunCompletedEvent extends RunEventBase {
@@ -207,6 +232,57 @@ function optionalString(record: Record<string, unknown>, field: string): Field<s
   return requireString(record, field);
 }
 
+function requireNonNegativeInteger(record: Record<string, unknown>, field: string): Field<number> {
+  const value = record[field];
+
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    return malformed(`${field} must be a non-negative integer`, value);
+  }
+
+  return { ok: true, value };
+}
+
+function optionalNonNegativeInteger(
+  record: Record<string, unknown>,
+  field: string,
+): Field<number | undefined> {
+  const value = record[field];
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  return requireNonNegativeInteger(record, field);
+}
+
+function optionalResultArtifact(
+  record: Record<string, unknown>,
+): Field<ToolResultArtifact | undefined> {
+  const value = record["resultArtifact"];
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (!isRecord(value)) {
+    return malformed("resultArtifact must be an object", value);
+  }
+
+  if (value["kind"] !== "tool_call") {
+    return malformed('resultArtifact.kind must be "tool_call"', value["kind"]);
+  }
+
+  const callId = requireString(value, "callId");
+  if (!callId.ok) {
+    return callId;
+  }
+
+  const bytes = requireNonNegativeInteger(value, "bytes");
+  if (!bytes.ok) {
+    return bytes;
+  }
+
+  return { ok: true, value: { kind: "tool_call", callId: callId.value, bytes: bytes.value } };
+}
+
 function requirePresent(record: Record<string, unknown>, field: string): Field<unknown> {
   if (!Object.hasOwn(record, field)) {
     return malformed(`${field} must be present`, undefined);
@@ -308,9 +384,26 @@ function parseToolCompleted(
     return result;
   }
 
+  const resultArtifact = optionalResultArtifact(record);
+  if (!resultArtifact.ok) {
+    return resultArtifact;
+  }
+
+  const durationMs = optionalNonNegativeInteger(record, "durationMs");
+  if (!durationMs.ok) {
+    return durationMs;
+  }
+
   return {
     ok: true,
-    event: { ...base, type: "tool.completed", callId: callId.value, result: result.value },
+    event: {
+      ...base,
+      type: "tool.completed",
+      callId: callId.value,
+      result: result.value,
+      ...(resultArtifact.value === undefined ? {} : { resultArtifact: resultArtifact.value }),
+      ...(durationMs.value === undefined ? {} : { durationMs: durationMs.value }),
+    },
   };
 }
 
@@ -325,9 +418,20 @@ function parseToolFailed(base: RunEventBase, record: Record<string, unknown>): R
     return error;
   }
 
+  const durationMs = optionalNonNegativeInteger(record, "durationMs");
+  if (!durationMs.ok) {
+    return durationMs;
+  }
+
   return {
     ok: true,
-    event: { ...base, type: "tool.failed", callId: callId.value, error: error.value },
+    event: {
+      ...base,
+      type: "tool.failed",
+      callId: callId.value,
+      error: error.value,
+      ...(durationMs.value === undefined ? {} : { durationMs: durationMs.value }),
+    },
   };
 }
 

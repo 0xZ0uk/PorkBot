@@ -134,3 +134,10 @@ export type {
 // space into every statement, exactly like the repositories; the seam it
 // implements is declared in `@porkbot/effect`.
 export { createExternalEffectLedger } from "./tool-call-ledger.ts";
+
+// The durable half of the run's event stream (slice 5.6): `createRunEventSink`
+// appends the recorder's events to the `event` table in one scoped statement,
+// advancing the thread's sequence counter with the row. Subscriptions replay
+// these rows; this is what makes a tool-call timeline survive a reload. The
+// seam it implements is declared in `@porkbot/effect`.
+export { createRunEventSink } from "./run-event-sink.ts";

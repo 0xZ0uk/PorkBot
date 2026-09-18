@@ -21,6 +21,7 @@ import type {
   ToolCompletedEvent,
   ToolFailedEvent,
   ToolRequestedEvent,
+  ToolResultArtifact,
 } from "./run-events.ts";
 import type { ThreadSnapshot } from "./event-reducer.ts";
 
@@ -55,8 +56,9 @@ function toolCompleted(
   callId: string,
   result: unknown,
   run = runId,
+  extra: { readonly resultArtifact?: ToolResultArtifact; readonly durationMs?: number } = {},
 ): ToolCompletedEvent {
-  return { ...base(seq, run), type: "tool.completed", callId, result };
+  return { ...base(seq, run), type: "tool.completed", callId, result, ...extra };
 }
 
 function toolFailed(seq: number, callId: string, error: string, run = runId): ToolFailedEvent {
@@ -273,6 +275,45 @@ describe("tool calls", () => {
         error: "exit code 1",
       },
     ]);
+  });
+
+  it("keeps a call's duration and its oversized-result pointer in the snapshot", () => {
+    const artifact: ToolResultArtifact = { kind: "tool_call", callId: "call-1", bytes: 9_999 };
+
+    const snapshot = reduceAll(createThreadSnapshot(threadId), [
+      toolRequested(1, "call-1", "shell", { command: "cat big" }),
+      toolCompleted(2, "call-1", "preview [truncated]", runId, {
+        resultArtifact: artifact,
+        durationMs: 1_250,
+      }),
+    ]);
+
+    expect(snapshot.runs[0]?.toolCalls).toEqual([
+      {
+        callId: "call-1",
+        tool: "shell",
+        arguments: { command: "cat big" },
+        status: "completed",
+        result: "preview [truncated]",
+        resultArtifact: artifact,
+        durationMs: 1_250,
+      },
+    ]);
+
+    const failed = reduceAll(createThreadSnapshot(threadId), [
+      toolRequested(1, "call-2", "shell", {}),
+      { ...toolFailed(2, "call-2", "exit code 1"), durationMs: 90 },
+    ]);
+
+    expect(failed.runs[0]?.toolCalls[0]).toMatchObject({ status: "failed", durationMs: 90 });
+
+    const untimed = reduceAll(createThreadSnapshot(threadId), [
+      toolRequested(1, "call-3", "shell", {}),
+      toolCompleted(2, "call-3", null),
+    ]);
+
+    expect(untimed.runs[0]?.toolCalls[0]).not.toHaveProperty("durationMs");
+    expect(untimed.runs[0]?.toolCalls[0]).not.toHaveProperty("resultArtifact");
   });
 
   it("rejects a result for a call that was never requested", () => {
