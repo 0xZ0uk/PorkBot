@@ -10,6 +10,7 @@ import type {
   ModelTurnRequest,
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
+import type { SafeFetch } from "@porkbot/effect";
 import { ModelProviderError } from "./model-errors.ts";
 
 export type ModelEmulatorGateReason = "suspension" | "steering" | "compaction";
@@ -484,15 +485,17 @@ async function* sseData(response: Response): AsyncGenerator<string> {
 export class ModelEmulator implements ModelRuntimeProvider {
   readonly #server: Server;
   readonly #script: ModelEmulatorScript;
+  readonly #transport: SafeFetch;
   readonly #gates = new Map<string, GateState>();
   readonly #requests: RecordedModelRequest[] = [];
   #baseUrl = "";
   #nextTurn = 0;
   #activeTurn = false;
 
-  private constructor(server: Server, script: ModelEmulatorScript) {
+  private constructor(server: Server, script: ModelEmulatorScript, transport: SafeFetch) {
     this.#server = server;
     this.#script = copyScript(script);
+    this.#transport = transport;
 
     for (const turn of this.#script.turns) {
       for (const step of turn.steps ?? []) {
@@ -513,7 +516,7 @@ export class ModelEmulator implements ModelRuntimeProvider {
     }
   }
 
-  static async start(script: ModelEmulatorScript): Promise<ModelEmulator> {
+  static async start(script: ModelEmulatorScript, transport: SafeFetch): Promise<ModelEmulator> {
     const server = createServer((request, response) => {
       void emulator.handle(request, response).catch(() => {
         if (!response.headersSent) {
@@ -524,7 +527,7 @@ export class ModelEmulator implements ModelRuntimeProvider {
         response.destroy();
       });
     });
-    const emulator = new ModelEmulator(server, script);
+    const emulator = new ModelEmulator(server, script, transport);
 
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -607,7 +610,7 @@ export class ModelEmulator implements ModelRuntimeProvider {
 
   async probe(connection: ModelConnection): Promise<ModelProbeResult> {
     this.assertConnection(connection);
-    const response = await fetch(endpoint(this.#baseUrl, "models"));
+    const response = await this.#transport(endpoint(this.#baseUrl, "models"));
 
     if (!response.ok) {
       throw new ModelProviderError(
@@ -641,7 +644,7 @@ export class ModelEmulator implements ModelRuntimeProvider {
     let response: Response;
 
     try {
-      response = await fetch(endpoint(this.#baseUrl, "chat/completions"), {
+      response = await this.#transport(endpoint(this.#baseUrl, "chat/completions"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(requestBody(request)),

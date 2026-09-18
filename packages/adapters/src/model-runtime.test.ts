@@ -24,7 +24,7 @@ afterEach(async () => {
 });
 
 async function createEmulator(script: ModelEmulatorScript): Promise<ModelEmulator> {
-  const emulator = await ModelEmulator.start(script);
+  const emulator = await ModelEmulator.start(script, globalThis.fetch);
   openEmulators.push(emulator);
   return emulator;
 }
