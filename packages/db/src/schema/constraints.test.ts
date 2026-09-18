@@ -9,14 +9,17 @@ import * as schema from "./index.ts";
  * read from Drizzle's table metadata so they are enforced before a database is
  * involved and inherited by every table the next slices add.
  *
- * Three rules live here:
+ * Four rules live here:
  *
  *   1. A unique index over a nullable column is vacuous — Postgres treats each
  *      NULL as distinct — so every unique index, unique constraint and unique
  *      column must be NOT NULL (PRD decision 5).
  *   2. Closed sets are Postgres enums; extensible sets are text (or a lookup
  *      table), never an enum (PRD decision 16).
- *   3. `deployment_settings.signups_enabled` has no default, so a settings row
+ *   3. Every foreign key resolves to the id of a table in this schema. The
+ *      runs domain added genuinely optional links, so a nullable foreign key is
+ *      allowed only with `on delete set null`: the constraint must not dangle.
+ *   4. `deployment_settings.signups_enabled` has no default, so a settings row
  *      cannot exist without someone writing the value down (PRD decision 8).
  *      The companion check constraint — open signups require an admin email —
  *      is proven against a real server in the integration tier.
@@ -139,19 +142,20 @@ describe("the schema's unique constraints", () => {
 });
 
 describe("the schema's foreign keys", () => {
-  it("resolve to the id of a table in this schema, from NOT NULL columns", () => {
+  it("resolve to the id of a table in this schema, and never dangle", () => {
     const known = new Set(tables().map(([, table]) => table));
     const resolved = tables().flatMap(([table, definition]) =>
       getTableConfig(definition).foreignKeys.map((key) => ({
         table,
         constraint: key.getName(),
         reference: key.reference(),
+        onDelete: key.onDelete,
       })),
     );
 
     expect(resolved.length, "the schema declares no foreign keys").toBeGreaterThan(0);
 
-    for (const { table, constraint, reference } of resolved) {
+    for (const { table, constraint, reference, onDelete } of resolved) {
       expect(known.has(reference.foreignTable), `${constraint} points outside the schema`).toBe(
         true,
       );
@@ -161,7 +165,21 @@ describe("the schema's foreign keys", () => {
       ).toEqual(["id"]);
 
       for (const column of reference.columns) {
-        expect(column.notNull, `${table}.${column.name} is nullable but a foreign key`).toBe(true);
+        if (column.notNull) {
+          continue;
+        }
+
+        // The runs domain added optional relationships the identity tables did
+        // not have: a bot without a section, a user message before its run
+        // exists, a routine run with no source message. A nullable foreign key
+        // is allowed, but only one that clears its link when the target is
+        // deleted — `set null` keeps the row and drops the association, where
+        // a cascade would delete a row the author meant to keep and no action
+        // would refuse the delete outright.
+        expect(
+          onDelete,
+          `${table}.${column.name} is nullable; its foreign key must set null on delete`,
+        ).toBe("set null");
       }
     }
   });

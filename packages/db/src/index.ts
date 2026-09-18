@@ -3,11 +3,12 @@ export const moduleInfo = {
   summary: "Drizzle schema, migrations and actor-scoped repositories. Tenant isolation lives here.",
 } as const;
 
-// The schema convention every table uses. Identity and tenancy tables landed
-// first (slice 2.2) and the runs tables follow (slice 2.3); `pnpm db:generate`
-// diffs whatever `src/schema/index.ts` exports, so adding a table is adding one
-// import there. The tables are re-exported here because this is the only
-// entry point other packages may import.
+// The schema: every table, enum and the conventions they share. Identity and
+// tenancy tables landed first (slice 2.2) and the runs tables follow (slice
+// 2.3); `pnpm db:generate` diffs whatever `src/schema/index.ts` exports, so
+// adding a table is adding one export there, and repositories read the same
+// definitions the migration was generated from. This is the only entry point
+// other packages may import.
 export * from "./schema/index.ts";
 
 // Applying migrations, exported so the API, the worker and scripts share one

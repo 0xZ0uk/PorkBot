@@ -8,9 +8,8 @@ import { primaryKeyId } from "./columns.ts";
 /**
  * The UUIDv7 convention is checked twice: once on a probe table, which proves
  * the helper emits `default uuidv7()`, and once over every table the schema
- * module exports, which is the guard slice 2.2's tables fall under. The guard
- * has nothing to inspect until those tables land — the probe is what makes the
- * mechanism real today.
+ * module exports — the identity and tenancy tables and the runs-domain tables
+ * both fall under it, and every table a later slice adds inherits the guard.
  */
 
 const dialect = new PgDialect();
