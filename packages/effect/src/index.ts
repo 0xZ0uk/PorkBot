@@ -113,6 +113,23 @@ export type {
 export { withRunFence } from "./run-fence.ts";
 export type { RunFenceOptions } from "./run-fence.ts";
 
+// The computer tools (slice 6.9, PRD decisions 20 and 30; stories 27–30). A
+// run reaches its machine through five registrations — shell, file read/write,
+// listing and browser — and every one is a `ComputerProvider.exec` call, so the
+// offline emulator and the real Docker provider serve the same tool code. The
+// computer is bound at construction and never chosen by the model; file bytes,
+// shell stdout and browser text are labelled `UntrustedContent` at this
+// boundary before they can reach a prompt.
+export {
+  COMPUTER_TOOL_NAMES,
+  createComputerTools,
+  MAX_COMPUTER_OUTPUT_BYTES,
+  MAX_COMPUTER_PATH_LENGTH,
+  MAX_FILE_WRITE_BYTES,
+  MAX_SHELL_COMMAND_LENGTH,
+} from "./computer-tools.ts";
+export type { ComputerToolOptions } from "./computer-tools.ts";
+
 // Tool dispatch (slice 5.5, PRD decision 26; audit section 3). One registration
 // carries a tool's metadata and its handler, so the list the model sees is
 // generated from the same value `execute` dispatches and cannot drift. Every
