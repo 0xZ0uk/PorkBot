@@ -66,8 +66,18 @@ export type {
 export { backoffDelayMs, DEFAULT_BACKOFF } from "./backoff.ts";
 export type { BackoffOptions, BackoffPolicy } from "./backoff.ts";
 
-export { decideSignup, isOwnerEmail, normalizeEmail } from "./signup-policy.ts";
-export type { DeploymentSettings, SignupDecision, SignupRole } from "./signup-policy.ts";
+export {
+  decideSignup,
+  isOwnerEmail,
+  normalizeEmail,
+  resolveDeploymentSettings,
+} from "./signup-policy.ts";
+export type {
+  DeploymentSettings,
+  DeploymentSettingsResolution,
+  SignupDecision,
+  SignupRole,
+} from "./signup-policy.ts";
 
 export {
   ClientNonceReused,

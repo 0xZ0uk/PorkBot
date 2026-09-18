@@ -5,6 +5,11 @@
       "name": "@earendil-works/pi-agent-core",
       "version": "0.85.1",
       "reason": "Pi owns the agent loop (PRD decisions 13 and 31) and is adapted at the RunSession seam in slice 5.3. Pinned exactly so an upgrade is a reviewed change paired with the golden-corpus replay, never a silent lockfile move."
+    },
+    {
+      "name": "better-auth",
+      "version": "1.7.5",
+      "reason": "Email/password, sessions and verification for the one auth gate (slice 3.1, PRD decision 8). Pinned exactly because it owns password hashing, session-cookie issuance and origin checks, where an implicit upgrade is a security change nobody reviewed; the identity schema was generated for this library's table shape."
     }
   ],
   "images": [

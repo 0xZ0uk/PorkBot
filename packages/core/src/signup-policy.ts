@@ -17,6 +17,34 @@ export interface DeploymentSettings {
   readonly adminEmail: string | null;
 }
 
+/**
+ * What the deployment's settings rows amount to. The table has no singleton
+ * constraint, so "no row", "one row" and "more than one row" are three
+ * different facts and only the middle one is a configuration: a database that
+ * disagrees with itself about signups is treated as misconfiguration, never as
+ * an open deployment (PRD decision 8).
+ */
+export type DeploymentSettingsResolution =
+  | { readonly kind: "absent" }
+  | { readonly kind: "configured"; readonly settings: DeploymentSettings }
+  | { readonly kind: "conflict"; readonly rows: number };
+
+export function resolveDeploymentSettings(
+  rows: readonly DeploymentSettings[],
+): DeploymentSettingsResolution {
+  const first = rows[0];
+
+  if (first === undefined) {
+    return { kind: "absent" };
+  }
+
+  if (rows.length > 1) {
+    return { kind: "conflict", rows: rows.length };
+  }
+
+  return { kind: "configured", settings: first };
+}
+
 export type SignupRole = "owner" | "member";
 
 export type SignupDecision =

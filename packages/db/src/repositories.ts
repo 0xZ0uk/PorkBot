@@ -17,7 +17,10 @@ export type {
 } from "./records.ts";
 
 /**
- * The actor-scoped repository layer: the only way `packages/db` touches rows.
+ * The actor-scoped repository layer: the only way `packages/db` touches tenant
+ * rows. The one deliberate exception is `readDeploymentSettings`, which reads
+ * the deployment-global configuration before an actor can exist; it takes no
+ * tenant id and returns no tenant data, so it is not a second scoping path.
  *
  * Every repository is built by `createRepositories(actor, database)` and every
  * statement binds the actor's `spaceId`. There is no factory that takes a space
