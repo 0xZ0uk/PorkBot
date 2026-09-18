@@ -6,10 +6,11 @@
 # build, and every service image carries the app and its workspace dependencies
 # rather than the toolchain.
 #
-# The base tag carries the exact Node version from .nvmrc: pnpm's devEngines
-# check refuses anything else.
+# The base image carries the exact Node version from .nvmrc — pnpm's devEngines
+# check refuses anything else — and is pinned by digest, so the stack builds
+# from the image dependencies.json registers.
 
-FROM node:24.21.0-bookworm-slim AS build
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}:${PATH}"
@@ -36,7 +37,7 @@ RUN pnpm deploy --filter @porkbot/worker --prod --legacy /deploy/worker
 RUN pnpm deploy --filter @porkbot/web --prod --legacy /deploy/web
 RUN pnpm deploy --filter @porkbot/supervisor --prod --legacy /deploy/supervisor
 
-FROM node:24.21.0-bookworm-slim AS api
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -45,7 +46,7 @@ USER node
 EXPOSE 3001
 CMD ["node", "dist/main.js"]
 
-FROM node:24.21.0-bookworm-slim AS worker
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS worker
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -54,7 +55,7 @@ USER node
 EXPOSE 3002
 CMD ["node", "dist/main.js"]
 
-FROM node:24.21.0-bookworm-slim AS web
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS web
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -63,7 +64,7 @@ USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
 
-FROM node:24.21.0-bookworm-slim AS supervisor
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS supervisor
 
 ENV NODE_ENV=production
 WORKDIR /app

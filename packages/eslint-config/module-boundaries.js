@@ -78,7 +78,7 @@ export const workspacePackages = {
     testImports: ["@porkbot/testkit"],
   },
   "@porkbot/testkit": {
-    role: "test policy (tier presets, quarantine ledger, flake reporter), emulators, harness",
+    role: "test policy (tier presets, quarantine ledger, dependency pins, flake reporter), emulators, harness",
     imports: [
       "@porkbot/adapter-kit",
       "@porkbot/adapters",
@@ -211,7 +211,16 @@ export const restrictedLibraries = [
   {
     category: "provider SDK",
     owners: ["@porkbot/adapters"],
-    names: ["openai", "@anthropic-ai", "@e2b", "@daytonaio", "dockerode"],
+    names: [
+      "openai",
+      "@anthropic-ai",
+      "@e2b",
+      "@daytonaio",
+      "dockerode",
+      // Pi owns the agent loop; it is adapted at the RunSession seam in
+      // @porkbot/adapters and named nowhere else (PRD decision 13).
+      "@earendil-works",
+    ],
   },
   {
     category: "container test harness",

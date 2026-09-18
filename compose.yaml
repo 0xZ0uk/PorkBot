@@ -4,8 +4,9 @@
 # containers, the network and the Postgres volume.
 #
 # Nothing here needs a key, a hosted provider or network egress at run time: no
-# provider endpoint is configured, and the only images pulled are Node and
-# Postgres. The provider emulators replace vendor calls as their slices land.
+# provider endpoint is configured, and the only images pulled are the
+# digest-pinned Node and Postgres images registered in dependencies.json. The
+# provider emulators replace vendor calls as their slices land.
 #
 # Host ports bind to loopback and are overridable so the stack can run beside
 # another Postgres or dev server: PORKBOT_POSTGRES_PORT, PORKBOT_API_PORT,
@@ -32,7 +33,7 @@ x-app: &app
 
 services:
   postgres:
-    image: postgres:18
+    image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PORKBOT_POSTGRES_USER:-porkbot}
