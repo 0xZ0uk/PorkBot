@@ -183,9 +183,11 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       listForBot: notExercised,
       outcomes: notExercised,
       lastOutcome: notExercised,
+      preview: notExercised,
       create: notExercised,
       update: notExercised,
       remove: notExercised,
+      testRun: notExercised,
     },
     notifications: {
       read: notExercised,

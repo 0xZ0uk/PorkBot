@@ -139,10 +139,11 @@ change it without breaking what the boundaries and the CI gate protect.
   `@porkbot/effect`, so the operator's own switches and the delivery path's
   space check are auditable in one place. Checked by: test
   (`packages/db/src/notification-store.call-sites.test.ts`).
-- **One module owns run creation.** `packages/db/src/run-creation.ts` holds both
-  run-creation commands — message-triggered and routine-triggered — and no other
-  shipped code inserts a `task` or a `run`, so the scheduler is a producer that
-  enqueues `run.execute` and never a second executor. Checked by: test
+- **One module owns run creation.** `packages/db/src/run-creation.ts` holds
+  every run-creation command — message-triggered, routine-triggered and the
+  operator's test run — and no other shipped code inserts a `task` or a `run`,
+  so the scheduler is a producer that enqueues `run.execute` and never a second
+  executor. Checked by: test
   (`packages/db/src/run-creation.call-sites.test.ts`) and review.
 - **Compaction never touches the memory lane.** A compaction reads memory
   through the `MemoryReader` seam, carries the documents through by reference,

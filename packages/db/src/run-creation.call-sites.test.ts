@@ -27,7 +27,10 @@ import { describe, expect, it } from "vitest";
 const repoRoot = findRepoRoot(path.dirname(fileURLToPath(import.meta.url)));
 const skippedDirectories = new Set(["dist", "node_modules", "coverage", ".turbo", ".git"]);
 
-/** The one module: both run-creation commands, message-triggered and routine-triggered. */
+/**
+ * The one module: the run-creation commands — message-triggered,
+ * routine-triggered and the operator's test run.
+ */
 const allowedFiles = new Set(["packages/db/src/run-creation.ts"]);
 
 const statementPatterns = [

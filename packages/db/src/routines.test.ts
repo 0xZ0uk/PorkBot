@@ -1,10 +1,9 @@
-import { InvalidRoutineCron, InvalidRoutineTimezone } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 import type { RoutineRecord, RunRecord, TaskRecord } from "./records.ts";
-import { routineRunNonce } from "./run-creation.ts";
+import { routineRunNonce, routineTestRunNonce } from "./run-creation.ts";
 import { createRoutineStore, findQueuedRoutineRuns, listDueRoutines } from "./routines.ts";
 
 /**
@@ -162,10 +161,10 @@ describe("creating a routine", () => {
 
     await expect(
       store.create({ botId: "bot-1", instruction: "x", cron: "not a cron", timezone: "UTC" }),
-    ).rejects.toBeInstanceOf(InvalidRoutineCron);
+    ).rejects.toMatchObject({ _tag: "InvalidRoutineScheduleError", reason: "invalid_cron" });
     await expect(
       store.create({ botId: "bot-1", instruction: "x", cron: "0 9 * * *", timezone: "Mars/Base" }),
-    ).rejects.toBeInstanceOf(InvalidRoutineTimezone);
+    ).rejects.toMatchObject({ _tag: "InvalidRoutineScheduleError", reason: "invalid_timezone" });
 
     expect(database.calls).toEqual([]);
   });
@@ -281,6 +280,64 @@ describe("reading routines", () => {
   });
 });
 
+describe("previewing a schedule", () => {
+  it("returns the next fires from the database's clock, strictly increasing", async () => {
+    const database = fakeDatabase([[/select now\(\) as now/, [{ now: clock }]]]);
+    const store = createRoutineStore(owner, database);
+
+    const fires = await store.preview("0 9 * * *", "UTC", 3);
+
+    expect(fires).toEqual([
+      new Date("2026-01-01T09:00:00.000Z"),
+      new Date("2026-01-02T09:00:00.000Z"),
+      new Date("2026-01-03T09:00:00.000Z"),
+    ]);
+    expect(database.calls).toEqual([{ text: "select now() as now", values: [] }]);
+  });
+
+  it("resolves the wall clock in the submitted timezone", async () => {
+    const database = fakeDatabase([[/select now\(\) as now/, [{ now: clock }]]]);
+    const store = createRoutineStore(owner, database);
+
+    const fires = await store.preview("30 9 * * *", "America/New_York", 1);
+
+    // 09:30 in New York on New Year's Day is 14:30 UTC (EST).
+    expect(fires).toEqual([new Date("2026-01-01T14:30:00.000Z")]);
+  });
+
+  it("refuses a bad schedule as the typed invalid-schedule error", async () => {
+    const database = fakeDatabase([[/select now\(\) as now/, [{ now: clock }]]]);
+    const store = createRoutineStore(owner, database);
+
+    await expect(store.preview("not a cron", "UTC")).rejects.toMatchObject({
+      _tag: "InvalidRoutineScheduleError",
+      reason: "invalid_cron",
+    });
+    await expect(store.preview("0 9 * * *", "Mars/Base")).rejects.toMatchObject({
+      _tag: "InvalidRoutineScheduleError",
+      reason: "invalid_timezone",
+    });
+    await expect(store.preview("0 0 31 2 *", "UTC")).rejects.toMatchObject({
+      _tag: "InvalidRoutineScheduleError",
+      reason: "unreachable",
+    });
+
+    // The two field-level refusals happen before the clock is read; only the
+    // unreachable search needs an instant to search from.
+    expect(database.calls).toEqual([{ text: "select now() as now", values: [] }]);
+  });
+
+  it("bounds the count so a caller cannot ask for years of fire times", async () => {
+    const database = fakeDatabase([[/select now\(\) as now/, [{ now: clock }]]]);
+    const store = createRoutineStore(owner, database);
+
+    expect(await store.preview("*/5 * * * *", "UTC")).toHaveLength(5);
+    expect(await store.preview("*/5 * * * *", "UTC", 10_000)).toHaveLength(10);
+    expect(await store.preview("*/5 * * * *", "UTC", 0)).toHaveLength(1);
+    expect(await store.preview("*/5 * * * *", "UTC", Number.NaN)).toHaveLength(5);
+  });
+});
+
 describe("editing a routine", () => {
   it("edits the instruction without recomputing the schedule", async () => {
     const database = fakeDatabase([
@@ -359,9 +416,10 @@ describe("editing a routine", () => {
     ]);
     const store = createRoutineStore(owner, database);
 
-    await expect(store.update(routine.id, { cron: "nope nope" })).rejects.toBeInstanceOf(
-      InvalidRoutineCron,
-    );
+    await expect(store.update(routine.id, { cron: "nope nope" })).rejects.toMatchObject({
+      _tag: "InvalidRoutineScheduleError",
+      reason: "invalid_cron",
+    });
     expect(database.calls.some((call) => call.text.includes("select now()"))).toBe(false);
   });
 
@@ -381,6 +439,26 @@ describe("editing a routine", () => {
     await expect(
       createRoutineStore(owner, fakeDatabase()).remove(routine.id),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("testing a routine", () => {
+  it("fires the routine now without touching the ledger or the cursor", async () => {
+    const database = fakeDatabase([
+      [/from routine where id = \$1 and space_id = \$2 and deleted_at is null/, [firing]],
+      [/insert into task/, [task]],
+      [/insert into run/, [{ ...run, clientNonce: routineTestRunNonce(routine.id, "nonce-test") }]],
+    ]);
+    const store = createRoutineStore(owner, database);
+
+    const created = await store.testRun(routine.id, "nonce-test");
+
+    expect(created).toMatchObject({ trigger: "routine", status: "queued" });
+    expect(
+      database.calls.some((call) => call.text.includes("insert into routine_occurrence")),
+    ).toBe(false);
+    expect(database.calls.some((call) => call.text.startsWith("update routine"))).toBe(false);
+    expect(database.calls.some((call) => call.text.includes("for update"))).toBe(false);
   });
 });
 

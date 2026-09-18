@@ -311,6 +311,35 @@ export class ApprovalStoreError extends Data.TaggedError("ApprovalStoreError")<{
 }
 
 /**
+ * Why a routine schedule was refused. The reasons are distinct because an
+ * operator acts on them differently: `invalid_cron` and `invalid_timezone` are
+ * fields to correct, while `unreachable` is a syntactically valid expression
+ * (`0 0 31 2 *`) that never fires (PRD decision 22).
+ */
+export type RoutineScheduleRejection = "invalid_cron" | "invalid_timezone" | "unreachable";
+
+/**
+ * A routine schedule an operator submitted cannot become a row: the
+ * five-field cron expression is malformed, the timezone is not an IANA zone
+ * this runtime knows, or the expression has no fire within its horizon. The
+ * grammar belongs to `@porkbot/core`'s scheduler; this is the transport-facing
+ * fact, so a bad schedule is the contract's typed `BAD_REQUEST` rather than a
+ * 500 from an error the boundary does not know.
+ *
+ * The message is the scheduler's own sentence, which names the offending field
+ * or value but carries nothing else — the expression is operator input, not
+ * secret material.
+ */
+export class InvalidRoutineScheduleError extends Data.TaggedError("InvalidRoutineScheduleError")<{
+  readonly reason: RoutineScheduleRejection;
+  readonly message: string;
+}> {
+  constructor(reason: RoutineScheduleRejection, message: string) {
+    super({ reason, message });
+  }
+}
+
+/**
  * Every error that has a row in the mapping table. A new member fails the
  * `satisfies` check in `mapping.ts` until it has a status, and that is the
  * exhaustiveness the table's test suite then proves at runtime.
@@ -329,7 +358,8 @@ export type TypedError =
   | UnknownToolError
   | InvalidToolCallError
   | ToolCallConflictError
-  | ToolLedgerError;
+  | ToolLedgerError
+  | InvalidRoutineScheduleError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */
 export type TypedErrorTag = TypedError["_tag"];

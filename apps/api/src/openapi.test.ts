@@ -13,6 +13,11 @@ describe("the OpenAPI document", () => {
         "/account/me",
         "/bots/{id}",
         "/threads/{threadId}/events",
+        "/routines",
+        "/routines/{id}",
+        "/routines/{id}/outcomes",
+        "/routines/{id}/test-runs",
+        "/routines/preview",
       ]),
     );
   });

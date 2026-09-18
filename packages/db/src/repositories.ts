@@ -76,12 +76,12 @@ export type {
  * (settle one slot). A job still cannot create a bot, thread or routine by
  * borrowing a user identity it does not have.
  *
- * Runs are the exception to the one-method-per-write shape: the two commands
- * in `run-creation.ts` — message-triggered and routine-triggered — are the
- * only code paths in the package that insert a task or a run. Each builds its
- * rows in one transaction, so no caller has to remember the order or the
- * links, and the routine command settles the occurrence ledger in the same
- * transaction as the run it creates.
+ * Runs are the exception to the one-method-per-write shape: the commands in
+ * `run-creation.ts` — message-triggered, routine-triggered and the operator's
+ * test run — are the only code paths in the package that insert a task or a
+ * run. Each builds its rows in one transaction, so no caller has to remember
+ * the order or the links, and the routine command settles the occurrence
+ * ledger in the same transaction as the run it creates.
  */
 
 /**

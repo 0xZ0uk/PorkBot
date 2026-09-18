@@ -72,6 +72,13 @@ describe("procedure access", () => {
       "sections.update",
       "sections.delete",
       "threads.events",
+      "routines.list",
+      "routines.create",
+      "routines.update",
+      "routines.remove",
+      "routines.preview",
+      "routines.testRun",
+      "routines.outcomes",
     ]);
   });
 

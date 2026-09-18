@@ -20,6 +20,7 @@ import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
 import { createNotificationsRouter } from "./routers/notifications.ts";
+import { createRoutinesRouter } from "./routers/routines.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
 import { createBotService } from "./services/bots.ts";
@@ -143,6 +144,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     bots: createBotsRouter(createBotService(storage)),
     sections: createSectionsRouter(),
     threads: createThreadsRouter(threadEvents),
+    routines: createRoutinesRouter(),
   });
   const rpc = new RPCHandler(router, {
     interceptors: [

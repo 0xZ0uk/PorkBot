@@ -6,8 +6,10 @@ import { NotFoundError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
 import type { UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
+import { runColumns } from "./records.ts";
 import type { MessageRecord, RunRecord, TaskRecord } from "./records.ts";
 import { createRepositories } from "./repositories.ts";
+import { createRoutineTestRun, routineTestRunNonce } from "./run-creation.ts";
 
 /**
  * The run-creation command without a server: a recording fake stands in for the
@@ -269,6 +271,106 @@ describe("the run-creation command", () => {
     await expect(repositories.runs.create(request)).rejects.toThrow(
       'found no task for run "run-1"',
     );
+  });
+});
+
+/** The routine row a test run reads: the same four fields a fire reads. */
+const testRoutine = {
+  id: "routine-1",
+  botId: "bot-1",
+  threadId: "thread-1",
+  userId: "user-1",
+  instruction: "summarise the inbox",
+};
+
+const testRun: RunRecord = {
+  ...run,
+  id: "run-test",
+  trigger: "routine",
+  clientNonce: routineTestRunNonce(testRoutine.id, "nonce-test"),
+  sourceMessageId: null,
+};
+
+const testRequest = { routineId: testRoutine.id, clientNonce: "nonce-test" };
+
+describe("the routine test run", () => {
+  it("reads the routine scoped and creates the task and the run in one transaction", async () => {
+    const database = fakeDatabase([
+      [/from routine where id = \$1 and space_id = \$2 and deleted_at is null/, [testRoutine]],
+      [/insert into task/, [task]],
+      [/insert into run/, [testRun]],
+    ]);
+
+    const created = await createRoutineTestRun(owner, database, testRequest);
+
+    expect(created).toEqual(testRun);
+    expect(database.calls.map((call) => call.text.split(" ").slice(0, 3).join(" "))).toEqual([
+      "begin",
+      "select id, bot_id",
+      "insert into task",
+      "insert into run",
+      "commit",
+    ]);
+
+    const selectCall = database.calls[1];
+    expect(selectCall?.values).toEqual(["routine-1", "space-1"]);
+
+    const taskCall = database.calls[2];
+    expect(taskCall?.values).toEqual([
+      "space-1",
+      "bot-1",
+      "thread-1",
+      "user-1",
+      testRoutine.instruction,
+    ]);
+
+    // The prompt is the routine's own instruction and the nonce is namespaced,
+    // so a test run can never collide with a scheduled fire's ledger key.
+    const runCall = database.calls[3];
+    expect(runCall?.text).toContain("on conflict (space_id, client_nonce) do nothing");
+    expect(runCall?.values).toEqual([
+      "space-1",
+      "bot-1",
+      "thread-1",
+      "task-1",
+      "user-1",
+      INITIAL_RUN_STATUS,
+      routineTestRunNonce(testRoutine.id, "nonce-test"),
+    ]);
+    expect(database.calls.some((call) => call.text.includes("routine_occurrence"))).toBe(false);
+    expect(database.calls.some((call) => call.text.startsWith("update routine"))).toBe(false);
+  });
+
+  it("replays the first run when the nonce already exists", async () => {
+    const database = fakeDatabase([
+      [/from routine where id = \$1 and space_id = \$2 and deleted_at is null/, [testRoutine]],
+      [/insert into task/, [task]],
+      [/insert into run/, []],
+      [/select .* from run where space_id/, [testRun]],
+    ]);
+
+    const created = await createRoutineTestRun(owner, database, testRequest);
+
+    expect(created).toEqual(testRun);
+    expect(database.calls.filter((call) => call.text === "rollback")).toHaveLength(1);
+    expect(database.calls).toContainEqual({
+      text: "select " + runColumns + " from run where space_id = $1 and client_nonce = $2",
+      values: ["space-1", routineTestRunNonce(testRoutine.id, "nonce-test")],
+    });
+  });
+
+  it("reports a routine outside the actor's space as not-found and writes nothing", async () => {
+    const database = fakeDatabase();
+
+    const rejected = await createRoutineTestRun(owner, database, {
+      ...testRequest,
+      routineId: "routine-other",
+    }).catch((error: unknown) => error);
+
+    expect(rejected).toBeInstanceOf(NotFoundError);
+    expect(rejected).toMatchObject({ resource: "routine", id: "routine-other" });
+    expect(database.calls.some((call) => call.text.startsWith("insert into run"))).toBe(false);
+    expect(database.calls).toContainEqual({ text: "rollback", values: [] });
   });
 });
 

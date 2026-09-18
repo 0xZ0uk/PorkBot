@@ -7,6 +7,7 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
   NameConflictError,
@@ -124,6 +125,12 @@ export const errorMappings = {
     code: "SERVICE_UNAVAILABLE",
     message: "The tool-call record is not available.",
     matches: (error: unknown): error is ToolLedgerError => error instanceof ToolLedgerError,
+  },
+  InvalidRoutineScheduleError: {
+    code: "BAD_REQUEST",
+    message: "The routine schedule is invalid.",
+    matches: (error: unknown): error is InvalidRoutineScheduleError =>
+      error instanceof InvalidRoutineScheduleError,
   },
 } as const satisfies { readonly [K in TypedErrorTag]: ErrorMapping };
 
