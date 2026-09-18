@@ -33,6 +33,7 @@
     "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "5.0.1",
     "drizzle-kit": "0.31.10",
+    "effect": "3.22.2",
     "eslint": "10.10.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"

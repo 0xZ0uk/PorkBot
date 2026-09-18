@@ -210,6 +210,29 @@ version and asserts the reduced snapshot, and the suite refuses the corpus when
 the pin moves without it being re-recorded. The orchestrator names no
 implementation.
 
+## Tool dispatch
+
+The list the model sees and the code that runs a tool cannot drift: a tool is
+one `ToolRegistration` — name, description, JSON Schema, a duration budget and
+the handler — and `createToolDispatcher` in `packages/effect` generates the
+model-facing metadata from the same values `execute` dispatches. An unknown
+name is the typed `UnknownToolError` the runtime reports back to the model,
+never a silent no-op.
+
+Every call carries the model's durable `callId` as its non-null idempotency
+key. The dispatcher claims it in a `ToolCallLedger` before the side effect and
+settles it after, so a retry replays the stored outcome; an id already in
+flight, or reused for a different request, is a typed conflict, and a call
+without an id is refused before any effect. `packages/db` implements the ledger
+over the `external_effect` unique index, so the claim is atomic in Postgres and
+a retry after a worker restart still replays.
+
+Before the handler runs, the dispatcher awaits the run's fenced heartbeat, and
+it refuses a registration whose declared duration outlives the run lease TTL: a
+side effect that can outlive its lease can commit under another owner. The
+declared duration is also the hard budget — a handler that overruns it is
+interrupted and reported as a failed call.
+
 ## Dependencies
 
 `dependencies.json` at the repository root is the pin register: every package

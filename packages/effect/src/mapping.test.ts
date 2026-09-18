@@ -7,9 +7,13 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidToolCallError,
   LeaseLostError,
   NotFoundError,
   RunGoneError,
+  ToolCallConflictError,
+  ToolLedgerError,
+  UnknownToolError,
 } from "./errors.ts";
 import type { TypedError, TypedErrorTag } from "./errors.ts";
 import { boundaryReports, errorMappings, mapCause, mapError } from "./mapping.ts";
@@ -50,6 +54,26 @@ const samples = {
     error: new CursorRejectedError("forged"),
     code: "BAD_REQUEST",
     status: 400,
+  },
+  UnknownToolError: {
+    error: new UnknownToolError("shell"),
+    code: "BAD_REQUEST",
+    status: 400,
+  },
+  InvalidToolCallError: {
+    error: new InvalidToolCallError("callId"),
+    code: "BAD_REQUEST",
+    status: 400,
+  },
+  ToolCallConflictError: {
+    error: new ToolCallConflictError("run-1", "call-1", "in_flight"),
+    code: "CONFLICT",
+    status: 409,
+  },
+  ToolLedgerError: {
+    error: new ToolLedgerError("begin"),
+    code: "SERVICE_UNAVAILABLE",
+    status: 503,
   },
 } satisfies {
   readonly [K in TypedErrorTag]: {

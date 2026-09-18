@@ -205,6 +205,77 @@ export class CursorRejectedError extends Data.TaggedError("CursorRejectedError")
 }
 
 /**
+ * The model asked for a tool the run's dispatcher does not hold (slice 5.5).
+ * The call is refused before any side effect, and the message is what the
+ * runtime hands back to the model as the failed tool call, so the model can
+ * choose another tool and recover rather than stalling on a dead name.
+ */
+export class UnknownToolError extends Data.TaggedError("UnknownToolError")<{
+  readonly tool: string;
+  readonly message: string;
+}> {
+  constructor(tool: string) {
+    super({ tool, message: `the tool "${tool}" is not registered for this run` });
+  }
+}
+
+/**
+ * A tool call without the fields dispatch requires: a run, a tool name, or —
+ * the one that matters for idempotency — a non-empty `callId`. A blank call id
+ * cannot be persisted, so a retry of the call would be indistinguishable from a
+ * new effect (PRD decision 26).
+ */
+export class InvalidToolCallError extends Data.TaggedError("InvalidToolCallError")<{
+  readonly field: "runId" | "callId" | "tool";
+  readonly message: string;
+}> {
+  constructor(field: "runId" | "callId" | "tool") {
+    super({ field, message: `a tool call needs a non-empty "${field}"` });
+  }
+}
+
+/**
+ * A `callId` that cannot be dispatched as this call: it is already claimed but
+ * not settled (`in_flight`), or it was claimed for a different tool or
+ * different arguments (`call_id_reused`). Both are refusals, never a second
+ * side effect — a retried effect is only a no-op when it is the same effect.
+ */
+export class ToolCallConflictError extends Data.TaggedError("ToolCallConflictError")<{
+  readonly runId: string;
+  readonly callId: string;
+  readonly reason: "in_flight" | "call_id_reused";
+  readonly message: string;
+}> {
+  constructor(runId: string, callId: string, reason: "in_flight" | "call_id_reused") {
+    super({
+      runId,
+      callId,
+      reason,
+      message:
+        reason === "in_flight"
+          ? `tool call ${callId} is already in flight`
+          : `tool call ${callId} was already used for a different request`,
+    });
+  }
+}
+
+/**
+ * The durable tool-call ledger could not be read or written, so the call cannot
+ * be recorded and therefore must not run: an unrecorded side effect cannot be
+ * replayed or deduplicated, which is the property the ledger exists to give.
+ * The operation is named; the driver's cause is deliberately not carried, since
+ * a database error can echo the arguments it was given.
+ */
+export class ToolLedgerError extends Data.TaggedError("ToolLedgerError")<{
+  readonly operation: "begin" | "complete" | "fail";
+  readonly message: string;
+}> {
+  constructor(operation: "begin" | "complete" | "fail") {
+    super({ operation, message: `the tool-call ledger could not ${operation} the call` });
+  }
+}
+
+/**
  * Every error that has a row in the mapping table. A new member fails the
  * `satisfies` check in `mapping.ts` until it has a status, and that is the
  * exhaustiveness the table's test suite then proves at runtime.
@@ -217,7 +288,11 @@ export type TypedError =
   | DeploymentSettingsConflictError
   | CredentialMissingError
   | BlockedUrlError
-  | CursorRejectedError;
+  | CursorRejectedError
+  | UnknownToolError
+  | InvalidToolCallError
+  | ToolCallConflictError
+  | ToolLedgerError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */
 export type TypedErrorTag = TypedError["_tag"];
