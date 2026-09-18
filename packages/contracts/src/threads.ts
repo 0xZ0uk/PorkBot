@@ -58,6 +58,20 @@ export const runEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...eventBase,
+    type: z.literal("approval.requested"),
+    callId: z.string().min(1),
+    /** The durable deadline the gate denies at, as an ISO 8601 instant. */
+    expiresAt: z.iso.datetime(),
+  }),
+  z.object({
+    ...eventBase,
+    type: z.literal("approval.resolved"),
+    callId: z.string().min(1),
+    decision: z.enum(["approved", "denied", "timed_out"]),
+    reason: z.exactOptional(z.string().min(1)),
+  }),
+  z.object({
+    ...eventBase,
     type: z.literal("tool.completed"),
     callId: z.string().min(1),
     result: z.unknown(),

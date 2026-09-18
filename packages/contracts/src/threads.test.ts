@@ -22,25 +22,42 @@ const samples: readonly RunEvent[] = [
   { ...base, seq: 1, type: "run.started" },
   { ...base, seq: 2, type: "token.delta", messageId: "message-1", delta: "" },
   { ...base, seq: 3, type: "tool.requested", callId: "call-1", tool: "shell", arguments: {} },
-  { ...base, seq: 4, type: "tool.completed", callId: "call-1", result: null },
   {
     ...base,
-    seq: 5,
+    seq: 4,
+    type: "approval.requested",
+    callId: "call-1",
+    expiresAt: "2026-09-18T12:00:00.000Z",
+  },
+  { ...base, seq: 5, type: "approval.resolved", callId: "call-1", decision: "approved" },
+  {
+    ...base,
+    seq: 6,
+    type: "approval.resolved",
+    callId: "call-1",
+    decision: "denied",
+    reason: "not this one",
+  },
+  { ...base, seq: 7, type: "approval.resolved", callId: "call-1", decision: "timed_out" },
+  { ...base, seq: 8, type: "tool.completed", callId: "call-1", result: null },
+  {
+    ...base,
+    seq: 9,
     type: "tool.completed",
     callId: "call-1",
     result: "preview [truncated]",
     resultArtifact: { kind: "tool_call", callId: "call-1", bytes: 9_999 },
     durationMs: 1_250,
   },
-  { ...base, seq: 6, type: "tool.failed", callId: "call-1", error: "" },
-  { ...base, seq: 7, type: "tool.failed", callId: "call-1", error: "boom", durationMs: 40 },
-  { ...base, seq: 8, type: "run.completed" },
-  { ...base, seq: 9, type: "run.completed", messageId: "message-1" },
-  { ...base, seq: 10, type: "run.failed", error: "" },
-  { ...base, seq: 11, type: "run.failed", error: "boom", code: "MODEL_FAILED" },
-  { ...base, seq: 12, type: "run.cancelled" },
-  { ...base, seq: 13, type: "run.cancelled", reason: "operator stopped it" },
-  { ...base, seq: 14, type: "run.steered", messageId: "message-1", text: "" },
+  { ...base, seq: 10, type: "tool.failed", callId: "call-1", error: "" },
+  { ...base, seq: 11, type: "tool.failed", callId: "call-1", error: "boom", durationMs: 40 },
+  { ...base, seq: 12, type: "run.completed" },
+  { ...base, seq: 13, type: "run.completed", messageId: "message-1" },
+  { ...base, seq: 14, type: "run.failed", error: "" },
+  { ...base, seq: 15, type: "run.failed", error: "boom", code: "MODEL_FAILED" },
+  { ...base, seq: 16, type: "run.cancelled" },
+  { ...base, seq: 17, type: "run.cancelled", reason: "operator stopped it" },
+  { ...base, seq: 18, type: "run.steered", messageId: "message-1", text: "" },
 ];
 
 describe("the thread event wire schema", () => {
@@ -61,6 +78,15 @@ describe("the thread event wire schema", () => {
     expect(
       runEventSchema.safeParse({ ...base, seq: 1, type: "token.delta", messageId: "message-1" })
         .success,
+    ).toBe(false);
+    expect(
+      runEventSchema.safeParse({
+        ...base,
+        seq: 1,
+        type: "approval.resolved",
+        callId: "call-1",
+        decision: "maybe",
+      }).success,
     ).toBe(false);
   });
 

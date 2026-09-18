@@ -8,12 +8,17 @@
  * skips an event silently.
  */
 
+import { APPROVAL_DECISIONS, isApprovalDecision } from "./approvals.ts";
+import type { ApprovalDecision } from "./approvals.ts";
+
 export const RUN_EVENT_SCHEMA_VERSION = 1;
 
 export const RUN_EVENT_TYPES = [
   "run.started",
   "token.delta",
   "tool.requested",
+  "approval.requested",
+  "approval.resolved",
   "tool.completed",
   "tool.failed",
   "run.completed",
@@ -51,6 +56,31 @@ export interface ToolRequestedEvent extends RunEventBase {
   readonly callId: string;
   readonly tool: string;
   readonly arguments: unknown;
+}
+
+/**
+ * A tool call is gated: the run is parked in `waiting_approval` until the
+ * approval for `callId` is resolved or the deadline passes. `expiresAt` is the
+ * durable deadline as an ISO 8601 instant, so a client can render the countdown
+ * without guessing a timeout of its own.
+ */
+export interface ApprovalRequestedEvent extends RunEventBase {
+  readonly type: "approval.requested";
+  readonly callId: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * The gate is settled. `decision` is `approved` or `denied` when an operator
+ * acted and `timed_out` when nobody answered before the deadline — the PRD's
+ * `GateTimedOut -> deny`, rendered as the system's decision rather than a
+ * person's. `reason` is the operator's deny text and is absent otherwise.
+ */
+export interface ApprovalResolvedEvent extends RunEventBase {
+  readonly type: "approval.resolved";
+  readonly callId: string;
+  readonly decision: ApprovalDecision;
+  readonly reason?: string;
 }
 
 /**
@@ -117,6 +147,8 @@ export type RunEvent =
   | RunStartedEvent
   | TokenDeltaEvent
   | ToolRequestedEvent
+  | ApprovalRequestedEvent
+  | ApprovalResolvedEvent
   | ToolCompletedEvent
   | ToolFailedEvent
   | RunCompletedEvent
@@ -370,6 +402,85 @@ function parseToolRequested(
   };
 }
 
+/**
+ * The wire timestamp form, matching the contract's `z.iso.datetime()`: a UTC
+ * ISO 8601 instant with optional fractional seconds and nothing else. Accepting
+ * a laxer string here would let an event the contract refuses fold in core.
+ */
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
+function requireTimestamp(record: Record<string, unknown>, field: string): Field<string> {
+  const value = record[field];
+
+  if (typeof value !== "string" || !ISO_TIMESTAMP.test(value) || Number.isNaN(Date.parse(value))) {
+    return malformed(`${field} must be an ISO 8601 UTC timestamp`, value);
+  }
+
+  return { ok: true, value };
+}
+
+function parseApprovalRequested(
+  base: RunEventBase,
+  record: Record<string, unknown>,
+): RunEventParseResult {
+  const callId = requireString(record, "callId");
+  if (!callId.ok) {
+    return callId;
+  }
+
+  const expiresAt = requireTimestamp(record, "expiresAt");
+  if (!expiresAt.ok) {
+    return expiresAt;
+  }
+
+  return {
+    ok: true,
+    event: {
+      ...base,
+      type: "approval.requested",
+      callId: callId.value,
+      expiresAt: expiresAt.value,
+    },
+  };
+}
+
+function parseApprovalResolved(
+  base: RunEventBase,
+  record: Record<string, unknown>,
+): RunEventParseResult {
+  const callId = requireString(record, "callId");
+  if (!callId.ok) {
+    return callId;
+  }
+
+  const decision = record["decision"];
+  if (!isApprovalDecision(decision)) {
+    return {
+      ok: false,
+      error: new MalformedRunEvent(
+        `decision must be one of ${APPROVAL_DECISIONS.join(", ")}`,
+        decision,
+      ),
+    };
+  }
+
+  const reason = optionalString(record, "reason");
+  if (!reason.ok) {
+    return reason;
+  }
+
+  return {
+    ok: true,
+    event: {
+      ...base,
+      type: "approval.resolved",
+      callId: callId.value,
+      decision,
+      ...(reason.value === undefined ? {} : { reason: reason.value }),
+    },
+  };
+}
+
 function parseToolCompleted(
   base: RunEventBase,
   record: Record<string, unknown>,
@@ -537,6 +648,10 @@ export function parseRunEvent(value: unknown): RunEventParseResult {
       return parseTokenDelta(base.value, value);
     case "tool.requested":
       return parseToolRequested(base.value, value);
+    case "approval.requested":
+      return parseApprovalRequested(base.value, value);
+    case "approval.resolved":
+      return parseApprovalResolved(base.value, value);
     case "tool.completed":
       return parseToolCompleted(base.value, value);
     case "tool.failed":

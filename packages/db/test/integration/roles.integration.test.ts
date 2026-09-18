@@ -103,6 +103,24 @@ describe("the API role", () => {
       await api.end();
     }
   });
+
+  it("may record the operator's vote, but not move a gate's deadline", async () => {
+    const api = await connectAs(apiRole);
+
+    try {
+      await expect(
+        api.query(
+          "update approval set status = 'approved', decided_by_user_id = gen_random_uuid(), " +
+            "decided_at = now(), reason = null, updated_at = now() where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        api.query("update approval set expires_at = now() where false"),
+      ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
+    } finally {
+      await api.end();
+    }
+  });
 });
 
 describe("the worker role", () => {
@@ -137,6 +155,30 @@ describe("the worker role", () => {
           "insert into run (space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce) " +
             "select space_id, bot_id, thread_id, task_id, user_id, status, trigger, client_nonce from run where false",
         ),
+      ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
+    } finally {
+      await worker.end();
+    }
+  });
+
+  it("may open a gate and time it out, but not vote in the operator's name", async () => {
+    const worker = await connectAs(workerRole);
+
+    try {
+      await expect(
+        worker.query(
+          "insert into approval (space_id, run_id, call_id, tool, status, expires_at) " +
+            "select space_id, id, 'call-role-probe', 'shell', 'pending', now() + interval '10 minutes' " +
+            "from run where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "update approval set status = 'timed_out', decided_at = now(), updated_at = now() where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query("update approval set decided_by_user_id = null where false"),
       ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
     } finally {
       await worker.end();
@@ -218,6 +260,15 @@ describe("the catalog's answer", () => {
       worker_reads_attempt: boolean;
       worker_inserts_run: boolean;
       worker_reads_users: boolean;
+      worker_inserts_approval: boolean;
+      worker_reads_approval: boolean;
+      worker_writes_approval_timeout: boolean;
+      worker_writes_approval_vote: boolean;
+      api_reads_approval: boolean;
+      api_writes_approval_vote: boolean;
+      api_writes_approval_deadline: boolean;
+      api_inserts_approval: boolean;
+      worker_deletes_approval: boolean;
       api_reads_jobs: boolean;
       worker_creates_jobs: boolean;
       api_creates_schemas: boolean;
@@ -231,6 +282,19 @@ describe("the catalog's answer", () => {
         "has_table_privilege($2, 'public.attempt', 'SELECT') as worker_reads_attempt, " +
         "has_table_privilege($2, 'public.run', 'INSERT') as worker_inserts_run, " +
         "has_table_privilege($2, 'public.\"user\"', 'SELECT') as worker_reads_users, " +
+        "has_table_privilege($2, 'public.approval', 'INSERT') as worker_inserts_approval, " +
+        "has_table_privilege($2, 'public.approval', 'SELECT') as worker_reads_approval, " +
+        "has_column_privilege($2, 'public.approval', 'decided_at', 'UPDATE') " +
+        "as worker_writes_approval_timeout, " +
+        "has_column_privilege($2, 'public.approval', 'decided_by_user_id', 'UPDATE') " +
+        "as worker_writes_approval_vote, " +
+        "has_table_privilege($1, 'public.approval', 'SELECT') as api_reads_approval, " +
+        "has_column_privilege($1, 'public.approval', 'decided_by_user_id', 'UPDATE') " +
+        "as api_writes_approval_vote, " +
+        "has_column_privilege($1, 'public.approval', 'expires_at', 'UPDATE') " +
+        "as api_writes_approval_deadline, " +
+        "has_table_privilege($1, 'public.approval', 'INSERT') as api_inserts_approval, " +
+        "has_table_privilege($2, 'public.approval', 'DELETE') as worker_deletes_approval, " +
         `has_schema_privilege($1, '${graphileWorkerSchema}', 'USAGE') as api_reads_jobs, ` +
         `has_schema_privilege($2, '${graphileWorkerSchema}', 'CREATE') as worker_creates_jobs, ` +
         "has_database_privilege($1, current_database(), 'CREATE') as api_creates_schemas, " +
@@ -246,6 +310,15 @@ describe("the catalog's answer", () => {
       worker_reads_attempt: true,
       worker_inserts_run: false,
       worker_reads_users: false,
+      worker_inserts_approval: true,
+      worker_reads_approval: true,
+      worker_writes_approval_timeout: true,
+      worker_writes_approval_vote: false,
+      api_reads_approval: true,
+      api_writes_approval_vote: true,
+      api_writes_approval_deadline: false,
+      api_inserts_approval: false,
+      worker_deletes_approval: false,
       api_reads_jobs: false,
       worker_creates_jobs: true,
       api_creates_schemas: false,

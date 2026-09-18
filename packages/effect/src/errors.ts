@@ -276,6 +276,24 @@ export class ToolLedgerError extends Data.TaggedError("ToolLedgerError")<{
 }
 
 /**
+ * The durable approval store could not be read or written, so the gate cannot
+ * record the request and therefore must not run the tool: an approval nobody
+ * can see is an approval nobody can grant (PRD decision 13). The operation is
+ * named; the driver's cause is deliberately not carried.
+ */
+export class ApprovalStoreError extends Data.TaggedError("ApprovalStoreError")<{
+  readonly operation: "open" | "read" | "time_out";
+  readonly message: string;
+}> {
+  constructor(operation: "open" | "read" | "time_out") {
+    super({
+      operation,
+      message: `the approval store could not ${operation.replace("_", " ")} the approval`,
+    });
+  }
+}
+
+/**
  * Every error that has a row in the mapping table. A new member fails the
  * `satisfies` check in `mapping.ts` until it has a status, and that is the
  * exhaustiveness the table's test suite then proves at runtime.
@@ -285,6 +303,7 @@ export type TypedError =
   | RunGoneError
   | LeaseLostError
   | GateTimeoutError
+  | ApprovalStoreError
   | DeploymentSettingsConflictError
   | CredentialMissingError
   | BlockedUrlError

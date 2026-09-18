@@ -50,6 +50,20 @@
       "when": 1789734334272,
       "tag": "0006_run_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789737966004,
+      "tag": "0007_cooing_lethal_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789737967830,
+      "tag": "0008_approval_grants",
+      "breakpoints": true
     }
   ]
 }
