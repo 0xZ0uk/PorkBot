@@ -63,6 +63,14 @@ const boundaryViolations = [
     message: /"openai" is a provider SDK owned by @porkbot\/adapters/,
   },
   {
+    // Pi owns the agent loop and is adapted at the RunSession seam inside
+    // @porkbot/adapters; no other package may name it (PRD decision 13).
+    fixture: "api-pi-import.ts",
+    package: "@porkbot/api",
+    ruleId: "no-restricted-imports",
+    message: /"@earendil-works" is a provider SDK owned by @porkbot\/adapters/,
+  },
+  {
     fixture: "api-deep-package-import.ts",
     package: "@porkbot/api",
     ruleId: "no-restricted-imports",

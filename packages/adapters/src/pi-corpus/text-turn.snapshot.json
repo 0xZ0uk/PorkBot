@@ -1,0 +1,21 @@
+{
+  "threadId": "thread-pi-corpus",
+  "runs": [
+    {
+      "runId": "run-pi-corpus",
+      "status": "completed",
+      "toolCalls": []
+    }
+  ],
+  "messages": [
+    {
+      "id": "assistant-1",
+      "runId": "run-pi-corpus",
+      "role": "assistant",
+      "text": "Hello from Pi.",
+      "complete": true
+    }
+  ],
+  "lastSeq": 3,
+  "pendingEvents": []
+}
