@@ -54,6 +54,7 @@ beforeAll(async () => {
 
   runner = await startWorker({
     connectionString: connectionStringForRole(suite.connectionString, workerRole),
+    scheduleWatchdog: false,
     executeRun: async (execution) => {
       executions.push(execution);
     },

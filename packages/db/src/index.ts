@@ -111,12 +111,16 @@ export type {
 } from "./repositories.ts";
 export type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
 export {
+  expiredLeaseReason,
+  findExpiredLeases,
   RUN_HEARTBEAT_GRACE_SECONDS,
   RUN_HEARTBEAT_INTERVAL_SECONDS,
   RUN_LEASE_TTL_SECONDS,
+  RUN_WATCHDOG_BATCH_LIMIT,
 } from "./run-leases.ts";
-export type { FencedRunPatch, RunLease } from "./run-leases.ts";
+export type { ExpiredLease, FencedRunPatch, ReclaimOptions, RunLease } from "./run-leases.ts";
 export type {
+  AttemptStatus,
   BotRecord,
   EventRecord,
   MessageRecord,

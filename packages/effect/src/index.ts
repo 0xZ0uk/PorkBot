@@ -92,6 +92,14 @@ export type {
   ApprovalVoteResult,
 } from "./approval-gate.ts";
 
+// The fenced run lifetime (slice 6.3, PRD decisions 1, 25 and 26): heartbeat
+// on an interval, and interrupt the run's whole fiber tree the moment a beat
+// cannot be renewed, so a superseded owner cancels its work instead of
+// committing a side effect the next owner already owns. The beat is an Effect
+// the caller supplies, so this package names no data layer.
+export { withRunFence } from "./run-fence.ts";
+export type { RunFenceOptions } from "./run-fence.ts";
+
 // Tool dispatch (slice 5.5, PRD decision 26; audit section 3). One registration
 // carries a tool's metadata and its handler, so the list the model sees is
 // generated from the same value `execute` dispatches and cannot drift. Every

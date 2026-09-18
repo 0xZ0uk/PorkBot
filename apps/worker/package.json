@@ -18,9 +18,11 @@
     "@porkbot/effect": "workspace:*",
     "@porkbot/health": "workspace:*",
     "@porkbot/logging": "workspace:*",
+    "effect": "3.22.2",
     "graphile-worker": "0.18.0"
   },
   "devDependencies": {
+    "@porkbot/adapters": "workspace:*",
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
