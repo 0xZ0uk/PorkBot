@@ -21,3 +21,25 @@ export {
 } from "./migrate.ts";
 export type { MigrationRunOptions, MigrationRunReport } from "./migrate.ts";
 export { runMigrations } from "./run-migrations.ts";
+
+// The actor and the repository factory: how data access is scoped. Nothing
+// else in this package takes a space or user id as an argument — the scope is
+// the actor a repository was built from, and the typed not-found it throws is
+// the shared one from `@porkbot/effect` so the transport mapping can name it.
+export type { Actor, SpaceMemberRole, SystemActor, UserActor } from "./actor.ts";
+export { createRepositories } from "./repositories.ts";
+export type {
+  BotPatch,
+  BotReader,
+  BotRecord,
+  BotWriter,
+  NewBot,
+  Repositories,
+  RunReader,
+  RunRecord,
+  SystemRepositories,
+  ThreadReader,
+  ThreadRecord,
+  ThreadWriter,
+  UserRepositories,
+} from "./repositories.ts";
