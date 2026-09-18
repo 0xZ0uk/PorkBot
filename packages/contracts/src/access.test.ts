@@ -1,5 +1,6 @@
 import type { AnyContractProcedure, ErrorMap, Meta } from "@orpc/contract";
 import { isContractProcedure } from "@orpc/contract";
+import type { NotificationKind } from "@porkbot/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { procedureAccessSchema } from "./access.ts";
 import { appContract, publicProcedures } from "./contract.ts";
@@ -54,6 +55,8 @@ describe("procedure access", () => {
     expect(procedures.map(({ path }) => path)).toEqual([
       "deployment.status",
       "account.me",
+      "notifications.preferences",
+      "notifications.setPreference",
       "bots.list",
       "bots.get",
       "bots.create",
@@ -119,6 +122,13 @@ describe("procedure access", () => {
     // `bots.get` is the first authenticated by-id read: the client sends the
     // resource id, and the actor's scope comes from the session, never input.
     expectTypeOf<Parameters<AppClient["bots"]["get"]>[0]>().toEqualTypeOf<{ id: string }>();
+
+    // A notification switch names the kind and the value and nothing else: the
+    // user and the space are the actor's, and there is no place to guess them.
+    expectTypeOf<Parameters<AppClient["notifications"]["setPreference"]>[0]>().toEqualTypeOf<{
+      kind: NotificationKind;
+      enabled: boolean;
+    }>();
 
     // The subscription names the thread it wants and nothing else: the resume
     // cursor is the Last-Event-ID header, and the space is the actor's.

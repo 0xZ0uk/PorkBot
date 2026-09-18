@@ -21,6 +21,7 @@ export {
   memoryKind,
   memoryWriteOrigin,
   messageRole,
+  notificationKind,
   runStatus,
   taskStatus,
 } from "./enums.ts";
@@ -28,6 +29,7 @@ export { approval } from "./approvals.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
 export { memoryDocument, memoryRevision } from "./memory.ts";
+export { notificationPreference } from "./notification.ts";
 export { oauthState, webhookDelivery } from "./ingress.ts";
 export { message } from "./messages.ts";
 export { routine, routineOccurrence } from "./routines.ts";

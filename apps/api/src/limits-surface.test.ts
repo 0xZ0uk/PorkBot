@@ -105,6 +105,9 @@ const requestBodies: Record<string, string> = {
   }),
   "bots.avatar": JSON.stringify({ json: { id: "bot-1" } }),
   "bots.clearAvatar": JSON.stringify({ json: { id: "bot-1" } }),
+  "notifications.setPreference": JSON.stringify({
+    json: { kind: "run.failed", enabled: true },
+  }),
   "sections.list": JSON.stringify({ json: {} }),
   "sections.create": JSON.stringify({ json: { name: "Research" } }),
   "sections.update": JSON.stringify({ json: { id: "section-1", name: "Work" } }),
@@ -156,6 +159,8 @@ describe("every contract procedure", () => {
       "bots.setAvatar",
       "bots.update",
       "deployment.status",
+      "notifications.preferences",
+      "notifications.setPreference",
       "sections.create",
       "sections.delete",
       "sections.list",
@@ -224,6 +229,7 @@ describe("the typed answer", () => {
       threads: { findById: notExercised, listForBot: notExercised, createForBot: notExercised },
       runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
       events: { listAfter: notExercised },
+      notifications: { read: notExercised, set: notExercised },
       routines: {
         findById: notExercised,
         list: notExercised,

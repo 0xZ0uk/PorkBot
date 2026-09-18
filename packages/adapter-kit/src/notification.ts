@@ -41,10 +41,11 @@ export interface NotificationProvider {
 export const failureMapping: FailureMapping = {
   gone: "Not produced: a notification is a fresh delivery with no owned resource; a destination that no longer answers classifies as `not_found` or `timed_out`.",
   not_found:
-    "The destination no longer exists (an unknown webhook URL answering 404); surfaced to the operator instead of retried forever.",
+    "The destination cannot be reached (an unknown webhook URL answering 404, or an address the URL-safety rules refuse); surfaced to the operator instead of retried forever.",
   rate_limited:
     "The destination refuses work under a quota (HTTP 429); retried with backoff and eventually surfaced.",
-  timed_out: "Delivery exceeded its budget; retried, then surfaced as an undelivered notification.",
+  timed_out:
+    "Delivery exceeded its budget, or the provider answered something that does not match the documented receipt; retried, then surfaced as an undelivered notification.",
   auth_failed:
     "The destination refuses the configured credential (401/403); surfaced to the operator, who can rotate it.",
 };
