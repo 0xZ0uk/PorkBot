@@ -46,6 +46,20 @@ USER node
 EXPOSE 3001
 CMD ["node", "dist/main.js"]
 
+# The one-shot migration runner. It carries the same deployed workspace as the
+# api — `@porkbot/db` and its committed migrations — and runs once per stack:
+# apply the journal, create the two service roles' grants (the migration) and
+# set their passwords from the environment (the command). The api and the worker
+# wait for it with `service_completed_successfully`, so an always-on process
+# never starts against an unmigrated database.
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS migrate
+
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /deploy/api ./
+USER node
+CMD ["node", "node_modules/@porkbot/db/dist/migrate-cli.js"]
+
 FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS worker
 
 ENV NODE_ENV=production

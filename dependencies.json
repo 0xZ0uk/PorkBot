@@ -47,6 +47,11 @@
       "reason": "The orchestration layer (PRD decision 12): provider services and their layers, retries, timeouts, resource safety, structured concurrency and typed error channels. Pinned exactly because its Cause, Layer and Context semantics are the error-mapping and lifetime contract every later service is written against; the major is chosen deliberately (3.x stable, not the 4.x release candidate)."
     },
     {
+      "name": "graphile-worker",
+      "version": "0.18.0",
+      "reason": "The durable job runner the worker boots (slice 6.1, PRD decision 17): job locking, retries and its own queue schema in Postgres. Pinned exactly because it migrates that schema at boot, so an implicit upgrade would silently change the queue's tables and job semantics on the production database."
+    },
+    {
       "name": "hono",
       "version": "4.13.8",
       "reason": "The API's HTTP surface (slice 4.1, PRD decision 14: oRPC over Hono), mounted through the RPC handler and composed by every later route, stream and webhook. Pinned exactly because routing, middleware order and header handling are user-visible behaviors an implicit upgrade could move."

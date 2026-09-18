@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
@@ -117,6 +118,41 @@ describe("the testkit Postgres harness", () => {
       ]);
     } finally {
       await second.destroy();
+    }
+  });
+
+  it("carries the template's database-level grants into a clone", async () => {
+    // `CREATE DATABASE ... TEMPLATE` does not copy `pg_database.datacl`, so the
+    // harness reapplies it. The probe role is the proof: grant CREATE — a
+    // privilege PUBLIC does not hold, so the assertion can actually fail — on
+    // the template, clone, and ask the catalog about the role in the clone.
+    const role = `acl_probe_${randomBytes(4).toString("hex")}`;
+
+    await withClient(adminConnectionString(), async (client) => {
+      await client.query(`create role ${role}`);
+      await client.query(`grant create on database ${harness.templateDatabase} to ${role}`);
+    });
+
+    try {
+      const suite = await harness.createSuite("acl_probe");
+
+      try {
+        const { rows } = await withClient(suite.connectionString, (client) =>
+          client.query<{ allowed: boolean }>(
+            "select has_database_privilege($1, current_database(), 'CREATE') as allowed",
+            [role],
+          ),
+        );
+
+        expect(rows[0]?.allowed).toBe(true);
+      } finally {
+        await suite.destroy();
+      }
+    } finally {
+      await withClient(adminConnectionString(), async (client) => {
+        await client.query(`revoke create on database ${harness.templateDatabase} from ${role}`);
+        await client.query(`drop role ${role}`);
+      });
     }
   });
 

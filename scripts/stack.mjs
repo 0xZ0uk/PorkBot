@@ -39,6 +39,8 @@ function usage() {
     "  PORKBOT_POSTGRES_PORT       Host port for Postgres (default: 5432).",
     "  PORKBOT_API_PORT            Host port for the api (default: 3001).",
     "  PORKBOT_WEB_PORT            Host port for web (default: 3000).",
+    "  PORKBOT_API_DB_PASSWORD     The api role's password (default: a local placeholder).",
+    "  PORKBOT_WORKER_DB_PASSWORD  The worker role's password (default: a local placeholder).",
     "",
   ].join("\n");
 }
