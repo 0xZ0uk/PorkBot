@@ -27,6 +27,13 @@ export { readDeploymentSettings } from "./deployment-settings.ts";
 export { bootstrapSignup, defaultSpaceName } from "./bootstrap.ts";
 export type { BootstrapInput, BootstrapResult } from "./bootstrap.ts";
 
+// The pre-actor read on the other side of the gate: a session's user id to the
+// membership it holds. It takes a user id, never a space id, and returns
+// `null` for a user with no membership, which the gate answers as 401 (slice
+// 3.2). Nothing else resolves an actor from a session.
+export { resolveUserActor } from "./membership.ts";
+export type { ResolveActorInput } from "./membership.ts";
+
 // Applying migrations, exported so the API, the worker and scripts share one
 // implementation with the `db:migrate` command rather than each shelling out.
 export {

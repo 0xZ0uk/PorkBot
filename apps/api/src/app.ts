@@ -8,7 +8,11 @@ import { moduleInfo as coreModule } from "@porkbot/core";
 import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
-import { appImplementer } from "./routers/context.ts";
+import type { ResolveActor } from "@porkbot/auth";
+import type { UserActor, UserRepositories } from "@porkbot/db";
+import { assembleRouter, openProcedureContext } from "./gate.ts";
+import { createAccountRouter } from "./routers/account.ts";
+import { createBotsRouter } from "./routers/bots.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 
@@ -32,6 +36,21 @@ export interface ApiAppOptions {
   readonly logger?: Logger;
   /** Request id factory used when the client did not supply one. */
   readonly generateRequestId?: () => string;
+  /**
+   * The one session read the gate composes (slice 3.2), from
+   * `createActorResolver` in `@porkbot/auth`. The default answers "no session",
+   * so a process without operator auth configuration boots fail-closed:
+   * public procedures work, and every authenticated procedure answers its
+   * typed 401 rather than seeing an invented actor.
+   */
+  readonly resolveActor?: ResolveActor;
+  /**
+   * Builds the actor-scoped repositories for one request. The default refuses;
+   * it is unreachable while the default resolver answers "no session", and
+   * refusing is the safe direction once a resolver is configured without a
+   * data scope.
+   */
+  readonly repositoriesFor?: (actor: UserActor) => UserRepositories;
 }
 
 interface ApiEnv {
@@ -46,13 +65,18 @@ export type ApiApp = Hono<ApiEnv>;
 /**
  * The API's HTTP surface: one Hono app with the request boundary, the health
  * probe, and the oRPC handler mounted on `/rpc`. Routers live in `routers/`,
- * delegate to the injected services, and contain no business logic.
+ * register through the gate in `gate.ts`, delegate to the injected services,
+ * and contain no business logic.
  */
 export function createApiApp(options: ApiAppOptions): ApiApp {
   const logger = options.logger ?? createLogger({ service: serviceName });
   const generateRequestId = options.generateRequestId ?? randomUUID;
-  const router = appImplementer.router({
+  const resolveActor = options.resolveActor ?? noSession;
+  const repositoriesFor = options.repositoriesFor ?? refuseRepositories;
+  const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
+    account: createAccountRouter(),
+    bots: createBotsRouter(),
   });
   const rpc = new RPCHandler(router, {
     interceptors: [
@@ -85,12 +109,17 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   );
 
   app.use(`${rpcPath}/*`, async (context, next) => {
+    const procedureContext = await openProcedureContext({
+      headers: context.req.raw.headers,
+      logger: context.get("logger"),
+      requestId: context.get("requestId"),
+      resolveActor,
+      repositoriesFor,
+    });
+
     const { matched, response } = await rpc.handle(context.req.raw, {
       prefix: rpcPath,
-      context: {
-        logger: context.get("logger"),
-        requestId: context.get("requestId"),
-      },
+      context: procedureContext,
     });
 
     if (matched) {
@@ -125,6 +154,21 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
 function requestPath(url: string | URL): string {
   const parsed = url instanceof URL ? url : new URL(url);
   return `${parsed.pathname}${parsed.search}`;
+}
+
+/**
+ * The fail-closed default session read: no session, so no actor and every
+ * authenticated procedure answers its typed 401. It is replaced by
+ * `createActorResolver` when the process is given auth configuration.
+ */
+const noSession: ResolveActor = async () => null;
+
+/** The default repository factory: unreachable now, and a refusal if reached. */
+function refuseRepositories(): never {
+  throw new Error(
+    "actor-scoped repositories are not configured for this process; " +
+      "supply repositoriesFor beside the session resolver.",
+  );
 }
 
 /**

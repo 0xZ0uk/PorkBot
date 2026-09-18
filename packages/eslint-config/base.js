@@ -4,6 +4,7 @@ import importX from "eslint-plugin-import-x";
 import turboPlugin from "eslint-plugin-turbo";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import { authGateConfigsFor } from "./auth-gate.js";
 import { boundaryConfigsFor } from "./module-boundaries.js";
 import { uiColorConfigsFor } from "./ui-colors.js";
 
@@ -19,8 +20,9 @@ const typescriptConfigs = tseslint.configs.strict.map((config) =>
 
 /**
  * Builds the flat config for one workspace package. The package name selects
- * the boundary rules from the module map, so every package's eslint.config.js
- * is one call and cannot silently opt out.
+ * the boundary rules from the module map, the auth-gate rule for the API and
+ * the colour rule for UI surfaces, so every package's eslint.config.js is one
+ * call and cannot silently opt out.
  *
  * typescript-eslint runs against the TypeScript 6 API, which is the last
  * compiler version that exposes one: the workspace compiler is TypeScript 7
@@ -63,6 +65,7 @@ export function defineConfig({ package: packageName }) {
       },
     },
     ...boundaryConfigsFor(packageName),
+    ...authGateConfigsFor(packageName),
     ...uiColorConfigsFor(packageName),
     eslintConfigPrettier,
   ];

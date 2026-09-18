@@ -32,6 +32,9 @@ importers:
       '@orpc/zod':
         specifier: 1.15.1
         version: 1.15.1(@orpc/contract@1.15.1)(@orpc/server@1.15.1(ws@8.21.3))(ws@8.21.3)(zod@4.6.5)
+      '@porkbot/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@porkbot/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

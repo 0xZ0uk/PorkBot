@@ -32,6 +32,7 @@ not covered, say so and why. -->
 
 - [ ] Every acceptance criterion in the linked issue is addressed or explicitly deferred
 - [ ] New or upgraded dependencies are named above with their reason, or this change adds none
+- [ ] Any public procedure is marked `publicProcedure`, listed in `publicProcedures`, and named under What with why it is unauthenticated
 - [ ] CI and review bots on the head commit are terminal and the pr-watch completion gate holds
 - [ ] No secrets, credentials, personal data, or machine/account identifiers in the diff or this description
 - [ ] UI changes link the CI screenshot that shows the change, or say why none exists
