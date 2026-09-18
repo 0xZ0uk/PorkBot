@@ -47,7 +47,17 @@ change it without breaking what the boundaries and the CI gate protect.
   provider SDK restriction) and review.
 - **An interface with one implementation is a hypothesis.** Ship the second
   implementation or delete the interface; unused contracts are a liability, not
-  a hedge. Checked by: review.
+  a hedge. Every interface declared in `@porkbot/adapter-kit` names at least two
+  planned implementations, each pinned to the roadmap slice that lands it, in
+  `PROVIDER_INTERFACES` in `packages/adapter-kit/src/provider-plan.ts`, and each
+  seam documents how its provider errors map onto the shared vocabulary.
+  Checked by: `packages/adapter-kit/src/provider-plan.test.ts`.
+- **Lifecycle code decides from the shared failure vocabulary.** A provider maps
+  its own errors onto `ProviderFailure` (`gone`, `not_found`, `rate_limited`,
+  `timed_out`, `auth_failed`) inside its adapter; retry, recovery, approval and
+  state transitions branch on the kind. Inspecting a vendor error string or an
+  SDK error class outside `@porkbot/adapters` is a review failure. Checked by:
+  review and `packages/adapter-kit/src/provider-plan.test.ts`.
 - **Every provider ships an offline emulator.** An adapter is tested against its
   emulator over the real wire protocol, with no network and no keys. Checked by:
   test (`@porkbot/adapters`) and review.
