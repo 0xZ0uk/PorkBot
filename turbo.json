@@ -1,7 +1,18 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["NODE_ENV", "PORT", "LOG_LEVEL"],
+  "globalEnv": [
+    "NODE_ENV",
+    "PORT",
+    "LOG_LEVEL",
+    "PORKBOT_LIMIT_AUTHENTICATED_PER_MINUTE",
+    "PORKBOT_LIMIT_ANONYMOUS_PER_MINUTE",
+    "PORKBOT_LIMIT_WEBHOOK_PER_MINUTE",
+    "PORKBOT_LIMIT_PROBE_PER_MINUTE",
+    "PORKBOT_LIMIT_MAX_STREAMS_PER_ACTOR",
+    "PORKBOT_LIMIT_MAX_BODY_BYTES",
+    "PORKBOT_LIMIT_MAX_WEBHOOK_BODY_BYTES"
+  ],
   "globalDependencies": [".nvmrc", "quarantine.json"],
   "tasks": {
     "build": {

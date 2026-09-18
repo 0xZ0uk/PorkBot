@@ -31,4 +31,13 @@ describe("the OpenAPI document", () => {
     expect(bots).toMatchObject({ operationId: "botsGet" });
     expect(bots?.responses?.["404"]).toBeDefined();
   });
+
+  it("carries the typed rate-limit answer for public and authenticated procedures", async () => {
+    const document = await createOpenApiDocument();
+    const status = document.paths?.["/deployment/status"]?.get;
+    const account = document.paths?.["/account/me"]?.get;
+
+    expect(status?.responses?.["429"]).toBeDefined();
+    expect(account?.responses?.["429"]).toBeDefined();
+  });
 });

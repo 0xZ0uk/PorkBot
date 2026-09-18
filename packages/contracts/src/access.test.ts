@@ -89,6 +89,18 @@ describe("procedure access", () => {
     }
   });
 
+  it("declares RATE_LIMITED on every procedure, public or not", () => {
+    // The limiter runs before the access decision, so even a public procedure
+    // can answer a typed 429 and a client can back off without parsing a
+    // header. A new procedure inherits the declaration from its builder; this
+    // walk fails if a builder ever stops declaring it.
+    for (const { path, procedure } of procedures) {
+      expect(errorMapOf(procedure), `${path} must declare RATE_LIMITED`).toHaveProperty(
+        "RATE_LIMITED",
+      );
+    }
+  });
+
   it("carries no tenant id in an authenticated input", () => {
     // `bots.get` is the first authenticated by-id read: the client sends the
     // resource id, and the actor's scope comes from the session, never input.

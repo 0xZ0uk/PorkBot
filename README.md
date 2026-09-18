@@ -290,6 +290,53 @@ The API process reads `DATABASE_URL` and exits when it is missing. The local
 stack supplies it in `compose.yaml`; unit tests inject a service, and the e2e
 spec starts the process with a placeholder URL it never dials.
 
+## Rate limits, body caps and connection caps
+
+`apps/api/src/limits.ts` is the one place limits live (PRD decision 9). The
+reference implementation had no rate limiting anywhere; the failure this module
+is built against is a route added later that is silently unlimited, so it is
+three single places:
+
+- **One register.** `routeRules(rpcPath)` names every route family — the health
+  probe, the whole `/rpc` surface, and the webhook family a later slice mounts —
+  and the budget each draws from. A path the register does not know still draws
+  the anonymous budget rather than none.
+- **One installer.** `installLimits` registers the middleware before any route;
+  the gate spends the RPC budget after it has resolved an actor, the middleware
+  spends the rest, and both use the same accounting object.
+- **One answer.** An RPC refusal is the contract's typed `RATE_LIMITED` with
+  `{ retryAfterSeconds }` in its `data` and a `Retry-After` header; an HTTP
+  surface gets a `429` JSON body and the same header. A refused stream gets the
+  RPC error envelope when it is on the `/rpc` path.
+
+What is limited, per minute unless noted:
+
+| Surface                        | Key                  | Default | Variable                                 |
+| ------------------------------ | -------------------- | ------- | ---------------------------------------- |
+| Authenticated RPC              | actor (`space:user`) | 300     | `PORKBOT_LIMIT_AUTHENTICATED_PER_MINUTE` |
+| Public RPC and unmatched paths | client address       | 60      | `PORKBOT_LIMIT_ANONYMOUS_PER_MINUTE`     |
+| Health probe                   | client address       | 600     | `PORKBOT_LIMIT_PROBE_PER_MINUTE`         |
+| Inbound webhooks (slice 4.5)   | client address       | 120     | `PORKBOT_LIMIT_WEBHOOK_PER_MINUTE`       |
+| RPC request body               | —                    | 1 MiB   | `PORKBOT_LIMIT_MAX_BODY_BYTES`           |
+| Webhook request body           | —                    | 256 KiB | `PORKBOT_LIMIT_MAX_WEBHOOK_BODY_BYTES`   |
+| Open streams per actor         | actor                | 4       | `PORKBOT_LIMIT_MAX_STREAMS_PER_ACTOR`    |
+
+An unset or blank variable takes the default; a value that is not a positive
+integer fails startup rather than silently guarding with a number nobody chose.
+Body caps are checked from `Content-Length` or while the body streams, so an
+oversized payload is refused before it is parsed or buffered past the cap. Any
+`text/event-stream` response holds a per-principal slot until it closes, errors
+or the client disconnects, so one actor cannot exhaust the connection slots
+another actor needs — the SSE slice inherits that without asking for it.
+
+The anonymous budgets are keyed by the connection's remote address, never by
+`X-Forwarded-For`; a process behind a proxy passes its own `clientKey` through
+`createApiServer` instead of trusting a header. Limits are in process memory:
+v1.0 is a single host with one API process, so a shared store would be a
+dependency the topology does not need. A test walks the contract tree and fails
+when a procedure has no limit, and another walks the installed routes and fails
+when a route has no rule.
+
 ## Auth gate
 
 PRD decision 7 makes authorization structure rather than discipline, and slice
@@ -661,6 +708,15 @@ and is fail-closed until operator auth configuration (secret, public origin,
 mail and the API's connection checkout) lands; authenticated procedures answer
 their typed 401 today, and the web shell slice consumes the real flow. The
 authorization matrix over actors, spaces and resources is slice 3.3.
+
+The transport's limits land with slice 4.4: `apps/api/src/limits.ts` is the one
+register, installer and accounting for request budgets, body caps and
+per-actor stream slots; the gate answers the contract's typed `RATE_LIMITED`
+with a `Retry-After` header; and a test walks the contract tree and the route
+list, so a new procedure or route cannot ship silently unlimited. The webhook
+family's budget and body cap are installed and tested now, with the ingress
+route itself landing in slice 4.5; the SSE surface that inherits the stream
+slots is slice 4.3.
 
 Below the transport, the earlier slices are in place: `packages/db` owns the
 Drizzle migration workflow and the runs-domain schema — bots, sections, threads,

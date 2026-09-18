@@ -13,8 +13,14 @@ export type { AppContract } from "./contract.ts";
 // Access: authenticated by default, public only when a contract says so. The
 // gate in the API reads this metadata; `access.test.ts` walks the tree and
 // fails when a procedure carries no marker or the public list drifts.
-export { authenticatedProcedure, procedureAccessSchema, publicProcedure } from "./access.ts";
-export type { ProcedureAccess, ProcedureMeta } from "./access.ts";
+export {
+  authenticatedProcedure,
+  procedureAccessSchema,
+  publicProcedure,
+  rateLimitedDataSchema,
+  rateLimitedErrorMessage,
+} from "./access.ts";
+export type { ProcedureAccess, ProcedureMeta, RateLimitedData } from "./access.ts";
 
 export { deploymentStatusContract, signupAvailabilitySchema } from "./deployment.ts";
 export type { SignupAvailability } from "./deployment.ts";
