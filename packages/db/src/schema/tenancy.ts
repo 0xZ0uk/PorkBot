@@ -23,6 +23,12 @@ import { user } from "./identity.ts";
  * unknown role even if application code is wrong (PRD decision 6). Extensible
  * sets are not enums; this schema has no lookup table yet.
  *
+ * A space has exactly one owner: the partial unique index lets many members
+ * share a space while the owner slot admits one row, so slice 3.4's bootstrap
+ * cannot lose that race even if its own check is wrong. v1.0 has no role
+ * management UI and no invite flow; this index is what makes "one operator"
+ * a database answer rather than a promise.
+ *
  * `deployment_settings` is the fail-closed half of ownership (PRD decision 8):
  * it is the deployment's configuration row, and `signups_enabled` has no
  * default, so a row can only exist because someone wrote the value down. The
@@ -54,6 +60,9 @@ export const spaceMember = pgTable(
   },
   (table) => [
     uniqueIndex("space_member_space_user_unique").on(table.spaceId, table.userId),
+    uniqueIndex("space_member_owner_unique")
+      .on(table.spaceId)
+      .where(sql`${table.role} = 'owner'`),
     index("space_member_user_id_idx").on(table.userId),
   ],
 );

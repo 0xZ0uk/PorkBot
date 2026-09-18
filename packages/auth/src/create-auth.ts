@@ -35,10 +35,10 @@ import { passwordResetEmail, verificationEmail } from "./mail.ts";
  *
  *   2. `databaseHooks.user.create.after` hands the admitted registration to
  *      `onSignup` together with the decided role. This is where ownership
- *      leaves the auth layer: slice 3.4's bootstrap owns the space and the
- *      membership row, so the auth package reports the grant instead of
- *      inventing a tenant. The role is recomputed at that point and defaults to
- *      `member` if the deployment stopped being open in between — a
+ *      leaves the auth layer: `bootstrapSignup` in `@porkbot/db` owns the
+ *      space and the membership row, so the auth package reports the grant
+ *      instead of inventing a tenant. The role is recomputed at that point and
+ *      defaults to `member` if the deployment stopped being open in between — a
  *      misconfiguration can lose someone ownership, never grant it.
  *
  *   3. `emailAndPassword.sendResetPassword` and
@@ -81,10 +81,10 @@ export interface CreateAuthOptions {
   /** Where reset and verification mail goes (slice 3.5 implementations). */
   readonly mail: TransactionalEmailProvider;
   /**
-   * Persists the grant — slice 3.4 creates the space and the membership row.
-   * A rejection here fails the signup response after the user row exists; the
-   * bootstrap path is the repair, which is why the decision is reported rather
-   * than silently assumed.
+   * Persists the grant — `bootstrapSignup` in `@porkbot/db` creates the space
+   * and the membership row. A rejection here fails the signup response after
+   * the user row exists; the bootstrap path is the repair, which is why the
+   * decision is reported rather than silently assumed.
    */
   readonly onSignup: (grant: SignupGrant) => Promise<void> | void;
   /** Defaults to a JSON logger named for this package. */
@@ -201,8 +201,8 @@ export function createAuth(options: CreateAuthOptions) {
             } catch (error) {
               // The gate already admitted this registration; a failure between
               // the two reads must not leave the new user with no grant at
-              // all. Member is the least privilege, and slice 3.4's bootstrap
-              // reconciles ownership.
+              // all. Member is the least privilege, and `bootstrapSignup`
+              // reconciles ownership when the grant is persisted.
               logger.error("signup grant could not re-read the deployment settings", {
                 error,
               });

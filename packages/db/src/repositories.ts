@@ -17,10 +17,16 @@ export type {
 } from "./records.ts";
 
 /**
- * The actor-scoped repository layer: the only way `packages/db` touches tenant
- * rows. The one deliberate exception is `readDeploymentSettings`, which reads
- * the deployment-global configuration before an actor can exist; it takes no
- * tenant id and returns no tenant data, so it is not a second scoping path.
+ * The actor-scoped repository layer: the only way `packages/db` touches domain
+ * rows. Two pre-actor paths are deliberate exceptions, both taking no tenant id
+ * and neither reaching a `bot`, `thread` or `run`:
+ *
+ *   - `readDeploymentSettings` reads the deployment-global configuration before
+ *     an actor can exist, and returns no tenant data;
+ *   - `bootstrapSignup` writes the tenancy rows a registration needs (the
+ *     space and the membership) and returns the actor those rows resolve to.
+ *     It is where the actor comes from in the first place, not a second way to
+ *     scope one.
  *
  * Every repository is built by `createRepositories(actor, database)` and every
  * statement binds the actor's `spaceId`. There is no factory that takes a space
