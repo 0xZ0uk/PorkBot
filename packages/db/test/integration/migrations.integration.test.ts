@@ -9,6 +9,7 @@ import {
   findUnindexedForeignKeys,
   formatUnindexedForeignKeys,
 } from "../../src/catalog/fk-indexes.ts";
+import { migrationsDirectory, readSqlMigrationFiles } from "../../src/migrations/files.ts";
 
 /**
  * The migration workflow against the real database: a suite cloned from the
@@ -114,6 +115,13 @@ describe("the foreign-key index check", () => {
 
 describe("pnpm db:migrate", () => {
   it("applies the journal once and is safe to run twice", async () => {
+    // Derived from the committed files, not hardcoded: the count moves with
+    // every slice that adds a migration, and the assertion is about applying
+    // the whole set exactly once rather than about a particular size.
+    const total = readSqlMigrationFiles(migrationsDirectory()).length;
+
+    expect(total).toBeGreaterThan(0);
+
     // A database with no application schema, like a fresh deployment: the
     // template is migrated through the testkit's ledger, so its clone is reset
     // to prove this command's own ledger and locking behaviour.
@@ -125,24 +133,24 @@ describe("pnpm db:migrate", () => {
 
     expect(first.stderr, first.stderr).toBe("");
     expect(first.status, first.stderr).toBe(0);
-    expect(first.stdout).toContain("applied 1 migration(s)");
+    expect(first.stdout).toContain(`applied ${total} migration(s)`);
 
     const { rows: applied } = await db().query<{ count: number }>(
       "select count(*)::int as count from drizzle.__drizzle_migrations",
     );
 
-    expect(applied[0]?.count).toBe(1);
+    expect(applied[0]?.count).toBe(total);
 
     const second = runDbMigrate();
 
     expect(second.stderr, second.stderr).toBe("");
     expect(second.status, second.stderr).toBe(0);
-    expect(second.stdout).toContain("up to date: 1 migration(s) already applied");
+    expect(second.stdout).toContain(`up to date: ${total} migration(s) already applied`);
 
     const { rows: afterSecond } = await db().query<{ count: number }>(
       "select count(*)::int as count from drizzle.__drizzle_migrations",
     );
 
-    expect(afterSecond[0]?.count).toBe(1);
+    expect(afterSecond[0]?.count).toBe(total);
   });
 });

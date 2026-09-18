@@ -13,8 +13,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * packages/testkit/src/harness). In CI the harness attaches to the local
  * stack's Postgres; locally it boots its own container unless
  * TESTKIT_DATABASE_URL says otherwise. Either way the server is the production
- * major and the template carries the migrations slice 2.1 committed — an empty
- * baseline today, the identity and runs tables in slices 2.2 and 2.3.
+ * major and the template carries the migrations the repository committed —
+ * the empty baseline, the identity and tenancy tables from slice 2.2, and the
+ * runs tables when slice 2.3 lands.
  */
 
 let suite: SuiteDatabase | undefined;
