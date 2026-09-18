@@ -1,65 +1,74 @@
+import { createSuiteDatabase } from "@porkbot/testkit";
+import type { SuiteDatabase } from "@porkbot/testkit";
+import { productionPostgresMajor } from "@porkbot/testkit";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// The integration tier's reason to exist: prove that the database these tests
-// talk to is a real Postgres of the same major production runs, reached over a
-// real socket, in the same run that gates the merge. A tier that skips itself
-// when the service is missing is worse than no tier, so a missing DATABASE_URL
-// is a hard failure rather than a skip.
-//
-// Production is Postgres 18 (see slice 2.1 and the `integration` job's service
-// image in .github/workflows/ci.yml).
+/**
+ * The integration tier's reason to exist: prove that the database these tests
+ * talk to is a real Postgres of the same major production runs, reached over a
+ * real socket, in the same run that gates the merge.
+ *
+ * The database is a testkit suite — a clone of the migrated template of a
+ * Postgres 18 container the harness booted (see packages/testkit/src/harness).
+ * There is no DATABASE_URL and no service block in CI: when
+ * TESTKIT_HARNESS_STATE points at a run-level harness the clone is cheap; when
+ * it does not, this file boots its own container and destroys it afterwards. The
+ * template has no application schema yet because slice 2.1 adds
+ * packages/db/migrations; the migration ledger is still exercised for real.
+ */
 
-const productionMajor = 18;
-
-const connectionString = process.env["DATABASE_URL"];
-
-if (connectionString === undefined || connectionString.trim() === "") {
-  throw new Error(
-    "DATABASE_URL is not set, so the integration tier cannot reach a Postgres. " +
-      "Set it to a real server of major " +
-      `${productionMajor} (see the integration job in .github/workflows/ci.yml).`,
-  );
-}
-
-let client: Client;
+let suite: SuiteDatabase | undefined;
+let client: Client | undefined;
 
 beforeAll(async () => {
-  client = new Client({ connectionString });
+  suite = await createSuiteDatabase({ suite: "db_integration" });
+  client = new Client({ connectionString: suite.connectionString });
   await client.connect();
+}, 180_000);
+
+// Tolerates a failed beforeAll so the real error is the one reported instead of
+// a teardown crash on an uninitialised client.
+afterAll(async () => {
+  await client?.end();
+  await suite?.destroy();
 });
 
-afterAll(async () => {
-  await client.end();
-});
+function db(): Client {
+  if (client === undefined) {
+    throw new Error("the suite's client was not created; the beforeAll hook failed first");
+  }
+
+  return client;
+}
 
 describe("the integration tier's Postgres", () => {
   it("is a real server and not a stub", async () => {
-    const { rows } = await client.query<{ version: string }>("select version() as version");
+    const { rows } = await db().query<{ version: string }>("select version() as version");
 
     expect(rows[0]?.version).toMatch(/^PostgreSQL /);
   });
 
-  it(`runs major ${productionMajor}, the same major as production`, async () => {
-    const { rows } = await client.query<{ server_version_num: string }>("show server_version_num");
+  it(`runs major ${productionPostgresMajor}, the same major as production`, async () => {
+    const { rows } = await db().query<{ server_version_num: string }>("show server_version_num");
 
     const version = Number(rows[0]?.server_version_num);
     expect(Number.isFinite(version)).toBe(true);
-    expect(version).toBeGreaterThanOrEqual(productionMajor * 10_000);
-    expect(version).toBeLessThan((productionMajor + 1) * 10_000);
+    expect(version).toBeGreaterThanOrEqual(productionPostgresMajor * 10_000);
+    expect(version).toBeLessThan((productionPostgresMajor + 1) * 10_000);
   });
 
   it("accepts a write and reads it back over the same connection", async () => {
-    await client.query(
+    await db().query(
       "create table if not exists integration_smoke (id integer primary key, note text not null)",
     );
-    await client.query(
+    await db().query(
       "insert into integration_smoke (id, note) values ($1, $2) " +
         "on conflict (id) do update set note = excluded.note",
       [1, "round trip"],
     );
 
-    const { rows } = await client.query<{ note: string }>(
+    const { rows } = await db().query<{ note: string }>(
       "select note from integration_smoke where id = $1",
       [1],
     );
@@ -68,14 +77,14 @@ describe("the integration tier's Postgres", () => {
   });
 
   it("discards a rolled back write", async () => {
-    await client.query("begin");
-    await client.query("insert into integration_smoke (id, note) values ($1, $2)", [
+    await db().query("begin");
+    await db().query("insert into integration_smoke (id, note) values ($1, $2)", [
       2,
       "rolled back",
     ]);
-    await client.query("rollback");
+    await db().query("rollback");
 
-    const { rows } = await client.query<{ count: string }>(
+    const { rows } = await db().query<{ count: string }>(
       "select count(*)::text as count from integration_smoke where id = $1",
       [2],
     );

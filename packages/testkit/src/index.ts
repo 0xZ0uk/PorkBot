@@ -56,3 +56,23 @@ export type {
   Tier,
 } from "./quarantine/ledger.ts";
 export { findRepoRoot, isInside, workspaceMarker } from "./paths.ts";
+
+// Postgres-per-suite isolation. A suite calls `createSuiteDatabase` (or
+// `startPostgresHarness` when it needs several databases in one file); the CLI
+// in src/harness/cli.ts drives the same API across separate processes. The
+// template is migrated with plain SQL files until packages/db grows the Drizzle
+// migration stack in slice 2.1. The docker seam and the state file stay
+// internal: callers get the harness, not its plumbing.
+export {
+  PostgresHarness,
+  createSuiteDatabase,
+  productionPostgresMajor,
+  startPostgresHarness,
+} from "./harness/postgres.ts";
+export type {
+  PostgresHarnessOptions,
+  SuiteDatabase,
+  SuiteDatabaseOptions,
+} from "./harness/postgres.ts";
+export { applyMigrations, listMigrations } from "./harness/migrations.ts";
+export type { MigrationFile, MigrationReport } from "./harness/migrations.ts";
