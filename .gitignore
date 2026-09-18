@@ -11,6 +11,9 @@ node_modules
 # Testing
 coverage
 
+# Testkit harness state (container id, port and the throwaway test password)
+.testkit
+
 # Turbo
 .turbo
 

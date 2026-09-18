@@ -26,7 +26,12 @@
     },
     "test:integration": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL"],
+      "passThroughEnv": [
+        "DOCKER_HOST",
+        "TESTKIT_DATABASE_URL",
+        "TESTKIT_HARNESS_STATE",
+        "TESTKIT_POSTGRES_IMAGE"
+      ],
       "cache": false,
       "outputs": []
     },

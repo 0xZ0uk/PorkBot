@@ -14,15 +14,20 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
     "@types/node": "24.13.5",
+    "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "5.0.1",
     "eslint": "10.10.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
   }
 }

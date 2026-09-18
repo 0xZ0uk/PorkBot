@@ -29,6 +29,11 @@
     "test:coverage": "turbo run test:coverage",
     "test:e2e": "turbo run test:e2e",
     "test:integration": "turbo run test:integration",
+    "testkit:benchmark": "node packages/testkit/src/harness/cli.ts benchmark",
+    "testkit:destroy": "node packages/testkit/src/harness/cli.ts destroy",
+    "testkit:migrate": "node packages/testkit/src/harness/cli.ts migrate",
+    "testkit:snapshot": "node packages/testkit/src/harness/cli.ts snapshot",
+    "testkit:start": "node packages/testkit/src/harness/cli.ts start",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
