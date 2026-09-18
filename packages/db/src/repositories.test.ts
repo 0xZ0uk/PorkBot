@@ -75,6 +75,21 @@ function rejectedConstruction(database: Queryable): readonly (() => unknown)[] {
   ];
 }
 
+/**
+ * The run-creation command carries a user of record, so it does not exist on a
+ * job's read-only scope; the directive below is the proof, and this helper is
+ * where the compiler checks it.
+ */
+function rejectedRunCreation(repositories: SystemRepositories): Promise<unknown> {
+  // @ts-expect-error -- `create` exists on the user scope, not on a job's reads.
+  return repositories.runs.create({
+    threadId: "thread-1",
+    clientNonce: "nonce-1",
+    prompt: "do the thing",
+    blocks: [],
+  });
+}
+
 /** The same proof for a system actor: this slice gives a job reads, no writes. */
 function rejectedSystemWrites(repositories: SystemRepositories): readonly (() => unknown)[] {
   return [
@@ -84,6 +99,7 @@ function rejectedSystemWrites(repositories: SystemRepositories): readonly (() =>
     () => repositories.bots.update("bot-1", { name: "Grace" }),
     // @ts-expect-error -- a job cannot create a thread; it has no user of record.
     () => repositories.threads.createForBot("bot-1"),
+    () => rejectedRunCreation(repositories),
   ];
 }
 
@@ -261,7 +277,7 @@ describe("system scope", () => {
     expect("create" in repositories.bots).toBe(false);
     expect("update" in repositories.bots).toBe(false);
     expect("createForBot" in repositories.threads).toBe(false);
-    expect(rejectedSystemWrites(repositories)).toHaveLength(3);
+    expect(rejectedSystemWrites(repositories)).toHaveLength(4);
   });
 
   it("scopes a job's reads to the job's space", async () => {
