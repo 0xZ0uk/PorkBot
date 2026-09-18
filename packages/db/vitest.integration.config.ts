@@ -1,17 +1,9 @@
 import { integration } from "@porkbot/testkit";
 
-// The database-backed tier. It needs a real Postgres reachable over
-// DATABASE_URL, and turbo is told not to cache `test:integration` (see
-// turbo.json): a cached pass would not have touched a database, which is the
-// only thing this tier is here to prove.
-//
-// CI provides the service in the `integration` job of .github/workflows/ci.yml
-// (Postgres 18, the production major). Locally:
-//
-//   docker run --rm -p 5432:5432 -e POSTGRES_USER=porkbot \
-//     -e POSTGRES_PASSWORD=porkbot -e POSTGRES_DB=porkbot postgres:18
-//
-// then:
-//
-//   DATABASE_URL=postgres://porkbot:***@127.0.0.1:5432/porkbot pnpm test:integration
+// The database-backed tier. It gets its Postgres from the testkit harness in
+// packages/testkit/src/harness: a container of the production major, or the
+// server TESTKIT_DATABASE_URL points at, cloned per suite from a migrated
+// template. There is no service to configure, and turbo is told not to cache
+// `test:integration` (see the root turbo.json): a cached pass would not have
+// touched a database, which is the only thing this tier is here to prove.
 export default integration({ include: ["test/integration/**/*.integration.test.ts"] });
