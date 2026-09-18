@@ -1,6 +1,7 @@
 import type { LookupAddress, LookupOptions } from "node:dns";
 import { lookup as lookupHost } from "node:dns/promises";
-import type { IncomingMessage } from "node:http";
+import { once } from "node:events";
+import type { ClientRequest, IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
 import { Readable } from "node:stream";
@@ -389,13 +390,29 @@ export function createGuardedLookup(
 /** The header forms a call site may pass; the same union the platform `fetch` accepts. */
 export type SafeFetchHeaders = NonNullable<RequestInit["headers"]>;
 
+/**
+ * The body forms a call site may pass. A string or a byte array is replayable
+ * and can cross a redirect; a stream or an async iterable is written to the
+ * socket as it is produced — an upload streams instead of buffering — and is
+ * therefore refused across a redirect, because a consumed source cannot be
+ * sent twice and silently sending half of it would be worse.
+ */
+export type SafeFetchBody =
+  string | Uint8Array | ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>;
+
 /** The subset of `fetch` this module implements: the init a server-side fetch needs. */
 export interface SafeFetchInit {
   readonly method?: string;
   readonly headers?: SafeFetchHeaders;
-  readonly body?: string | Uint8Array;
+  readonly body?: SafeFetchBody;
   readonly signal?: AbortSignal;
   readonly redirect?: "follow" | "error" | "manual";
+  /**
+   * The platform fetch requires `duplex: "half"` when the body is a stream;
+   * this module streams by construction and accepts the flag so the same init
+   * can be passed to either implementation.
+   */
+  readonly duplex?: "half";
 }
 
 /** The fetcher's shape. It is deliberately `fetch`-like, so a call site reads as one. */
@@ -440,6 +457,25 @@ function stripSensitiveHeaders(
   const filtered = new Headers(headers);
 
   for (const name of ["authorization", "cookie", "proxy-authorization"]) {
+    filtered.delete(name);
+  }
+
+  return filtered;
+}
+
+/**
+ * A redirect that turns a request bodyless must not carry the body's framing
+ * headers: a `content-length` with no bytes makes the next hop wait for a body
+ * that never arrives.
+ */
+function stripBodyHeaders(headers: SafeFetchHeaders | undefined): SafeFetchHeaders | undefined {
+  if (headers === undefined) {
+    return undefined;
+  }
+
+  const filtered = new Headers(headers);
+
+  for (const name of ["content-length", "content-type", "transfer-encoding"]) {
     filtered.delete(name);
   }
 
@@ -514,15 +550,65 @@ function requestOnce(
       return;
     }
 
-    message.end(init.body);
+    if (isReplayableBody(init.body)) {
+      message.end(init.body);
+      return;
+    }
+
+    // A streamed body is written with backpressure, and a source that throws
+    // destroys the request instead of leaving a half-sent upload on the wire.
+    void writeStreamingBody(message, init.body).catch((cause: unknown) => {
+      message.destroy(cause instanceof Error ? cause : new Error(String(cause)));
+    });
   });
+}
+
+/** Strings and byte arrays can be sent again after a redirect; a stream cannot. */
+function isReplayableBody(body: SafeFetchBody): body is string | Uint8Array {
+  return typeof body === "string" || body instanceof Uint8Array;
+}
+
+async function writeStreamingBody(
+  message: ClientRequest,
+  body: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
+): Promise<void> {
+  const iterator = body[Symbol.asyncIterator]();
+
+  try {
+    while (!message.destroyed) {
+      const read = await iterator.next();
+
+      if (read.done === true) {
+        message.end();
+        return;
+      }
+
+      if (!message.write(read.value)) {
+        await once(message, "drain");
+      }
+    }
+  } finally {
+    if (message.destroyed) {
+      // The request is already gone, so the source's cleanup must still run;
+      // its failure is moot because the request rejects with the real cause.
+      const closed = iterator.return?.();
+
+      if (closed !== undefined) {
+        await closed.catch(() => undefined);
+      }
+    }
+  }
+}
+
+function dropsBodyOnRedirect(status: number, method: string): boolean {
+  return status === 303 || ((status === 301 || status === 302) && method.toUpperCase() === "POST");
 }
 
 function redirectInit(init: SafeFetchInit, status: number, from: URL, to: URL): SafeFetchInit {
   const method = init.method ?? "GET";
-  const dropBody =
-    status === 303 || ((status === 301 || status === 302) && method.toUpperCase() === "POST");
-  const headers = from.origin === to.origin ? init.headers : stripSensitiveHeaders(init.headers);
+  const dropBody = dropsBodyOnRedirect(status, method);
+  const sameOrigin = from.origin === to.origin ? init.headers : stripSensitiveHeaders(init.headers);
+  const headers = dropBody ? stripBodyHeaders(sameOrigin) : sameOrigin;
 
   return {
     redirect: init.redirect ?? "follow",
@@ -552,6 +638,18 @@ async function fetchWithRedirects(
 
   if (mode === "manual") {
     return response;
+  }
+
+  if (
+    mode === "follow" &&
+    init.body !== undefined &&
+    !isReplayableBody(init.body) &&
+    !dropsBodyOnRedirect(response.status, init.method ?? "GET")
+  ) {
+    // The body was already written to the wire; sending a consumed source
+    // again would upload nothing or half of it, so refuse instead.
+    await response.body?.cancel();
+    throw new TypeError("cannot follow a redirect with a streaming request body");
   }
 
   await response.body?.cancel();

@@ -80,6 +80,12 @@ export type { RealtimeFanout, ThreadSignal } from "./realtime.ts";
 // local by default and S3-compatible where the deployment has object storage.
 export type { StorageBody, StorageObject, StorageProvider, StoragePutRequest } from "./storage.ts";
 
+// The home-sync story per computer provider (slice 7.7): every planned
+// provider either routes a home's bytes through the storage seam or is
+// explicitly not backed up, and home-sync.test.ts fails when one is silent.
+export { COMPUTER_HOME_SYNC } from "./home-sync.ts";
+export type { ComputerHomeSyncStory } from "./home-sync.ts";
+
 // The web access seam (slices 4.6, 6.9, 10.1): fetch and search through one
 // egress door so the URL-safety rules live in one place.
 export type {
