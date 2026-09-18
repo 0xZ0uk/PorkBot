@@ -18,6 +18,8 @@ export {
   approvalStatus,
   attemptStatus,
   effectStatus,
+  memoryKind,
+  memoryWriteOrigin,
   messageRole,
   runStatus,
   taskStatus,
@@ -25,6 +27,7 @@ export {
 export { approval } from "./approvals.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
+export { memoryDocument, memoryRevision } from "./memory.ts";
 export { oauthState, webhookDelivery } from "./ingress.ts";
 export { message } from "./messages.ts";
 export { attempt, run } from "./runs.ts";

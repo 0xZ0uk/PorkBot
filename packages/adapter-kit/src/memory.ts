@@ -64,8 +64,12 @@ export interface MemoryMatch {
 export interface MemoryProvider {
   /** Upsert entries by `(botId, documentId, revision)`; indexing the same revision twice is a no-op. */
   index(entries: readonly MemoryEntry[]): Promise<void>;
-  /** Drop documents from the index; forgetting one that was never indexed succeeds. */
-  forget(documentIds: readonly string[]): Promise<void>;
+  /**
+   * Drop a bot's documents from the index; forgetting one that was never
+   * indexed succeeds. The bot is part of the key because durable document ids
+   * are unique per bot, not globally, so an id alone does not identify a row.
+   */
+  forget(botId: string, documentIds: readonly string[]): Promise<void>;
   /** Rank live documents for a query. No matches is an empty list, not a failure. */
   search(request: MemorySearchRequest): Promise<readonly MemoryMatch[]>;
 }
@@ -77,7 +81,7 @@ export const failureMapping: FailureMapping = {
   rate_limited:
     "A configured remote provider refuses queries under a quota (HTTP 429); recall degrades to lexical matching instead of failing the run.",
   timed_out:
-    "A slow index or query exceeded its budget; recall degrades to lexical matching or to reading the document rows directly.",
+    "A slow index or query exceeded its budget; recall degrades to lexical matching rather than failing the run.",
   auth_failed:
     "The configured provider credential is refused; memory degrades to the local path, and the operator sees the failure rather than a silent empty memory.",
 };

@@ -7,7 +7,7 @@ export const moduleInfo = {
 // The shared failure vocabulary (slice 5.1). Every adapter translates its own
 // errors into these five kinds before a failure crosses the seam, and lifecycle
 // code branches on the kind rather than on a provider's error string.
-export { PROVIDER_FAILURE_KINDS } from "./failures.ts";
+export { isProviderFailure, PROVIDER_FAILURE_KINDS } from "./failures.ts";
 export type { FailureMapping, ProviderFailure, ProviderFailureKind } from "./failures.ts";
 
 // The transactional mail seam: password reset and verification depend on this,

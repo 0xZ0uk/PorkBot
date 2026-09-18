@@ -154,3 +154,13 @@ export { createRunEventSink } from "./run-event-sink.ts";
 // implements (`ApprovalStore`, `ApprovalDecisions`) are declared in
 // `@porkbot/effect`.
 export { createApprovalStore } from "./approval-store.ts";
+
+// The durable half of memory (slice 8.1, PRD decision 21): the live document
+// rows and their revision history. This module is the only one in the package
+// — and, by the call-site suite beside it, in the shipped source — that names
+// the memory tables, so reads and writes are auditable in one place. The
+// factory splits by actor: an operator writes deliberately and reads the
+// history, an agent proposes create-or-rewrite and can never delete. The seams
+// it implements (`MemoryDocuments`, `MemoryProposals`) are declared in
+// `@porkbot/effect`.
+export { createMemoryStore } from "./memory-store.ts";

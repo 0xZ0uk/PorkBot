@@ -127,6 +127,11 @@ change it without breaking what the boundaries and the CI gate protect.
   and fails while it finds any, so the rule is a database answer rather than a
   convention. Checked by: test
   (`packages/db/test/integration/migrations.integration.test.ts`).
+- **One module owns the memory rows.** `packages/db/src/memory-store.ts` is the
+  only shipped code that reads or writes `memory_document` or `memory_revision`;
+  the schema defines them and every other path goes through the `MemoryStore`
+  seam in `@porkbot/effect`, so both are auditable in one place. Checked by:
+  test (`packages/db/src/memory-store.call-sites.test.ts`).
 
 ### Secrets and public-safe text
 
