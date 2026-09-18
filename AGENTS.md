@@ -54,6 +54,27 @@ change it without breaking what the boundaries and the CI gate protect.
 - **No provider- or model-specific environment variables.** Express the
   behaviour through the generic connection instead. Checked by: review.
 
+### Data and migrations
+
+- **Migrations are generated, reviewed and committed.** `pnpm db:generate` output
+  is the migration; the unit suite regenerates from the schema into a scratch
+  directory and fails when the committed set differs, and a hand-edit to
+  generated SQL carries a `-- hand-edited:` comment saying why. Checked by: test
+  (`packages/db/src/migrations/generate.test.ts`).
+- **A destructive change is its own labelled migration.** Drops, truncates and
+  column-type changes live in a `destructive_*` file with no additive
+  statements beside them, so the change is one file a reviewer can reason
+  about. Checked by: test (`packages/db/src/migrations/destructive.test.ts`).
+- **Every table's primary key is a UUIDv7.** Tables take their id from
+  `primaryKeyId()`, which defaults to Postgres 18's `uuidv7()`; a table that
+  hand-rolls its key fails the schema suite. Checked by: test
+  (`packages/db/src/schema/columns.test.ts`).
+- **Every lookup foreign key is indexed.** An integration test reads
+  `pg_catalog` for foreign keys whose referencing columns no index leads with
+  and fails while it finds any, so the rule is a database answer rather than a
+  convention. Checked by: test
+  (`packages/db/test/integration/migrations.integration.test.ts`).
+
 ### Secrets and public-safe text
 
 - **Never commit a secret.** No `.env` files, keys, tokens, private URLs or real

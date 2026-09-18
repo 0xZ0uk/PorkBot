@@ -1,0 +1,8 @@
+-- Hand-written, intentionally empty baseline, created by
+-- `drizzle-kit generate --custom --name=baseline`. Slice 2.1 lands the
+-- migration workflow before any domain table exists, so the journal needs a
+-- first entry for the schema snapshots to diff against. Application tables
+-- arrive in slice 2.2 (identity and tenancy) and 2.3 (runs); their migrations
+-- are generated, committed and reviewed, and this file stays untouched. It is
+-- empty because deleting it would renumber every migration that follows, and a
+-- baseline that claimed to do something would be a lie.

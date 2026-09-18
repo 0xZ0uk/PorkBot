@@ -15,7 +15,13 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/migrate-cli.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@porkbot/eslint-config": "workspace:*",
@@ -24,8 +30,8 @@
     "@types/node": "24.13.5",
     "@types/pg": "8.23.1",
     "@vitest/coverage-v8": "5.0.1",
+    "drizzle-kit": "0.31.10",
     "eslint": "10.10.0",
-    "pg": "8.23.0",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
   }
