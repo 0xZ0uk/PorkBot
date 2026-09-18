@@ -84,3 +84,10 @@ export type {
 } from "./harness/postgres.ts";
 export { applyMigrations, listMigrations } from "./harness/migrations.ts";
 export type { MigrationFile, MigrationReport } from "./harness/migrations.ts";
+// A connected session for a suite: structurally the `Queryable` the
+// repositories take, with the session role set when a suite must prove what
+// production's role can do. The harness owns `pg`, so a package whose shipped
+// code may not name the driver — the worker — reaches its fixtures through
+// this.
+export { connectToSuite, connectionStringForRole } from "./harness/client.ts";
+export type { ConnectToSuiteOptions, SuiteClient } from "./harness/client.ts";

@@ -546,6 +546,7 @@ export class PostgresHarness {
           `create database ${quoteIdentifier(database)} template ${quoteIdentifier(this.state.templateDatabase)}`,
         ),
       );
+      await this.copyDatabaseGrants(this.state.templateDatabase, database);
     } catch (error) {
       if ((error as { code?: string }).code === "42P04") {
         throw new Error(
@@ -699,6 +700,36 @@ export class PostgresHarness {
     );
 
     return rows[0]?.present === true;
+  }
+
+  /**
+   * `CREATE DATABASE ... TEMPLATE` copies the template's contents but not its
+   * database-level ACLs, so a grant the migrations applied to the template — the
+   * worker role's `CREATE` on the database, say — would silently vanish in every
+   * clone and a suite would run with weaker privileges than production. Reading
+   * `pg_database.datacl` and issuing the same grants onto the clone is what
+   * makes a suite's answer about a role representative.
+   */
+  private async copyDatabaseGrants(template: string, database: string): Promise<void> {
+    const { rows } = await this.withClient(this.state.maintenanceDatabase, (client) =>
+      client.query<{ grantee: string; privilege: string; grantable: boolean }>(
+        "select case when x.grantee = 0 then 'PUBLIC' else pg_get_userbyid(x.grantee) end as grantee, " +
+          "x.privilege_type as privilege, x.is_grantable as grantable " +
+          "from pg_database d, aclexplode(d.datacl) as x where d.datname = $1",
+        [template],
+      ),
+    );
+
+    for (const grant of rows) {
+      const grantee = grant.grantee === "PUBLIC" ? "PUBLIC" : quoteIdentifier(grant.grantee);
+
+      await this.withClient(this.state.maintenanceDatabase, (client) =>
+        client.query(
+          `grant ${grant.privilege} on database ${quoteIdentifier(database)} to ${grantee}` +
+            (grant.grantable ? " with grant option" : ""),
+        ),
+      );
+    }
   }
 
   private async withClient<T>(

@@ -107,15 +107,20 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   loopback only; `worker` and `supervisor` answer only inside the compose
   network. Override the published ports with `PORKBOT_WEB_PORT`,
   `PORKBOT_API_PORT`, `PORKBOT_POSTGRES_PORT`, and the health wait budget with
-  `PORKBOT_STACK_WAIT_SECONDS`.
+  `PORKBOT_STACK_WAIT_SECONDS`. The two database-role passwords default to local
+  placeholders and are overridable with `PORKBOT_API_DB_PASSWORD` and
+  `PORKBOT_WORKER_DB_PASSWORD`.
 - **CI runs the same command.** The integration tier starts the stack with
   `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
   of booting its own container, runs the integration suites against it, and
   removes the stack with `if: always()`. There is no CI-only compose file or
   boot script.
-- **The five processes are the point.** The api serves one route, the worker and
-  supervisor are idle, and Postgres has no application schema yet, but story 44
-  is one command that starts the real topology: a later slice replaces a
+- **One migrate, then the always-on processes.** The `migrate` one-shot applies
+  the committed journal, creates the two service roles and sets their passwords;
+  `api` and `worker` wait on `service_completed_successfully` and then connect as
+  their own roles. The five processes are the point — the api serves the
+  contract's procedures, the worker runs the queue, the supervisor is idle — and
+  story 44 is one command that starts the real topology: a later slice replaces a
   process's body, never its place in the stack.
 
 Each service image builds from the root `Dockerfile`; the shared build stage
@@ -379,6 +384,44 @@ every authenticated procedure is a typed 401 until the operator auth
 configuration (secret, public origin, mail and the API's connection checkout)
 is wired in a later slice.
 
+## Worker and jobs
+
+`apps/worker` is the always-on background process: Graphile Worker over the job
+registry in `apps/worker/src/job-registry.ts`. PRD decision 17 splits two
+authorities, and the split is the design:
+
+- **Graphile's job locking answers "which worker picks up the job".** A job is
+  delivered to one runner at a time, retries are the queue's, and a crashed
+  worker's lock expires.
+- **The run row's fence answers "who owns the run".** A `run.execute` payload
+  carries the run id, the job's space and a fence — never the work — and the
+  handler re-reads the run through a `SystemActor` for that space before
+  anything acts. A payload whose fence no longer matches the row exits without
+  side effects, and a duplicate delivery after the fence moved is the same
+  no-op: the handler issues only its scoped read, the fence's writer (6.2's
+  claim, deduped by the attempt table's unique `(run_id, fence)`) carries the
+  idempotency key for the side effect, so a redelivery is answered by the row
+  rather than by delivery bookkeeping.
+
+The registry is also where "payloads never carry the work" is enforced: each
+job's parser accepts only its addressing fields, so a producer that tries to
+smuggle a prompt or a tool call into a job is refused at delivery. Slice 6.1
+ends at the fence check — the claim, heartbeat and execution arrive through the
+`RunExecutor` seam in 6.2, and nothing enqueues `run.execute` before run creation
+wires the producer in 6.5.
+
+The worker connects with its own database role. `packages/db/migrations/0004_database_roles.sql`
+creates `porkbot_api` and `porkbot_worker` and grants each only its own work:
+the API writes the application schema and cannot read the queue, and the worker
+reads the run state it executes and owns the `graphile_worker` schema while
+writing no domain row. `packages/db/test/integration/roles.integration.test.ts`
+asks the database for that division and then really performs both denied
+operations, and `apps/worker/test/integration/worker.integration.test.ts`
+delivers real jobs through a real queue. `pnpm db:migrate` creates the roles and
+sets their passwords from `PORKBOT_API_DB_PASSWORD` and
+`PORKBOT_WORKER_DB_PASSWORD`; the local stack's `migrate` service runs the same
+command before the api and the worker start.
+
 ## URL safety
 
 Every fetch of a user-supplied URL — an MCP server, an OpenAPI document, a model
@@ -459,7 +502,16 @@ before any domain table. `0001_identity_and_tenancy.sql` added the identity and
 tenancy tables and `0002_runs_domain.sql` the runs domain — bots, sections,
 threads, messages, events, tasks, runs, attempts, steering messages and external
 effects — whose `space_id`/`user_id` columns are foreign keys into `space` and
-`user`.
+`user`. `0003_space_bootstrap.sql` added the one-owner index and
+`0004_database_roles.sql` is a `--custom` migration: the two service roles are
+cluster identity and privilege, which drizzle-kit does not model, so it carries
+the `-- hand-edited:` marker and the grant table rather than a schema diff. It
+creates no credential: `pnpm db:migrate` reads
+`PORKBOT_API_DB_PASSWORD`/`PORKBOT_WORKER_DB_PASSWORD` and applies them with
+`ALTER ROLE ... PASSWORD` after the journal, so the reviewed SQL never contains
+a password. The testkit harness reapplies the template's database-level ACLs
+after `CREATE DATABASE ... TEMPLATE`, which does not copy them, so every suite
+runs with the privileges the migration granted rather than quietly weaker ones.
 
 ## CI
 
@@ -740,16 +792,18 @@ columns and every foreign key from dangling, and an integration test reads
 `pg_catalog` to fail on a lookup foreign key no index leads with.
 
 Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
-stack — Postgres 18, api, worker, web and supervisor — and waits for every
-healthcheck, and the same command is what CI's integration tier runs; the
-testkit harness attaches to the stack's Postgres for the suite clones, so
-integration tests run against the production major. The structured logger,
+stack — Postgres 18, the migrate one-shot, api, worker, web and supervisor — and
+waits for every healthcheck, and the same command is what CI's integration tier
+runs; the testkit harness attaches to the stack's Postgres for the suite clones,
+so integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
 unchanged. `apps/web`, `apps/desktop` and `apps/www` are placeholders that the
 M10 surface slices replace with the real clients; `apps/api` serves `/healthz`
-and the contract's procedures behind the auth gate, `apps/worker` is an idle
-process, and `apps/supervisor` is a placeholder for the Docker socket owner,
-replaced by slices 6.1 and 7.1.
+and the contract's procedures behind the auth gate, `apps/worker` boots Graphile
+Worker over the job registry, re-reads each run through the job's `SystemActor`
+and checks its fence under the worker's own database role (slice 6.1), and
+`apps/supervisor` is a placeholder for the Docker socket owner, replaced by
+slice 7.1.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that

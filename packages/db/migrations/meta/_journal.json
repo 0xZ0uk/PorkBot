@@ -29,6 +29,13 @@
       "when": 1789723961909,
       "tag": "0003_space_bootstrap",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789728736348,
+      "tag": "0004_database_roles",
+      "breakpoints": true
     }
   ]
 }

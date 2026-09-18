@@ -1,7 +1,8 @@
 # The local stack: Postgres, api, worker, web and supervisor on one network,
-# every service with a healthcheck. `pnpm stack:up` builds these images and
-# blocks until each healthcheck passes; `pnpm stack:down` removes the
-# containers, the network and the Postgres volume.
+# every service with a healthcheck, plus a one-shot `migrate` that applies the
+# schema and the two service roles before the always-on processes start.
+# `pnpm stack:up` builds these images and blocks until each healthcheck passes;
+# `pnpm stack:down` removes the containers, the network and the Postgres volume.
 #
 # Nothing here needs a key, a hosted provider or network egress at run time: no
 # provider endpoint is configured, and the only images pulled are the
@@ -10,7 +11,9 @@
 #
 # Host ports bind to loopback and are overridable so the stack can run beside
 # another Postgres or dev server: PORKBOT_POSTGRES_PORT, PORKBOT_API_PORT,
-# PORKBOT_WEB_PORT.
+# PORKBOT_WEB_PORT. The role passwords are the local-stack placeholders unless
+# PORKBOT_API_DB_PASSWORD / PORKBOT_WORKER_DB_PASSWORD override them; a real
+# deployment supplies its own, and they never appear in a committed file.
 
 name: porkbot
 
@@ -53,6 +56,24 @@ services:
       retries: 30
       start_period: 5s
 
+  migrate:
+    # A one-shot, not a service: it applies the journal to the stack's database
+    # and exits, and the api and the worker wait for exit zero. Its admin
+    # connection is the Postgres service's own user; the two role passwords it
+    # sets are what the api and the worker below authenticate with.
+    build:
+      context: .
+      target: migrate
+    image: porkbot/migrate:local
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:-porkbot-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      PORKBOT_API_DB_PASSWORD: ${PORKBOT_API_DB_PASSWORD:-porkbot-api-local}
+      PORKBOT_WORKER_DB_PASSWORD: ${PORKBOT_WORKER_DB_PASSWORD:-porkbot-worker-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     <<: *app
     build:
@@ -62,12 +83,14 @@ services:
     environment:
       PORT: "3001"
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # The API's own connection, over the compose network. Credentials are the
-      # local-stack defaults, the same ones the Postgres service above uses.
-      DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:-porkbot-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # The API's own role, over the compose network: read and write the
+      # application schema, and nothing in the worker's queue.
+      DATABASE_URL: postgres://porkbot_api:${PORKBOT_API_DB_PASSWORD:-porkbot-api-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
     ports:
       - "127.0.0.1:${PORKBOT_API_PORT:-3001}:3001"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
@@ -80,7 +103,12 @@ services:
     environment:
       PORT: "3002"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The worker's own role: read the run state it executes, own the job
+      # queue's schema, and no domain write.
+      DATABASE_URL: postgres://porkbot_worker:${PORKBOT_WORKER_DB_PASSWORD:-porkbot-worker-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
