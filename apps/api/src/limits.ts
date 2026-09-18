@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { rateLimitedErrorMessage } from "@porkbot/contracts";
 import type { UserActor } from "@porkbot/db";
 import { healthPath } from "@porkbot/health";
+import { webhookRulePath } from "./webhooks.ts";
 
 /**
  * Rate limits, body caps and connection caps in one module (PRD decision 9,
@@ -54,6 +55,7 @@ export function routeRules(rpcPath: string): readonly RouteRule[] {
   return [
     { method: "GET", path: healthPath, family: "probe" },
     { method: "ALL", path: `${rpcPath}/*`, family: "rpc" },
+    { method: "POST", path: webhookRulePath, family: "webhook" },
   ];
 }
 

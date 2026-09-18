@@ -103,8 +103,13 @@ describe("the route list", () => {
 
     // A new non-RPC route changes this list and must be argued for in the
     // register at the same time; the RPC surface is one rule and is covered
-    // by the contract walk below.
-    expect(routes.map((route) => `${route.method} ${route.path}`)).toEqual(["GET /healthz"]);
+    // by the contract walk below. The webhook ingress is the public one, and
+    // it is registered as the `webhook` family rather than the anonymous
+    // fallback.
+    expect(routes.map((route) => `${route.method} ${route.path}`)).toEqual([
+      "GET /healthz",
+      "POST /webhooks/:source",
+    ]);
 
     for (const route of routes) {
       expect(
@@ -112,6 +117,8 @@ describe("the route list", () => {
         `${route.method} ${route.path} has no limit rule`,
       ).toBeDefined();
     }
+
+    expect(routeRuleFor(rules, "POST", "/webhooks/:source")?.family).toBe("webhook");
   });
 });
 

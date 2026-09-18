@@ -1,11 +1,13 @@
 import process from "node:process";
-import { InProcessRealtimeFanout } from "@porkbot/adapters";
-import { openDatabase, readDeploymentSettings } from "@porkbot/db";
+import { createEnvironmentCredentialStore, InProcessRealtimeFanout } from "@porkbot/adapters";
+import { createIngressStore, openDatabase, readDeploymentSettings } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { createApiServer, moduleInfo } from "./index.ts";
 import { limitsFromEnvironment } from "./limits.ts";
 import type { LimitsConfig } from "./limits.ts";
 import { createDeploymentStatusService } from "./services/deployment.ts";
+import { createWebhookIngress } from "./webhooks.ts";
+import type { WebhookHandler } from "./webhooks.ts";
 
 const logger = createLogger({ service: moduleInfo.name });
 const requestedPort = Number(process.env["PORT"] ?? 3001);
@@ -37,6 +39,17 @@ const server = createApiServer({
     deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
     realtime: new InProcessRealtimeFanout(),
   },
+  // The verified ingress: secrets from the environment through the generic
+  // credential store, delivery dedupe through the database. No source is
+  // registered yet — the connection slices that own them add a handler and a
+  // `PORKBOT_WEBHOOK_SECRET_<SOURCE>` secret, and the route answers 401 until
+  // then.
+  webhooks: createWebhookIngress({
+    secrets: createEnvironmentCredentialStore(process.env),
+    deliveries: createIngressStore(database.database),
+    handlers: new Map<string, WebhookHandler>(),
+    logger,
+  }),
 });
 
 server.listen(requestedPort, () => {

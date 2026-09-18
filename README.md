@@ -345,7 +345,7 @@ What is limited, per minute unless noted:
 | Authenticated RPC              | actor (`space:user`) | 300     | `PORKBOT_LIMIT_AUTHENTICATED_PER_MINUTE` |
 | Public RPC and unmatched paths | client address       | 60      | `PORKBOT_LIMIT_ANONYMOUS_PER_MINUTE`     |
 | Health probe                   | client address       | 600     | `PORKBOT_LIMIT_PROBE_PER_MINUTE`         |
-| Inbound webhooks (slice 4.5)   | client address       | 120     | `PORKBOT_LIMIT_WEBHOOK_PER_MINUTE`       |
+| Inbound webhooks               | client address       | 120     | `PORKBOT_LIMIT_WEBHOOK_PER_MINUTE`       |
 | RPC request body               | —                    | 1 MiB   | `PORKBOT_LIMIT_MAX_BODY_BYTES`           |
 | Webhook request body           | —                    | 256 KiB | `PORKBOT_LIMIT_MAX_WEBHOOK_BODY_BYTES`   |
 | Open streams per actor         | actor                | 4       | `PORKBOT_LIMIT_MAX_STREAMS_PER_ACTOR`    |
@@ -443,6 +443,55 @@ fake repositories, and the process' fail-closed default answers "no session" so
 every authenticated procedure is a typed 401 until the operator auth
 configuration (secret, public origin, mail and the API's connection checkout)
 is wired in a later slice.
+
+## Webhook ingress
+
+`POST /webhooks/<source>` (slice 4.5, PRD decision 24) is the deployment's only
+unauthenticated write surface. It is declared as the `webhook` family in the
+limits register, so it draws its own request budget and body cap; it never reads
+a session and never fabricates an actor, and a handler receives provider data
+only. Everything security-relevant happens in one order:
+
+1. **The source is named correctly, known and has a secret.** A source is
+   lowercase letters, digits and interior dashes, and a name outside that shape
+   is refused like an unregistered one. An unregistered source or one with no
+   configured secret is refused before anything else, and the answer is a flat
+   401 that does not say which check failed.
+2. **The signature is verified over the raw bytes, before anything parses
+   them.** The ingress never decodes or parses the body at all: the handler
+   receives the exact bytes the provider signed. The scheme is
+   `X-Porkbot-Signature: t=<unix seconds>,v1=<hex>` where the digest is
+   HMAC-SHA256 over `<t>.<raw body>`, and `X-Porkbot-Delivery` carries the
+   provider's delivery id. A signature older or newer than five minutes is
+   refused even when the digest is correct, and the digest comparison is
+   timing-safe and tolerates a signature of any length without crashing.
+3. **The delivery id is deduped.** `webhook_delivery` has a NOT NULL unique key
+   over `(source, delivery_id)` and an `expires_at` a day out; every recording
+   first sweeps the rows past their expiry, so the table is bounded by the
+   window rather than by a scheduler. A replay inside the window is a 200 no-op
+   that dispatches nothing, and two concurrent deliveries race at the index.
+4. **The handler runs.** A handler failure releases the delivery row and answers
+   500, so the next redelivery is dispatched instead of being deduped into a
+   silent loss. A duplicate that arrives while the failing attempt is still
+   running is acknowledged as a replay and is not itself dispatched; the
+   provider's retry after the release is. That is what pairs with "handlers are
+   idempotent by construction": at most one dispatch per delivery id while the
+   row stands, and a handler that is safe to run again.
+
+A source's signing secret is resolved through the generic `CredentialStore`
+seam. With the environment store the variable is
+`PORKBOT_WEBHOOK_SECRET_<SOURCE>` — derived from the operator's source name, so
+no provider-specific variable exists in code. A source is registered by adding a
+handler and a secret; `main.ts` currently registers none, so the route answers
+401 until the connection slices own one.
+
+The OAuth-callback half of the same surface is the `oauth_state` table: an OAuth
+`state` is bound at issue time to the `UserActor` that started the flow, stored
+only as its SHA-256, and consumed by one atomic
+`update ... where consumed_at is null and expires_at > now()`. The first
+callback wins, a replay matches no row, and an expired state cannot be consumed.
+The callback route itself lands with the MCP OAuth flow (slice 9.5), which is
+the first slice that can issue a state.
 
 ## Worker and jobs
 
@@ -825,9 +874,15 @@ The transport's limits land with slice 4.4: `apps/api/src/limits.ts` is the one
 register, installer and accounting for request budgets, body caps and
 per-actor stream slots; the gate answers the contract's typed `RATE_LIMITED`
 with a `Retry-After` header; and a test walks the contract tree and the route
-list, so a new procedure or route cannot ship silently unlimited. The webhook
-family's budget and body cap are installed and tested now, with the ingress
-route itself landing in slice 4.5.
+list, so a new procedure or route cannot ship silently unlimited.
+
+The verified webhook ingress lands with slice 4.5: `POST /webhooks/<source>` is
+declared as the `webhook` family in the same register, `apps/api/src/webhooks.ts`
+verifies the signature in `@porkbot/effect` over the raw bytes before anything
+parses them, and `webhook_delivery` in `packages/db` dedupes on
+`(source, delivery_id)` with a TTL the recorder sweeps. The one-time OAuth state
+store lands with it, so the MCP OAuth callback (slice 9.5) inherits a
+replay-proof binding instead of inventing one.
 
 The subscription transport lands with slice 4.3: `threads.events` streams a
 thread's persisted run events as SSE, each frame's `id` an HMAC-signed cursor

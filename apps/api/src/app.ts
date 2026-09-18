@@ -5,7 +5,7 @@ import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { moduleInfo as contractsModule } from "@porkbot/contracts";
 import { moduleInfo as coreModule } from "@porkbot/core";
-import { boundaryReports } from "@porkbot/effect";
+import { boundaryReports, webhookDeliveryHeader, webhookSignatureHeader } from "@porkbot/effect";
 import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
@@ -22,6 +22,8 @@ import { createDeploymentRouter } from "./routers/deployment.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
+import { refuseWebhooks, webhookPath } from "./webhooks.ts";
+import type { WebhookIngress, WebhookOutcome } from "./webhooks.ts";
 
 export const serviceName = "@porkbot/api";
 
@@ -84,6 +86,14 @@ export interface ApiAppOptions {
    * processes. Cursors are bound to the actor, the space and the thread.
    */
   readonly cursorSecret?: string | Uint8Array;
+  /**
+   * The verified webhook ingress (slice 4.5). It is injected like the session
+   * resolver rather than built here, so a test hands in a fake and `main.ts`
+   * composes the real one over the credential store and the ingress ledgers.
+   * The default refuses every request: the route is always mounted and
+   * declared, and an unconfigured process dispatches nothing.
+   */
+  readonly webhooks?: WebhookIngress;
 }
 
 interface ApiEnv extends LimitEnv {
@@ -112,6 +122,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     realtime: options.services.realtime,
     cursors: createCursorCodec(options.cursorSecret),
   });
+  const webhooks = options.webhooks ?? refuseWebhooks(logger);
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
@@ -171,6 +182,22 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
       modules: [coreModule.name, contractsModule.name, loggingModule.name],
     }),
   );
+
+  // The one unauthenticated write surface (slice 4.5). It reads the raw bytes
+  // and hands them to the ingress, which verifies the signature before
+  // anything parses them; no session is read here, so the request runs under
+  // the client's anonymous principal and no actor is fabricated for it. The
+  // body cap the limiter installed for the `webhook` family has already run.
+  app.post(webhookPath, async (context) => {
+    const outcome = await webhooks.receive({
+      source: context.req.param("source"),
+      signature: context.req.header(webhookSignatureHeader),
+      deliveryId: context.req.header(webhookDeliveryHeader),
+      body: new Uint8Array(await context.req.arrayBuffer()),
+    });
+
+    return webhookResponse(context, outcome);
+  });
 
   app.use(`${rpcPath}/*`, async (context, next) => {
     // A failure here is before the oRPC boundary exists, so it cannot be a
@@ -237,6 +264,29 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
 function requestPath(url: string | URL): string {
   const parsed = url instanceof URL ? url : new URL(url);
   return `${parsed.pathname}${parsed.search}`;
+}
+
+/**
+ * The ingress answer. A replay is a 200 because the provider's redelivery is
+ * acknowledged, not corrected; a refusal is a flat 401 that does not say which
+ * check failed, so a probe cannot map the deployment's configuration. A missing
+ * or over-long delivery id is the caller's 400 — that does tell a caller its
+ * signature verified, which is acceptable because a caller holding a valid
+ * signature already holds the source's secret. A handler failure is not
+ * answered here: it is rethrown and answered 500 by the error handler so the
+ * provider retries.
+ */
+function webhookResponse(context: Context<ApiEnv>, outcome: WebhookOutcome): Response {
+  switch (outcome.status) {
+    case "accepted":
+      return context.json({ status: "accepted" }, 202);
+    case "duplicate":
+      return context.json({ status: "ignored" }, 200);
+    case "rejected":
+      return outcome.reason === "missing_delivery" || outcome.reason === "invalid_delivery"
+        ? context.json({ error: "bad_request" }, 400)
+        : context.json({ error: "unauthorized" }, 401);
+  }
 }
 
 /**
