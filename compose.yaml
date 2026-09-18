@@ -86,8 +86,14 @@ services:
       # The API's own role, over the compose network: read and write the
       # application schema, and nothing in the worker's queue.
       DATABASE_URL: postgres://porkbot_api:${PORKBOT_API_DB_PASSWORD:-porkbot-api-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # Bytes that must outlive the container: bot avatars through the storage
+      # seam live here, on a named volume the backup tooling can read rather
+      # than the container's ephemeral layer.
+      PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
     ports:
       - "127.0.0.1:${PORKBOT_API_PORT:-3001}:3001"
+    volumes:
+      - storage-data:/var/lib/porkbot/storage
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -136,3 +142,4 @@ services:
 
 volumes:
   postgres-data:
+  storage-data:

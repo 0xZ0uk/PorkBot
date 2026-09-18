@@ -95,13 +95,18 @@ export type { Actor, SpaceMemberRole, SystemActor, UserActor } from "./actor.ts"
 export type { Queryable } from "./queryable.ts";
 export { createRepositories } from "./repositories.ts";
 export type {
+  BotListScope,
   BotPatch,
   BotReader,
+  BotSectionPatch,
   BotWriter,
   EventReader,
   NewBot,
+  NewBotSection,
   Repositories,
   RunReader,
+  SectionReader,
+  SectionWriter,
   SystemRunWriter,
   RunWriter,
   SystemRepositories,
@@ -152,6 +157,7 @@ export type { ExpiredLease, FencedRunPatch, ReclaimOptions, RunLease } from "./r
 export type {
   AttemptStatus,
   BotRecord,
+  BotSectionRecord,
   EventRecord,
   MessageRecord,
   MessageRole,

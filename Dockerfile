@@ -42,6 +42,9 @@ FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /deploy/api ./
+# The avatar storage root (PORKBOT_STORAGE_DIR in compose) exists in the image
+# owned by the runtime user, so a fresh named volume inherits a writable mount.
+RUN mkdir -p /var/lib/porkbot/storage && chown -R node:node /var/lib/porkbot
 USER node
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

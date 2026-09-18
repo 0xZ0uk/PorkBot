@@ -6,6 +6,7 @@ import {
   DeploymentSettingsConflictError,
   GateTimeoutError,
   LeaseLostError,
+  NameConflictError,
   NotFoundError,
   RunGoneError,
 } from "./errors.ts";
@@ -20,6 +21,19 @@ describe("the typed not-found error", () => {
     expect(error.resource).toBe("bot");
     expect(error.id).toBe("bot-1");
     expect(error.message).toBe("bot bot-1 was not found");
+  });
+});
+
+describe("the typed name-conflict error", () => {
+  it("names the resource and the taken name the caller supplied", () => {
+    const error = new NameConflictError("bot section", "Research");
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(NameConflictError);
+    expect(error._tag).toBe("NameConflictError");
+    expect(error.resource).toBe("bot section");
+    expect(error.name).toBe("Research");
+    expect(error.message).toBe('a bot section named "Research" already exists');
   });
 });
 

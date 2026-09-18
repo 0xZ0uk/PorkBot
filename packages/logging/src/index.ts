@@ -17,6 +17,7 @@ export {
   circularPlaceholder,
   isSensitiveFieldName,
   isUnredacted,
+  maxLoggedStringLength,
   maxRedactDepth,
   redact,
   redactPath,

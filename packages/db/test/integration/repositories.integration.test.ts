@@ -36,8 +36,10 @@ let client: Client | undefined;
 
 let alice: UserActor;
 let bob: UserActor;
+let dave: UserActor;
 let aliceRepositories: UserRepositories;
 let bobRepositories: UserRepositories;
+let daveRepositories: UserRepositories;
 let botA: string;
 let botB: string;
 let threadA: string;
@@ -54,14 +56,20 @@ beforeAll(async () => {
   const spaceB = await insertSpace("Actor B's space");
   const aliceId = await insertUser("Alice");
   const bobId = await insertUser("Bob");
+  const daveId = await insertUser("Dave");
 
   await insertMembership(spaceA, aliceId, "owner");
   await insertMembership(spaceB, bobId, "owner");
+  // A second member of Alice's space, so a per-user rule is distinguishable
+  // from a per-space one even though v1.0 ships one operator per space.
+  await insertMembership(spaceA, daveId, "member");
 
   alice = { kind: "user", spaceId: spaceA, userId: aliceId, role: "owner" };
   bob = { kind: "user", spaceId: spaceB, userId: bobId, role: "owner" };
+  dave = { kind: "user", spaceId: spaceA, userId: daveId, role: "member" };
   aliceRepositories = createRepositories(alice, db());
   bobRepositories = createRepositories(bob, db());
+  daveRepositories = createRepositories(dave, db());
 
   const aliceBot = await aliceRepositories.bots.create({
     name: "Ada",
@@ -163,6 +171,24 @@ async function insertRun(
   );
 
   return requiredId(rows[0], "a run");
+}
+
+async function insertSteeringMessage(
+  botId: string,
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  const { rows } = await db().query<{ id: string }>(
+    "insert into message (thread_id, seq, role, blocks, client_nonce) " +
+      "values ($1, 1, 'user', '[]', $2) returning id",
+    [threadId, randomUUID()],
+  );
+  const messageId = requiredId(rows[0], "a message");
+
+  await db().query(
+    "insert into steering_message (message_id, bot_id, user_id) values ($1, $2, $3)",
+    [messageId, botId, userId],
+  );
 }
 
 async function insertEvent(
@@ -337,6 +363,244 @@ describe("the system actor", () => {
     expect("create" in jobRepositories.bots).toBe(false);
     expect("update" in jobRepositories.bots).toBe(false);
     expect("createForBot" in jobRepositories.threads).toBe(false);
+  });
+});
+
+describe("the bot lifecycle", () => {
+  it("archives out of the default list and restores back into it", async () => {
+    const bot = await aliceRepositories.bots.create({
+      name: "Archivable",
+      color: "#111111",
+      spawnKey: randomUUID(),
+    });
+
+    const archived = await aliceRepositories.bots.archive(bot.id);
+    expect(archived.archivedAt).not.toBeNull();
+
+    expect((await aliceRepositories.bots.list()).map((row) => row.id)).not.toContain(bot.id);
+    expect((await aliceRepositories.bots.list("archived")).map((row) => row.id)).toContain(bot.id);
+    expect((await aliceRepositories.bots.list("all")).map((row) => row.id)).toContain(bot.id);
+
+    // Archiving again keeps the first instant: the state is the same state.
+    const again = await aliceRepositories.bots.archive(bot.id);
+    expect(again.archivedAt?.getTime()).toBe(archived.archivedAt?.getTime());
+
+    const restored = await aliceRepositories.bots.restore(bot.id);
+    expect(restored.archivedAt).toBeNull();
+    expect((await aliceRepositories.bots.list()).map((row) => row.id)).toContain(bot.id);
+  });
+
+  it("refuses another space's bot for every write, and changes nothing", async () => {
+    await expect(aliceRepositories.bots.archive(botB)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(aliceRepositories.bots.restore(botB)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(aliceRepositories.bots.delete(botB)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      aliceRepositories.bots.setAvatar(botB, "avatars/space-x/bot"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const { rows } = await db().query<{ archived_at: Date | null; avatar_key: string | null }>(
+      "select archived_at, avatar_key from bot where id = $1",
+      [botB],
+    );
+
+    expect(rows[0]?.archived_at).toBeNull();
+    expect(rows[0]?.avatar_key).toBeNull();
+  });
+
+  it("deletes a bot with its threads, tasks and runs in one statement", async () => {
+    const bot = await aliceRepositories.bots.create({
+      name: "Doomed",
+      color: "#222222",
+      spawnKey: randomUUID(),
+    });
+    const thread = await aliceRepositories.threads.createForBot(bot.id);
+    const task = await insertTask(alice.spaceId, bot.id, thread.id, alice.userId);
+    await insertRun(alice.spaceId, bot.id, thread.id, task, alice.userId);
+    await insertSteeringMessage(bot.id, thread.id, alice.userId);
+
+    const removed = await aliceRepositories.bots.delete(bot.id);
+    expect(removed.id).toBe(bot.id);
+
+    for (const table of ["thread", "task", "run", "steering_message"] as const) {
+      const { rows } = await db().query<{ count: number }>(
+        `select count(*)::int as count from ${table} where bot_id = $1`,
+        [bot.id],
+      );
+
+      expect(rows[0]?.count, `${table} rows cascade with the bot`).toBe(0);
+    }
+  });
+
+  it("replays a create with the same spawn key instead of inserting a second bot", async () => {
+    const spawnKey = randomUUID();
+    const first = await aliceRepositories.bots.create({
+      name: "Replay",
+      color: "#333333",
+      spawnKey,
+    });
+    const replay = await aliceRepositories.bots.create({
+      name: "Replay renamed",
+      color: "#333333",
+      spawnKey,
+    });
+
+    expect(replay.id).toBe(first.id);
+    expect(replay.name).toBe("Replay");
+
+    const { rows } = await db().query<{ count: number }>(
+      "select count(*)::int as count from bot where space_id = $1 and spawn_key = $2",
+      [alice.spaceId, spawnKey],
+    );
+
+    expect(rows[0]?.count).toBe(1);
+  });
+
+  it("stores, updates and clears the computer assignment", async () => {
+    const computerId = randomUUID();
+    const bot = await aliceRepositories.bots.create({
+      name: "Assigned",
+      color: "#666666",
+      spawnKey: randomUUID(),
+      computerId,
+    });
+
+    expect(bot.computerId).toBe(computerId);
+
+    const reassigned = await aliceRepositories.bots.update(bot.id, { computerId: randomUUID() });
+    expect(reassigned.computerId).not.toBe(computerId);
+
+    const cleared = await aliceRepositories.bots.update(bot.id, { computerId: null });
+    expect(cleared.computerId).toBeNull();
+  });
+
+  it("stores and clears the avatar key in scope", async () => {
+    const bot = await aliceRepositories.bots.create({
+      name: "Avatar",
+      color: "#444444",
+      spawnKey: randomUUID(),
+    });
+
+    const keyed = await aliceRepositories.bots.setAvatar(bot.id, "avatars/space/bot");
+    expect(keyed.avatarKey).toBe("avatars/space/bot");
+
+    const cleared = await aliceRepositories.bots.setAvatar(bot.id, null);
+    expect(cleared.avatarKey).toBeNull();
+  });
+});
+
+describe("bot sections", () => {
+  it("creates a section in the actor's space, renames it and unfiles its bots on delete", async () => {
+    const section = await aliceRepositories.sections.create({ name: "Research" });
+    expect(section.spaceId).toBe(alice.spaceId);
+    expect(section.userId).toBe(alice.userId);
+
+    const bot = await aliceRepositories.bots.create({
+      name: "Filed",
+      color: "#444444",
+      spawnKey: randomUUID(),
+      sectionId: section.id,
+    });
+    expect(bot.sectionId).toBe(section.id);
+
+    const renamed = await aliceRepositories.sections.update(section.id, {
+      name: "Lab",
+      position: 5,
+    });
+    expect(renamed).toMatchObject({ name: "Lab", position: 5 });
+
+    const deleted = await aliceRepositories.sections.delete(section.id);
+    expect(deleted.id).toBe(section.id);
+    expect((await aliceRepositories.bots.findById(bot.id)).sectionId).toBeNull();
+  });
+
+  it("refuses a duplicate section name on create and on rename", async () => {
+    await aliceRepositories.sections.create({ name: "Taken" });
+    await expect(aliceRepositories.sections.create({ name: "Taken" })).rejects.toMatchObject({
+      _tag: "NameConflictError",
+    });
+
+    const other = await aliceRepositories.sections.create({ name: "Other" });
+    await expect(
+      aliceRepositories.sections.update(other.id, { name: "Taken" }),
+    ).rejects.toMatchObject({ _tag: "NameConflictError" });
+    expect((await aliceRepositories.sections.update(other.id, { name: "Free" })).name).toBe("Free");
+  });
+
+  it("refuses another space's section on a bot, and another space's section on update/delete", async () => {
+    const bobSection = await bobRepositories.sections.create({ name: "Bob's list" });
+    const spawnKey = randomUUID();
+
+    await expect(
+      aliceRepositories.bots.create({
+        name: "Misfiled",
+        color: "#555555",
+        spawnKey,
+        sectionId: bobSection.id,
+      }),
+    ).rejects.toMatchObject({ resource: "bot section", id: bobSection.id });
+    expect((await aliceRepositories.bots.list("all")).map((row) => row.spawnKey)).not.toContain(
+      spawnKey,
+    );
+
+    const bot = await aliceRepositories.bots.create({
+      name: "Safe",
+      color: "#555555",
+      spawnKey: randomUUID(),
+    });
+    await expect(
+      aliceRepositories.bots.update(bot.id, { sectionId: bobSection.id }),
+    ).rejects.toMatchObject({ resource: "bot section", id: bobSection.id });
+    expect((await aliceRepositories.bots.findById(bot.id)).sectionId).toBeNull();
+
+    await expect(
+      aliceRepositories.sections.update(bobSection.id, { name: "stolen" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(aliceRepositories.sections.delete(bobSection.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+
+    expect((await bobRepositories.sections.list()).map((row) => row.id)).toContain(bobSection.id);
+  });
+
+  it("lists only the actor's sections", async () => {
+    const bobSection = await bobRepositories.sections.create({ name: "Bob only" });
+
+    expect((await aliceRepositories.sections.list()).map((row) => row.id)).not.toContain(
+      bobSection.id,
+    );
+  });
+
+  it("keeps a section private to the user who named it, even inside one space", async () => {
+    const daveSection = await daveRepositories.sections.create({ name: "Dave's list" });
+
+    expect((await aliceRepositories.sections.list()).map((row) => row.id)).not.toContain(
+      daveSection.id,
+    );
+    await expect(
+      aliceRepositories.sections.update(daveSection.id, { name: "stolen" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(aliceRepositories.sections.delete(daveSection.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+
+    const spawnKey = randomUUID();
+
+    await expect(
+      aliceRepositories.bots.create({
+        name: "Misfiled",
+        color: "#777777",
+        spawnKey,
+        sectionId: daveSection.id,
+      }),
+    ).rejects.toMatchObject({ resource: "bot section", id: daveSection.id });
+    expect((await aliceRepositories.bots.list("all")).map((row) => row.spawnKey)).not.toContain(
+      spawnKey,
+    );
+
+    // The name is unique per user, so the same name is not a conflict for
+    // another member of the space.
+    const aliceSection = await aliceRepositories.sections.create({ name: "Dave's list" });
+    expect(aliceSection.userId).toBe(alice.userId);
   });
 });
 

@@ -250,4 +250,18 @@ describe("logger.error", () => {
       },
     });
   });
+
+  it("writes an oversized error cause as a truncated value, not a scanned payload", () => {
+    const { logger, lines } = captureLogger();
+    const error = new Error("Input validation failed", {
+      cause: { data: "A".repeat(1024 * 1024) },
+    });
+
+    const started = Date.now();
+    logger.error("request failed", { error });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain("A".repeat(64));
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
 });

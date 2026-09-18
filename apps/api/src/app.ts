@@ -10,7 +10,7 @@ import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
-import type { RealtimeFanout } from "@porkbot/adapter-kit";
+import type { RealtimeFanout, StorageProvider } from "@porkbot/adapter-kit";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import { assembleRouter, openProcedureContext } from "./gate.ts";
 import { createCursorCodec } from "./cursors.ts";
@@ -19,7 +19,9 @@ import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
+import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
+import { createBotService } from "./services/bots.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
 import { refuseWebhooks, webhookPath } from "./webhooks.ts";
@@ -44,6 +46,15 @@ export interface ApiServices {
    * actor's repositories, so a lost signal is latency rather than a lost event.
    */
   readonly realtime: RealtimeFanout;
+  /**
+   * Where a bot's avatar bytes live. Optional so a test app that never touches
+   * an avatar needs no directory, but a process that answers `bots.setAvatar`
+   * must supply one: the default refuses, and the refusal is a defect answered
+   * 500 with a redacted line rather than a silent write to a second path.
+   * `main.ts` supplies the local-filesystem provider rooted at
+   * `PORKBOT_STORAGE_DIR`.
+   */
+  readonly storage?: StorageProvider;
 }
 
 export interface ApiAppOptions {
@@ -123,10 +134,12 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     cursors: createCursorCodec(options.cursorSecret),
   });
   const webhooks = options.webhooks ?? refuseWebhooks(logger);
+  const storage = options.services.storage ?? refuseStorage();
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
-    bots: createBotsRouter(),
+    bots: createBotsRouter(createBotService(storage)),
+    sections: createSectionsRouter(),
     threads: createThreadsRouter(threadEvents),
   });
   const rpc = new RPCHandler(router, {
@@ -302,6 +315,28 @@ function refuseRepositories(): never {
     "actor-scoped repositories are not configured for this process; " +
       "supply repositoriesFor beside the session resolver.",
   );
+}
+
+/**
+ * The default storage provider: no avatar operation can succeed without one,
+ * and every one of them says so. A construction that never configures storage
+ * is a miscomposition, so the refusal is a defect (answered 500 and logged
+ * redacted), not a typed client error; the alternative — a silent fallback
+ * directory — would be the second storage path this feature exists to prevent.
+ */
+function refuseStorage(): StorageProvider {
+  const refuse = (): never => {
+    throw new Error(
+      "storage is not configured for this process; supply a StorageProvider in services.",
+    );
+  };
+
+  return {
+    put: refuse,
+    get: refuse,
+    delete: refuse,
+    list: refuse,
+  };
 }
 
 /**
