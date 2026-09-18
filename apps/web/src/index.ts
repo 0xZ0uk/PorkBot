@@ -1,6 +1,8 @@
-export { createWebServer, serviceName } from "./server.ts";
+export { createStaticServer, serviceName, shellFileName } from "./host.ts";
+export type { StaticServerOptions } from "./host.ts";
 
 export const moduleInfo = {
   name: "@porkbot/web",
-  summary: "Static SPA surface. Scaffolded in M10.",
+  summary:
+    "Static SPA shell: routing, auth screens and the design tokens, built once for the origin and Electron.",
 } as const;

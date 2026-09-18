@@ -47,7 +47,7 @@
       "outputs": []
     },
     "test:e2e": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["build"],
       "outputs": []
     },
     "dev": {
@@ -59,6 +59,7 @@
   "globalPassThroughEnv": [
     "DATABASE_URL",
     "PORKBOT_STORAGE_DIR",
+    "PORKBOT_WEB_ROOT",
     "GITHUB_ACTIONS",
     "GITHUB_STEP_SUMMARY"
   ]
