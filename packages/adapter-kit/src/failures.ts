@@ -54,3 +54,23 @@ export interface ProviderFailure {
 
 /** One line per kind: how a seam turns its own provider errors into the words. */
 export type FailureMapping = Readonly<Record<ProviderFailureKind, string>>;
+
+/**
+ * Whether a thrown value is a classified provider failure. Adapters raise
+ * their failures as `Error` objects that implement `ProviderFailure` — the
+ * interface says so — and a caller that degrades (recall falling back to
+ * lexical search, a run continuing without an index) must tell those apart
+ * from a programming error, which it should not swallow. The check is
+ * structural because the caller may hold the value across a module boundary
+ * the class cannot cross, but it insists on the `Error` half so a plain object
+ * that merely carries a `kind` cannot masquerade as a provider failure.
+ */
+export function isProviderFailure(value: unknown): value is ProviderFailure {
+  if (!(value instanceof Error)) {
+    return false;
+  }
+
+  const kind = (value as { readonly kind?: unknown }).kind;
+
+  return typeof kind === "string" && (PROVIDER_FAILURE_KINDS as readonly string[]).includes(kind);
+}
