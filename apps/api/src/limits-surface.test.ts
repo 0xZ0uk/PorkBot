@@ -112,6 +112,13 @@ const requestBodies: Record<string, string> = {
   "sections.create": JSON.stringify({ json: { name: "Research" } }),
   "sections.update": JSON.stringify({ json: { id: "section-1", name: "Work" } }),
   "sections.delete": JSON.stringify({ json: { id: "section-1" } }),
+  "threads.create": JSON.stringify({ json: { botId: "bot-1" } }),
+  "threads.list": JSON.stringify({ json: { botId: "bot-1" } }),
+  "threads.messages": JSON.stringify({ json: { threadId: "thread-1" } }),
+  "threads.send": JSON.stringify({
+    json: { threadId: "thread-1", text: "hello", clientNonce: "nonce-1" },
+  }),
+  "threads.clear": JSON.stringify({ json: { threadId: "thread-1" } }),
   "threads.events": JSON.stringify({ json: { threadId: "thread-1" } }),
   "routines.create": JSON.stringify({
     json: {
@@ -185,7 +192,12 @@ describe("every contract procedure", () => {
       "sections.delete",
       "sections.list",
       "sections.update",
+      "threads.clear",
+      "threads.create",
       "threads.events",
+      "threads.list",
+      "threads.messages",
+      "threads.send",
     ]);
 
     for (const leaf of leaves) {
@@ -246,9 +258,24 @@ describe("the typed answer", () => {
         update: notExercised,
         delete: notExercised,
       },
-      threads: { findById: notExercised, listForBot: notExercised, createForBot: notExercised },
-      runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
+      threads: {
+        findById: notExercised,
+        listForBot: notExercised,
+        createForBot: notExercised,
+        clear: notExercised,
+      },
+      runs: {
+        findById: notExercised,
+        listForThread: notExercised,
+        findActiveForThread: notExercised,
+        create: notExercised,
+      },
       events: { listAfter: notExercised },
+      messages: {
+        listForThread: notExercised,
+        findByNonce: notExercised,
+        steer: notExercised,
+      },
       notifications: { read: notExercised, set: notExercised },
       routines: {
         findById: notExercised,

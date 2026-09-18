@@ -109,6 +109,7 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
         return [];
       },
       createForBot: notExercised,
+      clear: notExercised,
     },
     runs: {
       async findById(id: string): Promise<never> {
@@ -117,12 +118,24 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       async listForThread(): Promise<never[]> {
         return [];
       },
+      async findActiveForThread(): Promise<undefined> {
+        return undefined;
+      },
       create: notExercised,
     },
     events: {
       async listAfter(): Promise<never[]> {
         return [];
       },
+    },
+    messages: {
+      async listForThread(): Promise<never[]> {
+        return [];
+      },
+      async findByNonce(): Promise<undefined> {
+        return undefined;
+      },
+      steer: notExercised,
     },
     routines: {
       async findById(id: string): Promise<never> {

@@ -119,7 +119,7 @@ describe("scoping statements to the actor's space", () => {
     await repositories.bots.findById("bot-1");
     await repositories.bots.list();
     await repositories.threads.findById("thread-1");
-    await repositories.threads.listForBot("bot-1");
+    await repositories.threads.listForBot("bot-1", { limit: 20 });
     await repositories.runs.findById("run-1");
     await repositories.runs.listForThread("thread-1");
     await repositories.events.listAfter("thread-1", 3, 10);
@@ -167,6 +167,74 @@ describe("the event replay read", () => {
     expect(call?.text).toContain("seq > $3");
     expect(call?.text).toContain("order by seq asc");
     expect(call?.values).toEqual(["space-1", "thread-1", 3, 10]);
+  });
+});
+
+describe("the thread page read", () => {
+  it("orders by last activity and takes the keyset cursor as one row comparison", async () => {
+    const database = fakeDatabase();
+    const repositories = createRepositories(owner, database);
+
+    await repositories.threads.listForBot("bot-1", {
+      limit: 20,
+      before: { updatedAt: new Date("2026-09-18T10:00:00.000Z"), id: "thread-9" },
+    });
+
+    const call = database.calls[0];
+    expect(call?.text).toContain("space_id = $1 and bot_id = $2");
+    expect(call?.text).toContain("(updated_at, id) < ($3::timestamptz, $4::uuid)");
+    expect(call?.text).toContain("order by updated_at desc, id desc limit $5");
+    expect(call?.values).toEqual([
+      "space-1",
+      "bot-1",
+      new Date("2026-09-18T10:00:00.000Z"),
+      "thread-9",
+      20,
+    ]);
+  });
+
+  it("asks for the first page when no cursor is given", async () => {
+    const database = fakeDatabase();
+    const repositories = createRepositories(owner, database);
+
+    await repositories.threads.listForBot("bot-1", { limit: 5 });
+
+    expect(database.calls[0]?.text).not.toContain("(updated_at, id) <");
+    expect(database.calls[0]?.values).toEqual(["space-1", "bot-1", 5]);
+  });
+});
+
+describe("the thread's active run read", () => {
+  it("filters on the state machine's active set, newest first, scoped to the actor", async () => {
+    const database = fakeDatabase();
+    const repositories = createRepositories(owner, database);
+
+    await repositories.runs.findActiveForThread("thread-1");
+
+    const call = database.calls[0];
+    expect(call?.text).toContain("space_id = $1 and thread_id = $2");
+    expect(call?.text).toContain("status = any($3::run_status[])");
+    expect(call?.text).toContain("order by created_at desc, id desc limit 1");
+    expect(call?.values).toEqual([
+      "space-1",
+      "thread-1",
+      ["queued", "running", "waiting_approval"],
+    ]);
+  });
+});
+
+describe("the transcript reads", () => {
+  it("pages a thread's messages by sequence, scoped to the actor's space", async () => {
+    const database = fakeDatabase();
+    const repositories = createRepositories(owner, database);
+
+    await repositories.messages.listForThread("thread-1", { afterSeq: 7, limit: 50 });
+    await repositories.messages.findByNonce("thread-1", "nonce-1");
+
+    expect(database.calls[0]?.text).toContain("seq > $2");
+    expect(database.calls[0]?.values).toEqual(["thread-1", 7, "space-1", 50]);
+    expect(database.calls[1]?.text).toContain("client_nonce = $2");
+    expect(database.calls[1]?.values).toEqual(["thread-1", "nonce-1", "space-1"]);
   });
 });
 

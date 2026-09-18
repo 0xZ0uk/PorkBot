@@ -101,7 +101,7 @@ const request = {
   threadId: "thread-1",
   clientNonce: "nonce-1",
   prompt: task.prompt,
-  blocks: message.blocks as readonly unknown[],
+  blocks: [{ type: "text", text: task.prompt }] as const,
 };
 
 /** The routes a fresh submission takes: the run insert returns the new run. */
@@ -142,6 +142,7 @@ describe("the run-creation command", () => {
     expect(messageCall?.values).toEqual([
       "thread-1",
       0,
+      "user",
       JSON.stringify(request.blocks),
       "nonce-1",
       "run-1",

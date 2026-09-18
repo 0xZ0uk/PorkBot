@@ -26,6 +26,7 @@ import { createThreadsRouter } from "./routers/threads.ts";
 import { createBotService } from "./services/bots.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
+import { createThreadsService } from "./services/threads.ts";
 import { refuseWebhooks, webhookPath } from "./webhooks.ts";
 import type { WebhookIngress, WebhookOutcome } from "./webhooks.ts";
 
@@ -135,6 +136,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     realtime: options.services.realtime,
     cursors: createCursorCodec(options.cursorSecret),
   });
+  const threads = createThreadsService();
   const webhooks = options.webhooks ?? refuseWebhooks(logger);
   const storage = options.services.storage ?? refuseStorage();
   const router = assembleRouter({
@@ -143,7 +145,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     notifications: createNotificationsRouter(),
     bots: createBotsRouter(createBotService(storage)),
     sections: createSectionsRouter(),
-    threads: createThreadsRouter(threadEvents),
+    threads: createThreadsRouter(threadEvents, threads),
     routines: createRoutinesRouter(),
   });
   const rpc = new RPCHandler(router, {

@@ -7,9 +7,11 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidMessageError,
   InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
+  MessageNonceReusedError,
   NameConflictError,
   NotFoundError,
   RunGoneError,
@@ -125,6 +127,17 @@ export const errorMappings = {
     code: "SERVICE_UNAVAILABLE",
     message: "The tool-call record is not available.",
     matches: (error: unknown): error is ToolLedgerError => error instanceof ToolLedgerError,
+  },
+  InvalidMessageError: {
+    code: "BAD_REQUEST",
+    message: "The message did not pass the send rules.",
+    matches: (error: unknown): error is InvalidMessageError => error instanceof InvalidMessageError,
+  },
+  MessageNonceReusedError: {
+    code: "CONFLICT",
+    message: "That client nonce already belongs to another message.",
+    matches: (error: unknown): error is MessageNonceReusedError =>
+      error instanceof MessageNonceReusedError,
   },
   InvalidRoutineScheduleError: {
     code: "BAD_REQUEST",

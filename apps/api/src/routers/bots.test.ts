@@ -174,9 +174,24 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       update: notExercised,
       delete: notExercised,
     },
-    threads: { findById: notExercised, listForBot: notExercised, createForBot: notExercised },
-    runs: { findById: notExercised, listForThread: notExercised, create: notExercised },
+    threads: {
+      findById: notExercised,
+      listForBot: notExercised,
+      createForBot: notExercised,
+      clear: notExercised,
+    },
+    runs: {
+      findById: notExercised,
+      listForThread: notExercised,
+      findActiveForThread: notExercised,
+      create: notExercised,
+    },
     events: { listAfter: notExercised },
+    messages: {
+      listForThread: notExercised,
+      findByNonce: notExercised,
+      steer: notExercised,
+    },
     routines: {
       findById: notExercised,
       list: notExercised,
