@@ -140,6 +140,7 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       },
       steer: notExercised,
     },
+    toolResults: { read: notExercised },
     routines: {
       async findById(id: string): Promise<never> {
         throw new NotFoundError("routine", id);

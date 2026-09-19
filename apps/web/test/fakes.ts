@@ -1,5 +1,6 @@
+import { ORPCError } from "@porkbot/contracts";
 import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
-import type { RunEvent } from "@porkbot/core";
+import type { ApprovalDecision, RunEvent, ToolResultArtifact } from "@porkbot/core";
 import { colors } from "@porkbot/tokens";
 import type {
   Bot,
@@ -115,6 +116,13 @@ export interface ScriptedThreadTransportOptions {
   readonly threads?: readonly Thread[];
   /** The thread a `createThread` call answers with. */
   readonly newThread?: Thread;
+  /**
+   * The settled tool results the artifact route resolves, keyed the way the
+   * durable ledger keys them: `runId:callId`.
+   */
+  readonly toolResults?: Readonly<
+    Record<string, { readonly tool: string; readonly result: unknown }>
+  >;
 }
 
 export function scriptedThreadTransport(
@@ -148,6 +156,20 @@ export function scriptedThreadTransport(
     listBots: async () => options.bots ?? [],
     listThreads: async () => options.threads ?? [],
     createThread: async () => options.newThread ?? notExercised(),
+
+    async toolResult({ runId, callId }) {
+      const stored = options.toolResults?.[`${runId}:${callId}`];
+
+      if (stored === undefined) {
+        throw new ORPCError("NOT_FOUND", {
+          defined: true,
+          status: 404,
+          message: "no such tool result",
+        });
+      }
+
+      return stored;
+    },
   };
 }
 
@@ -235,5 +257,104 @@ export function runCompleted(
     runId,
     type: "run.completed",
     messageId,
+  };
+}
+
+export function toolRequested(
+  threadId: string,
+  runId: string,
+  seq: number,
+  callId: string,
+  tool: string,
+  args: unknown,
+): RunEvent {
+  return {
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq,
+    threadId,
+    runId,
+    type: "tool.requested",
+    callId,
+    tool,
+    arguments: args,
+  };
+}
+
+export function approvalRequested(
+  threadId: string,
+  runId: string,
+  seq: number,
+  callId: string,
+  expiresAt: string,
+): RunEvent {
+  return {
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq,
+    threadId,
+    runId,
+    type: "approval.requested",
+    callId,
+    expiresAt,
+  };
+}
+
+export function approvalResolved(
+  threadId: string,
+  runId: string,
+  seq: number,
+  callId: string,
+  decision: ApprovalDecision,
+  reason?: string,
+): RunEvent {
+  return {
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq,
+    threadId,
+    runId,
+    type: "approval.resolved",
+    callId,
+    decision,
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
+export function toolCompleted(
+  threadId: string,
+  runId: string,
+  seq: number,
+  callId: string,
+  result: unknown,
+  options: { readonly resultArtifact?: ToolResultArtifact; readonly durationMs?: number } = {},
+): RunEvent {
+  return {
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq,
+    threadId,
+    runId,
+    type: "tool.completed",
+    callId,
+    result,
+    ...(options.resultArtifact === undefined ? {} : { resultArtifact: options.resultArtifact }),
+    ...(options.durationMs === undefined ? {} : { durationMs: options.durationMs }),
+  };
+}
+
+export function toolFailed(
+  threadId: string,
+  runId: string,
+  seq: number,
+  callId: string,
+  error: string,
+  durationMs?: number,
+): RunEvent {
+  return {
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq,
+    threadId,
+    runId,
+    type: "tool.failed",
+    callId,
+    error,
+    ...(durationMs === undefined ? {} : { durationMs }),
   };
 }

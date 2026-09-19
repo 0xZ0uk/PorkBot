@@ -14,6 +14,7 @@ import {
   threadsListContract,
   threadsMessagesContract,
   threadsSendContract,
+  threadsToolResultContract,
 } from "./threads.ts";
 import type { RunEventMessage } from "./threads.ts";
 
@@ -147,6 +148,7 @@ describe("the thread surface contracts", () => {
       [threadsMessagesContract, "GET", "/threads/{threadId}/messages"],
       [threadsSendContract, "POST", "/threads/{threadId}/messages"],
       [threadsClearContract, "POST", "/threads/{threadId}/clear"],
+      [threadsToolResultContract, "GET", "/threads/{threadId}/runs/{runId}/tool-results/{callId}"],
     ] as const;
 
     for (const [contract, method, path] of routes) {
@@ -156,6 +158,20 @@ describe("the thread surface contracts", () => {
       expect(definition.meta).toMatchObject({ access: "authenticated" });
       expect(definition.errorMap).toHaveProperty("NOT_FOUND");
     }
+  });
+
+  it("resolves a truncated result by the artifact pointer's own triple", () => {
+    const schema = inputSchemaOf(threadsToolResultContract);
+
+    // The pointer names the call, and the read also binds the thread and the
+    // run, so a call id from another thread's run is not addressable.
+    expect(
+      schema.safeParse({ threadId: "thread-1", runId: "run-1", callId: "call-1" }).success,
+    ).toBe(true);
+    expect(schema.safeParse({ threadId: "thread-1", runId: "run-1" }).success).toBe(false);
+    expect(schema.safeParse({ threadId: "thread-1", runId: "run-1", callId: "" }).success).toBe(
+      false,
+    );
   });
 
   it("declares the send's refusal vocabulary as typed errors", () => {
