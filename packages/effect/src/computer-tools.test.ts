@@ -9,6 +9,7 @@ import type {
   ComputerStatus,
 } from "@porkbot/adapter-kit";
 import { describe, expect, it } from "vitest";
+import type { ComputerCommandRunner } from "./computer-commands.ts";
 import { createComputerTools, MAX_COMPUTER_OUTPUT_BYTES } from "./computer-tools.ts";
 import { createToolDispatcher } from "./tool-dispatcher.ts";
 import type {
@@ -81,8 +82,33 @@ class RecordingProvider implements ComputerProvider {
   async input(): Promise<void> {}
 }
 
+/**
+ * The tools under test speak through the runner seam, not a raw provider. This
+ * passthrough is deliberately unfenced: the tests here pin the command each
+ * tool composes and the label it returns, and the fence itself is the subject
+ * of `computer-commands.test.ts`.
+ */
+function providerCommands(provider: ComputerProvider): ComputerCommandRunner {
+  return {
+    exec: (request) =>
+      Effect.tryPromise({
+        try: () =>
+          provider.exec({
+            computer: request.computer,
+            command: request.command,
+            timeoutMs: request.timeoutMs,
+          }),
+        catch: (error) => error,
+      }),
+  };
+}
+
 function toolsFor(provider: ComputerProvider, maxDurationMs = 30_000) {
-  const registrations = createComputerTools({ provider, computer, maxDurationMs });
+  const registrations = createComputerTools({
+    commands: providerCommands(provider),
+    computer,
+    maxDurationMs,
+  });
   const byName = new Map(registrations.map((registration) => [registration.name, registration]));
 
   return {
@@ -362,7 +388,7 @@ describe("the computer tool registrations", () => {
 
     const dispatcher = createToolDispatcher({
       registrations: createComputerTools({
-        provider: new RecordingProvider(),
+        commands: providerCommands(new RecordingProvider()),
         computer,
         maxDurationMs: 60_000,
       }),
@@ -386,7 +412,11 @@ describe("the computer tool registrations", () => {
 
   it("refuses a budget that is not a positive integer", () => {
     expect(() =>
-      createComputerTools({ provider: new RecordingProvider(), computer, maxDurationMs: 0 }),
+      createComputerTools({
+        commands: providerCommands(new RecordingProvider()),
+        computer,
+        maxDurationMs: 0,
+      }),
     ).toThrow(RangeError);
   });
 });

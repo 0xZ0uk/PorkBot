@@ -182,6 +182,41 @@ describe("the worker role", () => {
     }
   });
 
+  it("may hold, renew and release a bot's computer lease, and the API may not", async () => {
+    // Slice 7.4: the lease is run state the executing job writes. The API has
+    // no seam for it at all, so the operator's role is refused every statement.
+    const worker = await connectAs(workerRole);
+    const api = await connectAs(apiRole);
+
+    try {
+      await expect(
+        worker.query(
+          "insert into computer_lease (space_id, bot_id, run_id, owner, fence, expires_at) " +
+            "select space_id, id, id, 'role-probe', 1, now() from run where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query(
+          "update computer_lease set expires_at = now() + interval '1 minute' where false",
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        worker.query("select owner, fence, expires_at from computer_lease where false"),
+      ).resolves.toBeDefined();
+      await expect(worker.query("delete from computer_lease where false")).resolves.toBeDefined();
+
+      await expect(
+        api.query("select owner, fence, expires_at from computer_lease where false"),
+      ).rejects.toSatisfy((error: unknown) => errorCode(error) === "42501");
+      await expect(api.query("delete from computer_lease where false")).rejects.toSatisfy(
+        (error: unknown) => errorCode(error) === "42501",
+      );
+    } finally {
+      await worker.end();
+      await api.end();
+    }
+  });
+
   it("may advance a routine's cursor and write its ledger, but not rewrite its schedule", async () => {
     const worker = await connectAs(workerRole);
 
@@ -360,6 +395,11 @@ describe("the catalog's answer", () => {
         "has_table_privilege($2, 'public.routine_occurrence', 'INSERT') as worker_inserts_occurrence, " +
         "has_table_privilege($1, 'public.routine', 'INSERT') as api_inserts_routine, " +
         "has_table_privilege($1, 'public.routine_occurrence', 'SELECT') as api_reads_occurrence, " +
+        "has_table_privilege($2, 'public.computer_lease', 'SELECT') as worker_reads_computer_lease, " +
+        "has_table_privilege($2, 'public.computer_lease', 'INSERT') as worker_inserts_computer_lease, " +
+        "has_table_privilege($2, 'public.computer_lease', 'UPDATE') as worker_updates_computer_lease, " +
+        "has_table_privilege($2, 'public.computer_lease', 'DELETE') as worker_deletes_computer_lease, " +
+        "has_table_privilege($1, 'public.computer_lease', 'SELECT') as api_reads_computer_lease, " +
         `has_schema_privilege($1, '${graphileWorkerSchema}', 'USAGE') as api_reads_jobs, ` +
         `has_schema_privilege($2, '${graphileWorkerSchema}', 'CREATE') as worker_creates_jobs, ` +
         "has_database_privilege($1, current_database(), 'CREATE') as api_creates_schemas, " +
@@ -391,6 +431,11 @@ describe("the catalog's answer", () => {
       worker_updates_routine_cursor: true,
       worker_updates_routine_schedule: false,
       worker_inserts_occurrence: true,
+      worker_reads_computer_lease: true,
+      worker_inserts_computer_lease: true,
+      worker_updates_computer_lease: true,
+      worker_deletes_computer_lease: true,
+      api_reads_computer_lease: false,
       api_inserts_routine: true,
       api_reads_occurrence: true,
       api_reads_jobs: false,

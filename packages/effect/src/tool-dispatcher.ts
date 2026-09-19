@@ -3,12 +3,12 @@ import { PROVIDER_FAILURE_KINDS } from "@porkbot/adapter-kit";
 import type { ModelToolDefinition, ProviderFailure } from "@porkbot/adapter-kit";
 import {
   InvalidToolCallError,
+  LeaseLostError,
   NotFoundError,
   ToolCallConflictError,
   ToolLedgerError,
   UnknownToolError,
 } from "./errors.ts";
-import type { LeaseLostError } from "./errors.ts";
 
 /**
  * The tool dispatch seam (slice 5.5, PRD decision 26; audit section 3).
@@ -343,14 +343,27 @@ function executeTool(
         onTimeout: () => new ToolDurationExceeded(registration.name, registration.maxDurationMs),
       }),
       Effect.map((result): ToolOutcome => ({ status: "completed", result })),
-      Effect.catchAllCause((cause) =>
-        Cause.isInterrupted(cause)
-          ? Effect.interrupt
-          : Effect.succeed({
-              status: "failed",
-              error: failureMessage(cause, registration.name),
-            } satisfies ToolOutcome),
-      ),
+      Effect.catchAllCause((cause) => {
+        if (Cause.isInterrupted(cause)) {
+          return Effect.interrupt;
+        }
+
+        // A handler that learned the fence moved — the fenced computer command
+        // runner is the shipped case, its commit gate raising the typed loss —
+        // stops the run with that error instead of becoming a generic tool
+        // failure. The claim is deliberately left `running` for the reclaim to
+        // settle, exactly as a beat that loses the fence leaves it.
+        const failure = Cause.failureOption(cause);
+
+        if (Option.isSome(failure) && failure.value instanceof LeaseLostError) {
+          return Effect.fail(failure.value);
+        }
+
+        return Effect.succeed({
+          status: "failed",
+          error: failureMessage(cause, registration.name),
+        } satisfies ToolOutcome);
+      }),
     );
 
     // The returned outcome is the one the ledger recorded, so the caller and a
