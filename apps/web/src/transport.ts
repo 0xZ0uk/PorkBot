@@ -161,6 +161,16 @@ export interface ConsoleTransport extends ThreadConsoleTransport {
   /** One bot's most recently active threads, newest first. */
   listThreads(botId: string): Promise<readonly Thread[]>;
   createThread(botId: string): Promise<Thread>;
+  /**
+   * The full value behind a truncated tool event (slice 6.8): the artifact
+   * pointer's `(threadId, runId, callId)` is the whole address, and the
+   * contract's typed `NOT_FOUND` covers a foreign or unsettled call.
+   */
+  toolResult(input: {
+    readonly threadId: string;
+    readonly runId: string;
+    readonly callId: string;
+  }): Promise<{ readonly tool: string; readonly result: unknown }>;
 }
 
 /**
@@ -183,6 +193,7 @@ export function createHttpConsoleTransport(
     listThreads: async (botId) =>
       (await client.threads.list({ botId, limit: defaultThreadPageSize })).threads,
     createThread: (botId) => client.threads.create({ botId }),
+    toolResult: (input) => client.threads.toolResult(input),
 
     transcript: async (threadId) => {
       const messages: Message[] = [];

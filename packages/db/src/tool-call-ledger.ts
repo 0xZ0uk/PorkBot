@@ -1,7 +1,7 @@
 import { NotFoundError } from "@porkbot/effect";
 import type { ToolCall, ToolCallAdmission, ToolCallLedger, ToolOutcome } from "@porkbot/effect";
 import { redact } from "@porkbot/logging";
-import type { SystemActor } from "./actor.ts";
+import type { Actor, SystemActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 
 /**
@@ -197,4 +197,55 @@ function storedError(result: unknown): string {
   }
 
   return "the tool call failed";
+}
+
+/** A settled tool call's full value, as the artifact pointer describes it. */
+export interface ToolCallResult {
+  /** The tool the call ran, so a reader can label the value. */
+  readonly tool: string;
+  readonly result: unknown;
+}
+
+/**
+ * The read half of a settled tool call (slice 6.8): the full result behind a
+ * `tool.completed` event whose inline value was truncated to a preview.
+ *
+ * The event's `ToolResultArtifact` names the call, not a row id, so the read
+ * resolves the pointer through the durable `external_effect` row — the same
+ * `(run_id, idempotency_key)` pair the ledger wrote. It is actor-scoped like
+ * every read in this package: the rows join through the run and the thread so a
+ * `(threadId, runId, callId)` triple from another space is the shared
+ * `NotFoundError`, and a call that is not settled as completed has no artifact
+ * to read. Only this module names the effect row, so the ledger's writes and
+ * this read stay auditable together.
+ */
+export interface ToolResultReader {
+  read(input: {
+    readonly threadId: string;
+    readonly runId: string;
+    /** The call's durable idempotency key, from the artifact pointer. */
+    readonly callId: string;
+  }): Promise<ToolCallResult>;
+}
+
+export function createToolResultReader(actor: Actor, database: Queryable): ToolResultReader {
+  return {
+    async read({ threadId, runId, callId }): Promise<ToolCallResult> {
+      const { rows } = await database.query<{ readonly tool: string; readonly result: unknown }>(
+        "select e.kind as tool, e.result as result from external_effect e " +
+          "join run r on r.id = e.run_id and r.space_id = e.space_id " +
+          "join thread t on t.id = r.thread_id and t.space_id = e.space_id " +
+          "where e.space_id = $1 and t.id = $2 and r.id = $3 and e.idempotency_key = $4 " +
+          "and e.status = 'completed'::effect_status",
+        [actor.spaceId, threadId, runId, callId],
+      );
+      const row = rows[0];
+
+      if (row === undefined) {
+        throw new NotFoundError("tool result", callId);
+      }
+
+      return { tool: row.tool, result: row.result };
+    },
+  };
 }
