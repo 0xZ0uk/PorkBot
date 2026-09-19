@@ -5,6 +5,9 @@ import { colors } from "@porkbot/tokens";
 import type {
   Bot,
   BotSection,
+  ComputerProvidersView,
+  ComputerSnapshotView,
+  ComputerView,
   Credential,
   MemoryDocumentView,
   MemoryRevisionView,
@@ -19,6 +22,7 @@ import type {
   UsageTotalsView,
 } from "@porkbot/contracts";
 import type { BotsTransport } from "../src/bots.ts";
+import type { ComputerTransport } from "../src/computer.ts";
 import type { ConnectionsTransport } from "../src/connections.ts";
 import type { MemoryTransport } from "../src/memory.ts";
 import type { ConsoleTransport, UsageTransport } from "../src/transport.ts";
@@ -797,6 +801,90 @@ export function scriptedConnectionsTransport(
       );
 
       return bots.find((bot) => bot.id === botId) ?? fakeBot(botId, "Bot");
+    },
+  };
+}
+
+/** One provider as the deployment's selection read answers it. */
+export function fakeProvider(
+  overrides: Partial<ComputerProvidersView["providers"][number]> = {},
+): ComputerProvidersView["providers"][number] {
+  return { kind: "offline", available: true, failure: null, ...overrides };
+}
+
+/** One captured snapshot as the recovery surface answers it. */
+export function fakeSnapshot(overrides: Partial<ComputerSnapshotView> = {}): ComputerSnapshotView {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    sizeBytes: 2_048,
+    ...overrides,
+  };
+}
+
+export interface ScriptedComputerTransportOptions {
+  readonly bot?: Bot;
+  readonly providers?: ComputerProvidersView;
+  readonly computer?: ComputerView;
+  readonly snapshots?: readonly ComputerSnapshotView[];
+  /** Throws from the load, for the refusal path. */
+  readonly listFailure?: unknown;
+  /** Throws from every write, for the write-refusal path. */
+  readonly writeFailure?: unknown;
+}
+
+/**
+ * The computer settings screen's transport fake. It applies the decisions the
+ * durable reads and writes have: setting a provider moves the bot row, a
+ * capture appends a snapshot, and a restore reports the machine running — so a
+ * controller or screen test observes state change the way a reload after the
+ * real write would show it.
+ */
+export function scriptedComputerTransport(
+  options: ScriptedComputerTransportOptions = {},
+): ComputerTransport {
+  let bot = options.bot ?? fakeBot("bot-1", "Ada");
+  const providers = options.providers ?? {
+    defaultKind: "offline",
+    providers: [fakeProvider(), fakeProvider({ kind: "docker" })],
+  };
+  let computer: ComputerView = options.computer ?? { assigned: false };
+  let snapshots = [...(options.snapshots ?? [])];
+
+  function writeGuard(): void {
+    if (options.writeFailure !== undefined) {
+      throw options.writeFailure;
+    }
+  }
+
+  return {
+    load: async () => {
+      if (options.listFailure !== undefined) {
+        throw options.listFailure;
+      }
+
+      return { bot, providers, computer, snapshots };
+    },
+    setProvider: async ({ kind }) => {
+      writeGuard();
+      bot = { ...bot, computerProvider: kind };
+
+      return bot;
+    },
+    snapshot: async () => {
+      writeGuard();
+      const snapshot = fakeSnapshot({
+        id: `11111111-1111-4111-8111-${String(snapshots.length + 1).padStart(12, "0")}`,
+      });
+      snapshots = [...snapshots, snapshot];
+
+      return snapshot;
+    },
+    restore: async () => {
+      writeGuard();
+      computer = { assigned: true, state: "running", instanceId: "i-1" };
+
+      return computer;
     },
   };
 }

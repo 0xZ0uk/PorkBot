@@ -11,6 +11,11 @@ import type { FailureMapping } from "./failures.ts";
  * implementations, with the offline emulator (slice 6.9) as the third so the
  * whole tool path is testable with no network and no daemon.
  *
+ * `validate` is the selection-time read (slice 9.4): it answers whether a
+ * provider is reachable and its configuration accepted without touching a
+ * machine, so a bot cannot be stored on a provider the deployment cannot
+ * serve. Every other method acts on one named computer.
+ *
  * Everything here is provider-shaped and secret-free: a computer is addressed
  * by ids, commands cross as strings, and a credential is never a parameter.
  * Screen watch and takeover are v1.1; `frames()` and `input()` are reserved
@@ -250,6 +255,18 @@ export interface ComputerProvider {
   restore(computer: ComputerRef, snapshot: ComputerSnapshot): Promise<ComputerStatus>;
   /** Idempotent: destroying a computer that is already gone succeeds. */
   destroy(computer: ComputerRef): Promise<void>;
+  /**
+   * Ask this provider whether it is reachable and its configuration is
+   * accepted, without creating or changing a machine (slice 9.4). The
+   * selection surface calls it before a bot is stored on a provider, so a
+   * deployment that cannot serve the choice says so before the write rather
+   * than at the bot's first run; an unavailable provider raises the same
+   * classified failure the lifecycle calls do, so the caller branches on the
+   * shared vocabulary and never reads a vendor message. It must not create,
+   * start or mutate anything: a readiness check that leaves a machine behind
+   * is a bug.
+   */
+  validate(): Promise<void>;
   /** Reserved for v1.1 screen watch. */
   frames?(computer: ComputerRef): AsyncIterable<ComputerFrame>;
   /** Reserved for v1.1 screen takeover. */

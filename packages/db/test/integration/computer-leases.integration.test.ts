@@ -144,6 +144,10 @@ class BlockingProvider implements ComputerProvider {
     });
   }
 
+  async validate(): Promise<void> {
+    // Nothing to check in a test double.
+  }
+
   async ensure(): Promise<never> {
     throw new Error("not used");
   }

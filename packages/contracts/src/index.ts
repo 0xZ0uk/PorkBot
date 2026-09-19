@@ -28,13 +28,15 @@ export type { SignupAvailability } from "./deployment.ts";
 export { accountMeContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
-// A bot's computer (slices 7.1 and 7.5, PRD decision 20; stories 27, 29 and
-// 30): the operator's reach into the supervisor's lifecycle, scoped by bot id,
-// and the snapshot surface that makes a bad state recoverable. The state
-// vocabulary mirrors `@porkbot/adapter-kit` and a test pins the two; a snapshot
-// view names the row, never the storage key.
+// A bot's computer (slices 7.1, 7.5 and 9.4, PRD decision 20; stories 27, 29,
+// 30 and 31): the operator's reach into the supervisor's lifecycle, scoped by
+// bot id, the snapshot surface that makes a bad state recoverable, and the
+// selection read that names the deployment's configured providers and each
+// one's readiness. The state vocabulary mirrors `@porkbot/adapter-kit` and a
+// test pins the two; a snapshot view names the row, never the storage key.
 export {
   computersBootContract,
+  computersProvidersContract,
   computersRecoverContract,
   computersResetContract,
   computersRestoreContract,
@@ -42,11 +44,19 @@ export {
   computersSnapshotsContract,
   computersStatusContract,
   computersStopContract,
+  computerProvidersViewSchema,
+  computerProviderSchema,
   computerSnapshotViewSchema,
   computerStateSchema,
   computerViewSchema,
 } from "./computers.ts";
-export type { ComputerSnapshotView, ComputerStateView, ComputerView } from "./computers.ts";
+export type {
+  ComputerProvidersView,
+  ComputerProviderView,
+  ComputerSnapshotView,
+  ComputerStateView,
+  ComputerView,
+} from "./computers.ts";
 
 // Notification preferences (slice 8.6, PRD decision 33; story 35): the
 // operator's switches over `@porkbot/core`'s event vocabulary. The output is
@@ -201,8 +211,14 @@ export {
   modelDescriptorSchema,
   modelFailureKindSchema,
   modelProbeSchema,
+  providerFailureKindSchema,
 } from "./model-connections.ts";
-export type { ModelConnection, ModelFailureKind, ModelProbe } from "./model-connections.ts";
+export type {
+  ModelConnection,
+  ModelFailureKind,
+  ModelProbe,
+  ProviderFailureKindView,
+} from "./model-connections.ts";
 
 // MCP servers (slice 9.5, PRD story 38): install by URL, read back discovery,
 // grant to bots and revoke. The output schemas have no field for a token or a

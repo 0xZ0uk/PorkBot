@@ -14,6 +14,7 @@ import {
   fakeCredential,
   fakeProbe,
   scriptedBotsTransport,
+  scriptedComputerTransport,
   scriptedMemoryTransport,
   scriptedThreadTransport,
   scriptedUsageTransport,
@@ -89,6 +90,7 @@ async function mountConnections(api: ScriptedConnectionsApi): Promise<MountedCon
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),
       connections: createHttpConnectionsTransport({ origin: api.url }),
+      computer: scriptedComputerTransport(),
     },
     createMemoryHistory({ initialEntries: ["/settings/connections"] }),
   );

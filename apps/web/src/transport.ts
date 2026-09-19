@@ -2,6 +2,7 @@ import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "
 import type { Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
 import type { BotsTransport } from "./bots.ts";
 import { AuthRefusal } from "./session.ts";
+import type { ComputerTransport } from "./computer.ts";
 import type { ConnectionsTransport } from "./connections.ts";
 import type { ThreadConsoleTransport } from "./console.ts";
 import type { MemoryTransport } from "./memory.ts";
@@ -284,6 +285,35 @@ export function createHttpUsageTransport(options: HttpAuthTransportOptions = {})
 
   return {
     forBot: (botId) => client.usage.bot({ botId }),
+  };
+}
+
+/**
+ * The computer settings screen's API surface (slice 9.4): the bot's stored
+ * selection, the deployment's provider list and readiness answers, the
+ * machine's state, and the snapshot pair that moves files across a switch. It
+ * is the same derived client narrowed to the procedures the controller calls,
+ * so the screen never sees a wire shape it invented.
+ */
+export function createHttpComputerTransport(
+  options: HttpAuthTransportOptions = {},
+): ComputerTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    load: async (botId) => {
+      const [bot, providers, computer, snapshots] = await Promise.all([
+        client.bots.get({ id: botId }),
+        client.computers.providers({}),
+        client.computers.status({ botId }),
+        client.computers.snapshots({ botId }),
+      ]);
+
+      return { bot, providers, computer, snapshots: snapshots.snapshots };
+    },
+    setProvider: (input) => client.bots.update({ id: input.botId, computerProvider: input.kind }),
+    snapshot: (input) => client.computers.snapshot({ botId: input.botId }),
+    restore: (input) => client.computers.restore(input),
   };
 }
 

@@ -77,6 +77,7 @@ function providerWith(proxy: CredentialProxyAdmin | undefined): ComputerProvider
     throw new Error("this test's provider was asked for something it does not implement");
   };
   const base: ComputerProvider = {
+    validate: async () => rejected(),
     ensure: async () => rejected(),
     status: async () => rejected(),
     stop: async () => rejected(),

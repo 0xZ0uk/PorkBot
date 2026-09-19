@@ -1,6 +1,7 @@
 import { accountMeContract } from "./account.ts";
 import {
   computersBootContract,
+  computersProvidersContract,
   computersRecoverContract,
   computersResetContract,
   computersRestoreContract,
@@ -114,6 +115,7 @@ export const appContract = {
     clearAvatar: botsClearAvatarContract,
   },
   computers: {
+    providers: computersProvidersContract,
     status: computersStatusContract,
     boot: computersBootContract,
     stop: computersStopContract,
