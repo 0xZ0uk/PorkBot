@@ -65,6 +65,14 @@ const sameOriginTransports: ReadonlyMap<string, SameOriginTransport> = new Map([
       mustDial: "options.baseUrl",
     },
   ],
+  [
+    "packages/adapters/src/docker-engine.ts",
+    {
+      reason:
+        "the Docker provider dials the daemon the supervisor owns, over the unix socket the process was configured with, and speaks the Engine API that is the daemon's own protocol; this is a same-host control connection, not egress to a user-supplied URL, and no credential or user content is sent to any third party through it",
+      mustDial: "options.socketPath",
+    },
+  ],
 ]);
 
 const fetchCall = /(?<!safe)\bfetch\s*\(/g;
