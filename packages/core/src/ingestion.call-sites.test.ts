@@ -70,6 +70,11 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       "packages/adapter-kit/src/provider-plan.ts",
       "packages/adapters/src/computer-conformance.ts",
       "packages/adapters/src/computer-emulator.ts",
+      // The supervisor transport carries a command's raw bytes between the
+      // process that owns the computer and the process that runs the tool;
+      // the tool layer in `@porkbot/effect` is where they are labelled.
+      "packages/adapters/src/supervisor-computer.ts",
+      "apps/supervisor/src/computer-lifecycle.ts",
       "packages/core/src/ingestion.ts",
     ],
     note: "",
@@ -99,6 +104,10 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       "packages/adapter-kit/src/provider-plan.ts",
       "packages/adapters/src/computer-conformance.ts",
       "packages/adapters/src/computer-emulator.ts",
+      // Same raw boundary as `file_read`: the transport forwards stdout and
+      // stderr unlabelled on purpose, and the tool layer labels what it shows.
+      "packages/adapters/src/supervisor-computer.ts",
+      "apps/supervisor/src/computer-lifecycle.ts",
       "packages/core/src/ingestion.ts",
     ],
     note: "",

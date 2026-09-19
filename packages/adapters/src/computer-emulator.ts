@@ -167,6 +167,8 @@ export class ComputerEmulator implements ComputerProvider {
   readonly #home: string;
   readonly #now: () => number;
   readonly #instances = new Map<string, ComputerInstance>();
+  /** The bot each computer belongs to, so `list()` can report a full reference. */
+  readonly #botIds = new Map<string, string>();
   readonly #snapshots = new Map<
     string,
     { readonly snapshotId: string; readonly instance: ComputerInstance }
@@ -246,18 +248,26 @@ export class ComputerEmulator implements ComputerProvider {
     return this;
   }
 
-  /** Park a computer without removing it; `ensure` starts it again. */
-  stop(computer: ComputerRef): this {
+  /** Park a computer without removing it; `ensure` starts it again. Idempotent. */
+  async stop(computer: ComputerRef): Promise<ComputerStatus> {
     const instance = this.#instances.get(computer.computerId);
 
     if (instance !== undefined) {
       instance.state = "stopped";
     }
 
-    return this;
+    return this.#status(computer);
+  }
+
+  /** Every machine this emulator still holds, in creation order. */
+  async list(): Promise<readonly ComputerStatus[]> {
+    return [...this.#instances.keys()].map((computerId) =>
+      this.#status({ computerId, botId: this.#botIds.get(computerId) ?? "" }),
+    );
   }
 
   async ensure(computer: ComputerRef): Promise<ComputerStatus> {
+    this.#botIds.set(computer.computerId, computer.botId);
     const existing = this.#instances.get(computer.computerId);
 
     if (existing === undefined) {
@@ -318,12 +328,14 @@ export class ComputerEmulator implements ComputerProvider {
     instance.generation = this.#nextGeneration;
     this.#nextGeneration += 1;
     this.#instances.set(computer.computerId, instance);
+    this.#botIds.set(computer.computerId, computer.botId);
 
     return this.#status(computer);
   }
 
   async destroy(computer: ComputerRef): Promise<void> {
     this.#instances.delete(computer.computerId);
+    this.#botIds.delete(computer.computerId);
   }
 
   /** Reserved for v1.1 screen watch: one deterministic frame of the current screen. */

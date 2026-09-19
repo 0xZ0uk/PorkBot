@@ -29,6 +29,7 @@ import { httpRateLimited, installLimits, resolveLimits, routeRules } from "./lim
 import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
+import { createComputersRouter } from "./routers/computers.ts";
 import { createCredentialsRouter } from "./routers/credentials.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
 import { createMcpRouter } from "./routers/mcp.ts";
@@ -38,6 +39,8 @@ import { createRoutinesRouter } from "./routers/routines.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
 import { createBotService } from "./services/bots.ts";
+import { createComputerService, unconfiguredComputerProvider } from "./services/computers.ts";
+import type { ComputerLifecycleProvider } from "./services/computers.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import type { McpService } from "./services/mcp.ts";
@@ -92,6 +95,15 @@ export interface ApiServices {
    * network and no key.
    */
   readonly modelRuntime?: (credentials: CredentialStore) => ModelRuntimeProvider;
+  /**
+   * The supervisor client (slice 7.1). The API holds no Docker socket and no
+   * provider credential: this is an authenticated HTTP client for the
+   * supervisor's lifecycle surface, and `main.ts` builds it from
+   * `PORKBOT_SUPERVISOR_URL` and `PORKBOT_SUPERVISOR_TOKEN`. The default
+   * refuses as the typed `SERVICE_UNAVAILABLE`, so an unconfigured deployment
+   * says so instead of pretending a computer is gone.
+   */
+  readonly computers?: ComputerLifecycleProvider | undefined;
 }
 
 export interface ApiAppOptions {
@@ -181,6 +193,9 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     account: createAccountRouter(),
     notifications: createNotificationsRouter(),
     bots: createBotsRouter(createBotService(storage)),
+    computers: createComputersRouter(
+      createComputerService(options.services.computers ?? unconfiguredComputerProvider()),
+    ),
     sections: createSectionsRouter(),
     threads: createThreadsRouter(threadEvents, threads),
     routines: createRoutinesRouter(),

@@ -477,6 +477,28 @@ export class McpServerUnavailableError extends Data.TaggedError("McpServerUnavai
 }
 
 /**
+ * The supervisor could not be reached, or refused a lifecycle call (slice
+ * 7.1, PRD decision 20). The API and the worker hold no provider credential —
+ * the supervisor does — so a supervisor that is down or misconfigured is a
+ * deployment-level unavailability, answered as a typed `SERVICE_UNAVAILABLE`
+ * rather than an opaque 500. The kind is the shared provider vocabulary the
+ * supervisor classified, so an operator can tell a timeout from a refusal.
+ */
+export class ComputerUnavailableError extends Data.TaggedError("ComputerUnavailableError")<{
+  readonly kind: ProviderFailureKind;
+  readonly detail: string;
+  readonly message: string;
+}> {
+  constructor(kind: ProviderFailureKind, detail: string) {
+    super({
+      kind,
+      detail,
+      message: `the computer service could not be reached (${kind}): ${detail}`,
+    });
+  }
+}
+
+/**
  * Why an OAuth callback was refused before any code was exchanged. The reasons
  * are distinct because they mean different things to whoever reads a log: the
  * state was unknown, already consumed or expired; the state named a server the
@@ -540,6 +562,7 @@ export type TypedError =
   | MessageNonceReusedError
   | InvalidRoutineScheduleError
   | McpServerUnavailableError
+  | ComputerUnavailableError
   | InvalidOAuthStateError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */

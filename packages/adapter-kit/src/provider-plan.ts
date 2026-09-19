@@ -122,10 +122,18 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         status: "shipped",
       },
       {
+        name: "createSupervisorComputerProvider",
+        slice: "7.1",
+        owner: "@porkbot/adapters",
+        status: "shipped",
+        note: "The client half of the supervisor boundary: a process reaches a computer by speaking to the supervisor's authenticated lifecycle surface, so the caller holds neither the Docker socket nor a provider credential. The API holds one today; the worker's provider wiring lands with the Docker provider.",
+      },
+      {
         name: "createDockerComputerProvider",
         slice: "7.2",
         owner: "@porkbot/adapters",
         status: "planned",
+        note: "Runs inside the supervisor process only: the provider is the thing that holds the Docker socket, and the supervisor is the only process that may construct it.",
       },
       {
         name: "createCloudComputerProvider",
