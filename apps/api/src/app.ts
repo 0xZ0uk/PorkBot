@@ -28,6 +28,7 @@ import { createCursorCodec } from "./cursors.ts";
 import { httpRateLimited, installLimits, resolveLimits, routeRules } from "./limits.ts";
 import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
+import { createApprovalsRouter } from "./routers/approvals.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createComputersRouter } from "./routers/computers.ts";
 import { createCredentialsRouter } from "./routers/credentials.ts";
@@ -202,6 +203,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
+    approvals: createApprovalsRouter(),
     notifications: createNotificationsRouter(),
     bots: createBotsRouter(
       createBotService(storage),

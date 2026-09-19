@@ -123,6 +123,8 @@ export type {
   ApprovalGateError,
   ApprovalGateOptions,
   ApprovalGateShape,
+  ApprovalHistoryRecord,
+  ApprovalListInput,
   ApprovalRecord,
   ApprovalRequest,
   ApprovalStore,

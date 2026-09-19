@@ -295,6 +295,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
   return {
     actor,
     membership: { requireActive: notExercised },
+    approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
     bots: {
       async findById(id: string) {
         const bot = store.bots.get(id);

@@ -5,6 +5,7 @@ import { BootstrappingScreen } from "./screens/bootstrapping.tsx";
 import { createSessionController } from "./session.ts";
 import {
   createHttpAuthTransport,
+  createHttpApprovalTransport,
   createHttpBotsTransport,
   createHttpComputerTransport,
   createHttpConnectionsTransport,
@@ -17,7 +18,7 @@ import type { ConnectionsTransport } from "./connections.ts";
 import type { BotsTransport } from "./bots.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type { AuthTransport, SessionController } from "./session.ts";
-import type { ConsoleTransport, UsageTransport } from "./transport.ts";
+import type { ApprovalTransport, ConsoleTransport, UsageTransport } from "./transport.ts";
 
 /**
  * The router and the things every route may read from its context: the
@@ -41,6 +42,8 @@ export interface RouterContext {
   readonly connections: ConnectionsTransport;
   /** The computer settings screen's data surface: providers, one machine and its snapshots. */
   readonly computer: ComputerTransport;
+  /** Pending approvals and durable approval history for the signed-in actor. */
+  readonly approvals?: ApprovalTransport;
 }
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
@@ -69,5 +72,6 @@ export function getRouter() {
     usage: createHttpUsageTransport(),
     connections: createHttpConnectionsTransport(),
     computer: createHttpComputerTransport(),
+    approvals: createHttpApprovalTransport(),
   });
 }

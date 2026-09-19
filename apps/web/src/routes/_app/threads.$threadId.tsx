@@ -15,8 +15,22 @@ export const Route = createFileRoute("/_app/threads/$threadId")({
 
 function ThreadConsoleRoute() {
   const { threadId } = Route.useParams();
-  const { threads } = Route.useRouteContext();
+  const { threads, approvals } = Route.useRouteContext();
   const { state, retry } = useThreadConsole({ transport: threads, threadId });
 
-  return <ThreadConsoleScreen state={state} onRetry={retry} />;
+  return (
+    <ThreadConsoleScreen
+      state={state}
+      onRetry={retry}
+      {...(approvals === undefined
+        ? {}
+        : {
+            onApprovalDecision: async (
+              input: Parameters<NonNullable<typeof approvals>["decide"]>[0],
+            ) => {
+              await approvals.decide(input);
+            },
+          })}
+    />
+  );
 }

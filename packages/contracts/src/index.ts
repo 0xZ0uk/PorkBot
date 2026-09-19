@@ -28,6 +28,18 @@ export type { SignupAvailability } from "./deployment.ts";
 export { accountMeContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
+// Approval UX (slice 10.3, PRD story 40): the durable pending request list,
+// bot/run filters and the idempotent operator decision. Arguments are already
+// redacted by the gate before this transport can expose them.
+export {
+  approvalSchema,
+  approvalStatusSchema,
+  approvalVoteSchema,
+  approvalsDecideContract,
+  approvalsListContract,
+} from "./approvals.ts";
+export type { Approval } from "./approvals.ts";
+
 // A bot's computer (slices 7.1, 7.5 and 9.4, PRD decision 20; stories 27, 29,
 // 30 and 31): the operator's reach into the supervisor's lifecycle, scoped by
 // bot id, the snapshot surface that makes a bad state recoverable, and the

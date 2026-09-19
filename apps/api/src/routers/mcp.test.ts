@@ -55,6 +55,7 @@ function fakeRepositories(calls: Calls): UserRepositories {
   return {
     actor: owner,
     membership: { requireActive: notExercised },
+    approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
     bots: {
       findById: notExercised,
       list: notExercised,

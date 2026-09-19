@@ -2,6 +2,7 @@ import type { CredentialStore } from "@porkbot/adapter-kit";
 import { ACTIVE_RUN_STATUSES } from "@porkbot/core";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import type {
+  ApprovalDecisions,
   ComputerLeaseStore,
   Credentials,
   McpRunServers,
@@ -30,6 +31,7 @@ import type {
 import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
+import { createApprovalStore } from "./approval-store.ts";
 import { createComputerLeaseStore } from "./computer-leases.ts";
 import { createComputerSnapshotStore } from "./computer-snapshots.ts";
 import type { ComputerSnapshots } from "./computer-snapshots.ts";
@@ -537,6 +539,8 @@ export interface MembershipReader {
 export interface UserRepositories {
   readonly actor: UserActor;
   readonly membership: MembershipReader;
+  /** The operator's pending approvals and durable decision history. */
+  readonly approvals: ApprovalDecisions;
   readonly bots: BotReader & BotWriter;
   readonly sections: SectionReader & SectionWriter;
   readonly threads: ThreadReader & ThreadWriter;
@@ -663,6 +667,7 @@ export function createRepositories(
   return {
     actor,
     membership: readMembership(actor, database),
+    approvals: createApprovalStore(actor, database),
     bots: {
       ...bots,
       create: (input) => createBot(actor, database, input),
