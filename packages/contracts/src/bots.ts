@@ -150,6 +150,17 @@ export const botsCreateContract = authenticatedProcedure
       status: 404,
       message: "No such bot section in this space",
     },
+    /**
+     * A `computerProvider` the deployment cannot currently serve (slice 9.4):
+     * the supervisor was unreachable, the kind is not configured, or the
+     * provider refused its readiness check. The write is refused rather than
+     * stored, so the failure surfaces at the choice instead of at the bot's
+     * first run.
+     */
+    SERVICE_UNAVAILABLE: {
+      status: 503,
+      message: "That computer provider is not available.",
+    },
   })
   .output(botSchema);
 
@@ -187,6 +198,11 @@ export const botsUpdateContract = authenticatedProcedure
     NOT_FOUND: {
       status: 404,
       message: "No such bot, bot section or model connection in this space",
+    },
+    /** A `computerProvider` the deployment cannot currently serve (slice 9.4). */
+    SERVICE_UNAVAILABLE: {
+      status: 503,
+      message: "That computer provider is not available.",
     },
   })
   .output(botSchema);

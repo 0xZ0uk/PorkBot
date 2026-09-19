@@ -258,6 +258,11 @@ export class ComputerEmulator implements ComputerProvider {
     );
   }
 
+  /** The offline emulator is always reachable and holds no credential. */
+  async validate(): Promise<void> {
+    // Nothing to dial and nothing to refuse: the emulator is always available.
+  }
+
   async ensure(computer: ComputerRef): Promise<ComputerStatus> {
     this.#botIds.set(computer.computerId, computer.botId);
     const existing = this.#instances.get(computer.computerId);

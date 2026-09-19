@@ -2,6 +2,7 @@ import type { Bot, BotSection } from "@porkbot/contracts";
 import type { BotRecord, BotSectionRecord } from "@porkbot/db";
 import { authenticated } from "../gate.ts";
 import type { BotService } from "../services/bots.ts";
+import type { ComputerService } from "../services/computers.ts";
 
 /**
  * The bots router: the CRUD surface over the actor-scoped repositories.
@@ -15,9 +16,17 @@ import type { BotService } from "../services/bots.ts";
  * nothing more: no field can widen the scope the repository was built with, and
  * avatar bytes never appear in a bot body — the row carries a key, and
  * `bots.avatar` is the one read that resolves it through the storage seam.
+ *
+ * A bot write that names a `computerProvider` passes the selection gate first
+ * (slice 9.4): the computer service checks that kind against the supervisor's
+ * own readiness answer, so a provider the deployment cannot serve is the
+ * contract's typed `SERVICE_UNAVAILABLE` before the row is written rather than
+ * a machine that fails at the bot's first run. A write that does not name a
+ * provider is untouched, and `null` — the deployment default — is the
+ * supervisor's own default, which its boot already validated.
  */
 
-export function createBotsRouter(service: BotService) {
+export function createBotsRouter(service: BotService, computers: ComputerService) {
   const list = authenticated.bots.list.handler(async ({ input, context }) => {
     const bots = await context.repositories.bots.list(input.scope);
 
@@ -30,12 +39,16 @@ export function createBotsRouter(service: BotService) {
     return botOutput(record);
   });
 
-  const create = authenticated.bots.create.handler(async ({ input, context }) =>
-    botOutput(await context.repositories.bots.create(input)),
-  );
+  const create = authenticated.bots.create.handler(async ({ input, context }) => {
+    await computers.assertProviderSelectable(input.computerProvider);
 
-  const update = authenticated.bots.update.handler(async ({ input, context }) =>
-    botOutput(
+    return botOutput(await context.repositories.bots.create(input));
+  });
+
+  const update = authenticated.bots.update.handler(async ({ input, context }) => {
+    await computers.assertProviderSelectable(input.computerProvider);
+
+    return botOutput(
       await context.repositories.bots.update(input.id, {
         name: input.name,
         title: input.title,
@@ -50,8 +63,8 @@ export function createBotsRouter(service: BotService) {
         modelConnectionId: input.modelConnectionId,
         model: input.model,
       }),
-    ),
-  );
+    );
+  });
 
   const archive = authenticated.bots.archive.handler(async ({ input, context }) =>
     botOutput(await context.repositories.bots.archive(input.id)),

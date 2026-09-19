@@ -17,6 +17,8 @@ export interface HomeScreenProps {
   readonly renderEdit: (bot: Bot) => ReactNode;
   readonly renderMemory: (bot: Bot) => ReactNode;
   readonly renderUsage: (bot: Bot) => ReactNode;
+  /** The link into one bot's computer settings, rendered by the route. */
+  readonly renderComputer: (bot: Bot) => ReactNode;
   readonly renderThread: (thread: Thread) => ReactNode;
 }
 
@@ -33,6 +35,7 @@ export function HomeScreen({
   renderEdit,
   renderMemory,
   renderUsage,
+  renderComputer,
   renderThread,
 }: HomeScreenProps) {
   const [showArchived, setShowArchived] = useState(false);
@@ -69,6 +72,7 @@ export function HomeScreen({
           renderEdit={renderEdit}
           renderMemory={renderMemory}
           renderUsage={renderUsage}
+          renderComputer={renderComputer}
           renderThread={renderThread}
         />
       )}
@@ -96,6 +100,7 @@ export function HomeScreen({
                   renderEdit={renderEdit}
                   renderMemory={renderMemory}
                   renderUsage={renderUsage}
+                  renderComputer={renderComputer}
                   renderThread={renderThread}
                 />
               ))}
@@ -116,6 +121,7 @@ interface BotGroupsProps {
   readonly renderEdit: (bot: Bot) => ReactNode;
   readonly renderMemory: (bot: Bot) => ReactNode;
   readonly renderUsage: (bot: Bot) => ReactNode;
+  readonly renderComputer: (bot: Bot) => ReactNode;
   readonly renderThread: (thread: Thread) => ReactNode;
 }
 
@@ -152,6 +158,7 @@ function BotGroups(props: BotGroupsProps) {
             renderEdit={props.renderEdit}
             renderMemory={props.renderMemory}
             renderUsage={props.renderUsage}
+            renderComputer={props.renderComputer}
             renderThread={props.renderThread}
           />
         ))}
@@ -170,6 +177,7 @@ interface BotCardProps {
   readonly renderEdit: (bot: Bot) => ReactNode;
   readonly renderMemory: (bot: Bot) => ReactNode;
   readonly renderUsage: (bot: Bot) => ReactNode;
+  readonly renderComputer: (bot: Bot) => ReactNode;
   readonly renderThread: (thread: Thread) => ReactNode;
 }
 
@@ -183,6 +191,7 @@ function BotCard({
   renderEdit,
   renderMemory,
   renderUsage,
+  renderComputer,
   renderThread,
 }: BotCardProps) {
   const [confirming, setConfirming] = useState(false);
@@ -213,6 +222,7 @@ function BotCard({
         {renderEdit(bot)}
         {archived ? null : renderMemory(bot)}
         {archived ? null : renderUsage(bot)}
+        {archived ? null : renderComputer(bot)}
         {archived ? null : (
           <Button disabled={pending} onClick={() => onNewThread(bot.id)}>
             New thread

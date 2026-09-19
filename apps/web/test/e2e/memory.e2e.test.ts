@@ -12,6 +12,7 @@ import {
   fakeMemoryDocument,
   fakeMemoryRevision,
   scriptedBotsTransport,
+  scriptedComputerTransport,
   scriptedConnectionsTransport,
   scriptedThreadTransport,
   scriptedUsageTransport,
@@ -88,6 +89,7 @@ async function mountMemory(api: ScriptedMemoryApi): Promise<MountedMemory> {
       memory: createHttpMemoryTransport({ origin: api.url }),
       usage: scriptedUsageTransport(),
       connections: scriptedConnectionsTransport(),
+      computer: scriptedComputerTransport(),
     },
     createMemoryHistory({ initialEntries: [`/bots/${botId}/memory`] }),
   );

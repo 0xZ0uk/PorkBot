@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { InProcessRealtimeFanout, createSupervisorComputerProvider } from "@porkbot/adapters";
@@ -38,6 +39,8 @@ let snapshotRowOwner = assignedBotId;
 let capturedSnapshots = 0;
 
 let sessionActor: UserActor | null = owner;
+/** The bot rows the scripted repositories hold; a create or update writes here. */
+const records = new Map<string, BotRecord>();
 const recorded: { readonly path: string; readonly body: unknown }[] = [];
 let failNextWith:
   { readonly status: number; readonly kind: string; readonly message: string } | undefined;
@@ -90,8 +93,32 @@ function repositoriesFor(actor: UserActor): UserRepositories {
         throw new NotFoundError("bot", id);
       },
       list: notExercised,
-      create: notExercised,
-      update: notExercised,
+      create: async (input) => {
+        // The row a real create would insert; only the fields this suite reads
+        // are carried, and the map is the evidence that the write happened.
+        const record: BotRecord = {
+          ...botWith(null),
+          id: randomUUID(),
+          name: input.name,
+          color: input.color,
+          spawnKey: input.spawnKey,
+          computerProvider: input.computerProvider ?? null,
+        };
+        records.set(record.id, record);
+
+        return record;
+      },
+      update: async (id, patch) => {
+        const bot = await repositoriesFor(actor).bots.findById(id);
+        const updated = {
+          ...bot,
+          ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)),
+          updatedAt: new Date(),
+        } as BotRecord;
+        records.set(id, updated);
+
+        return updated;
+      },
       archive: notExercised,
       restore: notExercised,
       delete: notExercised,
@@ -215,6 +242,14 @@ function repositoriesFor(actor: UserActor): UserRepositories {
   };
 }
 
+/**
+ * What the scripted supervisor's selection surface answers. The kinds are the
+ * deployment's configured set; `unavailableKind` names one that answers its
+ * readiness check with a classified refusal.
+ */
+let configuredKinds: readonly string[] = ["offline", "daytona"];
+let unavailableKind: string | null = null;
+
 /** The supervisor's wire, scripted: every answer is the client's own vocabulary. */
 const supervisorServer: Server = createServer(
   (request: IncomingMessage, response: ServerResponse) => {
@@ -233,6 +268,32 @@ const supervisorServer: Server = createServer(
         failNextWith = undefined;
         response.writeHead(failure.status, { "content-type": "application/json" });
         response.end(JSON.stringify({ error: { kind: failure.kind, message: failure.message } }));
+        return;
+      }
+
+      if ((request.url ?? "").endsWith("/providers")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            providers: { defaultKind: "offline", kinds: configuredKinds },
+          }),
+        );
+        return;
+      }
+
+      if ((request.url ?? "").endsWith("/providers/validate")) {
+        const body = raw === "" ? {} : (JSON.parse(raw) as { kind?: string });
+        const kind = body.kind ?? "";
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            validation: {
+              kind,
+              available: kind !== unavailableKind,
+              failure: kind === unavailableKind ? "timed_out" : null,
+            },
+          }),
+        );
         return;
       }
 
@@ -425,6 +486,118 @@ describe("the computer lifecycle surface", () => {
     await expect(client().computers.status({ botId: assignedBotId })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+  });
+});
+
+/**
+ * The selection surface (slice 9.4): the kinds the deployment configured, each
+ * one's readiness as the supervisor answered it, and the write gate that keeps
+ * a bot off a provider the deployment cannot serve. An unavailable kind is
+ * data; a supervisor that cannot be reached is the typed refusal.
+ */
+describe("the computer provider selection surface", () => {
+  it("reports every configured kind with its readiness answer", async () => {
+    sessionActor = owner;
+    configuredKinds = ["offline", "daytona"];
+    unavailableKind = "daytona";
+    recorded.length = 0;
+
+    await expect(client().computers.providers({})).resolves.toEqual({
+      defaultKind: "offline",
+      providers: [
+        { kind: "offline", available: true, failure: null },
+        { kind: "daytona", available: false, failure: "timed_out" },
+      ],
+    });
+
+    // Every configured kind is checked, and nothing else is dialed.
+    expect(recorded.map((request) => request.path)).toEqual([
+      "/v1/computers/providers",
+      "/v1/computers/providers/validate",
+      "/v1/computers/providers/validate",
+    ]);
+  });
+
+  it("refuses an unavailable provider before the bot write lands", async () => {
+    sessionActor = owner;
+    configuredKinds = ["offline", "daytona"];
+    unavailableKind = "daytona";
+
+    await expect(
+      client().bots.create({
+        name: "Ada",
+        color: "#4f46e5",
+        spawnKey: randomUUID(),
+        computerProvider: "daytona",
+      }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+
+    // The row never happened: the availability check answered first.
+    expect(records.size).toBe(0);
+
+    unavailableKind = null;
+
+    await expect(
+      client().bots.update({ id: assignedBotId, computerProvider: "offline" }),
+    ).resolves.toMatchObject({ computerProvider: "offline" });
+  });
+
+  it("refuses a provider kind this deployment never configured", async () => {
+    sessionActor = owner;
+    configuredKinds = ["offline"];
+    unavailableKind = null;
+
+    await expect(
+      client().bots.update({ id: assignedBotId, computerProvider: "daytona" }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
+  it("lets a bot write that names no provider through without a selection check", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().bots.update({ id: assignedBotId, computerProvider: null }),
+    ).resolves.toMatchObject({ computerProvider: null });
+    expect(recorded).toEqual([]);
+  });
+
+  it("answers the selection read with service unavailable when no supervisor is configured", async () => {
+    const bare = createApiServer({
+      services: {
+        deployment: {
+          async status() {
+            return { kind: "open" } as const;
+          },
+        },
+        realtime: new InProcessRealtimeFanout(),
+      },
+      logger,
+      resolveActor: async () => owner,
+      repositoriesFor,
+    });
+
+    await new Promise<void>((resolve) => {
+      bare.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = bare.address();
+
+    if (address === null || typeof address === "string") {
+      throw new Error("the bare api test server did not bind a TCP port");
+    }
+
+    try {
+      const bareClient = createApiClient({ url: `http://127.0.0.1:${address.port}/rpc` });
+
+      await expect(bareClient.computers.providers({})).rejects.toMatchObject({
+        code: "SERVICE_UNAVAILABLE",
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        bare.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 });
 

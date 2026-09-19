@@ -17,6 +17,7 @@ import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AppBotsNewRouteImport } from './routes/_app/bots.new'
 import { Route as AppSettingsConnectionsRouteImport } from './routes/_app/settings.connections'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
+import { Route as AppBotsBotIdComputerRouteImport } from './routes/_app/bots.$botId.computer'
 import { Route as AppBotsBotIdEditRouteImport } from './routes/_app/bots.$botId.edit'
 import { Route as AppBotsBotIdMemoryRouteImport } from './routes/_app/bots.$botId.memory'
 import { Route as AppBotsBotIdUsageRouteImport } from './routes/_app/bots.$botId.usage'
@@ -60,6 +61,11 @@ const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
   path: '/threads/$threadId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBotsBotIdComputerRoute = AppBotsBotIdComputerRouteImport.update({
+  id: '/bots/$botId/computer',
+  path: '/bots/$botId/computer',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBotsBotIdEditRoute = AppBotsBotIdEditRouteImport.update({
   id: '/bots/$botId/edit',
   path: '/bots/$botId/edit',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/bots/new': typeof AppBotsNewRoute
   '/settings/connections': typeof AppSettingsConnectionsRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/bots/new': typeof AppBotsNewRoute
   '/settings/connections': typeof AppSettingsConnectionsRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/_app/bots/new': typeof AppBotsNewRoute
   '/_app/settings/connections': typeof AppSettingsConnectionsRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/_app/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/_app/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/_app/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/bots/new'
     | '/settings/connections'
     | '/threads/$threadId'
+    | '/bots/$botId/computer'
     | '/bots/$botId/edit'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/bots/new'
     | '/settings/connections'
     | '/threads/$threadId'
+    | '/bots/$botId/computer'
     | '/bots/$botId/edit'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/_app/bots/new'
     | '/_app/settings/connections'
     | '/_app/threads/$threadId'
+    | '/_app/bots/$botId/computer'
     | '/_app/bots/$botId/edit'
     | '/_app/bots/$botId/memory'
     | '/_app/bots/$botId/usage'
@@ -225,6 +237,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppThreadsThreadIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bots/$botId/computer': {
+      id: '/_app/bots/$botId/computer'
+      path: '/bots/$botId/computer'
+      fullPath: '/bots/$botId/computer'
+      preLoaderRoute: typeof AppBotsBotIdComputerRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/bots/$botId/edit': {
       id: '/_app/bots/$botId/edit'
       path: '/bots/$botId/edit'
@@ -261,6 +280,7 @@ interface AppRouteChildren {
   AppBotsNewRoute: typeof AppBotsNewRoute
   AppSettingsConnectionsRoute: typeof AppSettingsConnectionsRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
+  AppBotsBotIdComputerRoute: typeof AppBotsBotIdComputerRoute
   AppBotsBotIdEditRoute: typeof AppBotsBotIdEditRoute
   AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
   AppBotsBotIdUsageRoute: typeof AppBotsBotIdUsageRoute
@@ -272,6 +292,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBotsNewRoute: AppBotsNewRoute,
   AppSettingsConnectionsRoute: AppSettingsConnectionsRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
+  AppBotsBotIdComputerRoute: AppBotsBotIdComputerRoute,
   AppBotsBotIdEditRoute: AppBotsBotIdEditRoute,
   AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,
   AppBotsBotIdUsageRoute: AppBotsBotIdUsageRoute,

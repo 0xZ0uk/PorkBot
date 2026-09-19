@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authenticatedProcedure } from "./access.ts";
+import { providerFailureKindSchema } from "./model-connections.ts";
 
 /**
  * The computer lifecycle surface (slice 7.1, PRD decision 20; stories 27, 29).
@@ -24,6 +25,13 @@ import { authenticatedProcedure } from "./access.ts";
  * `SERVICE_UNAVAILABLE`: the API holds no Docker socket and no provider
  * credential, so "the computer service is unreachable" is a deployment fact,
  * never a defect to guess about.
+ *
+ * `computers.providers` is the selection read (slice 9.4, PRD story 31): which
+ * kinds this deployment configured and whether each can currently serve a
+ * machine. It names no bot and no computer, and it changes nothing — the
+ * readiness check it reports is the supervisor's own, made without creating a
+ * machine — so the operator can see "Docker is not reachable" before storing a
+ * bot on it, and `bots.create`/`bots.update` refuse a kind the check rejects.
  *
  * Snapshots are the operator's recovery path (slice 7.5, PRD story 30).
  * `snapshot` captures the bot's computer and records it in the actor's space;
@@ -73,6 +81,54 @@ const computerErrors = {
     message: "The computer service is not available.",
   },
 } as const;
+
+/**
+ * One selectable kind and whether the deployment can currently serve it (slice
+ * 9.4, PRD story 31). `available` is the last check's own answer: an
+ * unreachable daemon, a refused key and a missing image are shown as the
+ * unavailable provider they are, before a bot is stored on it, rather than
+ * surfacing at the bot's first run. `failure` names the shared vocabulary's
+ * kind when the check was refused, and is `null` when it was not.
+ */
+export const computerProviderSchema = z.object({
+  kind: z.string().min(1),
+  available: z.boolean(),
+  failure: providerFailureKindSchema.nullable(),
+});
+
+export type ComputerProviderView = z.infer<typeof computerProviderSchema>;
+
+/**
+ * Every kind this deployment configured, and which one a bot with no selection
+ * runs on. The list is the deployment's own answer from its supervisor, so a
+ * client renders exactly the kinds that exist rather than a compiled-in set.
+ */
+export const computerProvidersViewSchema = z.object({
+  /** The kind a bot with no selection runs on. */
+  defaultKind: z.string().min(1),
+  providers: z.array(computerProviderSchema),
+});
+
+export type ComputerProvidersView = z.infer<typeof computerProvidersViewSchema>;
+
+/**
+ * The selection read: which kinds exist and which are usable. It names no bot
+ * and no computer — it is a property of the deployment, not of one machine —
+ * and it changes nothing, so an operator can open the choice without touching
+ * a computer.
+ */
+export const computersProvidersContract = authenticatedProcedure
+  .route({
+    method: "GET",
+    path: "/computers/providers",
+    operationId: "computersProviders",
+    summary: "The configured computer providers and whether they are usable",
+  })
+  .input(z.object({}))
+  .errors({
+    SERVICE_UNAVAILABLE: computerErrors.SERVICE_UNAVAILABLE,
+  })
+  .output(computerProvidersViewSchema);
 
 export const computersStatusContract = authenticatedProcedure
   .route({

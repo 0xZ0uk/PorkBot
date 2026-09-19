@@ -26,14 +26,22 @@ import { authenticatedProcedure } from "./access.ts";
  * The five provider failure kinds, for the probe's answer. `@porkbot/adapter-kit`
  * owns the vocabulary and this mirrors it for the wire; the suite beside this
  * module fails when the two drift.
+ *
+ * The computer selection surface answers the same vocabulary (slice 9.4), so
+ * `providerFailureKindSchema` is the one wire mirror and this alias keeps the
+ * model probe's public name for it.
  */
-export const modelFailureKindSchema = z.enum([
+export const providerFailureKindSchema = z.enum([
   "gone",
   "not_found",
   "rate_limited",
   "timed_out",
   "auth_failed",
 ]);
+
+export type ProviderFailureKindView = z.infer<typeof providerFailureKindSchema>;
+
+export const modelFailureKindSchema = providerFailureKindSchema;
 
 export type ModelFailureKind = z.infer<typeof modelFailureKindSchema>;
 

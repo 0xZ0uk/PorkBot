@@ -184,6 +184,20 @@ export async function computerConformance(
   }
 
   describe(`${name} computer conformance`, () => {
+    it("validates itself without creating, starting or changing a machine", async () => {
+      const harness = await create();
+      const before = await harness.provider.list();
+
+      await expect(harness.provider.validate()).resolves.toBeUndefined();
+
+      // The check is a read: it must not leave a machine behind, and the
+      // computers the provider already held are untouched.
+      await expect(harness.provider.list()).resolves.toHaveLength(before.length);
+      await expect(harness.provider.status(harness.computer)).resolves.toMatchObject({
+        state: "gone",
+      });
+    });
+
     it("brings a computer up idempotently and reports it running", async () => {
       const harness = await create();
 

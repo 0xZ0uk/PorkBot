@@ -60,6 +60,7 @@ describe("bot home", () => {
           renderEdit={(bot) => <a href={`/bots/${bot.id}/edit`}>Edit</a>}
           renderMemory={() => null}
           renderUsage={() => null}
+          renderComputer={() => null}
           renderThread={(thread) => <li key={thread.id}>Thread</li>}
         />,
       );
@@ -99,6 +100,7 @@ describe("bot home", () => {
           renderEdit={() => null}
           renderMemory={() => null}
           renderUsage={() => null}
+          renderComputer={() => null}
           renderThread={() => null}
         />,
       );

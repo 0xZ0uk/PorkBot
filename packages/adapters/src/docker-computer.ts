@@ -397,6 +397,15 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
   }
 
   return {
+    async validate(): Promise<void> {
+      // The daemon's own ping: the socket answers only when the daemon is
+      // there, and the check is read-only, so a selection cannot leave a
+      // container, a network or an image behind. The subject is the daemon, so
+      // a refused call is classified for what it is rather than as a missing
+      // machine.
+      await guarded(engine.ping(), "daemon");
+    },
+
     async find(computer: ComputerRef): Promise<ComputerMachine | undefined> {
       const inspect = await inspectFor(computer);
 
