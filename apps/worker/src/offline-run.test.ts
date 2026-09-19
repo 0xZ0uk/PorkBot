@@ -1,9 +1,10 @@
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import { ComputerEmulator, emulatorAgentRuntimeLayer } from "@porkbot/adapters";
 import type { EmulatorStep } from "@porkbot/adapters";
 import { createRepositories } from "@porkbot/db";
 import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@porkbot/db";
 import {
+  consumeRunSession,
   createComputerTools,
   createRunEventRecorder,
   createToolDispatcher,
@@ -58,6 +59,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseOwner: "job-1",
     leaseFence: 1,
     leaseExpiresAt: new Date(120_000),
+    stopRequestedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -190,12 +192,13 @@ async function runOffline(): Promise<OfflineRun> {
         (session) => {
           const recorder = createRunEventRecorder();
 
-          return session.events.pipe(
-            Stream.tap((event) => Effect.sync(() => recorded.push(recorder.record(event)))),
-            Stream.runDrain,
+          return consumeRunSession(session, (event) =>
+            Effect.sync(() => {
+              recorded.push(recorder.record(event));
+            }),
           );
         },
-      ).pipe(Effect.provide(liveRunsLayer), Effect.asVoid);
+      ).pipe(Effect.provide(liveRunsLayer));
     },
   });
 

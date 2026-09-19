@@ -92,6 +92,7 @@ const testRun: RunRecord = {
   leaseOwner: null,
   leaseFence: 0,
   leaseExpiresAt: null,
+  stopRequestedAt: null,
   checkpoint: {},
   clientNonce: "routine-test:nonce-1",
   sourceMessageId: null,
@@ -136,6 +137,7 @@ function stubRepositories(): UserRepositories {
       listForThread: notExercised,
       findActiveForThread: notExercised,
       create: notExercised,
+      requestStop: notExercised,
     },
     events: { listAfter: notExercised },
     messages: {

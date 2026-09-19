@@ -7,9 +7,11 @@ import type {
   McpServers,
   NotificationPreferences,
   NotificationRecipients,
+  RunCommandSource,
 } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import {
+  claimSteeringMessages,
   clearThread,
   createAssistantMessageStore,
   createSteeringMessageStore,
@@ -345,6 +347,16 @@ export interface RunWriter {
    * because the command opens a transaction on it.
    */
   create(input: NewRunAndTask): Promise<CreatedRunAndTask>;
+  /**
+   * Marks a live run for its operator's stop (slice 6.7, story 21). The mark
+   * is set once — a second request keeps the first instant — and the run's
+   * executor observes it, cancels the session and settles the row, so this
+   * command itself changes no status. A run outside the actor's space is the
+   * shared `NotFoundError`; a run that already finished is returned as it is,
+   * because asking again to stop something stopped is idempotent, not an
+   * error.
+   */
+  requestStop(id: string): Promise<RunRecord>;
 }
 
 export interface SystemRunWriter {
@@ -385,6 +397,12 @@ export interface SystemRepositories {
   readonly runs: RunReader & SystemRunWriter;
   /** The run's own output: the assistant messages it produced. */
   readonly messages: AssistantMessageWriter;
+  /**
+   * The live run's command source (slice 6.7): the steering rows it claims
+   * and the stop mark it observes. The pump beside the session reads it; the
+   * statements stay scoped to the job's space.
+   */
+  readonly commands: RunCommandSource;
   /** The scheduler's half: settle one routine slot through the job's space. */
   readonly routines: RoutineScheduler;
   /**
@@ -512,6 +530,7 @@ export function createRepositories(
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
       messages: createAssistantMessageStore(actor, database),
+      commands: createRunCommandSource(actor, database),
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),
       credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
@@ -550,6 +569,7 @@ export function createRepositories(
     runs: {
       ...runs,
       create: (input) => createRunAndTask(actor, database, input),
+      requestStop: (id) => requestRunStop(actor, database, id),
     },
     events,
     messages: {
@@ -713,6 +733,59 @@ function readRuns(actor: Actor, database: Queryable): RunReader {
       );
 
       return rows[0];
+    },
+  };
+}
+
+/**
+ * The operator's stop command. An active run's `stop_requested_at` is set once
+ * — `coalesce` keeps the first instant a second request found — and the run's
+ * executor observes the mark, so this command changes no status itself. A run
+ * that already finished is returned unchanged: stop is idempotent, and asking
+ * again after the fact must not error on a run the operator can still see.
+ * Only a missing or foreign run is the shared scoped not-found.
+ */
+async function requestRunStop(
+  actor: UserActor,
+  database: Queryable,
+  runId: string,
+): Promise<RunRecord> {
+  const { rows } = await database.query<RunRecord>(
+    "update run set stop_requested_at = coalesce(stop_requested_at, now()), updated_at = now() " +
+      "where id = $1 and space_id = $2 and status = any($3::run_status[]) " +
+      `returning ${runColumns}`,
+    [runId, actor.spaceId, ACTIVE_RUN_STATUSES],
+  );
+
+  if (rows[0] !== undefined) {
+    return rows[0];
+  }
+
+  const { rows: existing } = await database.query<RunRecord>(
+    `select ${runColumns} from run where id = $1 and space_id = $2`,
+    [runId, actor.spaceId],
+  );
+
+  return requiredRow(existing, "run", runId);
+}
+
+/**
+ * The live run's command source (slice 6.7): the steering rows it claims and
+ * the stop mark it observes, both scoped to the job's space. The seam is
+ * declared in `@porkbot/effect` beside the session it feeds; this is its one
+ * implementation over the rows.
+ */
+function createRunCommandSource(actor: SystemActor, database: Queryable): RunCommandSource {
+  return {
+    claimSteers: (runId) => claimSteeringMessages(actor, database, runId),
+    async stopRequested(runId: string): Promise<boolean> {
+      const { rows } = await database.query<{ readonly stopRequested: boolean }>(
+        'select stop_requested_at is not null as "stopRequested" from run ' +
+          "where id = $1 and space_id = $2",
+        [runId, actor.spaceId],
+      );
+
+      return rows[0]?.stopRequested ?? false;
     },
   };
 }

@@ -35,6 +35,7 @@ import { createMcpRouter } from "./routers/mcp.ts";
 import { createModelConnectionsRouter } from "./routers/model-connections.ts";
 import { createNotificationsRouter } from "./routers/notifications.ts";
 import { createRoutinesRouter } from "./routers/routines.ts";
+import { createRunsRouter } from "./routers/runs.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
 import { createBotService } from "./services/bots.ts";
@@ -183,6 +184,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     bots: createBotsRouter(createBotService(storage)),
     sections: createSectionsRouter(),
     threads: createThreadsRouter(threadEvents, threads),
+    runs: createRunsRouter(),
     routines: createRoutinesRouter(),
     credentials: createCredentialsRouter(),
     mcpServers: createMcpRouter(options.services.mcp),

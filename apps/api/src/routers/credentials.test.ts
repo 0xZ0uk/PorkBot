@@ -94,6 +94,7 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
       listForThread: notExercised,
       findActiveForThread: notExercised,
       create: notExercised,
+      requestStop: notExercised,
     },
     events: { listAfter: notExercised },
     messages: {

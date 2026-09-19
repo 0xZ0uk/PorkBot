@@ -141,6 +141,7 @@ export type {
 // transaction.
 export {
   allocateMessageSeq,
+  claimSteeringMessages,
   clearThread,
   createAssistantMessageStore,
   createSteeringMessageStore,

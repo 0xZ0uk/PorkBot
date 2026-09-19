@@ -203,6 +203,16 @@ export const threadsSendContract = authenticatedProcedure
       status: 409,
       message: "That client nonce already belongs to another message",
     },
+    /**
+     * The send resolved to a live run and that run finished before the steer
+     * could be written (slice 6.7). The message was not appended and no second
+     * run was started: the caller retries as a new send, which the thread's
+     * now-idle state turns into a fresh run under the operator's own intent.
+     */
+    PRECONDITION_FAILED: {
+      status: 412,
+      message: "That run is no longer active; send again to start a new run",
+    },
   })
   .output(
     z.object({

@@ -43,6 +43,7 @@ import {
   routinesTestRunContract,
   routinesUpdateContract,
 } from "./routines.ts";
+import { runsStopContract } from "./runs.ts";
 import {
   sectionsCreateContract,
   sectionsDeleteContract,
@@ -102,6 +103,9 @@ export const appContract = {
     send: threadsSendContract,
     clear: threadsClearContract,
     events: threadsEventsContract,
+  },
+  runs: {
+    stop: runsStopContract,
   },
   routines: {
     list: routinesListContract,

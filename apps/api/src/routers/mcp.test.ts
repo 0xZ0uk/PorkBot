@@ -82,6 +82,7 @@ function fakeRepositories(calls: Calls): UserRepositories {
       listForThread: notExercised,
       findActiveForThread: notExercised,
       create: notExercised,
+      requestStop: notExercised,
     },
     events: { listAfter: notExercised },
     messages: {

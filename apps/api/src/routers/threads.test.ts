@@ -12,7 +12,7 @@ import type {
   UserRepositories,
 } from "@porkbot/db";
 import type { CreatedRunAndTask, NewRunAndTask } from "@porkbot/db";
-import { NotFoundError } from "@porkbot/effect";
+import { NotFoundError, RunNotActiveError } from "@porkbot/effect";
 import { createLogger } from "@porkbot/logging";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { serviceName } from "../app.ts";
@@ -34,6 +34,14 @@ import { createApiServer } from "../server.ts";
  */
 
 const owner: UserActor = { kind: "user", spaceId: "space-1", userId: "user-1", role: "owner" };
+
+/**
+ * The interleaving a real race produces and a single-threaded test cannot: a
+ * run that is live when the send's active read sees it and finished by the
+ * time the steer write runs. The fake consumes this once, inside the active
+ * read, so the two repository calls observe different states of the same run.
+ */
+let finishRunOnNextActiveRead: string | undefined;
 
 interface Store {
   readonly threads: Map<string, ThreadRecord>;
@@ -176,6 +184,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       leaseOwner: null,
       leaseFence: 0,
       leaseExpiresAt: null,
+      stopRequestedAt: null,
       checkpoint: {},
       clientNonce: input.clientNonce,
       sourceMessageId: null,
@@ -343,12 +352,42 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       async findActiveForThread(threadId) {
         scopedThread(actor, threadId);
 
-        return activeRun(threadId);
+        const active = activeRun(threadId);
+
+        if (active !== undefined && active.id === finishRunOnNextActiveRead) {
+          finishRunOnNextActiveRead = undefined;
+          store.runs.set(active.id, {
+            ...active,
+            status: "completed",
+            completedAt: stamp(),
+          });
+        }
+
+        return active;
       },
       async create(input) {
         scopedThread(actor, input.threadId);
 
         return createRun(input);
+      },
+      async requestStop(id) {
+        const run = store.runs.get(id);
+
+        if (run === undefined || run.spaceId !== actor.spaceId) {
+          throw new NotFoundError("run", id);
+        }
+
+        if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") {
+          return run;
+        }
+
+        const marked: RunRecord = {
+          ...run,
+          stopRequestedAt: run.stopRequestedAt ?? stamp(),
+        };
+        store.runs.set(id, marked);
+
+        return marked;
       },
     },
     events: {
@@ -383,6 +422,13 @@ function repositoriesFor(actor: UserActor): UserRepositories {
 
         if (run === undefined || run.spaceId !== actor.spaceId || run.threadId !== thread.id) {
           throw new NotFoundError("run", input.runId);
+        }
+
+        // The live-run guard the SQL enforces with the state machine's active
+        // set: a run that finished between the send's read and this write is
+        // refused, never silently appended to.
+        if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") {
+          throw new RunNotActiveError(input.runId, run.status);
         }
 
         const existing = [...store.messages.values()].find(
@@ -615,6 +661,31 @@ describe("sending a message", () => {
     expect(replayed.action).toBe("replay");
     expect(replayed.message.id).toBe(steered.message.id);
     expect([...store.runs.values()].filter((run) => run.threadId === thread.id)).toHaveLength(1);
+  });
+
+  it("refuses a steer that raced the run's finish, instead of starting a second run", async () => {
+    const api = client();
+    const thread = seedThread(seedBot());
+
+    const started = await api.threads.send({
+      threadId: thread.id,
+      text: "start",
+      clientNonce: randomUUID(),
+    });
+
+    finishRunOnNextActiveRead = started.runId ?? "";
+
+    const refused = await api.threads
+      .send({ threadId: thread.id, text: "change course", clientNonce: randomUUID() })
+      .catch((error: unknown) => error);
+
+    expect(refused).toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    const runs = [...store.runs.values()].filter((run) => run.threadId === thread.id);
+    expect(runs).toHaveLength(1);
+    expect(
+      [...store.messages.values()].filter((message) => message.threadId === thread.id),
+    ).toHaveLength(1);
   });
 });
 

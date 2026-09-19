@@ -140,12 +140,16 @@ describe("the Pi runtime seam", () => {
   it("reports a steer as run.steered and writes it into the live run", async () => {
     const controlled = controlledSource();
     const first = await Effect.runPromise(
-      runWithCommand({ type: "steer", text: "be brief" }, controlled),
+      runWithCommand({ type: "steer", messageId: "message-1", text: "be brief" }, controlled),
     );
 
     expect(Option.isSome(first)).toBe(true);
     if (Option.isSome(first)) {
-      expect(first.value).toMatchObject({ type: "run.steered", text: "be brief" });
+      expect(first.value).toMatchObject({
+        type: "run.steered",
+        messageId: "message-1",
+        text: "be brief",
+      });
       expect(parseRunEvent(first.value).ok).toBe(true);
     }
     expect(controlled.calls.steers).toEqual(["be brief"]);

@@ -26,6 +26,7 @@ export {
   NameConflictError,
   NotFoundError,
   RunGoneError,
+  RunNotActiveError,
   ToolCallConflictError,
   ToolLedgerError,
   UnknownToolError,
@@ -87,6 +88,26 @@ export type {
   RunSession,
   RunStartRequest,
 } from "./agent-runtime.ts";
+
+// The cross-process command path into a live run (slice 6.7, stories 20 and
+// 21). A `RunSession` mailbox is process-local, so a steer is the durable
+// `steering_message` row the send wrote and a stop is the run row's
+// `stop_requested_at` mark; `RunCommandSource` is the read seam `@porkbot/db`
+// implements, `pumpRunCommands` forwards what it claims into the session, and
+// `consumeRunSession` drains the events once and reports the terminal outcome
+// the executor settles the row from.
+export {
+  consumeRunSession,
+  DEFAULT_STOP_REASON,
+  pumpRunCommands,
+  RUN_COMMAND_POLL_INTERVAL_MS,
+} from "./run-commands.ts";
+export type {
+  PendingSteer,
+  RunCommandPumpOptions,
+  RunCommandSource,
+  RunSessionOutcome,
+} from "./run-commands.ts";
 
 // The durable approval gate (slice 5.7, PRD decision 13; audit P0 item 1).
 // Approval is pending state, not a live socket: `open` records the durable row
