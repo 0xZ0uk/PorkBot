@@ -183,6 +183,13 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       rotate: notExercised,
       remove: notExercised,
     },
+    botSecrets: {
+      list: notExercised,
+      find: notExercised,
+      put: notExercised,
+      forget: notExercised,
+      rotate: notExercised,
+    },
     mcp: {
       list: notExercised,
       findById: notExercised,

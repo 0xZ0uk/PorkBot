@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   ApprovalStoreError,
   BlockedUrlError,
+  BotSecretDestinationError,
   ComputerUnavailableError,
   CredentialMissingError,
   CredentialStoreError,
@@ -134,6 +135,11 @@ const samples = {
     error: new InvalidOAuthStateError("unknown_or_used"),
     code: "BAD_REQUEST",
     status: 400,
+  },
+  BotSecretDestinationError: {
+    error: new BotSecretDestinationError("example_api"),
+    code: "CONFLICT",
+    status: 409,
   },
 } satisfies {
   readonly [K in TypedErrorTag]: {

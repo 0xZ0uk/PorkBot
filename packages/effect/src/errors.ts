@@ -569,6 +569,27 @@ export class InvalidOAuthStateError extends Data.TaggedError("InvalidOAuthStateE
 }
 
 /**
+ * Why an operator's bot-secret write was refused: a value is already stored
+ * under that name for a different destination. The value is bound to the
+ * origin and authentication it was stored for, so re-pointing it silently
+ * would let a later ask send it somewhere the operator never approved. The
+ * error carries the name the caller supplied, never a value or a destination.
+ */
+export class BotSecretDestinationError extends Data.TaggedError("BotSecretDestinationError")<{
+  readonly name: string;
+  readonly message: string;
+}> {
+  constructor(name: string) {
+    super({
+      name,
+      message:
+        `credential "${name}" is already stored for another destination. ` +
+        "Forget it before storing a new origin or authentication.",
+    });
+  }
+}
+
+/**
  * Every error that has a row in the mapping table. A new member fails the
  * `satisfies` check in `mapping.ts` until it has a status, and that is the
  * exhaustiveness the table's test suite then proves at runtime.
@@ -584,6 +605,7 @@ export type TypedError =
   | DeploymentSettingsConflictError
   | CredentialMissingError
   | CredentialStoreError
+  | BotSecretDestinationError
   | BlockedUrlError
   | CursorRejectedError
   | UnknownToolError

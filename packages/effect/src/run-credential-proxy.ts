@@ -1,12 +1,13 @@
 import type {
   ComputerProvider,
   ComputerProxyEndpoint,
-  ComputerProxyGrant,
   ComputerRef,
   CredentialStore,
   ProviderFailure,
   ProxyUpstreamGrant,
 } from "@porkbot/adapter-kit";
+import { botSecretCredentialHeader } from "@porkbot/core";
+import type { BotSecretResolver } from "./bot-secrets.ts";
 import {
   createProxyCapabilityCodec,
   MAX_PROXY_CAPABILITY_TTL_SECONDS,
@@ -70,6 +71,13 @@ export interface RunCredentialProxyOptions {
   readonly provider: ComputerProvider;
   /** Where a credential name resolves; the deployment's store, server-side only. */
   readonly credentials: CredentialStore;
+  /**
+   * Where a bot secret resolves (slice 9.6). Present, a run may grow an
+   * upstream mid-life by asking for a stored bot secret; absent, `grantSecret`
+   * answers `unavailable` and no secret can be added to the grant. The resolver
+   * returns a value only into this handle's own header construction.
+   */
+  readonly botSecrets?: BotSecretResolver | undefined;
   /** The key capabilities are signed with; shared with the computer's proxy. */
   readonly tokenSecret: string | Uint8Array;
   /** The clock, in whole seconds; injected in tests. */
@@ -87,15 +95,48 @@ export interface OpenRunCredentialProxyRequest {
   readonly upstreams: readonly RunProxyUpstreamPlan[];
 }
 
+/**
+ * What one mid-life secret ask did. `granted` means the upstream is published
+ * and the next command's capability can reach it; `missing` means the operator
+ * approved but no value is stored; `name_taken` means an upstream of that name
+ * already belongs to the run's opening plan; `unavailable` means the run has no
+ * secret resolver or its grant is already closed.
+ */
+export type BotSecretGrantResult =
+  | { readonly status: "granted" }
+  | { readonly status: "missing" }
+  | { readonly status: "name_taken" }
+  | { readonly status: "unavailable" };
+
+/**
+ * The narrow half of a run's handle the bot-secret tools hold: grow the grant
+ * by one named secret, or take one back. The value never crosses this seam —
+ * `grantSecret` resolves and injects it inside the handle — so a tool that
+ * holds this interface cannot read a credential even by accident.
+ */
+export interface BotSecretUpstreams {
+  /** Resolves one stored bot secret and publishes it as an upstream. */
+  grantSecret(name: string): Promise<BotSecretGrantResult>;
+  /**
+   * Removes one secret upstream and republishes, so the next request naming it
+   * is refused. Removing a name the handle does not own is a no-op.
+   */
+  revokeSecret(name: string): Promise<void>;
+}
+
 /** What a run holds: where its proxy is, how a command authenticates, and how to revoke. */
-export interface RunCredentialProxyHandle {
+export interface RunCredentialProxyHandle extends BotSecretUpstreams {
   readonly endpoint: ComputerProxyEndpoint;
   /**
    * The environment one command carries. Called per command so each command's
    * capability is fresh and sized to that command's own budget.
    */
   environmentFor(timeoutMs: number): Readonly<Record<string, string>>;
-  /** Removes the grant; idempotent, and safe from a settle path that races a failure. */
+  /**
+   * Removes the grant; idempotent, and safe from a settle path that races a
+   * failure. A closed handle refuses later upstream changes rather than
+   * resurrecting a grant for a run that already ended.
+   */
   revoke(): Promise<void>;
 }
 
@@ -209,17 +250,42 @@ export function createRunCredentialProxy(options: RunCredentialProxyOptions): Ru
         upstreams.push(await headersFor(plan));
       }
 
-      const grant: ComputerProxyGrant = {
+      const endpoint = await admin.grant(request.computer, {
         runId: request.runId,
         expiresAtSeconds: request.expiresAtSeconds,
         upstreams,
-      };
-      const endpoint = await admin.grant(request.computer, grant);
+      });
       const binding = {
         runId: request.runId,
         computerId: request.computer.computerId,
         botId: request.computer.botId,
       };
+
+      // The mid-life half (slice 9.6): a bot secret is resolved into one more
+      // upstream and the whole grant is republished — the admin seam replaces,
+      // and the proxy reads the grant file per request, so the next command's
+      // capability reaches the new upstream with no restart. Every mutation is
+      // serialized and a closed handle refuses to republish, so a settle path's
+      // revoke cannot be raced by a late grant.
+      const secretUpstreams = new Map<string, ProxyUpstreamGrant>();
+      let closed = false;
+      let pending: Promise<unknown> = Promise.resolve();
+
+      const serialize = <A>(work: () => Promise<A>): Promise<A> => {
+        const result = pending.then(work, work);
+        pending = result.then(
+          () => undefined,
+          () => undefined,
+        );
+        return result;
+      };
+
+      const publish = (): Promise<ComputerProxyEndpoint> =>
+        admin.grant(request.computer, {
+          runId: request.runId,
+          expiresAtSeconds: request.expiresAtSeconds,
+          upstreams: [...upstreams, ...secretUpstreams.values()],
+        });
 
       return {
         endpoint,
@@ -231,8 +297,72 @@ export function createRunCredentialProxy(options: RunCredentialProxyOptions): Ru
             [RUN_PROXY_TOKEN_ENV]: codec.mint(binding, ttlSeconds),
           };
         },
-        async revoke(): Promise<void> {
-          await admin.revoke(request.computer, request.runId);
+        grantSecret(name: string): Promise<BotSecretGrantResult> {
+          return serialize(async () => {
+            if (closed || options.botSecrets === undefined) {
+              return { status: "unavailable" } satisfies BotSecretGrantResult;
+            }
+
+            if (upstreams.some((upstream) => upstream.name === name)) {
+              return { status: "name_taken" } satisfies BotSecretGrantResult;
+            }
+
+            const resolved = await options.botSecrets.resolve(request.computer.botId, name);
+
+            if (resolved === undefined || resolved.value === "") {
+              return { status: "missing" } satisfies BotSecretGrantResult;
+            }
+
+            const header = botSecretCredentialHeader(resolved.destination, resolved.value);
+            const previous = secretUpstreams.get(name);
+
+            secretUpstreams.set(name, {
+              name,
+              origin: resolved.destination.origin,
+              headers: { [header.name.toLowerCase()]: header.value },
+            });
+
+            try {
+              await publish();
+            } catch (error) {
+              if (previous === undefined) {
+                secretUpstreams.delete(name);
+              } else {
+                secretUpstreams.set(name, previous);
+              }
+
+              throw error;
+            }
+
+            return { status: "granted" } satisfies BotSecretGrantResult;
+          });
+        },
+        revokeSecret(name: string): Promise<void> {
+          return serialize(async () => {
+            const previous = secretUpstreams.get(name);
+
+            if (closed || previous === undefined) {
+              return;
+            }
+
+            secretUpstreams.delete(name);
+
+            try {
+              await publish();
+            } catch (error) {
+              // The local map is what a retry consults: keeping the entry when
+              // the republish failed means the next revoke tries again rather
+              // than reporting a removal the proxy never received.
+              secretUpstreams.set(name, previous);
+              throw error;
+            }
+          });
+        },
+        revoke(): Promise<void> {
+          closed = true;
+          secretUpstreams.clear();
+
+          return serialize(() => admin.revoke(request.computer, request.runId));
         },
       };
     },

@@ -3,6 +3,9 @@ import { ACTIVE_RUN_STATUSES } from "@porkbot/core";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import type {
   ApprovalDecisions,
+  BotSecretRequests,
+  BotSecretResolver,
+  BotSecrets,
   ComputerLeaseStore,
   Credentials,
   McpRunServers,
@@ -30,6 +33,7 @@ import type {
 } from "./messages.ts";
 import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
+import { createBotSecretStore } from "./bot-secret-store.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 import { createApprovalStore } from "./approval-store.ts";
 import { createComputerLeaseStore } from "./computer-leases.ts";
@@ -472,6 +476,12 @@ export interface SystemRepositories {
    */
   readonly credentials: CredentialStore;
   /**
+   * The run half of bot secrets (slice 9.6): the metadata reads and forget the
+   * agent's tools ask for, plus the one server-side resolve the proxy handle
+   * injects. A job can never write a value or rotate.
+   */
+  readonly botSecrets: BotSecretRequests & BotSecretResolver;
+  /**
    * The run half of MCP servers (slice 9.5): the servers and tools a bot was
    * granted, and the live grant re-check the tool layer asks before a call. A
    * job can never install, rewrite or grant a server.
@@ -559,6 +569,12 @@ export interface UserRepositories {
   readonly notifications: NotificationPreferences;
   /** The operator's stored credentials (slice 9.1), masked on list. */
   readonly credentials: Credentials;
+  /**
+   * The operator's bot secrets (slice 9.6): store a value beside its
+   * destination, list names and statuses, forget and rotate. No shape here
+   * carries a value on the way out.
+   */
+  readonly botSecrets: BotSecrets;
   /**
    * The operator's MCP servers (slice 9.5): install, inspect, refresh, remove
    * and the per-bot grants. The credential value itself stays behind
@@ -652,6 +668,7 @@ export function createRepositories(
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),
       credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
+      botSecrets: createBotSecretStore(actor, database, options?.credentialKeys),
       mcp: createMcpStore(actor, database),
       modelConnections: {
         resolveForBot: (botId) => resolveModelSelection(actor, database, botId),
@@ -702,6 +719,7 @@ export function createRepositories(
     routines: createRoutineStore(actor, database),
     notifications: createNotificationStore(actor, database),
     credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
+    botSecrets: createBotSecretStore(actor, database, options?.credentialKeys),
     mcp: createMcpStore(actor, database),
     modelConnections: {
       ...readModelConnections(actor, database),

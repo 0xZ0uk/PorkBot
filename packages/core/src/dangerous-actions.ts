@@ -10,6 +10,9 @@
  *     read or written. This is the PRD's "secret-adjacent path reads"; a write
  *     into the store is the same secret-adjacent access, because writing a
  *     key is how one is planted.
+ *   - `credential_request` — a call that asks to use a stored bot secret. The
+ *     value is never in the call; the operator's approval is what binds the
+ *     secret to this run's proxy, so every ask is a gate.
  *   - `write_outside_home` — a write whose path resolves outside the bot's
  *     home. An approved call proceeds against that resolved path; the policy
  *     does not refuse it outright, because a refusal the operator could have
@@ -48,6 +51,7 @@ import { resolveComputerPath } from "./files.ts";
  */
 export const DANGEROUS_ACTION_CLASSES = [
   "credential_access",
+  "credential_request",
   "write_outside_home",
   "egress_unlisted",
   "send",
@@ -247,6 +251,33 @@ function credentialAccess(
 }
 
 /**
+ * The credential-request rule (slice 9.6). A tool that asks to use a stored bot
+ * secret declares the class; the call's own destination is metadata and never a
+ * value, and the operator's approval is what binds the secret to this run's
+ * proxy. A request that names nothing cannot be attributed to a credential, so
+ * the tool's own validation refuses it before this rule is consulted.
+ */
+function credentialRequest(
+  request: DangerousActionRequest,
+  record: Record<string, unknown>,
+): DangerousAction | undefined {
+  if (!declaredIncludes(request, "credential_request")) {
+    return undefined;
+  }
+
+  const name = readString(record, "name");
+
+  if (name === undefined) {
+    return undefined;
+  }
+
+  return {
+    class: "credential_request",
+    summary: `use the stored credential "${name}"`,
+  };
+}
+
+/**
  * The home-escape rule. The path is resolved exactly as the file tool will
  * resolve it, so the gate fires on the same path the command would name; a
  * path that cannot resolve at all is the tool's invalid-argument refusal, not
@@ -347,6 +378,11 @@ export function classifyDangerousAction(
   const credential = credentialAccess(request, record);
   if (credential !== undefined) {
     return { verdict: "dangerous", action: credential };
+  }
+
+  const request_ = credentialRequest(request, record);
+  if (request_ !== undefined) {
+    return { verdict: "dangerous", action: request_ };
   }
 
   const deletion = connectorAction(request, "delete");

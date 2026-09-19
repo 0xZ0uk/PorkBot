@@ -109,6 +109,21 @@ const requestBodies: Record<string, string> = {
   }),
   "bots.avatar": JSON.stringify({ json: { id: "bot-1" } }),
   "bots.clearAvatar": JSON.stringify({ json: { id: "bot-1" } }),
+  "botSecrets.list": JSON.stringify({
+    json: { botId: "00000000-0000-4000-8000-000000000000" },
+  }),
+  "botSecrets.put": JSON.stringify({
+    json: {
+      botId: "00000000-0000-4000-8000-000000000000",
+      name: "example_api",
+      value: "sk-test",
+      origin: "https://api.example.test",
+      auth: { type: "bearer" },
+    },
+  }),
+  "botSecrets.remove": JSON.stringify({
+    json: { botId: "00000000-0000-4000-8000-000000000000", name: "example_api" },
+  }),
   "computers.status": JSON.stringify({ json: { botId: "bot-1" } }),
   "computers.boot": JSON.stringify({ json: { botId: "bot-1" } }),
   "computers.stop": JSON.stringify({ json: { botId: "bot-1" } }),
@@ -235,6 +250,9 @@ describe("every contract procedure", () => {
       "account.me",
       "approvals.decide",
       "approvals.list",
+      "botSecrets.list",
+      "botSecrets.put",
+      "botSecrets.remove",
       "bots.archive",
       "bots.avatar",
       "bots.clearAvatar",
@@ -394,6 +412,13 @@ describe("the typed answer", () => {
         store: notExercised,
         rotate: notExercised,
         remove: notExercised,
+      },
+      botSecrets: {
+        list: notExercised,
+        find: notExercised,
+        put: notExercised,
+        forget: notExercised,
+        rotate: notExercised,
       },
       mcp: {
         list: notExercised,

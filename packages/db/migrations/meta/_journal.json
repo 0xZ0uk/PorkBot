@@ -253,6 +253,20 @@
       "when": 1789830715249,
       "tag": "0035_productive_whiplash",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789839292051,
+      "tag": "0036_noisy_invisible_woman",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789839303082,
+      "tag": "0037_bot_secret_grants",
+      "breakpoints": true
     }
   ]
 }
