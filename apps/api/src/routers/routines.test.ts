@@ -188,6 +188,14 @@ function stubRepositories(): UserRepositories {
       setDefault: notExercised,
       delete: notExercised,
     },
+    memory: {
+      list: notExercised,
+      find: notExercised,
+      listDeleted: notExercised,
+      revisions: notExercised,
+      write: notExercised,
+      restore: notExercised,
+    },
   };
 }
 

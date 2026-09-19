@@ -144,6 +144,8 @@ export type { RoutineCron, RoutineDueDecision, RoutineDueInput } from "./routine
 
 export {
   AgentCannotDeleteMemory,
+  AgentCannotRestoreMemory,
+  decideMemoryRestore,
   decideMemoryWrite,
   EmptyMemoryContent,
   EmptyMemoryTitle,
@@ -170,10 +172,15 @@ export {
   UnknownMemoryDocument,
   UnknownMemoryKind,
   UnknownMemoryOrigin,
+  UnknownMemoryRevision,
 } from "./memory-rules.ts";
 export type {
   MemoryDocument,
   MemoryKind,
+  MemoryRestoreContext,
+  MemoryRestoreDecision,
+  MemoryRestoreRequest,
+  MemoryRestoreTarget,
   MemoryRevision,
   MemoryWrite,
   MemoryWriteContext,

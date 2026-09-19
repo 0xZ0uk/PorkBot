@@ -86,6 +86,26 @@ export {
 } from "./routines.ts";
 export type { Routine, RoutineOutcome, RoutineOutcomeStatus } from "./routines.ts";
 
+// The operator's memory surface (slice 8.3, PRD decision 21; stories 23 and
+// 24): live and deleted documents, whole revision history, deliberate writes
+// and restoring a recorded revision. The outcome union is the transport shape
+// of a memory decision — a change with its revision, a no-op, or the domain
+// rule a refusal broke — so the client renders exactly what the store decided.
+export {
+  memoryDocumentSchema,
+  memoryKindSchema,
+  memoryListContract,
+  memoryListScopeSchema,
+  memoryRemoveContract,
+  memoryRestoreContract,
+  memoryRevisionsContract,
+  memoryRevisionSchema,
+  memoryUpdateContract,
+  memoryWriteOriginSchema,
+  memoryWriteOutcomeSchema,
+} from "./memory.ts";
+export type { MemoryDocumentView, MemoryRevisionView, MemoryWriteOutcomeView } from "./memory.ts";
+
 export {
   defaultMessagePageSize,
   defaultThreadPageSize,

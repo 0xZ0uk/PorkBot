@@ -241,8 +241,16 @@ export { createApprovalStore } from "./approval-store.ts";
 // factory splits by actor: an operator writes deliberately and reads the
 // history, an agent proposes create-or-rewrite and can never delete. The seams
 // it implements (`MemoryDocuments`, `MemoryProposals`) are declared in
-// `@porkbot/effect`.
+// `@porkbot/effect`; the record types ride along here so a router imports them
+// from the data layer it is reading, as it does for every other store.
 export { createMemoryStore } from "./memory-store.ts";
+export type {
+  MemoryDocumentRecord,
+  MemoryDocuments,
+  MemoryProposals,
+  MemoryRevisionRecord,
+  MemoryWriteOutcome,
+} from "@porkbot/effect";
 
 // The durable half of notification preferences (slice 8.6, PRD decision 33;
 // stories 35): the per-operator switches behind the settings surface and the

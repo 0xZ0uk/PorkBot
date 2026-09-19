@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { createHash } from "node:crypto";
-import type { MemoryKind, MemoryWriteDecision, RecallLimits } from "@porkbot/core";
+import type { MemoryKind, RecallLimits } from "@porkbot/core";
 import {
   assertRecallLimits,
   boundRecallMatches,
@@ -8,7 +8,7 @@ import {
   isMemoryKind,
 } from "@porkbot/core";
 import type { MemoryProvider } from "@porkbot/adapter-kit";
-import type { MemoryProposals } from "./memory-store.ts";
+import type { MemoryProposals, MemoryWriteOutcome } from "./memory-store.ts";
 import type { ToolCall, ToolRegistration } from "./tool-dispatcher.ts";
 
 /**
@@ -275,7 +275,7 @@ function mintedDocumentId(call: ToolCall): string {
  * message: "agent writes cannot delete memory" is the recovery hint, and the
  * rule's text carries no secret. `no_change` is a success with nothing written.
  */
-function decisionResult(decision: MemoryWriteDecision, documentId: string): unknown {
+function decisionResult(decision: MemoryWriteOutcome, documentId: string): unknown {
   if (decision.ok) {
     return decision.action === "no_change"
       ? { ok: true, action: "no_change", documentId }

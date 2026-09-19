@@ -869,6 +869,48 @@ API boundary maps to the contract's `BAD_REQUEST` rather than a 500. The
 routine editor screen itself waits for the console surfaces (slice 11.2), which
 land on the web shell's routing and session.
 
+## Memory
+
+Durable memory is the other lane of the two-lane context policy (PRD decision
+21; stories 23 and 24). A bot's memory is a set of documents — facts,
+preferences and decisions — each with an append-only revision history, so a
+wrong memory is correctable and every change is attributable. The rows are
+`memory_document` and `memory_revision` in
+`packages/db/src/schema/memory.ts`; the document row is the live state and the
+revision rows are the audit trail, written together in one CTE statement by
+`packages/db/src/memory-store.ts`, the single module that names either table.
+
+The write rules live in `@porkbot/core`'s `memory-rules.ts` and the actor
+factory decides which half of them a caller can reach. An operator
+(`MemoryDocuments`) reads live and tombstoned documents, reads the whole
+history, writes deliberately with itself as author, and restores a recorded
+revision — `decideMemoryRestore` reapplies a revision, including the tombstone
+a deletion left, as the document's next revision, so a deletion is reversible
+without restarting the document's identity. An agent (`MemoryProposals`) reads
+what recall needs and proposes a create or a rewrite recorded as
+`agent_proposed` with the bot as author; it can never delete or restore, so a
+durable fact is only lost by a deliberate operator act. Document ids are minted
+once and never reused.
+
+The agent's tools are `remember`, `recall` and `forget`
+(`packages/effect/src/memory-tools.ts`): recall searches the provider index
+within `RecallLimits`, remember proposes a create or a rewrite, and forget asks
+for a deletion the rules refuse and records as a call in the timeline. The run's
+prompt reads the same documents through `MemoryReader` and composes them in the
+data channel, and compaction carries them through by reference and asserts them
+preserved, so shortening a conversation never touches the memory lane.
+
+The operator's surface is the memory contract (slice 8.3): `memory.list`
+(live by default, tombstones under the `deleted` scope), `memory.revisions`
+(whole history with who, why and when), and `memory.update`, `memory.remove`
+and `memory.restore`, which answer the store's decision as a union — an
+effective change with its revision, `no_change`, or the typed rule a refusal
+broke. `apps/web/src/memory.ts` is the screen's controller and
+`apps/web/src/screens/memory.tsx` renders it: documents with their kind and
+revision, corrections in place, a folded view for long content, and a history
+panel whose restore button reapplies any revision. A correction is a durable
+write, so it takes effect immediately — no restart and no run.
+
 ## Notifications
 
 The notification seam (slice 8.6, PRD decision 33; story 35) is declared in

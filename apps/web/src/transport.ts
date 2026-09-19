@@ -2,6 +2,7 @@ import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "
 import type { Bot, Message, Thread } from "@porkbot/contracts";
 import { AuthRefusal } from "./session.ts";
 import type { ThreadConsoleTransport } from "./console.ts";
+import type { MemoryTransport } from "./memory.ts";
 import type {
   AuthTransport,
   Credentials,
@@ -219,5 +220,24 @@ export function createHttpConsoleTransport(
     },
 
     events: client.threads.events,
+  };
+}
+
+/**
+ * The memory screen's API surface: one bot's documents and their history, and
+ * the operator's writes. It is the same derived client narrowed to the
+ * procedures the memory controller calls, so the screen never sees a wire
+ * shape it invented.
+ */
+export function createHttpMemoryTransport(options: HttpAuthTransportOptions = {}): MemoryTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    list: async (botId, scope) => (await client.memory.list({ botId, scope })).documents,
+    revisions: async (botId, documentId) =>
+      (await client.memory.revisions({ botId, documentId })).revisions,
+    update: (input) => client.memory.update(input),
+    remove: (input) => client.memory.remove(input),
+    restore: (input) => client.memory.restore(input),
   };
 }

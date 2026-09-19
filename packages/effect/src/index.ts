@@ -191,10 +191,13 @@ export type { RunEventRecorder, RunEventRecorderOptions, RunEventSink } from "./
 // tables — and the factory splits by actor: an operator writes deliberately
 // and reads history, an agent proposes create-or-rewrite and can never delete.
 export type {
+  MemoryDocumentRecord,
   MemoryDocuments,
   MemoryProposals,
   MemoryReader,
+  MemoryRevisionRecord,
   MemoryWriteInput,
+  MemoryWriteOutcome,
 } from "./memory-store.ts";
 
 // The two-lane context policy (slice 8.2, PRD decision 21; stories 23 and 24).

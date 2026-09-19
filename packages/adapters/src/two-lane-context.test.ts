@@ -5,17 +5,13 @@ import {
   decideMemoryWrite,
   SYSTEM_SECTION_IDS,
 } from "@porkbot/core";
-import type {
-  ConversationMessage,
-  MemoryDocument,
-  MemoryWriteDecision,
-  RunPrompt,
-} from "@porkbot/core";
+import type { ConversationMessage, MemoryDocument, RunPrompt } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
 import type {
   CompactionOutcome,
   MemoryProposals,
   MemoryWriteInput,
+  MemoryWriteOutcome,
   ToolRegistration,
 } from "@porkbot/effect";
 import { createConversationCompactor, createMemoryTools, loadRunPrompt } from "@porkbot/effect";
@@ -108,7 +104,7 @@ class DurableMemory implements MemoryProposals {
       : Promise.resolve(document);
   }
 
-  propose(botId: string, input: MemoryWriteInput): Promise<MemoryWriteDecision> {
+  propose(botId: string, input: MemoryWriteInput): Promise<MemoryWriteOutcome> {
     const documents = this.#byBot.get(botId) ?? new Map<string, MemoryDocument>();
     this.#byBot.set(botId, documents);
 
@@ -126,6 +122,12 @@ class DurableMemory implements MemoryProposals {
         title: revision.title,
         content: revision.content,
         revision: revision.revision,
+      });
+
+      return Promise.resolve({
+        ok: true,
+        action: decision.action,
+        revision: { ...revision, createdAt: new Date().toISOString() },
       });
     }
 

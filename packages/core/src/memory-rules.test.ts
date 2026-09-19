@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   AgentCannotDeleteMemory,
+  AgentCannotRestoreMemory,
+  decideMemoryRestore,
+  decideMemoryWrite,
   EmptyMemoryContent,
   EmptyMemoryTitle,
   MAX_MEMORY_CONTENT_LENGTH,
@@ -24,13 +27,16 @@ import {
   UnknownMemoryDocument,
   UnknownMemoryKind,
   UnknownMemoryOrigin,
-  decideMemoryWrite,
+  UnknownMemoryRevision,
   isMemoryKind,
   isMemoryWriteOrigin,
 } from "./memory-rules.ts";
 import type {
   MemoryDocument,
   MemoryKind,
+  MemoryRestoreContext,
+  MemoryRestoreRequest,
+  MemoryRevision,
   MemoryWrite,
   MemoryWriteContext,
   MemoryWriteRequest,
@@ -520,6 +526,8 @@ describe("memory write validation", () => {
       new UnknownMemoryAction("archive"),
       new UnknownMemoryDocument("doc-1"),
       new AgentCannotDeleteMemory("doc-1"),
+      new UnknownMemoryRevision("doc-1", 9),
+      new AgentCannotRestoreMemory("doc-1"),
       new MemoryDocumentLimitReached(MAX_MEMORY_DOCUMENTS_PER_BOT),
     ];
 
@@ -551,5 +559,239 @@ describe("memory predicates", () => {
     for (const value of ["system", "", 0, null, undefined, []]) {
       expect(isMemoryWriteOrigin(value)).toBe(false);
     }
+  });
+});
+
+const earlier: MemoryRevision = {
+  documentId: existing.documentId,
+  revision: 1,
+  origin: "deliberate",
+  author: "operator-1",
+  reason: "first write",
+  kind: "preference",
+  title: "Reporting cadence",
+  content: "Send the weekly report on Monday",
+  deleted: false,
+};
+
+const tombstone: MemoryRevision = {
+  documentId: existing.documentId,
+  revision: 4,
+  origin: "deliberate",
+  author: "operator-1",
+  reason: "no longer relevant",
+  kind: "preference",
+  title: "Reporting cadence",
+  content: "Send the weekly report on Friday",
+  deleted: true,
+};
+
+function restoreRequest(overrides: Partial<MemoryRestoreRequest> = {}): MemoryRestoreRequest {
+  return {
+    ...deliberate,
+    documentId: existing.documentId,
+    revision: earlier.revision,
+    ...overrides,
+  };
+}
+
+function restoreContext(overrides: Partial<MemoryRestoreContext> = {}): MemoryRestoreContext {
+  return { document: { ...existing, deleted: false }, revision: earlier, ...overrides };
+}
+
+function restoreFailure(
+  request: MemoryRestoreRequest,
+  ctx: MemoryRestoreContext = restoreContext(),
+) {
+  const decision = decideMemoryRestore(request, ctx);
+  expect(decision.ok).toBe(false);
+  if (decision.ok) {
+    throw new Error("expected the restore to be refused");
+  }
+
+  return decision.error;
+}
+
+function restored(request: MemoryRestoreRequest, ctx: MemoryRestoreContext = restoreContext()) {
+  const decision = decideMemoryRestore(request, ctx);
+  if (!decision.ok) {
+    throw new Error(`expected the restore to be allowed, got ${decision.error.name}`);
+  }
+  if (decision.action === "no_change") {
+    throw new Error("expected a restore, got no_change");
+  }
+
+  return decision;
+}
+
+describe("decideMemoryRestore", () => {
+  it("reapplies the named revision as the next revision and records who and why", () => {
+    const decision = restored(restoreRequest());
+
+    expect(decision.action).toBe("restore");
+    expect(decision.revision).toEqual({
+      documentId: existing.documentId,
+      revision: existing.revision + 1,
+      origin: "deliberate",
+      author: "operator-1",
+      reason: "user asked",
+      kind: earlier.kind,
+      title: earlier.title,
+      content: earlier.content,
+      deleted: false,
+    });
+  });
+
+  it("reverses a deletion by restoring the tombstone revision", () => {
+    const document = { ...existing, revision: 4, deleted: true };
+    const decision = restored(
+      restoreRequest({ revision: tombstone.revision }),
+      restoreContext({ document, revision: tombstone }),
+    );
+
+    expect(decision.revision.revision).toBe(5);
+    expect(decision.revision.deleted).toBe(false);
+    expect(decision.revision.content).toBe(tombstone.content);
+  });
+
+  it("keeps the target's kind even when a rewrite changed nothing else", () => {
+    const decision = restored(restoreRequest(), restoreContext());
+
+    expect(decision.revision.kind).toBe(earlier.kind);
+  });
+
+  it("restores the target revision's kind, not the document's", () => {
+    const decision = restored(
+      restoreRequest({ revision: 2 }),
+      restoreContext({
+        document: { ...existing, revision: 2, kind: "decision", deleted: false },
+        revision: { ...earlier, revision: 2, kind: "fact" },
+      }),
+    );
+
+    expect(decision.revision.kind).toBe("fact");
+  });
+
+  it("is a change when the target differs only in kind", () => {
+    const decision = restored(
+      restoreRequest({ revision: 3 }),
+      restoreContext({
+        document: { ...existing, revision: 3, kind: "preference", deleted: false },
+        revision: {
+          ...earlier,
+          revision: 3,
+          kind: "fact",
+          title: existing.title,
+          content: existing.content,
+        },
+      }),
+    );
+
+    expect(decision.action).toBe("restore");
+  });
+
+  it("is a no_change when the target already is the live state", () => {
+    const live = { ...existing, revision: 3, deleted: false };
+    const decision = decideMemoryRestore(
+      restoreRequest({ revision: 3 }),
+      restoreContext({
+        document: live,
+        revision: { ...earlier, revision: 3, title: live.title, content: live.content },
+      }),
+    );
+
+    expect(decision).toEqual({ ok: true, action: "no_change" });
+  });
+
+  it("refuses an agent-proposed restore as a rule, not a lookup miss", () => {
+    const error = restoreFailure(restoreRequest({ origin: "agent_proposed" }), {
+      document: undefined,
+      revision: undefined,
+    });
+
+    expect(error).toBeInstanceOf(AgentCannotRestoreMemory);
+  });
+
+  it("answers unknown-document when no row holds the id", () => {
+    const error = restoreFailure(restoreRequest(), {
+      document: undefined,
+      revision: earlier,
+    });
+
+    expect(error).toBeInstanceOf(UnknownMemoryDocument);
+  });
+
+  it("answers unknown-revision when history has no such revision", () => {
+    expect(
+      restoreFailure(restoreRequest(), restoreContext({ revision: undefined })),
+    ).toBeInstanceOf(UnknownMemoryRevision);
+
+    expect(
+      restoreFailure(restoreRequest(), restoreContext({ revision: { ...earlier, revision: 2 } })),
+    ).toBeInstanceOf(UnknownMemoryRevision);
+
+    expect(
+      restoreFailure(
+        restoreRequest(),
+        restoreContext({ revision: { ...earlier, documentId: "doc-other" } }),
+      ),
+    ).toBeInstanceOf(UnknownMemoryRevision);
+  });
+
+  it("validates the request before the document or the history", () => {
+    expect(
+      restoreFailure(restoreRequest({ reason: "  " }), {
+        document: undefined,
+        revision: undefined,
+      }),
+    ).toBeInstanceOf(MissingMemoryReason);
+
+    expect(
+      restoreFailure(restoreRequest({ documentId: "  " }), {
+        document: undefined,
+        revision: undefined,
+      }),
+    ).toBeInstanceOf(MissingMemoryDocumentId);
+
+    expect(
+      restoreFailure(restoreRequest({ revision: 0 }), { document: undefined, revision: undefined }),
+    ).toBeInstanceOf(UnknownMemoryRevision);
+
+    expect(
+      restoreFailure(restoreRequest({ revision: 1.5 }), {
+        document: undefined,
+        revision: undefined,
+      }),
+    ).toBeInstanceOf(UnknownMemoryRevision);
+
+    expect(
+      restoreFailure(restoreRequest({ author: "  " }), {
+        document: undefined,
+        revision: undefined,
+      }),
+    ).toBeInstanceOf(MissingMemoryAuthor);
+
+    expect(
+      restoreFailure(restoreRequest({ reason: "r".repeat(MAX_MEMORY_REASON_LENGTH + 1) }), {
+        document: undefined,
+        revision: undefined,
+      }),
+    ).toBeInstanceOf(MemoryReasonTooLong);
+  });
+
+  it("does not mutate its inputs", () => {
+    const frozenRequest: MemoryRestoreRequest = Object.freeze(restoreRequest());
+    const frozenContext: MemoryRestoreContext = Object.freeze({
+      document: Object.freeze({ ...existing, deleted: false }),
+      revision: Object.freeze({ ...earlier }),
+    });
+
+    expect(() => decideMemoryRestore(frozenRequest, frozenContext)).not.toThrow();
+  });
+
+  it("is deterministic for the same request and context", () => {
+    expect(decideMemoryRestore(restoreRequest(), restoreContext())).toEqual(
+      decideMemoryRestore(restoreRequest(), restoreContext()),
+    );
   });
 });
