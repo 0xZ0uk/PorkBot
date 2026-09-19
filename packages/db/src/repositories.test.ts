@@ -66,6 +66,7 @@ const bot: BotRecord = {
   model: null,
   avatarKey: null,
   computerId: null,
+  computerProvider: null,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
@@ -424,6 +425,7 @@ describe("bot writes", () => {
       0,
       null,
       null,
+      null,
       "spawn-1",
       null,
       null,
@@ -443,7 +445,7 @@ describe("bot writes", () => {
     });
 
     expect(database.calls[0]?.text).toContain(
-      "left join bot_section s on s.id = $13::uuid and s.space_id = $1 and s.user_id = $2",
+      "left join bot_section s on s.id = $14::uuid and s.space_id = $1 and s.user_id = $2",
     );
     expect(database.calls[0]?.values).toEqual([
       "space-1",
@@ -456,6 +458,7 @@ describe("bot writes", () => {
       false,
       0,
       "computer-1",
+      null,
       null,
       "spawn-1",
       "section-1",
@@ -476,7 +479,7 @@ describe("bot writes", () => {
     });
 
     expect(database.calls[0]?.text).toContain(
-      "left join model_connection c on c.id = $14::uuid and c.space_id = $1",
+      "left join model_connection c on c.id = $15::uuid and c.space_id = $1",
     );
     expect(database.calls[0]?.values).toEqual([
       "space-1",
@@ -488,6 +491,7 @@ describe("bot writes", () => {
       "#4f46e5",
       false,
       0,
+      null,
       null,
       "fixture-model",
       "spawn-1",

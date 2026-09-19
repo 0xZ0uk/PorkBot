@@ -1,3 +1,4 @@
+import { readTar, writeTar } from "./computer-archive.ts";
 import { ComputerProviderError } from "./computer-errors.ts";
 
 /**
@@ -6,11 +7,12 @@ import { ComputerProviderError } from "./computer-errors.ts";
  * A bot's computer is reached through one door — `ComputerProvider.exec` — so
  * the file and browser tools are shell commands, and the emulator has to give
  * them a shell. This is a bounded POSIX-shaped subset, not a general
- * interpreter: words, single and double quotes, `|`, `&&`, `||`, `;`, `>` and
- * `>>`, and the command set below. There is no process spawning, no
- * environment, no command substitution, no input redirection, no background
- * jobs and no globbing, so the same command against the same filesystem always
- * produces the same bytes, exit code and stderr.
+ * interpreter: words, single and double quotes, `|`, `&&`, `||`, `;`, `>`,
+ * `>>` and `2>` (stderr), and the command set below, including `sh -c` for a
+ * caller that has to run a command as one grouped unit. There is no process
+ * spawning, no environment, no command substitution, no input redirection, no
+ * background jobs and no globbing, so the same command against the same
+ * filesystem always produces the same bytes, exit code and stderr.
  *
  * Syntax the subset does not implement is refused with `exitCode` 2 and a
  * message on stderr rather than approximated: `$` and backticks because a real
@@ -94,7 +96,7 @@ export interface ShellWorld {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-const OPERATORS = [">>", "&&", "||", "|", ";", ">"] as const;
+const OPERATORS = [">>", "2>>", "&&", "||", "|", ";", "2>", ">"] as const;
 
 /** Unquoted syntax a real shell acts on and this subset refuses to guess at. */
 const UNSUPPORTED_CHARACTERS: Readonly<Record<string, string>> = {
@@ -107,6 +109,8 @@ const UNSUPPORTED_CHARACTERS: Readonly<Record<string, string>> = {
 interface PipelineSegment {
   readonly words: readonly string[];
   readonly redirect: { readonly target: string; readonly append: boolean } | undefined;
+  /** `2>` / `2>>`: where stderr goes, when a caller asks for it explicitly. */
+  readonly stderrRedirect: { readonly target: string; readonly append: boolean } | undefined;
 }
 
 type ShellItem =
@@ -266,11 +270,13 @@ function parse(source: string): readonly ShellItem[] {
   let segments: PipelineSegment[] = [];
   let words: string[] = [];
   let redirect: PipelineSegment["redirect"];
+  let stderrRedirect: PipelineSegment["stderrRedirect"];
 
   const endSegment = (): void => {
-    segments.push({ words, redirect });
+    segments.push({ words, redirect, stderrRedirect });
     words = [];
     redirect = undefined;
+    stderrRedirect = undefined;
   };
 
   const endPipeline = (): void => {
@@ -295,14 +301,21 @@ function parse(source: string): readonly ShellItem[] {
       continue;
     }
 
-    if (token === ">" || token === ">>") {
+    if (token === ">" || token === ">>" || token === "2>" || token === "2>>") {
       const target = tokens[index + 1];
 
       if (target === undefined || (OPERATORS as readonly string[]).includes(target)) {
         throw new ShellSyntaxError(`a redirection needs a target path after "${token}"`);
       }
 
-      redirect = { target, append: token === ">>" };
+      const append = token.endsWith(">>");
+
+      if (token.startsWith("2")) {
+        stderrRedirect = { target, append };
+      } else {
+        redirect = { target, append };
+      }
+
       index += 1;
       continue;
     }
@@ -318,7 +331,12 @@ function parse(source: string): readonly ShellItem[] {
     words.push(token);
   }
 
-  if (words.length > 0 || redirect !== undefined || segments.length > 0) {
+  if (
+    words.length > 0 ||
+    redirect !== undefined ||
+    stderrRedirect !== undefined ||
+    segments.length > 0
+  ) {
     endPipeline();
   }
 
@@ -757,6 +775,182 @@ const commands: Readonly<Record<string, CommandHandler>> = {
     return output(`${Buffer.from(input).toString("base64")}\n`);
   },
 
+  /**
+   * The archive pair the snapshot path uses: `tar -cf <archive> -C <dir>
+   * <member...>` packs files (and the directories their names imply) into the
+   * shared ustar format, and `tar -xf <archive> -C <dir>` unpacks them. The
+   * cloud provider's snapshot runs through this command on the machine itself,
+   * exactly as a real image's `tar` would, which is why the shell carries it.
+   */
+  tar: (world, args) => {
+    let mode: "create" | "extract" | undefined;
+    let archive: string | undefined;
+    let directory = world.cwd;
+    const members: string[] = [];
+
+    for (let index = 0; index < args.length; index += 1) {
+      const argument = args[index] ?? "";
+
+      if (!argument.startsWith("-") || argument === "-") {
+        members.push(argument);
+        continue;
+      }
+
+      const letters = argument.slice(1);
+
+      for (let cursor = 0; cursor < letters.length; cursor += 1) {
+        const letter = letters[cursor] ?? "";
+
+        if (letter === "c") {
+          mode = "create";
+          continue;
+        }
+
+        if (letter === "x") {
+          mode = "extract";
+          continue;
+        }
+
+        if (letter === "v") {
+          continue;
+        }
+
+        if (letter === "f" || letter === "C") {
+          const attached = letters.slice(cursor + 1);
+          const value = attached === "" ? args[index + 1] : attached;
+
+          if (attached === "") {
+            index += 1;
+          }
+
+          if (value === undefined) {
+            return failure(`tar: option requires an argument -- '${letter}'`);
+          }
+
+          if (letter === "f") {
+            archive = value;
+          } else {
+            directory = resolveShellPath(world.cwd, value);
+          }
+
+          cursor = letters.length;
+          continue;
+        }
+
+        return failure(`tar: invalid option -- '${letter}'`);
+      }
+    }
+
+    if (archive === undefined) {
+      return failure("tar: an archive file is required with -f");
+    }
+
+    const archivePath = resolveShellPath(world.cwd, archive);
+
+    if (mode === "extract") {
+      const info = world.fileInfo(archivePath);
+
+      if (info === undefined || info.kind !== "file") {
+        return failure(`tar: ${archive}: No such file or directory`);
+      }
+
+      for (const entry of readTar(Buffer.from(world.readFile(archivePath)))) {
+        const name = entry.name.replace(/^\.\/+/, "");
+
+        if (name === "" || name.endsWith("/")) {
+          continue;
+        }
+
+        const target = resolveShellPath(directory, name);
+        const parent = target.slice(0, target.lastIndexOf("/"));
+
+        if (parent !== "") {
+          world.makeDirectory(parent, true);
+        }
+
+        world.writeFile(target, entry.content, false);
+      }
+
+      return { stdout: new Uint8Array(0), stderr: "", exitCode: 0 };
+    }
+
+    if (mode === "create") {
+      const entries: { readonly name: string; readonly content: Uint8Array }[] = [];
+
+      const visit = (path: string, name: string): string | undefined => {
+        const info = world.fileInfo(path);
+
+        if (info === undefined) {
+          return `${name}: No such file or directory`;
+        }
+
+        if (info.kind === "file") {
+          entries.push({ name, content: world.readFile(path) });
+          return undefined;
+        }
+
+        for (const child of world.listDirectory(path, true)) {
+          const childPath = path === "/" ? `/${child.name}` : `${path}/${child.name}`;
+          const childName =
+            name === ""
+              ? `./${child.name}`
+              : name.endsWith("/")
+                ? `${name}${child.name}`
+                : `${name}/${child.name}`;
+          const problem = visit(childPath, childName);
+
+          if (problem !== undefined) {
+            return problem;
+          }
+        }
+
+        return undefined;
+      };
+
+      for (const member of members.length === 0 ? ["."] : members) {
+        const start = resolveShellPath(directory, member);
+        const problem = visit(start, member === "." ? "./" : member);
+
+        if (problem !== undefined) {
+          return failure(`tar: ${problem}`);
+        }
+      }
+
+      world.writeFile(archivePath, writeTar(entries), false);
+      return { stdout: new Uint8Array(0), stderr: "", exitCode: 0 };
+    }
+
+    return failure("tar: exactly one of -c or -x is required");
+  },
+
+  /**
+   * `sh -c '<command>'`: the one door a provider needs when it has to group
+   * and redirect a caller's command as a single unit. The command string runs
+   * through the same parser and command set, so `sh -c` adds no new shell; it
+   * only nests one.
+   */
+  sh: (world, args, _stdin, context) => {
+    const parsed = parseFlags(args, ["c"], []);
+
+    if (parsed.error !== undefined) {
+      return failure(`sh: ${parsed.error}`);
+    }
+
+    if (!parsed.flags.has("c")) {
+      return failure("sh: only -c is supported");
+    }
+
+    const source = parsed.positional[0];
+
+    if (source === undefined) {
+      return failure("sh: -c requires a command string");
+    }
+
+    const result = runShellCommand(world, source, context);
+
+    return { stdout: bytes(result.stdout), stderr: result.stderr, exitCode: result.exitCode };
+  },
+
   browser: (world, args) => {
     if (args.length !== 1) {
       return failure("browser: usage: browser '{\"action\":...}'");
@@ -895,10 +1089,33 @@ function executePipeline(
   let exitCode = 0;
 
   for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index] ?? { words: [], redirect: undefined };
+    const segment = segments[index] ?? {
+      words: [],
+      redirect: undefined,
+      stderrRedirect: undefined,
+    };
     const outcome = executeSegment(world, segment, stdin, timeoutMs);
     exitCode = outcome.exitCode;
-    stderr += outcome.stderr;
+
+    if (segment.stderrRedirect !== undefined) {
+      const target = resolveShellPath(world.cwd, segment.stderrRedirect.target);
+
+      try {
+        world.writeFile(target, bytes(outcome.stderr), segment.stderrRedirect.append);
+      } catch (error) {
+        if (!(error instanceof ShellIoError)) {
+          throw error;
+        }
+
+        return {
+          stdout,
+          stderr: `${stderr}${segment.stderrRedirect.target}: ${error.message}\n`,
+          exitCode: 1,
+        };
+      }
+    } else {
+      stderr += outcome.stderr;
+    }
 
     let piped: Uint8Array = outcome.stdout;
 

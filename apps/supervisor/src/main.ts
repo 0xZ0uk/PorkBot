@@ -66,6 +66,7 @@ server.listen(requestedPort, () => {
   logger.info("supervisor listening", {
     port,
     computerProvider: selection.kind,
+    computerProviders: selection.kinds,
     idleTimeoutMs: selection.idleTimeoutMs,
   });
 

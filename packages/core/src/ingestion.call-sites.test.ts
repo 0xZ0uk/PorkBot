@@ -74,9 +74,12 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       // raw stdout and stderr, and the tool layer in `@porkbot/effect` is
       // where the bytes a tool shows are labelled.
       "packages/adapters/src/docker-computer.ts",
-      // The supervisor transport carries a command's raw bytes between the
-      // process that owns the computer and the process that runs the tool;
-      // the tool layer in `@porkbot/effect` is where they are labelled.
+      "packages/adapters/src/daytona-computer.ts",
+      // The shared lifecycle forwards `exec` results between the provider and
+      // its caller, and the supervisor transport carries a command's raw bytes
+      // between the process that owns the computer and the process that runs
+      // the tool; the tool layer in `@porkbot/effect` is where they are labelled.
+      "packages/adapters/src/computer-runtime.ts",
       "packages/adapters/src/supervisor-computer.ts",
       "apps/supervisor/src/computer-lifecycle.ts",
       "packages/core/src/ingestion.ts",
@@ -108,10 +111,12 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       "packages/adapter-kit/src/provider-plan.ts",
       "packages/adapters/src/computer-conformance.ts",
       "packages/adapters/src/computer-emulator.ts",
-      // Same raw boundary as `file_read`: the provider and the transport
-      // forward stdout and stderr unlabelled on purpose, and the tool layer
-      // labels what it shows.
+      // Same raw boundary as `file_read`: the providers, the shared
+      // lifecycle and the transport forward stdout and stderr unlabelled on
+      // purpose, and the tool layer labels what it shows.
       "packages/adapters/src/docker-computer.ts",
+      "packages/adapters/src/daytona-computer.ts",
+      "packages/adapters/src/computer-runtime.ts",
       "packages/adapters/src/supervisor-computer.ts",
       "apps/supervisor/src/computer-lifecycle.ts",
       "packages/core/src/ingestion.ts",

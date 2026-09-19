@@ -169,12 +169,17 @@ function parseComputerRef(value: unknown): ComputerRef {
   const record = value as Record<string, unknown>;
   const computerId = record["computerId"];
   const botId = record["botId"];
+  const provider = record["provider"];
 
   if (typeof computerId !== "string" || typeof botId !== "string") {
     throw new Error("the supervisor reported a malformed computer reference");
   }
 
-  return { computerId, botId };
+  if (provider !== undefined && (typeof provider !== "string" || provider.trim() === "")) {
+    throw new Error("the supervisor reported a malformed computer reference");
+  }
+
+  return provider === undefined ? { computerId, botId } : { computerId, botId, provider };
 }
 
 /** Validates one status the wire carried; a drift fails here, not three layers up. */

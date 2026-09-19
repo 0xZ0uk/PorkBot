@@ -9,13 +9,10 @@ import type {
   ComputerStatus,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
-import { basename, dirname, runShellCommand, ShellIoError } from "./computer-shell.ts";
-import type {
-  DirectoryEntry,
-  ShellBrowserCommand,
-  ShellBrowserOutcome,
-  ShellWorld,
-} from "./computer-shell.ts";
+import { runShellCommand } from "./computer-shell.ts";
+import type { ShellBrowserCommand, ShellBrowserOutcome, ShellWorld } from "./computer-shell.ts";
+import { cloneFileSystem, createFileSystem, createShellWorld } from "./computer-shell-world.ts";
+import type { FileSystemNode } from "./computer-shell-world.ts";
 
 /**
  * The offline computer: a deterministic machine behind the `ComputerProvider`
@@ -51,17 +48,6 @@ export const DEFAULT_COMPUTER_HOME = "/home/agent";
 
 const encoder = new TextEncoder();
 
-interface FileNode {
-  readonly kind: "file";
-  readonly content: Uint8Array;
-}
-
-interface DirectoryNode {
-  readonly kind: "dir";
-}
-
-type Node = FileNode | DirectoryNode;
-
 interface BrowserSession {
   currentUrl: string | undefined;
   readonly typed: Map<string, string>;
@@ -78,7 +64,7 @@ interface BrowserActionScript {
 interface ComputerInstance {
   state: "running" | "stopped";
   generation: number;
-  readonly files: Map<string, Node>;
+  readonly files: Map<string, FileSystemNode>;
   readonly browser: BrowserSession;
 }
 
@@ -373,16 +359,11 @@ export class ComputerEmulator implements ComputerProvider {
     const instance = cloneInstance({
       state: "running",
       generation: this.#nextGeneration,
-      files: new Map<string, Node>([["/", { kind: "dir" }]]),
+      files: createFileSystem(this.#home),
       browser: { currentUrl: undefined, typed: new Map(), typedBuffer: "" },
     });
     this.#nextGeneration += 1;
 
-    for (const path of ancestors(this.#home)) {
-      instance.files.set(path, { kind: "dir" });
-    }
-
-    instance.files.set("/tmp", { kind: "dir" });
     return instance;
   }
 
@@ -490,167 +471,25 @@ export class ComputerEmulator implements ComputerProvider {
   }
 
   #world(instance: ComputerInstance): ShellWorld {
-    return {
+    return createShellWorld({
+      files: instance.files,
       cwd: this.#home,
-      fileInfo: (path) => {
-        const node = instance.files.get(path);
-
-        return node === undefined
-          ? undefined
-          : node.kind === "file"
-            ? { kind: "file", bytes: node.content.byteLength }
-            : { kind: "dir" };
-      },
-      readFile: (path) => {
-        const node = instance.files.get(path);
-
-        if (node === undefined) {
-          throw new ShellIoError(`${path}: No such file or directory`);
-        }
-
-        if (node.kind !== "file") {
-          throw new ShellIoError(`${path}: Is a directory`);
-        }
-
-        return node.content;
-      },
-      listDirectory: (path, includeHidden) => listEntries(instance.files, path, includeHidden),
-      writeFile: (path, content, append) => {
-        const parent = dirname(path);
-        const parentNode = instance.files.get(parent);
-
-        if (parentNode === undefined || parentNode.kind !== "dir") {
-          throw new ShellIoError("No such file or directory");
-        }
-
-        const existing = instance.files.get(path);
-
-        if (existing !== undefined && existing.kind === "dir") {
-          throw new ShellIoError("Is a directory");
-        }
-
-        const next =
-          append && existing?.kind === "file"
-            ? concat(existing.content, content)
-            : new Uint8Array(content);
-        instance.files.set(path, { kind: "file", content: next });
-      },
-      makeDirectory: (path, recursive) => {
-        if (path === "/") {
-          return;
-        }
-
-        const existing = instance.files.get(path);
-
-        if (existing !== undefined) {
-          if (existing.kind === "dir" && recursive) {
-            return;
-          }
-
-          throw new ShellIoError("File exists");
-        }
-
-        const parent = dirname(path);
-        const parentNode = instance.files.get(parent);
-
-        if (parentNode === undefined || parentNode.kind !== "dir") {
-          if (recursive) {
-            for (const ancestor of ancestors(path)) {
-              instance.files.set(ancestor, { kind: "dir" });
-            }
-
-            return;
-          }
-
-          throw new ShellIoError("No such file or directory");
-        }
-
-        instance.files.set(path, { kind: "dir" });
-      },
-      remove: (path, recursive, force) => {
-        const node = instance.files.get(path);
-
-        if (node === undefined) {
-          if (force) {
-            return;
-          }
-
-          throw new ShellIoError("No such file or directory");
-        }
-
-        if (path === "/") {
-          throw new ShellIoError("refusing to remove the root directory");
-        }
-
-        // `rm` refuses a directory without `-r`, exactly as a real shell does,
-        // so a tool that forgets the flag fails here and in a container alike.
-        if (node.kind === "dir" && !recursive) {
-          throw new ShellIoError("Is a directory");
-        }
-
-        for (const candidate of [...instance.files.keys()]) {
-          if (candidate === path || candidate.startsWith(`${path}/`)) {
-            instance.files.delete(candidate);
-          }
-        }
-      },
-      move: (from, to) => {
-        const node = instance.files.get(from);
-
-        if (node === undefined) {
-          throw new ShellIoError("No such file or directory");
-        }
-
-        const destination = instance.files.get(to);
-        const target =
-          destination?.kind === "dir" ? `${to === "/" ? "" : to}/${basename(from)}` : to;
-
-        if (target === from || target.startsWith(`${from}/`)) {
-          throw new ShellIoError("cannot move a directory into itself");
-        }
-
-        if (destination !== undefined && destination.kind !== "dir" && node.kind === "dir") {
-          throw new ShellIoError("File exists");
-        }
-
-        requireParentDirectory(instance.files, target);
-
-        for (const [path, candidate] of [...instance.files.entries()]) {
-          if (path === from || path.startsWith(`${from}/`)) {
-            instance.files.delete(path);
-            instance.files.set(`${target}${path.slice(from.length)}`, candidate);
-          }
-        }
-      },
-      copy: (from, to, recursive) => {
-        const node = instance.files.get(from);
-
-        if (node === undefined) {
-          throw new ShellIoError("No such file or directory");
-        }
-
-        if (node.kind === "dir" && !recursive) {
-          throw new ShellIoError("Is a directory");
-        }
-
-        const destination = instance.files.get(to);
-        const target =
-          destination?.kind === "dir" ? `${to === "/" ? "" : to}/${basename(from)}` : to;
-
-        if (destination !== undefined && destination.kind !== "dir" && node.kind === "dir") {
-          throw new ShellIoError("cannot overwrite non-directory with directory");
-        }
-
-        requireParentDirectory(instance.files, target);
-
-        for (const [path, candidate] of cloneNodes(instance.files, from)) {
-          const suffix = path === from ? "" : path.slice(from.length);
-          instance.files.set(`${target}${suffix}`, candidate);
-        }
-      },
       browser: (command) => this.#browserOutcome(instance, command),
-    };
+    });
   }
+}
+
+function cloneInstance(source: ComputerInstance): ComputerInstance {
+  return {
+    state: source.state,
+    generation: source.generation,
+    files: cloneFileSystem(source.files),
+    browser: {
+      currentUrl: source.browser.currentUrl,
+      typed: new Map(source.browser.typed),
+      typedBuffer: source.browser.typedBuffer,
+    },
+  };
 }
 
 function pageOutcome(action: ShellBrowserCommand["action"], page: EmulatedComputerPage) {
@@ -668,108 +507,4 @@ function browserRecord(command: ShellBrowserCommand): RecordedBrowserAction {
     case "read":
       return { action: "read" };
   }
-}
-
-/** Every ancestor directory of an absolute path, the root first. */
-function ancestors(path: string): readonly string[] {
-  const result: string[] = ["/"];
-
-  for (const part of path.split("/")) {
-    if (part === "" || part === "." || part === "..") {
-      continue;
-    }
-
-    result.push(`${result.at(-1) === "/" ? "" : result.at(-1)}/${part}`);
-  }
-
-  return result;
-}
-
-/**
- * A move or a copy lands only where the parent already exists, exactly as
- * `mv` and `cp` do: writing an orphan entry would make a file that `ls` cannot
- * show and a real shell could not have produced.
- */
-function requireParentDirectory(files: ReadonlyMap<string, Node>, target: string): void {
-  const parent = files.get(dirname(target));
-
-  if (parent === undefined || parent.kind !== "dir") {
-    throw new ShellIoError("No such file or directory");
-  }
-}
-
-function cloneNodes(files: ReadonlyMap<string, Node>, prefix: string): ReadonlyMap<string, Node> {
-  const clones = new Map<string, Node>();
-  const inside = (path: string): boolean =>
-    prefix === "/" ? path.startsWith("/") : path === prefix || path.startsWith(`${prefix}/`);
-
-  for (const [path, node] of files) {
-    if (!inside(path)) {
-      continue;
-    }
-
-    clones.set(
-      path,
-      node.kind === "file"
-        ? { kind: "file", content: new Uint8Array(node.content) }
-        : { kind: "dir" },
-    );
-  }
-
-  return clones;
-}
-
-function cloneInstance(source: ComputerInstance): ComputerInstance {
-  return {
-    state: source.state,
-    generation: source.generation,
-    files: new Map(cloneNodes(source.files, "/")),
-    browser: {
-      currentUrl: source.browser.currentUrl,
-      typed: new Map(source.browser.typed),
-      typedBuffer: source.browser.typedBuffer,
-    },
-  };
-}
-
-function concat(left: Uint8Array, right: Uint8Array): Uint8Array {
-  const joined = new Uint8Array(left.byteLength + right.byteLength);
-  joined.set(left, 0);
-  joined.set(right, left.byteLength);
-  return joined;
-}
-
-function listEntries(
-  files: ReadonlyMap<string, Node>,
-  path: string,
-  includeHidden: boolean,
-): readonly DirectoryEntry[] {
-  const prefix = path === "/" ? "/" : `${path}/`;
-  const entries: DirectoryEntry[] = [];
-
-  for (const [candidate, node] of files) {
-    if (!candidate.startsWith(prefix) || candidate === path) {
-      continue;
-    }
-
-    const remainder = candidate.slice(prefix.length);
-
-    if (
-      remainder === "" ||
-      remainder.includes("/") ||
-      (!includeHidden && remainder.startsWith("."))
-    ) {
-      continue;
-    }
-
-    entries.push({
-      name: remainder,
-      kind: node.kind,
-      bytes: node.kind === "file" ? node.content.byteLength : 0,
-    });
-  }
-
-  return entries.sort((left, right) =>
-    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-  );
 }

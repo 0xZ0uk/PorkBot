@@ -99,6 +99,7 @@ function seedBot(): string {
     spawnKey: randomUUID(),
     avatarKey: null,
     computerId: null,
+    computerProvider: null,
     modelConnectionId: null,
     model: null,
     createdAt: now,
