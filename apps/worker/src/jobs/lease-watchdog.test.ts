@@ -42,6 +42,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     currentStep: null,
     currentStepTool: null,
     stalledAt: null,
+    notifiedAt: null,
     checkpoint: { step: 2 },
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -60,6 +61,10 @@ interface FakeWorld {
   readonly runs: Map<string, RunRecord>;
   readonly reclaimed: Map<string, RunRecord | undefined>;
   readonly stalledRuns: Map<string, RunRecord>;
+  /** What the terminal claim returns to the winner, and the runs that took it. */
+  readonly notified: Set<string>;
+  /** The row a failed-run update returns; without one the read row comes back. */
+  readonly failureResult?: RunRecord;
   readonly marked: string[];
   readonly updates: Array<{
     readonly runId: string;
@@ -122,7 +127,19 @@ function fakeContext(world: FakeWorld): JobContext {
           ),
         });
         const updated = world.runs.get(`${String(values[4])}:${String(values[3])}`);
-        return { rows: (updated === undefined ? [] : [updated]) as unknown as readonly Row[] };
+        const row = world.failureResult ?? updated;
+        return { rows: (row === undefined ? [] : [row]) as unknown as readonly Row[] };
+      }
+
+      if (text.startsWith("update run set notified_at = now()")) {
+        const runId = String(values[0]);
+
+        if (world.notified.has(runId)) {
+          return { rows: [] as readonly Row[] };
+        }
+
+        world.notified.add(runId);
+        return { rows: [{ id: runId }] as unknown as readonly Row[] };
       }
 
       const key = `${String(values[1])}:${String(values[0])}`;
@@ -158,6 +175,7 @@ function world(options: {
   readonly run?: RunRecord | undefined;
   readonly stalledRun?: RunRecord | undefined;
   readonly reclaimed?: RunRecord | undefined;
+  readonly failureResult?: RunRecord | undefined;
 }): FakeWorld {
   const candidate = {
     runId: "run-1",
@@ -185,6 +203,8 @@ function world(options: {
     runs,
     reclaimed: new Map([[candidate.runId, options.reclaimed]]),
     stalledRuns,
+    notified: new Set(),
+    ...(options.failureResult === undefined ? {} : { failureResult: options.failureResult }),
     marked: [],
     updates: [],
     enqueued: [],
@@ -270,6 +290,89 @@ describe("the lease watchdog pass", () => {
     expect(fake.lines.at(-1)).toMatchObject({ scanned: 1, resumed: 0, failed: 1 });
   });
 
+  it("announces a run that timed out with nothing to resume, exactly once", async () => {
+    const recipient = "00000000-0000-4000-8000-000000000001";
+    const run = runRecord({ checkpoint: {}, userId: recipient });
+    const reclaimed = runRecord({
+      checkpoint: {},
+      leaseOwner: "watchdog-job",
+      leaseFence: 4,
+      userId: recipient,
+    });
+    const failed = runRecord({
+      status: "failed",
+      error:
+        "The worker stopped before the run stored a checkpoint, so there was nothing to resume.",
+      errorCode: "checkpoint_absent",
+      leaseOwner: null,
+      leaseFence: 4,
+      completedAt: new Date(),
+      userId: recipient,
+    });
+    const fake = world({ run, reclaimed, failureResult: failed });
+    const emulator = new NotificationEmulator();
+    const job = leaseWatchdogJob({
+      runNotifications: {
+        origin: "https://porkbot.example.invalid",
+        provider: emulator,
+      },
+    });
+
+    await job.handle({}, fakeContext(fake));
+
+    expect(emulator.size).toBe(1);
+    expect(emulator.last()).toMatchObject({
+      title: "A run has timed out",
+      body: "Its worker stopped responding and there was nothing to resume.",
+      url: "https://porkbot.example.invalid/threads/thread-1?run=run-1",
+    });
+
+    // The claim is durable and the run is already terminal: a second pass,
+    // whether it races the executor or repeats this one, sends nothing.
+    await job.handle({}, fakeContext(fake));
+
+    expect(fake.notified).toEqual(new Set(["run-1"]));
+    expect(emulator.size).toBe(1);
+  });
+
+  it("respects the operator's preference for a timed-out run", async () => {
+    const run = runRecord({
+      checkpoint: {},
+      userId: "00000000-0000-4000-8000-000000000001",
+    });
+    const reclaimed = runRecord({
+      checkpoint: {},
+      leaseOwner: "watchdog-job",
+      leaseFence: 4,
+      userId: "00000000-0000-4000-8000-000000000001",
+    });
+    const failed = runRecord({
+      status: "failed",
+      errorCode: "checkpoint_absent",
+      leaseOwner: null,
+      leaseFence: 4,
+      userId: "00000000-0000-4000-8000-000000000001",
+    });
+    const fake = world({
+      run,
+      reclaimed,
+      failureResult: failed,
+      notificationEnabled: false,
+    });
+    const emulator = new NotificationEmulator();
+    const job = leaseWatchdogJob({
+      runNotifications: {
+        origin: "https://porkbot.example.invalid",
+        provider: emulator,
+      },
+    });
+
+    await job.handle({}, fakeContext(fake));
+
+    expect(emulator.size).toBe(0);
+    expect(fake.notified).toEqual(new Set(["run-1"]));
+  });
+
   it("writes nothing when another reclaimer won the lease race", async () => {
     const run = runRecord();
     const fake = world({ run, reclaimed: undefined });
@@ -346,7 +449,7 @@ describe("the watchdog's stall pass", () => {
     });
     const emulator = new NotificationEmulator();
     const job = leaseWatchdogJob({
-      stallNotification: {
+      runNotifications: {
         origin: "https://porkbot.example.invalid",
         provider: emulator,
       },
@@ -358,7 +461,7 @@ describe("the watchdog's stall pass", () => {
     expect(emulator.size).toBe(1);
     expect(emulator.last()).toMatchObject({
       title: "A run has stalled",
-      url: "https://porkbot.example.invalid/threads/thread-1",
+      url: "https://porkbot.example.invalid/threads/thread-1?run=run-1",
     });
     expect(emulator.last()?.body).toContain("while running shell");
     expect(fake.lines.at(-1)).toMatchObject({
@@ -397,7 +500,7 @@ describe("the watchdog's stall pass", () => {
     });
     const emulator = new NotificationEmulator();
     const job = leaseWatchdogJob({
-      stallNotification: {
+      runNotifications: {
         origin: "https://porkbot.example.invalid",
         provider: emulator,
       },
@@ -417,7 +520,7 @@ describe("the watchdog's stall pass", () => {
     });
     const emulator = new NotificationEmulator();
     const job = leaseWatchdogJob({
-      stallNotification: {
+      runNotifications: {
         origin: "https://porkbot.example.invalid",
         provider: emulator,
       },

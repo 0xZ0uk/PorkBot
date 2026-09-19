@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Effect } from "effect";
 import { NotificationEmulator } from "@porkbot/adapters";
 import { createExternalEffectLedger, workerRole } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
@@ -8,7 +9,10 @@ import type { Runner } from "graphile-worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { leaseWatchdogIdentifier } from "../../src/jobs/lease-watchdog.ts";
 import type { RunExecution } from "../../src/jobs/run-execute.ts";
+import { createRunExecutor } from "../../src/run-execution.ts";
 import { startWorker } from "../../src/worker.ts";
+
+const notificationOrigin = "https://porkbot.example.invalid";
 
 /**
  * The fence-loss recovery path against the real database and the real queue: a
@@ -60,9 +64,9 @@ beforeAll(async () => {
         await behavior(execution);
       }
     },
-    stallNotification: {
+    runNotifications: {
       provider: notifications,
-      origin: "https://porkbot.example.invalid",
+      origin: notificationOrigin,
     },
     logger: createLogger({ service: "@porkbot/worker", write: () => {} }),
     pollInterval: 100,
@@ -224,6 +228,35 @@ async function threadOf(runId: string): Promise<string> {
   );
 
   return required(rows[0]?.threadId, "the run's thread");
+}
+
+async function notifiedAt(runId: string): Promise<Date | null> {
+  const { rows } = await db().query<{ notifiedAt: Date | null }>(
+    'select notified_at as "notifiedAt" from run where id = $1',
+    [runId],
+  );
+
+  return rows[0]?.notifiedAt ?? null;
+}
+
+/**
+ * Makes the suite's one user a member of the space and turns one kind on.
+ * Several tests share the space, so the membership is idempotent and the
+ * preference is an upsert; the delivery path's own space check is then reading
+ * a real membership row instead of a fixture.
+ */
+async function enableNotification(space: string, kind: string): Promise<void> {
+  await db().query(
+    "insert into space_member (space_id, user_id, role) values ($1, $2, 'owner') " +
+      "on conflict (space_id, user_id) do nothing",
+    [space, userId],
+  );
+  await db().query(
+    "insert into notification_preference (space_id, user_id, kind, enabled) " +
+      "values ($1, $2, $3::notification_kind, true) " +
+      "on conflict (space_id, user_id, kind) do update set enabled = true",
+    [space, userId, kind],
+  );
 }
 
 describe("the lease watchdog", () => {
@@ -404,6 +437,65 @@ describe("the lease watchdog", () => {
     expect(rows[0]?.result).toMatchObject({ error: expect.stringContaining("lease expired") });
   });
 
+  it("announces a finished run exactly once, linking the run's timeline", async () => {
+    const runId = await insertRun(spaceId, "finished");
+    await enableNotification(spaceId, "run.completed");
+    behaviors.set(runId, async (execution) => {
+      // The real harness, not a stub: the settlement, the durable claim and the
+      // delivery are the shipped ones against a real database.
+      const execute = createRunExecutor({
+        work: () => Effect.succeed({ status: "completed" } as const),
+        notificationTarget: { provider: notifications, origin: notificationOrigin },
+      });
+
+      await execute(execution);
+    });
+
+    await deliver("run.execute", { runId, fence: 0, spaceId });
+    await waitFor(async () => (await runRow(runId)).status === "completed", "the completed run");
+
+    const delivered = notifications
+      .deliveries()
+      .filter((notification) => notification.title === "A run has finished");
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.url).toBe(
+      `${notificationOrigin}/threads/${await threadOf(runId)}?run=${runId}`,
+    );
+    expect(await notifiedAt(runId)).not.toBeNull();
+  });
+
+  it("announces a run that timed out with nothing to resume, exactly once", async () => {
+    const runId = await insertRun(spaceId, "timed-out");
+    await enableNotification(spaceId, "run.failed");
+    behaviors.set(runId, async () => {
+      // The worker dies before its first checkpoint.
+    });
+
+    await deliver("run.execute", { runId, fence: 0, spaceId });
+    await waitFor(async () => (await runRow(runId)).leaseOwner !== null, "the dead worker's claim");
+    await expireLease(runId);
+
+    await deliver(leaseWatchdogIdentifier, {});
+    await waitFor(async () => (await runRow(runId)).status === "failed", "the timed-out run");
+
+    const delivered = notifications
+      .deliveries()
+      .filter((notification) => notification.title === "A run has timed out");
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.url).toBe(
+      `${notificationOrigin}/threads/${await threadOf(runId)}?run=${runId}`,
+    );
+    expect(await notifiedAt(runId)).not.toBeNull();
+
+    // The claim is durable: the next minute's pass refuses it and sends nothing.
+    await deliver(leaseWatchdogIdentifier, {});
+    expect(
+      notifications
+        .deliveries()
+        .filter((notification) => notification.title === "A run has timed out"),
+    ).toHaveLength(1);
+  });
+
   it("finds a live run whose progress stopped and notifies the operator exactly once", async () => {
     const runId = await insertRun(spaceId, "stall");
     await db().query(
@@ -413,15 +505,7 @@ describe("the lease watchdog", () => {
         "current_step_tool = 'shell' where id = $1",
       [runId],
     );
-    await db().query(
-      "insert into space_member (space_id, user_id, role) values ($1, $2, 'owner')",
-      [spaceId, userId],
-    );
-    await db().query(
-      "insert into notification_preference (space_id, user_id, kind, enabled) " +
-        "values ($1, $2, 'run.stalled', true)",
-      [spaceId, userId],
-    );
+    await enableNotification(spaceId, "run.stalled");
 
     await deliver(leaseWatchdogIdentifier, {});
 
@@ -437,7 +521,7 @@ describe("the lease watchdog", () => {
     expect(delivered).toHaveLength(1);
     expect(delivered[0]?.body).toContain("while running shell");
     expect(delivered[0]?.url).toBe(
-      `https://porkbot.example.invalid/threads/${await threadOf(runId)}`,
+      `${notificationOrigin}/threads/${await threadOf(runId)}?run=${runId}`,
     );
 
     // The recorded episode is the exactly-once guard: the next minute's pass

@@ -3,7 +3,7 @@ import type { SystemActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 import type { RunRecord } from "./records.ts";
 import { createRepositories } from "./repositories.ts";
-import { findStalledRuns, markRunStalled } from "./run-liveness.ts";
+import { claimRunNotification, findStalledRuns, markRunStalled } from "./run-liveness.ts";
 
 /**
  * Run-stall detection (slice 6.10): the cross-space scan returns addressing
@@ -92,5 +92,36 @@ describe("marking a stall episode", () => {
 
     expect(marked).toBe(run);
     expect(database.calls[0]?.text).toContain("stalled_at = now()");
+  });
+});
+
+describe("claiming the terminal notification", () => {
+  it("sets the claim in one scoped guarded write", async () => {
+    const database = fakeDatabase([{ id: "run-1" } as RunRecord]);
+
+    const claimed = await claimRunNotification(actor, database, "run-1");
+
+    expect(claimed).toBe(true);
+    const call = database.calls[0];
+    expect(call?.text).toContain("notified_at = now()");
+    expect(call?.text).toContain("where id = $1 and space_id = $2");
+    expect(call?.text).toContain("notified_at is null");
+    // A cancelled run is the operator's own act: the guard never claims it.
+    expect(call?.text).toContain("status in ('completed', 'failed')");
+    expect(call?.values).toEqual(["run-1", actor.spaceId]);
+  });
+
+  it("answers false when the claim was already taken or the run is not terminal", async () => {
+    const database = fakeDatabase([]);
+
+    expect(await claimRunNotification(actor, database, "run-1")).toBe(false);
+  });
+
+  it("is reachable through the system actor's run writer", async () => {
+    const database = fakeDatabase([{ id: "run-1" } as RunRecord]);
+    const repositories = createRepositories(actor, database);
+
+    expect(await repositories.runs.claimNotification("run-1")).toBe(true);
+    expect(database.calls[0]?.text).toContain("notified_at = now()");
   });
 });

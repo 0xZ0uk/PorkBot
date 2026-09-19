@@ -54,6 +54,7 @@ const run: RunRecord = {
   currentStep: null,
   currentStepTool: null,
   stalledAt: null,
+  notifiedAt: null,
   checkpoint: {},
   clientNonce: "nonce-1",
   sourceMessageId: "message-1",

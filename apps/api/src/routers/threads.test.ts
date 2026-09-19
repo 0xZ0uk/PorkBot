@@ -193,6 +193,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       currentStep: null,
       currentStepTool: null,
       stalledAt: null,
+      notifiedAt: null,
       checkpoint: {},
       clientNonce: input.clientNonce,
       sourceMessageId: null,

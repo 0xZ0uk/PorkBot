@@ -116,6 +116,15 @@ services:
       # The worker's own role: read the run state it executes, own the job
       # queue's schema, and no domain write.
       DATABASE_URL: postgres://porkbot_worker:${PORKBOT_WORKER_DB_PASSWORD:-porkbot-worker-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # Where run-liveness notification links point. A local stack serves the
+      # web on loopback; a deployment names its public origin.
+      PORKBOT_WEB_ORIGIN: ${PORKBOT_WEB_ORIGIN:-http://localhost:3000}
+      # The optional webhook destination. Unset, notifications go to the
+      # offline emulator and the product notifies with nothing configured; set,
+      # the key is read from PORKBOT_NOTIFICATION_WEBHOOK_KEY through the
+      # generic credential store.
+      PORKBOT_NOTIFICATION_WEBHOOK_URL: ${PORKBOT_NOTIFICATION_WEBHOOK_URL:-}
+      PORKBOT_NOTIFICATION_WEBHOOK_KEY: ${PORKBOT_NOTIFICATION_WEBHOOK_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

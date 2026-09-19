@@ -5,6 +5,8 @@ import { NotFoundError } from "@porkbot/effect";
 import type { Logger } from "@porkbot/logging";
 import { JobPayloadError } from "../job-registry.ts";
 import type { JobDefinition } from "../job-registry.ts";
+import { notifySettledRun } from "../run-notifications.ts";
+import type { RunNotificationTarget } from "../run-notifications.ts";
 import { systemActorForJob } from "../system-actor.ts";
 
 /**
@@ -127,7 +129,20 @@ export interface RunExecution {
  */
 export type RunExecutor = (execution: RunExecution) => Promise<void>;
 
-export function runExecuteJob(executeRun: RunExecutor): JobDefinition<RunExecutePayload> {
+export interface RunExecuteJobOptions {
+  /**
+   * The E8 delivery path (slice 8.7). A reclaimed run with nothing to resume is
+   * failed here, and its timeout notification is the same one the watchdog
+   * sends; both claim the run's terminal notification first, so whichever path
+   * settles the run sends exactly one.
+   */
+  readonly runNotifications?: RunNotificationTarget;
+}
+
+export function runExecuteJob(
+  executeRun: RunExecutor,
+  options: RunExecuteJobOptions = {},
+): JobDefinition<RunExecutePayload> {
   return {
     identifier: runExecuteIdentifier,
     parse: parseRunExecutePayload,
@@ -163,7 +178,11 @@ export function runExecuteJob(executeRun: RunExecutor): JobDefinition<RunExecute
             : await repositories.runs.adopt(run.id, payload.fence, context.jobId, payload.owner);
 
         if (adopted !== undefined) {
-          await resumeRun({ actor, run: adopted, repositories, logger }, executeRun);
+          await resumeRun(
+            { actor, run: adopted, repositories, logger },
+            executeRun,
+            options.runNotifications,
+          );
           return;
         }
 
@@ -178,7 +197,11 @@ export function runExecuteJob(executeRun: RunExecutor): JobDefinition<RunExecute
           return;
         }
 
-        await resumeRun({ actor, run: reclaimed, repositories, logger }, executeRun);
+        await resumeRun(
+          { actor, run: reclaimed, repositories, logger },
+          executeRun,
+          options.runNotifications,
+        );
       });
     },
   };
@@ -189,10 +212,16 @@ export function runExecuteJob(executeRun: RunExecutor): JobDefinition<RunExecute
  * checkpoint or is failed with a typed reason. The attempt this acquisition
  * recorded is settled as `failed` with the same reason, so a reclaimed run that
  * could not continue leaves no attempt running behind it.
+ *
+ * A run that cannot resume also cannot be retried: this failure is final, and
+ * it is the timeout the operator is told about (slice 8.7). The delivery shares
+ * the watchdog's producer and claims the same terminal marker, so a run that
+ * the watchdog already failed and announced is not announced twice here.
  */
 async function resumeRun(
   execution: Omit<RunExecution, "resumed">,
   executeRun: RunExecutor,
+  notificationTarget: RunNotificationTarget | undefined,
 ): Promise<void> {
   const decision = decideReclaim(execution.run.checkpoint);
 
@@ -203,13 +232,21 @@ async function resumeRun(
 
   const lease = { owner: requiredOwner(execution.run), fence: execution.run.leaseFence };
 
-  await execution.repositories.runs.update(execution.run.id, lease, {
+  const failed = await execution.repositories.runs.update(execution.run.id, lease, {
     status: "failed",
     error: reclaimFailureMessage(decision.reason),
     errorCode: decision.reason,
     completed: true,
     attempt: "failed",
   });
+
+  if (notificationTarget !== undefined) {
+    await notifySettledRun(failed, {
+      repositories: execution.repositories,
+      logger: execution.logger,
+      target: notificationTarget,
+    });
+  }
 
   execution.logger.warn("run failed: there was nothing to resume", {
     fence: execution.run.leaseFence,

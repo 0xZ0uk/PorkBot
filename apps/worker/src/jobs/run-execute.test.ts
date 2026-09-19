@@ -1,3 +1,4 @@
+import { NotificationEmulator } from "@porkbot/adapters";
 import type { Queryable, RunRecord } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
@@ -37,6 +38,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     currentStep: null,
     currentStepTool: null,
     stalledAt: null,
+    notifiedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -57,6 +59,8 @@ interface FakeClientOptions {
   readonly adopt?: RunRecord;
   /** What the reclaim CAS returns; undefined means the lease has not expired. */
   readonly reclaim?: RunRecord;
+  /** The row a fenced run update returns; defaults to the read row. */
+  readonly updated?: RunRecord;
 }
 
 interface FakeClient {
@@ -75,7 +79,12 @@ function fakeClient(options: FakeClientOptions): FakeClient {
 
         const result = ((): readonly unknown[] => {
           if (text.startsWith("with updated as")) {
-            return [options.row];
+            const updated = options.updated ?? options.row;
+            return updated === undefined ? [] : [updated];
+          }
+
+          if (text.includes("left join notification_preference")) {
+            return [{ enabled: true }];
           }
 
           if (text.startsWith("with claimed as")) {
@@ -336,6 +345,49 @@ describe("the run-execute handler", () => {
     expect(failure?.values).toContain("failed");
     expect(failure?.values).toContain("checkpoint_absent");
     expect(failure?.values).toContain("failed");
+  });
+
+  it("announces a reclaimed run that timed out with nothing to resume", async () => {
+    const recipient = "00000000-0000-4000-8000-000000000001";
+    const run = runRecord({
+      status: "running",
+      leaseOwner: "dead-worker",
+      leaseFence: 4,
+      leaseExpiresAt: new Date(0),
+      checkpoint: {},
+      userId: recipient,
+    });
+    const reclaimed = runRecord({
+      status: "running",
+      leaseOwner: "job-1",
+      leaseFence: 5,
+      checkpoint: {},
+      userId: recipient,
+    });
+    const failed = runRecord({
+      status: "failed",
+      error:
+        "The worker stopped before the run stored a checkpoint, so there was nothing to resume.",
+      errorCode: "checkpoint_absent",
+      leaseOwner: null,
+      leaseFence: 5,
+      userId: recipient,
+    });
+    const client = fakeClient({ row: run, reclaim: reclaimed, updated: failed });
+    const emulator = new NotificationEmulator();
+    const { context } = contextFor(client.database);
+    const job = runExecuteJob(async () => undefined, {
+      runNotifications: { origin: "https://porkbot.example.invalid", provider: emulator },
+    });
+
+    await job.handle({ runId: "run-1", fence: 4, spaceId: "space-1" }, context);
+
+    expect(emulator.size).toBe(1);
+    expect(emulator.last()).toMatchObject({
+      title: "A run has timed out",
+      body: "Its worker stopped responding and there was nothing to resume.",
+      url: "https://porkbot.example.invalid/threads/thread-1?run=run-1",
+    });
   });
 
   it("exits without side effects when the row fence moved on", async () => {
