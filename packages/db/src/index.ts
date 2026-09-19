@@ -144,6 +144,7 @@ export {
   claimSteeringMessages,
   clearThread,
   createAssistantMessageStore,
+  createRunMessageReader,
   createSteeringMessageStore,
   insertMessage,
   readMessages,
@@ -155,6 +156,7 @@ export type {
   NewAssistantMessage,
   NewMessage,
   NewSteeringMessage,
+  RunMessageReader,
   SteeringMessageWriter,
 } from "./messages.ts";
 
@@ -226,6 +228,30 @@ export type {
   NewComputerSnapshot,
 } from "./computer-snapshots.ts";
 
+// The stored-file index (slice 7.6, stories 32 and 33): the one module in the
+// package that reads or writes the attachment and artifact tables, split by
+// actor like the other stores. An operator uploads an attachment for a thread
+// and resolves the file a download or a send addresses; a job reads a
+// message's attachments to materialize them and records the artifact one tool
+// call produced. The bytes stay behind the storage seam; this is the row that
+// names them.
+export { createFileStore, createRunFileStore } from "./file-store.ts";
+export type {
+  FileStore,
+  NewArtifact,
+  NewAttachment,
+  RunFileStore,
+  StoredFile,
+} from "./file-store.ts";
+
+// The artifact recorder (slice 7.6, story 33): the `ArtifactRecorder` seam
+// `@porkbot/effect` declares, implemented over the storage seam and the run's
+// file store. The worker composes one per run; the storage key is
+// deterministic in `(space, run, call id)`, so a replayed recording writes the
+// same object and finds the first row.
+export { artifactStorageKey, createArtifactRecorder } from "./artifact-recorder.ts";
+export type { ArtifactRecorderOptions } from "./artifact-recorder.ts";
+
 // Run-liveness detection and its notification claims (slices 6.10 and 8.7,
 // PRD decision 33): the cross-space scan for active runs whose progress
 // stopped, the guarded episode marker a stall notification keys its
@@ -240,12 +266,14 @@ export type {
   BotRecord,
   BotSectionRecord,
   EventRecord,
+  MessageAttachmentRecord,
   MessageRecord,
   MessageRole,
   RoutineOccurrenceRecord,
   RoutineOutcomeRecord,
   RoutineOutcomeStatus,
   RoutineRecord,
+  RunArtifactRecord,
   RunRecord,
   TaskRecord,
   TaskStatus,

@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { InProcessRealtimeFanout } from "@porkbot/adapters";
 import { createApiClient } from "@porkbot/contracts";
 import type { Message, Thread } from "@porkbot/contracts";
+import type { MessageBlock } from "@porkbot/core";
 import type {
   BotRecord,
   EventRecord,
+  MessageAttachmentRecord,
   MessageRecord,
   RunRecord,
   ThreadRecord,
@@ -52,6 +54,10 @@ interface Store {
   readonly steering: Set<string>;
   /** Settled tool results keyed by `(runId, callId)`, the ledger's unique key. */
   readonly toolResults: Map<string, { readonly tool: string; readonly result: unknown }>;
+  /** Stored attachments keyed by the id a send addresses (slice 7.6). */
+  readonly attachments: Map<string, MessageAttachmentRecord>;
+  /** The task prompt each created run asked for, so the path note is provable. */
+  readonly prompts: Map<string, string>;
   sequence: number;
   clock: number;
 }
@@ -64,6 +70,8 @@ const store: Store = {
   bots: new Map(),
   steering: new Set(),
   toolResults: new Map(),
+  attachments: new Map(),
+  prompts: new Map(),
   sequence: 0,
   clock: 0,
 };
@@ -134,6 +142,32 @@ function scopedThread(actor: UserActor, id: string): ThreadRecord {
   }
 
   return thread;
+}
+
+/** One stored attachment on a thread, as the upload route would have left it. */
+function seedAttachment(
+  thread: ThreadRecord,
+  overrides: Partial<MessageAttachmentRecord> = {},
+): MessageAttachmentRecord {
+  const now = stamp();
+  const record: MessageAttachmentRecord = {
+    id: randomUUID(),
+    spaceId: thread.spaceId,
+    threadId: thread.id,
+    botId: thread.botId,
+    userId: owner.userId,
+    filename: "report.pdf",
+    contentType: "application/pdf",
+    sizeBytes: 2_048,
+    storageKey: `files/${thread.spaceId}/${randomUUID()}/report.pdf`,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+
+  store.attachments.set(record.id, record);
+
+  return record;
 }
 
 function repositoriesFor(actor: UserActor): UserRepositories {
@@ -210,6 +244,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       runId,
     });
 
+    store.prompts.set(runId, input.prompt);
     store.runs.set(runId, { ...run, sourceMessageId: message.id });
     const appended = store.threads.get(thread.id) as ThreadRecord;
     store.threads.set(thread.id, { ...appended, updatedAt: now });
@@ -235,7 +270,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
     thread: ThreadRecord,
     input: {
       readonly role: "user" | "assistant";
-      readonly blocks: readonly { readonly type: "text"; readonly text: string }[];
+      readonly blocks: readonly MessageBlock[];
       readonly clientNonce: string;
       readonly runId: string | null;
     },
@@ -534,6 +569,47 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       findById: notExercised,
       listForBot: notExercised,
     },
+    files: {
+      async createAttachment(input) {
+        const thread = scopedThread(actor, input.threadId);
+        const now = stamp();
+        const record: MessageAttachmentRecord = {
+          id: randomUUID(),
+          spaceId: thread.spaceId,
+          threadId: thread.id,
+          botId: thread.botId,
+          userId: actor.userId,
+          filename: input.filename,
+          contentType: input.contentType,
+          sizeBytes: input.sizeBytes,
+          storageKey: input.storageKey,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        store.attachments.set(record.id, record);
+
+        return record;
+      },
+      async findAttachments(threadId, ids) {
+        scopedThread(actor, threadId);
+
+        return ids.map((id) => {
+          const record = store.attachments.get(id);
+
+          if (
+            record === undefined ||
+            record.spaceId !== actor.spaceId ||
+            record.threadId !== threadId
+          ) {
+            throw new NotFoundError("attachment", id);
+          }
+
+          return record;
+        });
+      },
+      findStoredFile: notExercised,
+    },
   };
 }
 
@@ -659,6 +735,89 @@ describe("sending a message", () => {
 
     await expect(
       api.threads.send({ threadId: second.id, text: "second", clientNonce }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("carries an attachment into the message blocks and names its path in the prompt", async () => {
+    const api = client();
+    const thread = seedThread(seedBot());
+    const attachment = seedAttachment(thread);
+
+    const sent = await api.threads.send({
+      threadId: thread.id,
+      text: "summarise this",
+      clientNonce: randomUUID(),
+      attachmentIds: [attachment.id],
+    });
+
+    expect(sent.message.blocks).toEqual([
+      { type: "text", text: "summarise this" },
+      {
+        type: "file",
+        attachmentId: attachment.id,
+        filename: "report.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 2_048,
+      },
+    ]);
+
+    const prompt = store.prompts.get(sent.runId ?? "");
+    expect(prompt).toContain("summarise this");
+    expect(prompt).toContain(`attachments/${attachment.id}/report.pdf`);
+  });
+
+  it("refuses a send whose attachment is not on this thread", async () => {
+    const api = client();
+    const botId = seedBot();
+    const thread = seedThread(botId);
+    const other = seedThread(botId);
+    const attachment = seedAttachment(other);
+
+    await expect(
+      api.threads.send({
+        threadId: thread.id,
+        text: "read this",
+        clientNonce: randomUUID(),
+        attachmentIds: [attachment.id],
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    expect(
+      [...store.messages.values()].filter((message) => message.threadId === thread.id),
+    ).toHaveLength(0);
+  });
+
+  it("replays a send whose attachment set is unchanged and conflicts on a different one", async () => {
+    const api = client();
+    const thread = seedThread(seedBot());
+    const first = seedAttachment(thread);
+    const second = seedAttachment(thread, { filename: "notes.txt", contentType: "text/plain" });
+    const clientNonce = randomUUID();
+
+    const sent = await api.threads.send({
+      threadId: thread.id,
+      text: "read this",
+      clientNonce,
+      attachmentIds: [first.id],
+    });
+
+    const replayed = await api.threads.send({
+      threadId: thread.id,
+      text: "read this",
+      clientNonce,
+      attachmentIds: [first.id],
+    });
+
+    expect(replayed.action).toBe("replay");
+    expect(replayed.message.id).toBe(sent.message.id);
+
+    await expect(
+      api.threads.send({
+        threadId: thread.id,
+        text: "read this",
+        clientNonce,
+        attachmentIds: [second.id],
+      }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
