@@ -117,7 +117,12 @@ describe("the supervisor computer client", () => {
     }));
 
     const failure = await clientFor(stub.origin)
-      .restore(computer, { snapshotId: "snapshot-1", key: "snapshots/1" })
+      .restore(computer, {
+        snapshotId: "snapshot-1",
+        key: "snapshots/1",
+        size: 1,
+        checksum: "0".repeat(64),
+      })
       .then(
         () => {
           throw new Error("the call was expected to fail");

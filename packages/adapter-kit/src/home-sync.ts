@@ -50,7 +50,7 @@ export const COMPUTER_HOME_SYNC: readonly ComputerHomeSyncStory[] = [
   {
     provider: "createDaytonaComputerProvider",
     story:
-      "The home lives on the remote sandbox and is unreachable except through the toolbox. The snapshot path is the sync: capture runs tar in the sandbox, streams the archive through the toolbox download into the provider's snapshot directory, and a reclaimed sandbox is rebuilt by restoring that archive. A deployment that never runs the snapshot job has no home backup, and stop keeps the filesystem only for the sandbox's own lifetime.",
+      "The home lives on the remote sandbox and is unreachable except through the toolbox. The snapshot path is the sync: capture runs tar in the sandbox, streams the archive through the toolbox download into a staging file the shared snapshot store writes through the storage seam, and a reclaimed sandbox is rebuilt by restoring that archive. A deployment that never runs the snapshot job has no home backup, and stop keeps the filesystem only for the sandbox's own lifetime.",
     throughStorage: true,
   },
 ];

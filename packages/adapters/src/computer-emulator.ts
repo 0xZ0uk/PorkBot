@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import type {
   ComputerExecRequest,
   ComputerExecResult,
@@ -9,6 +10,7 @@ import type {
   ComputerStatus,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
+import { computerSnapshotKey } from "./computer-snapshot-store.ts";
 import { runShellCommand } from "./computer-shell.ts";
 import type { ShellBrowserCommand, ShellBrowserOutcome, ShellWorld } from "./computer-shell.ts";
 import { cloneFileSystem, createFileSystem, createShellWorld } from "./computer-shell-world.ts";
@@ -157,14 +159,18 @@ export class ComputerEmulator implements ComputerProvider {
   readonly #botIds = new Map<string, string>();
   readonly #snapshots = new Map<
     string,
-    { readonly snapshotId: string; readonly instance: ComputerInstance }
+    {
+      readonly snapshotId: string;
+      readonly instance: ComputerInstance;
+      readonly size: number;
+      readonly checksum: string;
+    }
   >();
   readonly #pages = new Map<string, EmulatedComputerPage>();
   readonly #actions = new Map<string, BrowserActionScript>();
   readonly #executedCommands: ComputerExecRequest[] = [];
   readonly #browserActions: RecordedBrowserAction[] = [];
   readonly #inputs: ComputerInput[] = [];
-  #nextSnapshot = 1;
   #nextGeneration = 1;
 
   constructor(options: ComputerEmulatorOptions = {}) {
@@ -288,21 +294,35 @@ export class ComputerEmulator implements ComputerProvider {
 
   async snapshot(computer: ComputerRef): Promise<ComputerSnapshot> {
     const instance = this.#running(computer);
-    const snapshotId = `snapshot-${this.#nextSnapshot}`;
-    this.#nextSnapshot += 1;
+    const snapshotId = randomUUID();
+    const key = computerSnapshotKey(computer, snapshotId);
+    const archive = archiveInstance(instance);
+    const checksum = createHash("sha256").update(archive).digest("hex");
 
-    const key = `computer-snapshots/${computer.computerId}/${snapshotId}`;
-    this.#snapshots.set(key, { snapshotId, instance: cloneInstance(instance) });
+    this.#snapshots.set(key, {
+      snapshotId,
+      instance: cloneInstance(instance),
+      size: archive.byteLength,
+      checksum,
+    });
 
-    return { snapshotId, key };
+    return { snapshotId, key, size: archive.byteLength, checksum };
   }
 
   async restore(computer: ComputerRef, snapshot: ComputerSnapshot): Promise<ComputerStatus> {
     const saved = this.#snapshots.get(snapshot.key);
 
-    // The id and the key must name the same stored snapshot: a hand-assembled
-    // pair is refused rather than silently resolving to whatever the key holds.
-    if (saved === undefined || saved.snapshotId !== snapshot.snapshotId) {
+    // The id, the key, the length and the checksum must all name the same
+    // stored snapshot: a hand-assembled or altered handle is refused rather
+    // than silently resolving to whatever the key holds, and the refusal
+    // happens before the machine is touched.
+    if (
+      saved === undefined ||
+      snapshot.key !== computerSnapshotKey(computer, snapshot.snapshotId) ||
+      saved.snapshotId !== snapshot.snapshotId ||
+      saved.size !== snapshot.size ||
+      saved.checksum !== snapshot.checksum
+    ) {
       throw new ComputerProviderError(
         "not_found",
         `no snapshot is stored at "${snapshot.key}"; it was never taken or the emulator is another process`,
@@ -477,6 +497,38 @@ export class ComputerEmulator implements ComputerProvider {
       browser: (command) => this.#browserOutcome(instance, command),
     });
   }
+}
+
+/**
+ * The bytes a snapshot captures: the home's files and the browser session,
+ * serialized in a fixed order so the same state always answers the same
+ * checksum. The machine's `state` and `generation` are deliberately outside the
+ * archive — they describe the instance, not the agent's home, and a restore
+ * brings the home back into a fresh running generation.
+ */
+function archiveInstance(instance: ComputerInstance): Buffer {
+  const files = [...instance.files.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([path, node]) =>
+      node.kind === "file"
+        ? { path, kind: "file", content: Buffer.from(node.content).toString("base64") }
+        : { path, kind: "dir" },
+    );
+  const typed = [...instance.browser.typed.entries()].sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+
+  return Buffer.from(
+    JSON.stringify({
+      files,
+      browser: {
+        currentUrl: instance.browser.currentUrl ?? null,
+        typed,
+        typedBuffer: instance.browser.typedBuffer,
+      },
+    }),
+    "utf8",
+  );
 }
 
 function cloneInstance(source: ComputerInstance): ComputerInstance {

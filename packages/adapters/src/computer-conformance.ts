@@ -368,6 +368,10 @@ export async function computerConformance(
       const snapshot = await harness.provider.snapshot(harness.computer);
       expect(snapshot.snapshotId.trim()).not.toBe("");
       expect(snapshot.key.trim()).not.toBe("");
+      // A snapshot carries what a restore needs to prove the archive is the
+      // one that was captured: its byte length and a SHA-256.
+      expect(snapshot.size).toBeGreaterThan(0);
+      expect(snapshot.checksum).toMatch(/^[0-9a-f]{64}$/);
 
       await harness.provider.destroy(harness.computer);
       await expect(harness.provider.status(harness.computer)).resolves.toMatchObject({
@@ -387,12 +391,36 @@ export async function computerConformance(
 
       const failure = await failureFrom(
         harness.provider.restore(harness.computer, {
-          snapshotId: "snapshot-unknown",
-          key: "computer-snapshots/conformance/unknown",
+          snapshotId: "00000000-0000-4000-8000-000000000000",
+          key: "computer-snapshots/0000000000000000/00000000-0000-4000-8000-000000000000.tar",
+          size: 1,
+          checksum: "0000000000000000000000000000000000000000000000000000000000000000",
         }),
       );
 
       expect(failure.kind).toBe("not_found");
+    });
+
+    it("refuses an altered snapshot without replacing the computer", async () => {
+      const harness = await create();
+      await harness.provider.ensure(harness.computer);
+      const path = `${harness.home}/keep.txt`;
+      await writeFile(harness.provider, harness.computer, path, "kept", harness.timeoutMs * 100);
+
+      const snapshot = await harness.provider.snapshot(harness.computer);
+      const failure = await failureFrom(
+        harness.provider.restore(harness.computer, { ...snapshot, checksum: "f".repeat(64) }),
+      );
+
+      expect(failure.kind).toBe("not_found");
+      // The refusal happens before the machine is touched: the live computer
+      // and its home are exactly what they were.
+      await expect(harness.provider.status(harness.computer)).resolves.toMatchObject({
+        state: "running",
+      });
+      await expect(
+        readFile(harness.provider, harness.computer, path, harness.timeoutMs * 100),
+      ).resolves.toBe("kept");
     });
 
     it("destroys idempotently and refuses commands once the computer is gone", async () => {

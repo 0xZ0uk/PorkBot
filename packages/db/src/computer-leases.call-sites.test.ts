@@ -150,7 +150,7 @@ describe("the computer-lease table call sites", () => {
   it("keeps the schema barrel a re-export, not a call site", () => {
     const barrel = readFileSync(path.join(repoRoot, "packages/db/src/schema/index.ts"), "utf8");
 
-    expect(barrel).toMatch(/export \{ computerLease \} from "\.\/computers\.ts";/);
+    expect(barrel).toMatch(/export \{ [^}]*\bcomputerLease\b[^}]*\} from "\.\/computers\.ts";/);
     expect(barrel, "the barrel may register tables but may not query them").not.toMatch(
       /\.query\(|insert into|delete from/,
     );

@@ -175,7 +175,11 @@ services:
       PORKBOT_COMPUTER_ENDPOINT: ${PORKBOT_COMPUTER_ENDPOINT:-}
       PORKBOT_COMPUTER_TOKEN: ${PORKBOT_COMPUTER_TOKEN:-}
       PORKBOT_COMPUTER_TOOLBOX_URL: ${PORKBOT_COMPUTER_TOOLBOX_URL:-}
-      PORKBOT_COMPUTER_SNAPSHOT_DIR: /var/lib/porkbot/computer-snapshots
+      # Snapshot storage (slice 7.5): the same seam the API writes avatars
+      # through, so an operator's chosen storage root holds both. The archive
+      # directory stages a home while it is written or verified.
+      PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
+      PORKBOT_COMPUTER_ARCHIVE_DIR: /var/lib/porkbot/computer-archives
       # A machine whose last command is older than this is parked; the home
       # volume survives. Zero disables the idle sweep.
       PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-900000}
@@ -191,12 +195,13 @@ services:
       # computers through its authenticated surface, which is what keeps a
       # compromised API or worker out of the daemon.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Home snapshots the provider streams out of a computer, on a named
-      # volume so they outlive the supervisor container. The storage seam
-      # (slice 7.5) takes this landing zone over.
-      - computer-snapshots:/var/lib/porkbot/computer-snapshots
+      # Snapshot archives live under the same storage root the API uses, on a
+      # shared named volume, and are staged on a second one so an agent home in
+      # the clear never lands in the container's writable layer.
+      - storage-data:/var/lib/porkbot/storage
+      - computer-archives:/var/lib/porkbot/computer-archives
 
 volumes:
   postgres-data:
   storage-data:
-  computer-snapshots:
+  computer-archives:

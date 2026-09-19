@@ -13,6 +13,8 @@ import { createComputerProviderSelection, DEFAULT_IDLE_TIMEOUT_MS } from "./comp
  */
 
 const computer = { computerId: "computer-1", botId: "bot-1" };
+/** A real provider's snapshots need a storage root; no test writes through it. */
+const storageRoot = "/tmp/porkbot-computer-provider-test-storage";
 
 describe("the computer provider selection", () => {
   it("runs the offline emulator by default, with the default idle window", async () => {
@@ -28,10 +30,20 @@ describe("the computer provider selection", () => {
     const selection = createComputerProviderSelection({
       PORKBOT_COMPUTER_PROVIDER: "docker",
       PORKBOT_COMPUTER_IMAGE: "porkbot-computer:test",
+      PORKBOT_STORAGE_DIR: storageRoot,
     });
 
     expect(selection.kind).toBe("docker");
     expect(selection.kinds).toEqual(["offline", "docker"]);
+  });
+
+  it("refuses a real provider without a storage root for its snapshots", () => {
+    expect(() =>
+      createComputerProviderSelection({
+        PORKBOT_COMPUTER_PROVIDER: "docker",
+        PORKBOT_COMPUTER_IMAGE: "porkbot-computer:test",
+      }),
+    ).toThrow(/PORKBOT_STORAGE_DIR/);
   });
 
   it("builds the cloud provider when the deployment names an endpoint, key and image", () => {
@@ -40,6 +52,7 @@ describe("the computer provider selection", () => {
       PORKBOT_COMPUTER_ENDPOINT: "https://cloud.example.invalid/api",
       PORKBOT_COMPUTER_TOKEN: "test-key",
       PORKBOT_COMPUTER_IMAGE: "porkbot-computer:test",
+      PORKBOT_STORAGE_DIR: storageRoot,
     });
 
     expect(selection.kind).toBe("daytona");
@@ -114,6 +127,7 @@ describe("the computer provider selection", () => {
         PORKBOT_COMPUTER_PROVIDER: "docker",
         PORKBOT_COMPUTER_IMAGE: "image",
         PORKBOT_COMPUTER_CPUS: "0.5",
+        PORKBOT_STORAGE_DIR: storageRoot,
       }),
     ).not.toThrow();
     expect(() =>

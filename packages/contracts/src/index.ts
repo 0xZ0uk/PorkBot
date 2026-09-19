@@ -28,19 +28,25 @@ export type { SignupAvailability } from "./deployment.ts";
 export { accountMeContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
-// A bot's computer (slice 7.1, PRD decision 20; stories 27 and 29): the
-// operator's reach into the supervisor's lifecycle, scoped by bot id. The
-// state vocabulary mirrors `@porkbot/adapter-kit` and a test pins the two.
+// A bot's computer (slices 7.1 and 7.5, PRD decision 20; stories 27, 29 and
+// 30): the operator's reach into the supervisor's lifecycle, scoped by bot id,
+// and the snapshot surface that makes a bad state recoverable. The state
+// vocabulary mirrors `@porkbot/adapter-kit` and a test pins the two; a snapshot
+// view names the row, never the storage key.
 export {
   computersBootContract,
   computersRecoverContract,
   computersResetContract,
+  computersRestoreContract,
+  computersSnapshotContract,
+  computersSnapshotsContract,
   computersStatusContract,
   computersStopContract,
+  computerSnapshotViewSchema,
   computerStateSchema,
   computerViewSchema,
 } from "./computers.ts";
-export type { ComputerStateView, ComputerView } from "./computers.ts";
+export type { ComputerSnapshotView, ComputerStateView, ComputerView } from "./computers.ts";
 
 // Notification preferences (slice 8.6, PRD decision 33; story 35): the
 // operator's switches over `@porkbot/core`'s event vocabulary. The output is

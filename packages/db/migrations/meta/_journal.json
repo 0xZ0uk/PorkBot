@@ -211,6 +211,20 @@
       "when": 1789817204615,
       "tag": "0029_ambitious_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789819217319,
+      "tag": "0030_light_banshee",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789819218376,
+      "tag": "0031_computer_snapshot_grants",
+      "breakpoints": true
     }
   ]
 }
