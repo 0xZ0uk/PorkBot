@@ -92,6 +92,7 @@ function memoryApprovals(userId = "user-1"): MemoryApprovals {
         runId: request.runId,
         callId: request.callId,
         tool: request.tool,
+        arguments: request.arguments,
         status: "pending",
         expiresAt: request.expiresAt,
         decidedBy: null,
@@ -218,7 +219,7 @@ describe("a gate nobody answers", () => {
 
     const exit = await withTestClock(
       Effect.gen(function* () {
-        const record = yield* gate.open({ callId, tool: "shell" });
+        const record = yield* gate.open({ callId, tool: "shell", arguments: {} });
         const fiber = yield* Effect.fork(gate.waitFor(record).pipe(Effect.either));
         yield* Effect.yieldNow();
         yield* TestClock.adjust(timeoutMs + pollIntervalMs);
@@ -247,7 +248,7 @@ describe("a gate nobody answers", () => {
 
     const outcome = await waitOutcome(
       gate,
-      await withTestClock(gate.open({ callId, tool: "shell" })),
+      await withTestClock(gate.open({ callId, tool: "shell", arguments: {} })),
       timeoutMs + 3 * pollIntervalMs,
     );
 
@@ -259,7 +260,7 @@ describe("a gate nobody answers", () => {
   it("answers an already timed-out row with the typed error without waiting", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    const record = await withTestClock(gate.open({ callId, tool: "shell" }));
+    const record = await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
     await approvals.store.resolveTimeout(runId, callId);
 
     const outcome = await waitOutcome(gate, record, 0);
@@ -277,7 +278,7 @@ describe("an operator decision", () => {
     const approvals = memoryApprovals("operator-1");
     const gate = gateOf(approvals);
 
-    const record = await withTestClock(gate.open({ callId, tool: "shell" }));
+    const record = await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
     const outcome = await withTestClock(
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(gate.waitFor(record).pipe(Effect.either));
@@ -305,7 +306,7 @@ describe("an operator decision", () => {
   it("answers immediately when the decision predates the wait", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    const record = await withTestClock(gate.open({ callId, tool: "shell" }));
+    const record = await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
     await approvals.decisions.decide({ runId, callId, vote: "approve" });
 
     const outcome = await waitOutcome(gate, record, 0);
@@ -319,7 +320,7 @@ describe("an operator decision", () => {
   it("keeps an operator decision that landed before the deadline", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    const record = await withTestClock(gate.open({ callId, tool: "shell" }));
+    const record = await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
     const vote = await approvals.decisions.decide({ runId, callId, vote: "deny", reason: "no" });
     expect(vote.applied).toBe(true);
 
@@ -335,7 +336,7 @@ describe("an operator decision", () => {
   it("does not let a late vote change a timeout that already won", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    const record = await withTestClock(gate.open({ callId, tool: "shell" }));
+    const record = await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
     const outcome = await waitOutcome(gate, record, timeoutMs + pollIntervalMs);
     expect(Either.isLeft(outcome)).toBe(true);
 
@@ -350,11 +351,11 @@ describe("a restarted gate", () => {
   it("reopens the same pending row and waits on the original deadline", async () => {
     const approvals = memoryApprovals();
     const first = gateOf(approvals);
-    const opened = await withTestClock(first.open({ callId, tool: "shell" }));
+    const opened = await withTestClock(first.open({ callId, tool: "shell", arguments: {} }));
 
     // A restart is a new gate over the same durable rows.
     const restarted = gateOf(approvals, { timeoutMs: 5 });
-    const reopened = await withTestClock(restarted.open({ callId, tool: "shell" }));
+    const reopened = await withTestClock(restarted.open({ callId, tool: "shell", arguments: {} }));
 
     expect(reopened.id).toBe(opened.id);
     expect(reopened.expiresAt).toEqual(opened.expiresAt);
@@ -367,11 +368,11 @@ describe("a restarted gate", () => {
   it("does not rewrite a decision taken while the run was gone", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    await withTestClock(gate.open({ callId, tool: "shell" }));
+    await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
     await approvals.decisions.decide({ runId, callId, vote: "approve" });
 
     const restarted = gateOf(approvals);
-    const reopened = await withTestClock(restarted.open({ callId, tool: "shell" }));
+    const reopened = await withTestClock(restarted.open({ callId, tool: "shell", arguments: {} }));
     const outcome = await waitOutcome(restarted, reopened, 0);
 
     expect(reopened.status).toBe("approved");
@@ -388,7 +389,9 @@ describe("a store that cannot hold the gate", () => {
     const gate = gateOf(approvals);
 
     approvals.fail.open = new Error("database is down");
-    const outcome = await withTestClock(gate.open({ callId, tool: "shell" }).pipe(Effect.either));
+    const outcome = await withTestClock(
+      gate.open({ callId, tool: "shell", arguments: {} }).pipe(Effect.either),
+    );
 
     expect(Either.isLeft(outcome)).toBe(true);
     if (Either.isLeft(outcome)) {
@@ -404,7 +407,9 @@ describe("a store that cannot hold the gate", () => {
     const gate = gateOf(approvals);
     approvals.fail.open = new NotFoundError("run", runId);
 
-    const outcome = await withTestClock(gate.open({ callId, tool: "shell" }).pipe(Effect.either));
+    const outcome = await withTestClock(
+      gate.open({ callId, tool: "shell", arguments: {} }).pipe(Effect.either),
+    );
     expect(Either.isLeft(outcome)).toBe(true);
     if (Either.isLeft(outcome)) {
       expect(outcome.left).toBeInstanceOf(NotFoundError);
@@ -414,7 +419,7 @@ describe("a store that cannot hold the gate", () => {
   it("fails a wait whose read or timeout resolution breaks", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    const record = await withTestClock(gate.open({ callId, tool: "shell" }));
+    const record = await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
 
     approvals.fail.find = new Error("read failed");
     const readOutcome = await withTestClock(gate.waitFor(record).pipe(Effect.either));
@@ -451,8 +456,8 @@ describe("the gate's construction and the votes on it", () => {
     const gate = gateOf(approvals);
 
     for (const input of [
-      { callId: "  ", tool: "shell" },
-      { callId, tool: "" },
+      { callId: "  ", tool: "shell", arguments: {} },
+      { callId, tool: "", arguments: {} },
     ]) {
       const outcome = await withTestClock(gate.open(input).pipe(Effect.either));
       expect(Either.isLeft(outcome)).toBe(true);
@@ -462,6 +467,24 @@ describe("the gate's construction and the votes on it", () => {
     }
 
     expect(approvals.calls.open).toBe(0);
+  });
+
+  it("records the call's arguments with a secret-shaped field redacted", async () => {
+    const approvals = memoryApprovals();
+    const gate = gateOf(approvals);
+
+    await withTestClock(
+      gate.open({
+        callId,
+        tool: "file_write",
+        arguments: { path: ".env", token: "sk-live-value" },
+      }),
+    );
+
+    expect(approvals.rows.get(key(callId))?.arguments).toEqual({
+      path: ".env",
+      token: "[redacted]",
+    });
   });
 
   it("refuses a non-positive timeout or poll interval", () => {
@@ -476,7 +499,7 @@ describe("the gate's construction and the votes on it", () => {
   it("applies exactly one of many concurrent votes", async () => {
     const approvals = memoryApprovals();
     const gate = gateOf(approvals);
-    await withTestClock(gate.open({ callId, tool: "shell" }));
+    await withTestClock(gate.open({ callId, tool: "shell", arguments: {} }));
 
     const votes = await Promise.all(
       Array.from({ length: 8 }, (_value, index) =>
@@ -503,7 +526,7 @@ describe("the stream a client reduces", () => {
 
     const events = await withTestClock(
       Effect.gen(function* () {
-        const record = yield* gate.open({ callId, tool: "shell" });
+        const record = yield* gate.open({ callId, tool: "shell", arguments: {} });
         const frame = (seq: number) =>
           ({
             schemaVersion: RUN_EVENT_SCHEMA_VERSION,

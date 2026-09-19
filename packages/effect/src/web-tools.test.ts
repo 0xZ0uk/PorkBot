@@ -98,6 +98,7 @@ function memoryApprovals(): MemoryApprovals {
           runId: request.runId,
           callId: request.callId,
           tool: request.tool,
+          arguments: request.arguments,
           status: "pending",
           expiresAt: request.expiresAt,
           decidedBy: null,
@@ -135,6 +136,7 @@ function decidedRow(status: "approved" | "denied", reason: string | null = null)
     runId,
     callId,
     tool: WEB_TOOL_NAMES.fetch,
+    arguments: {},
     status,
     expiresAt: new Date(approvalTimeoutMs),
     decidedBy: "operator-1",
@@ -262,7 +264,8 @@ describe("web_fetch", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      reason: "egress_denied",
+      reason: "approval_denied",
+      class: "egress_unlisted",
       operatorReason: "not this host",
     });
     expect(provider.fetches).toEqual([]);
@@ -284,7 +287,7 @@ describe("web_fetch", () => {
       }),
     );
 
-    expect(result).toMatchObject({ ok: false, reason: "egress_denied" });
+    expect(result).toMatchObject({ ok: false, reason: "approval_timed_out" });
     expect(provider.fetches).toEqual([]);
     expect(approvals.rows.get(callId)?.status).toBe("timed_out");
   });
@@ -436,6 +439,18 @@ describe("the tool registry", () => {
         allowlist: parseEgressAllowlist([]),
         approvals: memoryApprovals().store,
         maxDurationMs: 0,
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it("refuses a budget that does not cover the approval window", () => {
+    expect(() =>
+      createWebTools({
+        provider: scriptedProvider(),
+        allowlist: parseEgressAllowlist([]),
+        approvals: memoryApprovals().store,
+        approvalTimeoutMs: 30_000,
+        maxDurationMs: 30_000,
       }),
     ).toThrow(RangeError);
   });

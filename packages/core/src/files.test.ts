@@ -6,6 +6,7 @@ import {
   confineToHome,
   contentTypeForFileName,
   MAX_ATTACHMENT_FILE_NAME_LENGTH,
+  resolveComputerPath,
 } from "./files.ts";
 
 /**
@@ -70,6 +71,43 @@ describe("confineToHome", () => {
   it("refuses to confine against a home that is the root or relative", () => {
     expect(() => confineToHome("/", "notes")).toThrow(RangeError);
     expect(() => confineToHome("home/agent", "notes")).toThrow(RangeError);
+  });
+});
+
+describe("resolveComputerPath", () => {
+  it("resolves an inside path exactly as confinement does", () => {
+    const resolved = resolveComputerPath(home, "notes/../todo.md");
+
+    expect(resolved.ok && resolved.value).toEqual({
+      path: `${home}/todo.md`,
+      relative: "todo.md",
+      outside: false,
+    });
+  });
+
+  it("keeps an outside path instead of refusing it", () => {
+    const resolved = resolveComputerPath(home, "../outside.txt");
+
+    expect(resolved.ok && resolved.value).toEqual({
+      path: "/home/outside.txt",
+      relative: "",
+      outside: true,
+    });
+  });
+
+  it("clamps a climb past the root the way POSIX resolves it", () => {
+    const resolved = resolveComputerPath(home, "../../../../etc/passwd");
+
+    expect(resolved.ok && resolved.value).toEqual({
+      path: "/etc/passwd",
+      relative: "",
+      outside: true,
+    });
+  });
+
+  it("still refuses a path that cannot name a file", () => {
+    expect(resolveComputerPath(home, "").ok).toBe(false);
+    expect(resolveComputerPath(home, "notes/\u0000/todo.md").ok).toBe(false);
   });
 });
 

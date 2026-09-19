@@ -52,6 +52,7 @@ function record(overrides: Partial<ApprovalRecord> = {}): ApprovalRecord {
     runId: "run-1",
     callId: "call-1",
     tool: "shell",
+    arguments: {},
     status: "pending",
     expiresAt,
     decidedBy: null,
@@ -78,6 +79,7 @@ describe("opening a gate", () => {
       runId: "run-1",
       callId: "call-1",
       tool: "shell",
+      arguments: { command: "cat .env" },
       expiresAt,
     });
 
@@ -90,6 +92,7 @@ describe("opening a gate", () => {
       "run-1",
       "call-1",
       "shell",
+      JSON.stringify({ command: "cat .env" }),
       expiresAt.toISOString(),
     ]);
   });
@@ -105,8 +108,9 @@ describe("opening a gate", () => {
       runId: "run-1",
       callId: "call-1",
       // The stored row wins: the call id identifies the gate, so a different
-      // tool or deadline on a reopen is the stored gate's, not the caller's.
+      // tool, payload or deadline on a reopen is the stored gate's.
       tool: "web",
+      arguments: { url: "https://example.com" },
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
     });
 
@@ -120,7 +124,7 @@ describe("opening a gate", () => {
     const store = createApprovalStore(worker, database);
 
     await expect(
-      store.open({ runId: "run-1", callId: "call-1", tool: "shell", expiresAt }),
+      store.open({ runId: "run-1", callId: "call-1", tool: "shell", arguments: {}, expiresAt }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 

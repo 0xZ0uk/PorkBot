@@ -22,6 +22,7 @@ import type {
   ToolCallLedger,
   ToolOutcome,
 } from "@porkbot/effect";
+import { parseEgressAllowlist } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
@@ -322,6 +323,7 @@ async function runOffline(): Promise<OfflineRun> {
             commands,
             computer,
             maxDurationMs: 30_000,
+            allowlist: parseEgressAllowlist(["docs.example.invalid"]),
           }),
           ledger,
           leaseTtlMs: 120_000,

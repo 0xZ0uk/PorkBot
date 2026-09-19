@@ -2,16 +2,15 @@ import { Effect } from "effect";
 import type { WebAccessProvider } from "@porkbot/adapter-kit";
 import { DEFAULT_APPROVAL_TIMEOUT_MS, labelUntrustedContent } from "@porkbot/core";
 import type { EgressAllowlist } from "@porkbot/core";
-import { createApprovalGate } from "./approval-gate.ts";
 import type { ApprovalGateError, ApprovalStore } from "./approval-gate.ts";
-import { createEgressGuard } from "./egress-guard.ts";
-import type { EgressAuthorization } from "./egress-guard.ts";
+import { actionRefusalResult, createDangerousActionGuard } from "./danger-guard.ts";
+import type { ActionAuthorization } from "./danger-guard.ts";
 import type { ToolCall, ToolRegistration } from "./tool-dispatcher.ts";
 
 /**
  * The web tools (slice 10.1, PRD decision 30): the one place the model reaches
  * the public web, and therefore the place both halves of the ingestion rule
- * meet. `web_fetch` asks the egress guard first — an allowlisted host proceeds,
+ * meet. `web_fetch` asks the danger guard first — an allowlisted host proceeds,
  * any other destination opens the run's durable approval gate and waits on the
  * row — and both tools hand back content labelled untrusted with its final URL,
  * so the model receives the page as data and is described to as data by the
@@ -203,57 +202,29 @@ function parseSearchArguments(value: unknown): ParseResult<SearchArguments> {
 }
 
 /**
- * The model-readable refusal for a destination the guard would not let through.
- * An operator's own reason is carried along: it is the operator speaking, and
- * the model adapts better for reading it.
- */
-function denialResult(authorization: Extract<EgressAuthorization, { status: "denied" }>): unknown {
-  if (authorization.reason === "invalid_url") {
-    return { ok: false, reason: "invalid_url", message: "the URL is not a valid destination" };
-  }
-
-  if (authorization.reason === "approval_timed_out") {
-    return {
-      ok: false,
-      reason: "egress_denied",
-      message: `no one answered the approval request for ${authorization.host ?? "the destination"}`,
-    };
-  }
-
-  return {
-    ok: false,
-    reason: "egress_denied",
-    message: `the operator denied egress to ${authorization.host ?? "the destination"}`,
-    ...(authorization.approval?.reason === null || authorization.approval?.reason === undefined
-      ? {}
-      : { operatorReason: authorization.approval.reason }),
-  };
-}
-
-/**
- * Builds the run's gate for one call and asks it to authorize the destination.
- * The gate is stateless and reads the store on every wait, so building one per
- * call is the run-scoped lifetime without holding a connection in the tool.
+ * Builds the run's guard for one call and asks it to authorize the
+ * destination. The guard is stateless — it reads the store on every wait — so
+ * building one per call is the run-scoped lifetime without holding a
+ * connection in the tool. The call declares its egress class, and the policy
+ * decides the host: an allowlisted destination is `allowed` and never touches
+ * the store, an unlisted one opens the durable gate.
  */
 function authorizeEgress(
   options: WebToolOptions,
   call: ToolCall,
-  url: string,
   approvalTimeoutMs: number,
-): Effect.Effect<EgressAuthorization, ApprovalGateError> {
+): Effect.Effect<ActionAuthorization, ApprovalGateError> {
   return Effect.gen(function* () {
-    const gate = createApprovalGate({
-      runId: call.runId,
+    const guard = createDangerousActionGuard({
       store: options.approvals,
+      allowlist: options.allowlist,
       timeoutMs: approvalTimeoutMs,
       ...(options.approvalPollIntervalMs === undefined
         ? {}
         : { pollIntervalMs: options.approvalPollIntervalMs }),
     });
 
-    const guard = createEgressGuard({ allowlist: options.allowlist, gate });
-
-    return yield* guard.authorize({ callId: call.callId, tool: call.tool, url });
+    return yield* guard.authorize({ call, declared: ["egress_unlisted"] });
   });
 }
 
@@ -263,6 +234,16 @@ export function createWebTools(options: WebToolOptions): readonly ToolRegistrati
 
   if (!Number.isSafeInteger(maxDurationMs) || maxDurationMs <= 0) {
     throw new RangeError(`maxDurationMs must be a positive integer, received ${maxDurationMs}`);
+  }
+
+  // A gate cannot outlive the tool's declared budget: the dispatcher would
+  // time the call out while it was still waiting, and the model would read
+  // `timed_out` instead of the operator's answer.
+  if (maxDurationMs <= approvalTimeoutMs) {
+    throw new RangeError(
+      `maxDurationMs ${maxDurationMs} does not cover the ${approvalTimeoutMs}ms approval window; ` +
+        "a gated call would time out before an operator could answer",
+    );
   }
 
   const fetchTool: ToolRegistration = {
@@ -281,15 +262,10 @@ export function createWebTools(options: WebToolOptions): readonly ToolRegistrati
           return { ok: false, reason: "invalid_arguments", message: parsed.message };
         }
 
-        const authorization = yield* authorizeEgress(
-          options,
-          call,
-          parsed.value.url,
-          approvalTimeoutMs,
-        );
+        const authorization = yield* authorizeEgress(options, call, approvalTimeoutMs);
 
-        if (authorization.status === "denied") {
-          return denialResult(authorization);
+        if (authorization.status === "refused" || authorization.status === "denied") {
+          return actionRefusalResult(authorization);
         }
 
         const result = yield* Effect.tryPromise({

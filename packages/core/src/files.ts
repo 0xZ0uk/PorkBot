@@ -50,6 +50,22 @@ export type HomePathResolution =
   | { readonly ok: true; readonly value: HomePath }
   | { readonly ok: false; readonly reason: HomePathRefusal; readonly message: string };
 
+/**
+ * A path resolved against a computer's home, with the home escape kept rather
+ * than refused. Only the danger policy reads an outside path: it is what turns
+ * a `write_outside_home` claim into a gate instead of a flat refusal, and an
+ * approved call then acts on this resolved path.
+ */
+export interface ResolvedComputerPath extends HomePath {
+  /** Whether the path leaves the home; `relative` is empty when it does. */
+  readonly outside: boolean;
+}
+
+/** A raw resolution: only a path that cannot name a file at all is refused. */
+export type ComputerPathResolution =
+  | { readonly ok: true; readonly value: ResolvedComputerPath }
+  | { readonly ok: false; readonly reason: "invalid_path"; readonly message: string };
+
 /** The sentence a refusal reaches the model as; the reason is the machine-readable half. */
 export function homePathRefusalMessage(reason: HomePathRefusal, path: string): string {
   return reason === "outside_home"
@@ -58,20 +74,27 @@ export function homePathRefusalMessage(reason: HomePathRefusal, path: string): s
 }
 
 /**
- * Resolves `input` against `home` and refuses anything that leaves it.
+ * Resolves `input` against `home` exactly as {@link confineToHome} does, but
+ * keeps a path that leaves the home instead of refusing it: `.` segments are
+ * dropped, `..` segments are resolved, and a `..` that climbs past the root
+ * clamps there (POSIX's own answer, so `/../etc` is `/etc`).
  *
- * Both absolute and home-relative inputs are accepted; `.` segments are
- * dropped and `..` segments are resolved, so `notes/../todo.md` is inside the
- * home while `../etc/passwd` is refused. A `home` that is not an absolute path
- * below the root is a wiring defect, not a caller error, and throws.
+ * This is the resolution the danger policy and an approved action share, so
+ * the path a gate fired on and the path a command finally names cannot be two
+ * different spellings. A `home` that is not an absolute path below the root is
+ * a wiring defect, not a caller error, and throws.
  */
-export function confineToHome(home: string, input: string): HomePathResolution {
+export function resolveComputerPath(home: string, input: string): ComputerPathResolution {
   if (!home.startsWith("/") || home === "/") {
     throw new RangeError(`home must be an absolute path below the root, received "${home}"`);
   }
 
   if (input === "" || input.includes("\u0000")) {
-    return refusal("invalid_path", input);
+    return {
+      ok: false,
+      reason: "invalid_path",
+      message: homePathRefusalMessage("invalid_path", input),
+    };
   }
 
   const segments: string[] = [];
@@ -83,10 +106,6 @@ export function confineToHome(home: string, input: string): HomePathResolution {
     }
 
     if (segment === "..") {
-      if (segments.length === 0) {
-        return refusal("outside_home", input);
-      }
-
       segments.pop();
       continue;
     }
@@ -96,12 +115,37 @@ export function confineToHome(home: string, input: string): HomePathResolution {
 
   const path = `/${segments.join("/")}`;
   const homeSegments = home.slice(1).split("/");
+  const outside = path !== home && !path.startsWith(`${home}/`);
 
-  if (path !== home && !path.startsWith(`${home}/`)) {
+  return {
+    ok: true,
+    value: {
+      path,
+      relative: outside ? "" : segments.slice(homeSegments.length).join("/"),
+      outside,
+    },
+  };
+}
+
+/**
+ * Resolves `input` against `home` and refuses anything that leaves it.
+ *
+ * Both absolute and home-relative inputs are accepted; `.` segments are
+ * dropped and `..` segments are resolved, so `notes/../todo.md` is inside the
+ * home while `../etc/passwd` is refused.
+ */
+export function confineToHome(home: string, input: string): HomePathResolution {
+  const resolution = resolveComputerPath(home, input);
+
+  if (!resolution.ok) {
+    return resolution;
+  }
+
+  if (resolution.value.outside) {
     return refusal("outside_home", input);
   }
 
-  return { ok: true, value: { path, relative: segments.slice(homeSegments.length).join("/") } };
+  return { ok: true, value: { path: resolution.value.path, relative: resolution.value.relative } };
 }
 
 function refusal(reason: HomePathRefusal, path: string): HomePathResolution {

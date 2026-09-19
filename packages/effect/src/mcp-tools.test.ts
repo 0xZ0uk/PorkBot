@@ -6,6 +6,8 @@ import type {
   McpServerProvider,
 } from "@porkbot/adapter-kit";
 import { describe, expect, it } from "vitest";
+import type { ApprovalRecord, ApprovalStore } from "./approval-gate.ts";
+import { NotFoundError } from "./errors.ts";
 import { parseMcpCredential, serializeMcpCredential } from "./mcp-credentials.ts";
 import { createMcpTools, mcpToolName, McpGrantRevokedError } from "./mcp-tools.ts";
 import type { ToolCall, ToolRegistration } from "./tool-dispatcher.ts";
@@ -225,6 +227,190 @@ describe("the MCP tool registrations", () => {
       Effect.runPromise(registration.execute(call({ arguments: "not an object" }))),
     ).resolves.toMatchObject({ ok: false, reason: "invalid_arguments" });
     expect(provider.calls).toEqual([]);
+  });
+});
+
+describe("the danger policy on MCP tools", () => {
+  const sendTool = [
+    {
+      name: "send_email",
+      description: "Send an email.",
+      parameters: { type: "object", properties: { to: { type: "string" } } },
+    },
+  ] as const;
+
+  const deleteTool = [
+    {
+      name: "delete_issue",
+      description: "Delete an issue.",
+      parameters: { type: "object", properties: { id: { type: "string" } } },
+    },
+  ] as const;
+
+  function memoryApprovals() {
+    const rows = new Map<string, ApprovalRecord>();
+
+    const store: ApprovalStore = {
+      async open(request) {
+        const existing = rows.get(request.callId);
+
+        if (existing !== undefined) {
+          return existing;
+        }
+
+        const record: ApprovalRecord = {
+          id: `approval-${rows.size + 1}`,
+          runId: request.runId,
+          callId: request.callId,
+          tool: request.tool,
+          arguments: request.arguments,
+          status: "pending",
+          expiresAt: request.expiresAt,
+          decidedBy: null,
+          decidedAt: null,
+          reason: null,
+        };
+        rows.set(request.callId, record);
+        return record;
+      },
+      async find(_runId, callId) {
+        return rows.get(callId);
+      },
+      async resolveTimeout(_runId, callId) {
+        const existing = rows.get(callId);
+
+        if (existing === undefined) {
+          throw new NotFoundError("approval", callId);
+        }
+
+        const timedOut: ApprovalRecord = {
+          ...existing,
+          status: "timed_out",
+          decidedAt: new Date(0),
+        };
+        rows.set(callId, timedOut);
+        return timedOut;
+      },
+    };
+
+    return { store, rows };
+  }
+
+  function seedDenied(approvals: ReturnType<typeof memoryApprovals>): void {
+    approvals.rows.set("call-1", {
+      id: "approval-seeded",
+      runId: "run-1",
+      callId: "call-1",
+      tool: "mcp_issue_tracker_send_email",
+      arguments: {},
+      status: "denied",
+      expiresAt: new Date(60_000),
+      decidedBy: "operator-1",
+      decidedAt: new Date(0),
+      reason: null,
+    });
+  }
+
+  it("gates a declared send before the server is dialed", async () => {
+    const provider = recordingProvider();
+    const approvals = memoryApprovals();
+    seedDenied(approvals);
+    const registration = createMcpTools({
+      provider: provider.provider,
+      server,
+      tools: sendTool,
+      readCredential: async () => undefined,
+      isGranted: async () => true,
+      approvals: approvals.store,
+    })[0];
+
+    await expect(
+      Effect.runPromise(
+        registration?.execute(
+          call({ tool: "mcp_issue_tracker_send_email", arguments: { to: "a@b" } }),
+        ) ?? Effect.die("no registration"),
+      ),
+    ).resolves.toMatchObject({ ok: false, reason: "approval_denied", class: "send" });
+    expect(provider.calls).toEqual([]);
+  });
+
+  it("gates a declared delete before the server is dialed", async () => {
+    const provider = recordingProvider();
+    const approvals = memoryApprovals();
+    seedDenied(approvals);
+    const registration = createMcpTools({
+      provider: provider.provider,
+      server,
+      tools: deleteTool,
+      readCredential: async () => undefined,
+      isGranted: async () => true,
+      approvals: approvals.store,
+    })[0];
+
+    await expect(
+      Effect.runPromise(
+        registration?.execute(
+          call({ tool: "mcp_issue_tracker_delete_issue", arguments: { id: "1" } }),
+        ) ?? Effect.die("no registration"),
+      ),
+    ).resolves.toMatchObject({ ok: false, reason: "approval_denied", class: "delete" });
+    expect(provider.calls).toEqual([]);
+  });
+
+  it("refuses a budget that does not cover the approval window", () => {
+    expect(() =>
+      createMcpTools({
+        provider: recordingProvider().provider,
+        server,
+        tools: sendTool,
+        readCredential: async () => undefined,
+        isGranted: async () => true,
+        approvals: memoryApprovals().store,
+        approvalTimeoutMs: 60_000,
+        maxDurationMs: 30_000,
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it("refuses a declared call with no gate to ask", async () => {
+    const provider = recordingProvider();
+    const registration = createMcpTools({
+      provider: provider.provider,
+      server,
+      tools: sendTool,
+      readCredential: async () => undefined,
+      isGranted: async () => true,
+    })[0];
+
+    await expect(
+      Effect.runPromise(
+        registration?.execute(
+          call({ tool: "mcp_issue_tracker_send_email", arguments: { to: "a@b" } }),
+        ) ?? Effect.die("no registration"),
+      ),
+    ).resolves.toMatchObject({ ok: false, reason: "approval_unavailable", class: "send" });
+    expect(provider.calls).toEqual([]);
+  });
+
+  it("leaves a read tool ungated even with a store configured", async () => {
+    const provider = recordingProvider();
+    const approvals = memoryApprovals();
+    const registration = createMcpTools({
+      provider: provider.provider,
+      server,
+      tools,
+      readCredential: async () => undefined,
+      isGranted: async () => true,
+      approvals: approvals.store,
+    })[0];
+
+    await expect(
+      Effect.runPromise(registration?.execute(call()) ?? Effect.die("no registration")),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(approvals.rows.size).toBe(0);
+    expect(provider.calls).toHaveLength(1);
   });
 });
 
