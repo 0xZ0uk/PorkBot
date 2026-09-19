@@ -119,6 +119,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       },
     },
     events: { listAfter: notExercised },
+    toolResults: { read: notExercised },
     messages: {
       listForThread: notExercised,
       findByNonce: notExercised,
