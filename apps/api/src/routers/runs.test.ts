@@ -125,6 +125,11 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       },
     },
     events: { listAfter: notExercised },
+    files: {
+      createAttachment: notExercised,
+      findAttachments: notExercised,
+      findStoredFile: notExercised,
+    },
     computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
     toolResults: { read: notExercised },
     messages: {

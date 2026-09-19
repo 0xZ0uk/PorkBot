@@ -408,7 +408,10 @@ shell metacharacter is interpreted; and file bytes, shell stdout and browser pag
 text leave as `UntrustedContent` (paths `file_read` and `computer_output`)
 before they can reach a prompt. The browser helper protocol is one `browser`
 command with a JSON argument returning a JSON page record, which is what a real
-provider's image must ship to pass the same suite.
+provider's image must ship to pass the same suite. The file tools are confined
+to the home (`confineToHome`, slice 7.6), and a file the model writes is
+recorded as a downloadable artifact when the run is given an
+`ArtifactRecorder`.
 
 The first full run executes real tools (slice 6.9). The shipped offline runtime
 now takes a `ToolDispatcher` and executes its tool steps through the same
@@ -656,8 +659,10 @@ What is limited, per minute unless noted:
 | Public RPC and unmatched paths | client address       | 60      | `PORKBOT_LIMIT_ANONYMOUS_PER_MINUTE`     |
 | Health probe                   | client address       | 600     | `PORKBOT_LIMIT_PROBE_PER_MINUTE`         |
 | Inbound webhooks               | client address       | 120     | `PORKBOT_LIMIT_WEBHOOK_PER_MINUTE`       |
+| Attachment uploads             | client address       | 60      | `PORKBOT_LIMIT_UPLOAD_PER_MINUTE`        |
 | RPC request body               | —                    | 1 MiB   | `PORKBOT_LIMIT_MAX_BODY_BYTES`           |
 | Webhook request body           | —                    | 256 KiB | `PORKBOT_LIMIT_MAX_WEBHOOK_BODY_BYTES`   |
+| Attachment upload body         | —                    | 8 MiB   | `PORKBOT_LIMIT_MAX_UPLOAD_BYTES`         |
 | Open streams per actor         | actor                | 4       | `PORKBOT_LIMIT_MAX_STREAMS_PER_ACTOR`    |
 
 An unset or blank variable takes the default; a value that is not a positive
@@ -837,6 +842,65 @@ stream already replays.
   transaction; the thread row, its runs and the bot's memory documents survive.
   "What did it learn" is not the transcript, and clearing a conversation never
   clears it.
+
+## Files, attachments and artifacts
+
+Slice 7.6 is the file surface (stories 32 and 33). One storage seam holds the
+bytes, one module holds the rows that name them, and two routes move them:
+`POST /threads/{threadId}/attachments` uploads a file for a message, and
+`GET /files/{fileId}` downloads a stored file. Neither is an RPC procedure:
+the body is the point, so the upload streams into the storage seam without
+ever becoming JSON, and the download streams the object back. Both read the
+session exactly once through the gate, and a file id in another space is the
+shared `NOT_FOUND` before a byte is read.
+
+- **An upload is bounded and streamable.** The `upload` family in the limits
+  register carries the attachment cap (8 MiB by default,
+  `PORKBOT_LIMIT_MAX_UPLOAD_BYTES`), checked from `Content-Length` or while the
+  body streams, so an oversized upload is refused before it is buffered. The
+  service writes the object first and the row second: a refusal after the
+  write — a thread outside the actor's space — deletes the object again on a
+  best-effort basis, and the failure window can only leave an unreferenced
+  object, never a row whose bytes are missing.
+- **A send carries attachments by id.** `threads.send` takes `attachmentIds`
+  (capped at `MAX_ATTACHMENTS_PER_MESSAGE`) and resolves each through the
+  actor-scoped store as an attachment on that thread; the message's jsonb
+  blocks gain a `file` kind beside `text`, and the task prompt names each
+  file's deterministic home-relative path (`attachments/<id>/<name>`) so the
+  model can read it with `file_read`. The send's replay comparison includes
+  the attachment set: the same nonce with a different set is a typed conflict,
+  not a replay.
+- **The worker materializes before the run.** `materializeRunAttachments` in
+  `@porkbot/worker` reads the run's source message, resolves its file blocks,
+  and streams each object into the computer through the same fenced command
+  runner the tools use — 16 KiB parts written as overwrites, one assembly, one
+  cleanup — so memory stays bounded and a retried materialization rewrites the
+  same parts. The offline run suite proves the whole path: bytes seeded in an
+  in-memory storage seam are read back by `file_read` from the emulated home.
+- **A file a tool writes outlives the run.** `createComputerTools` accepts an
+  `ArtifactRecorder`; every successful `file_write` records its bytes through
+  the storage seam and the run's file store, and the tool result carries the
+  download pointer (`{ id, filename, sizeBytes, downloadPath }`). The
+  `run_artifact` row is unique on `(run_id, call_id)` and the storage key is
+  deterministic in the same pair, so a retried recording lands on the first row
+  and the first object. The console links the file from the tool-call timeline,
+  and the link resolves after the run settles and after a reload because it
+  addresses the row, never the machine's filesystem.
+- **File paths are confined to the home.** `confineToHome` in `@porkbot/core`
+  resolves `file_read`, `file_write` and `file_list` arguments — absolute or
+  relative — against the computer's home and refuses anything that leaves it,
+  before a command is built, so `../etc/passwd` never reaches the machine. The
+  refusal is the tool result's typed reason (`outside_home`); a symlink
+  planted inside the home is the machine's isolation boundary, which the shell
+  tool already crosses. Origins are `home:/<relative-path>`, the convention the
+  E10 ingestion fixtures use, and file bytes are still labelled
+  `UntrustedContent` at the tool boundary.
+- **Two tables, one owner.** `message_attachment` and `run_artifact` are read
+  and written only by `packages/db/src/file-store.ts` — the operator's half
+  uploads and resolves downloads, the run's half materializes and records —
+  and `file-store.call-sites.test.ts` fails when another shipped module names
+  either table. Both are space-scoped like every row, and the authorization
+  matrix registers each with probes over the real seams.
 
 ## Webhook ingress
 

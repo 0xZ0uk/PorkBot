@@ -1064,7 +1064,117 @@ export const resources: readonly Resource<unknown>[] = [
         ),
     },
   }),
+
+  resource<AttachmentSeed>({
+    entity: "message_attachment",
+    tables: ["message_attachment"],
+    seed: async (space) => {
+      const seed = await seedRun(space, "Attachment host");
+      const attachment = await space.ownerRepositories.files.createAttachment({
+        threadId: seed.threadId,
+        filename: "matrix-report.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 2_048,
+        storageKey: `files/${space.spaceId}/${randomUUID()}`,
+      });
+
+      return { threadId: seed.threadId, attachmentId: attachment.id };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          "select (select count(*)::int from message_attachment where space_id = $1) as rows, " +
+            "filename from message_attachment where id = $2",
+          [space.spaceId, seed.attachmentId],
+        ),
+      ),
+    user: {
+      // The operator's read: the file a download addresses, and the
+      // attachment rows a send resolves. A foreign id refuses both.
+      read: (subject, seed) =>
+        visibleOn(async () => {
+          await subject.repositories.files.findStoredFile(seed.attachmentId);
+          await subject.repositories.files.findAttachments(seed.threadId, [seed.attachmentId]);
+        }),
+      // The upload: a thread in another space matches nothing, so the insert
+      // writes no row and the foreign attempt is refused.
+      write: (subject, seed) =>
+        appliedOn(() =>
+          subject.repositories.files.createAttachment({
+            threadId: seed.threadId,
+            filename: "matrix-upload.txt",
+            contentType: "text/plain",
+            sizeBytes: 4,
+            storageKey: `files/${subject.actor.spaceId}/${randomUUID()}`,
+          }),
+        ),
+    },
+    system: {
+      // The materialization read: the attachments a message references, scoped
+      // to the job's space.
+      read: (subject, seed) =>
+        visibleOn(() =>
+          subject.repositories.files.findAttachments(seed.threadId, [seed.attachmentId]),
+        ),
+    },
+  }),
+
+  resource<ArtifactSeed>({
+    entity: "run_artifact",
+    tables: ["run_artifact"],
+    seed: async (space) => {
+      const seed = await seedRun(space, "Artifact host");
+      const artifact = await space.systemRepositories.files.recordArtifact({
+        runId: seed.runId,
+        callId: `matrix-seed-${randomUUID()}`,
+        filename: "matrix-artifact.txt",
+        contentType: "text/plain",
+        sizeBytes: 4,
+        storageKey: `artifacts/${space.spaceId}/${randomUUID()}`,
+      });
+
+      return { runId: seed.runId, artifactId: artifact.id };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          "select (select count(*)::int from run_artifact where space_id = $1) as rows, " +
+            "filename from run_artifact where id = $2",
+          [space.spaceId, seed.artifactId],
+        ),
+      ),
+    user: {
+      // The operator's read: the artifact a download link addresses.
+      read: (subject, seed) =>
+        visibleOn(() => subject.repositories.files.findStoredFile(seed.artifactId)),
+    },
+    system: {
+      // The artifact record: the run in another space matches nothing, so the
+      // foreign attempt is refused and the acting space's rows are unchanged.
+      write: (subject, seed) =>
+        appliedOn(() =>
+          subject.repositories.files.recordArtifact({
+            runId: seed.runId,
+            callId: `matrix-write-${randomUUID()}`,
+            filename: "matrix-artifact-two.txt",
+            contentType: "text/plain",
+            sizeBytes: 4,
+            storageKey: `artifacts/${subject.actor.spaceId}/${randomUUID()}`,
+          }),
+        ),
+    },
+  }),
 ];
+
+interface AttachmentSeed {
+  readonly threadId: string;
+  readonly attachmentId: string;
+}
+
+interface ArtifactSeed {
+  readonly runId: string;
+  readonly artifactId: string;
+}
 
 function eventFor(threadId: string, runId: string, seq: number): RunEvent {
   return {

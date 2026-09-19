@@ -1,5 +1,6 @@
 import { eventIterator } from "@orpc/contract";
 import {
+  MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_CLIENT_NONCE_LENGTH,
   MAX_MESSAGE_TEXT_LENGTH,
   RUN_EVENT_SCHEMA_VERSION,
@@ -42,12 +43,22 @@ import { authenticatedProcedure } from "./access.ts";
  */
 
 /**
- * One block of a message's content. The union has one member today because the
- * composer sends plain text; core's `MessageBlock` is the domain vocabulary
- * this mirrors, and a second kind arrives in both places together.
+ * One block of a message's content. Core's `MessageBlock` is the domain
+ * vocabulary this mirrors, and the two kinds — literal text and a reference to
+ * a stored attachment (slice 7.6) — arrive in both places together. The file
+ * block carries the facts a renderer needs beside the id, so a transcript page
+ * renders a message's attachments without a second read; the bytes stay behind
+ * the download route the id addresses.
  */
 export const messageBlockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({
+    type: z.literal("file"),
+    attachmentId: z.uuid(),
+    filename: z.string().min(1),
+    contentType: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative(),
+  }),
 ]);
 
 export const messageRoleSchema = z.enum(["user", "assistant"]);
@@ -181,9 +192,18 @@ export const threadsSendContract = authenticatedProcedure
       threadId: z.string().min(1),
       text: z.string().min(1).max(MAX_MESSAGE_TEXT_LENGTH),
       /**
+       * The stored attachments this send carries (slice 7.6), addressed by the
+       * ids the upload route returned. Each must be an attachment on this
+       * thread in the actor's space, and the count is bounded before the send
+       * reaches the service; the files are materialized into the computer
+       * before the run starts, not carried in this request.
+       */
+      attachmentIds: z.array(z.uuid()).max(MAX_ATTACHMENTS_PER_MESSAGE).default([]),
+      /**
        * The caller's idempotency key for this send. A resubmission of the same
-       * nonce and text replays the first message and run; the same nonce with
-       * other text is a typed conflict, never a second message.
+       * nonce and content replays the first message and run; the same nonce
+       * with other text or a different attachment set is a typed conflict,
+       * never a second message.
        */
       clientNonce: z.string().min(1).max(MAX_CLIENT_NONCE_LENGTH),
     }),

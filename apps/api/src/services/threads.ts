@@ -4,11 +4,14 @@ import {
   decideMessageSend,
   EmptyMessage,
   MessageTooLong,
+  messageBlocksForSend,
+  messageFiles,
+  messagePromptWithAttachments,
   messageText,
   MissingClientNonce,
-  textMessageBlocks,
+  TooManyAttachments,
 } from "@porkbot/core";
-import type { MessageRuleError } from "@porkbot/core";
+import type { FileMessageBlock, MessageRuleError } from "@porkbot/core";
 import type { Message, Thread, ThreadCursor } from "@porkbot/contracts";
 import type { MessageRecord, ThreadRecord, ToolCallResult, UserRepositories } from "@porkbot/db";
 import { InvalidMessageError, MessageNonceReusedError } from "@porkbot/effect";
@@ -70,6 +73,13 @@ export interface ThreadsService {
     readonly threadId: string;
     readonly text: string;
     readonly clientNonce: string;
+    /**
+     * The stored attachments the send references (slice 7.6). Each id is
+     * resolved through the actor-scoped store as an attachment on this thread
+     * before the message is written; a missing or foreign id is the shared
+     * not-found and nothing is sent.
+     */
+    readonly attachmentIds: readonly string[];
   }): Promise<{
     readonly action: "start_run" | "steer" | "replay";
     readonly message: MessageRecord;
@@ -149,7 +159,7 @@ export function createThreadsService(): ThreadsService {
       };
     },
 
-    async send({ repositories, threadId, text, clientNonce }) {
+    async send({ repositories, threadId, text, clientNonce, attachmentIds }) {
       // A thread outside the actor's space is the same not-found as a missing
       // one, and nothing below it runs.
       await repositories.threads.findById(threadId);
@@ -158,7 +168,7 @@ export function createThreadsService(): ThreadsService {
       const active = await repositories.runs.findActiveForThread(threadId);
 
       const decision = decideMessageSend(
-        { text, clientNonce },
+        { text, clientNonce, attachmentIds },
         {
           existingSend:
             existing === undefined
@@ -166,7 +176,13 @@ export function createThreadsService(): ThreadsService {
               : {
                   messageId: existing.id,
                   runId: existing.runId,
-                  request: { text: messageText(existing.blocks) ?? "", clientNonce },
+                  request: {
+                    text: messageText(existing.blocks) ?? "",
+                    clientNonce,
+                    attachmentIds: (messageFiles(existing.blocks) ?? []).map(
+                      (file) => file.attachmentId,
+                    ),
+                  },
                 },
           activeRun: active === undefined ? undefined : { runId: active.id, status: active.status },
         },
@@ -176,22 +192,37 @@ export function createThreadsService(): ThreadsService {
         throw refusedSend(decision.error);
       }
 
-      switch (decision.action.action) {
-        case "replay": {
-          if (existing === undefined) {
-            // The policy only replays a send it was given; a replay without one
-            // is a programming mistake, not a client outcome.
-            throw new Error("the send decision replayed a message the lookup did not return");
-          }
-
-          return { action: "replay", message: existing, runId: decision.action.runId };
+      if (decision.action.action === "replay") {
+        if (existing === undefined) {
+          // The policy only replays a send it was given; a replay without one
+          // is a programming mistake, not a client outcome.
+          throw new Error("the send decision replayed a message the lookup did not return");
         }
 
+        // The replay is decided before the attachments are resolved: a
+        // resubmitted nonce answers with the first message even if its files
+        // were removed since.
+        return { action: "replay", message: existing, runId: decision.action.runId };
+      }
+
+      // Each id must be an attachment on this thread in the actor's space, and
+      // the read reports the first that is not as the shared not-found.
+      const attachments = await repositories.files.findAttachments(threadId, attachmentIds);
+      const files: readonly FileMessageBlock[] = attachments.map((attachment) => ({
+        type: "file",
+        attachmentId: attachment.id,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        sizeBytes: attachment.sizeBytes,
+      }));
+      const blocks = messageBlocksForSend(text, files);
+
+      switch (decision.action.action) {
         case "steer": {
           const message = await repositories.messages.steer({
             threadId,
             clientNonce,
-            blocks: textMessageBlocks(text),
+            blocks,
             runId: decision.action.runId,
           });
 
@@ -202,8 +233,11 @@ export function createThreadsService(): ThreadsService {
           const created = await repositories.runs.create({
             threadId,
             clientNonce,
-            prompt: text,
-            blocks: textMessageBlocks(text),
+            // The prompt names each attachment's home-relative path, so the
+            // model can read what the message carries; the transcript keeps the
+            // sender's text and the file blocks.
+            prompt: messagePromptWithAttachments(text, blocks),
+            blocks,
           });
 
           // The run's nonce is scoped to the space, so a nonce spent on another
@@ -232,7 +266,11 @@ export function createThreadsService(): ThreadsService {
 /** Core's rule vocabulary onto the transport's typed errors, in one place. */
 function refusedSend(error: MessageRuleError): InvalidMessageError | MessageNonceReusedError {
   if (error instanceof ClientNonceReused) {
-    return new MessageNonceReusedError(error.messageId, "different_text");
+    return new MessageNonceReusedError(error.messageId, error.reason);
+  }
+
+  if (error instanceof TooManyAttachments) {
+    return new InvalidMessageError("too_many_attachments");
   }
 
   if (error instanceof EmptyMessage) {
