@@ -110,7 +110,6 @@ export function piAgentRuntimeLayer(
       startSeq: request.startSeq,
     });
     const finished = yield* Ref.make(false);
-    const steers = yield* Ref.make(0);
 
     const frame = (seq: number) =>
       ({
@@ -257,12 +256,11 @@ export function piAgentRuntimeLayer(
           }
           case "steer": {
             yield* invokeControl("steer", () => source.controls.steer(command.text));
-            const nth = yield* Ref.updateAndGet(steers, (count) => count + 1);
             const seq = translator.allocateSeq();
             yield* events.offer({
               ...frame(seq),
               type: "run.steered",
-              messageId: `steer-${nth}`,
+              messageId: command.messageId,
               text: command.text,
             });
             break;

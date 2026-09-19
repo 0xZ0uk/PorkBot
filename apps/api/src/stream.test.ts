@@ -180,6 +180,7 @@ function fakeRepositories(actor: UserActor): UserRepositories {
       listForThread: notExercised,
       findActiveForThread: notExercised,
       create: notExercised,
+      requestStop: notExercised,
     },
     messages: {
       listForThread: notExercised,

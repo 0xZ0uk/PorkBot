@@ -30,6 +30,12 @@ export interface RunLease {
  * What a fenced run write may change. `attempt` settles the attempt row for the
  * lease's own fence in the same statement as the run change, so a finishing
  * worker cannot leave an attempt `running` behind a run it just completed.
+ *
+ * `release` clears the owner and the deadline in the same write (slice 6.7):
+ * a terminal run — completed, failed or stopped by the operator — is nobody's
+ * lease, and leaving the owner column behind would make a finished run read as
+ * held by a process that has moved on. The clear travels with the status
+ * change, so no other statement can observe a terminal run still leased.
  */
 export interface FencedRunPatch {
   readonly status?: RunStatus;
@@ -38,6 +44,18 @@ export interface FencedRunPatch {
   readonly errorCode?: string | null;
   readonly started?: boolean;
   readonly completed?: boolean;
+  /** Clears `lease_owner` and `lease_expires_at` as part of this write. */
+  readonly release?: boolean;
+  /**
+   * Settles every in-flight external effect of the run as a recorded failure
+   * carrying this reason, in the same statement (slice 6.7). A terminal run
+   * can never settle a call it left running — no resumed session, no retry —
+   * so a cancellation reconciles those rows the way a reclaim does, instead of
+   * leaving claims that read as in flight forever. The caller supplies this
+   * only for a settlement that may end the run mid-call; a completion that
+   * finds an open call is a bug this flag must not paper over.
+   */
+  readonly settleInFlight?: string;
   readonly attempt?: AttemptStatus;
 }
 
@@ -318,8 +336,19 @@ export async function updateClaimedRun(
     assignments.push("completed_at = now()");
   }
 
+  if (patch.release === true) {
+    assignments.push("lease_owner = null", "lease_expires_at = null");
+  }
+
   values.push(runId, actor.spaceId, lease.owner, lease.fence);
   const firstGuard = values.length - 3;
+
+  let settleReason = 0;
+
+  if (patch.settleInFlight !== undefined) {
+    values.push(patch.settleInFlight);
+    settleReason = values.length;
+  }
 
   let attemptStatus = 0;
   let attemptError = 0;
@@ -350,8 +379,22 @@ export async function updateClaimedRun(
         "and exists (select 1 from updated) " +
         "returning id)";
 
+  // The reclaim's reconciliation, for a settlement that ends the run: a call
+  // the run left in flight is recorded as failed with the reason, so a reader
+  // or a retry sees an outcome instead of a claim nothing can settle.
+  const reconciled =
+    patch.settleInFlight === undefined
+      ? ""
+      : ", reconciled as (" +
+        "update external_effect set status = 'failed'::effect_status, " +
+        `result = jsonb_build_object('error', $${settleReason}::text), updated_at = now() ` +
+        `where space_id = $${firstGuard + 1} and run_id = $${firstGuard} ` +
+        "and status in ('pending', 'running') " +
+        "and exists (select 1 from updated) " +
+        "returning id)";
+
   const { rows } = await database.query<RunRecord>(
-    updated + settled + " select updated.* from updated",
+    updated + settled + reconciled + " select updated.* from updated",
     values,
   );
 

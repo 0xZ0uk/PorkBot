@@ -47,6 +47,8 @@ const verifiedRunExecutor: RunExecutor = createRunExecutor({
   work: ({ run, logger: runLogger }) =>
     Effect.sync(() => {
       runLogger.info("run claimed; no model runtime is wired yet", { fence: run.leaseFence });
+
+      return { status: "completed" } as const;
     }),
 });
 

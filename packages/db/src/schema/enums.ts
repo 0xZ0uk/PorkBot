@@ -41,6 +41,7 @@ export const attemptStatus = pgEnum("attempt_status", [
   "running",
   "completed",
   "failed",
+  "cancelled",
   "abandoned",
 ]);
 

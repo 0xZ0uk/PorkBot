@@ -47,6 +47,7 @@ const run: RunRecord = {
   leaseOwner: "worker-a",
   leaseFence: 1,
   leaseExpiresAt: new Date(120_000),
+  stopRequestedAt: null,
   checkpoint: {},
   clientNonce: "nonce-1",
   sourceMessageId: "message-1",
@@ -193,6 +194,39 @@ describe("run leases", () => {
 
     // A checkpoint-only patch settles nothing; the attempt keeps running.
     expect(database.calls[1]?.text).not.toContain("settled as (");
+  });
+
+  it("settles the run's in-flight calls in the same write when a cancellation asks for it", async () => {
+    const database = fakeDatabase([run]);
+    const repositories = createRepositories(actor, database);
+    const lease = { owner: "worker-a", fence: 1 };
+
+    await repositories.runs.update(run.id, lease, {
+      status: "cancelled",
+      completed: true,
+      attempt: "cancelled",
+      release: true,
+      settleInFlight: "the run was cancelled before this tool call settled",
+    });
+    await repositories.runs.update(run.id, lease, {
+      status: "completed",
+      completed: true,
+      attempt: "completed",
+      release: true,
+    });
+
+    const cancelled = database.calls[0];
+    expect(cancelled?.text).toContain("reconciled as (");
+    expect(cancelled?.text).toContain(
+      "update external_effect set status = 'failed'::effect_status",
+    );
+    expect(cancelled?.text).toContain("status in ('pending', 'running')");
+    expect(cancelled?.text).toContain("exists (select 1 from updated)");
+    expect(cancelled?.values).toContain("the run was cancelled before this tool call settled");
+
+    // A completion carries no reason: a session that completed with an open
+    // call is a bug, not a reconciliation.
+    expect(database.calls[1]?.text).not.toContain("reconciled as (");
   });
 
   it("maps every run status onto its allowed pre-image and stamps started_at", async () => {

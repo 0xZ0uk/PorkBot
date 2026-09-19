@@ -1,4 +1,16 @@
-import { Cause, Effect, Exit, Layer, Mailbox, Option, Ref, Stream } from "effect";
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Mailbox,
+  Option,
+  Queue,
+  Ref,
+  Stream,
+} from "effect";
 import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import { AgentRuntime, requestScoped, UnknownToolError } from "@porkbot/effect";
@@ -19,7 +31,15 @@ import type {
  * Pi adapter (slice 5.3) changes the layer the worker provides and nothing in
  * the orchestrator. Scripts are data: the same script produces the same event
  * sequence, in order, every run, and each step either emits exactly one event
- * or waits for exactly one command.
+ * or waits.
+ *
+ * Commands are consumed by a command loop beside the script (slice 6.7), the
+ * same shape the Pi adapter uses: a steer is emitted as `run.steered` with the
+ * durable message id and handed to a waiting `await.steer` step, an approve or
+ * deny resolves the gate it names even if it arrives before that gate is
+ * reached, and a stop finishes the run with `run.cancelled` and interrupts the
+ * script — so a token loop or a tool call in flight ends there instead of
+ * running to completion.
  *
  * Tool steps are real when the caller passes a `ToolDispatcher` (slice 6.9):
  * the script names the call, the dispatcher executes it through the same
@@ -83,11 +103,25 @@ export class EmulatorScriptError extends Error {
   }
 }
 
-type CommandOutcome =
-  | { readonly kind: "steered" }
-  | { readonly kind: "approved" }
-  | { readonly kind: "denied"; readonly reason: string | undefined }
-  | { readonly kind: "stopped"; readonly reason: string };
+type DecisionOutcome =
+  { readonly kind: "approved" } | { readonly kind: "denied"; readonly reason: string | undefined };
+
+/**
+ * One call's gate: either the run is waiting for a decision or the decision
+ * arrived first. Both cases live in the same keyed slot so the handoff is one
+ * atomic exchange — a decision that lands between a step's check and its wait
+ * would otherwise be dropped, which is exactly the flaky seam a scripted
+ * runtime must not have.
+ */
+type DecisionSlot =
+  | { readonly kind: "waiting"; readonly deferred: Deferred.Deferred<DecisionOutcome> }
+  | { readonly kind: "early"; readonly outcome: DecisionOutcome };
+
+/** One steer as the command loop hands it to a waiting script step. */
+interface SteerDelivery {
+  readonly messageId: string;
+  readonly text: string;
+}
 
 /**
  * Builds the run-scoped layer for one scripted run: a session whose `events`
@@ -106,7 +140,8 @@ export function emulatorAgentRuntimeLayer(
     const commands = yield* Mailbox.make<RunCommand>();
     const nextSeq = yield* Ref.make(request.startSeq);
     const finished = yield* Ref.make(false);
-    const steers = yield* Ref.make(0);
+    const steers = yield* Queue.unbounded<SteerDelivery>();
+    const decisions = yield* Ref.make(new Map<string, DecisionSlot>());
 
     const base = (seq: number) =>
       ({
@@ -142,48 +177,91 @@ export function emulatorAgentRuntimeLayer(
         reason,
       });
 
-    const awaitSteer = (): Effect.Effect<CommandOutcome, Cause.NoSuchElementException> =>
+    /**
+     * Waits for the next steer. The command loop owns the mailbox and has
+     * already emitted `run.steered` by the time a step wakes here, so a steer
+     * that arrives between steps is queued rather than lost.
+     */
+    const awaitSteer = (): Effect.Effect<SteerDelivery> => Queue.take(steers);
+
+    /**
+     * Waits for this call's decision. A decision that already arrived is taken
+     * from the slot; otherwise the wait is registered, and the registration
+     * and the check are one atomic exchange with the command loop's delivery,
+     * so an approve or deny can never land in between and be dropped.
+     */
+    const awaitDecision = (callId: string): Effect.Effect<DecisionOutcome> =>
       Effect.gen(function* () {
-        for (;;) {
-          const command = yield* commands.take;
+        const deferred = yield* Deferred.make<DecisionOutcome>();
 
-          if (command.type === "stop") {
-            return { kind: "stopped", reason: command.reason ?? "stop" };
+        const early = yield* Ref.modify(decisions, (current) => {
+          const slot = current.get(callId);
+
+          if (slot?.kind === "early") {
+            const next = new Map(current);
+            next.delete(callId);
+
+            return [slot.outcome, next] as const;
           }
 
-          if (command.type === "steer") {
-            const nth = yield* Ref.updateAndGet(steers, (count) => count + 1);
+          const next = new Map(current);
+          next.set(callId, { kind: "waiting", deferred });
 
-            yield* emit((seq) => ({
-              ...base(seq),
-              type: "run.steered",
-              messageId: `steer-${nth}`,
-              text: command.text,
-            }));
+          return [undefined, next] as const;
+        });
 
-            return { kind: "steered" };
-          }
+        if (early !== undefined) {
+          return early;
         }
+
+        return yield* Deferred.await(deferred).pipe(
+          Effect.ensuring(
+            Ref.update(decisions, (current) => {
+              const slot = current.get(callId);
+
+              if (slot?.kind !== "waiting" || slot.deferred !== deferred) {
+                return current;
+              }
+
+              const next = new Map(current);
+              next.delete(callId);
+
+              return next;
+            }),
+          ),
+        );
       });
 
-    const awaitDecision = (
-      callId: string,
-    ): Effect.Effect<CommandOutcome, Cause.NoSuchElementException> =>
+    /**
+     * Hands one approve or deny to the call it names: a waiting step is woken,
+     * a decision that arrived before the step is remembered for it, and a
+     * second decision for an already-resolved call is ignored — the first
+     * answer is the answer, exactly as a real gate resolves once.
+     */
+    const deliverDecision = (callId: string, outcome: DecisionOutcome): Effect.Effect<void> =>
       Effect.gen(function* () {
-        for (;;) {
-          const command = yield* commands.take;
+        const waiting = yield* Ref.modify(decisions, (current) => {
+          const slot = current.get(callId);
 
-          if (command.type === "stop") {
-            return { kind: "stopped", reason: command.reason ?? "stop" };
+          if (slot?.kind === "waiting") {
+            const next = new Map(current);
+            next.delete(callId);
+
+            return [slot.deferred, next] as const;
           }
 
-          if (command.type === "approve" && command.callId === callId) {
-            return { kind: "approved" };
+          if (slot?.kind === "early") {
+            return [undefined, current] as const;
           }
 
-          if (command.type === "deny" && command.callId === callId) {
-            return { kind: "denied", reason: command.reason };
-          }
+          const next = new Map(current);
+          next.set(callId, { kind: "early", outcome });
+
+          return [undefined, next] as const;
+        });
+
+        if (waiting !== undefined) {
+          yield* Deferred.succeed(waiting, outcome);
         }
       });
 
@@ -311,14 +389,9 @@ export function emulatorAgentRuntimeLayer(
 
             const outcome = yield* awaitDecision(step.callId);
 
-            if (outcome.kind === "stopped") {
-              yield* finish(cancelled(outcome.reason));
-              return;
-            }
-
             if (outcome.kind === "approved") {
               yield* executeToolStep(step);
-            } else if (outcome.kind === "denied") {
+            } else {
               yield* emit((seq) => ({
                 ...base(seq),
                 type: "tool.failed",
@@ -331,13 +404,7 @@ export function emulatorAgentRuntimeLayer(
           }
 
           case "await.steer": {
-            const outcome = yield* awaitSteer();
-
-            if (outcome.kind === "stopped") {
-              yield* finish(cancelled(outcome.reason));
-              return;
-            }
-
+            yield* awaitSteer();
             break;
           }
 
@@ -387,8 +454,71 @@ export function emulatorAgentRuntimeLayer(
       }),
     );
 
+    /**
+     * The command half owns the mailbox, exactly as the Pi adapter's does: a
+     * steer is acknowledged with `run.steered` and handed to whichever step is
+     * waiting, an approve or deny resolves the matching gate, and a stop
+     * finishes the run with `run.cancelled` and then interrupts the script.
+     *
+     * The stop interrupt is what makes stopping prompt: a token loop or a tool
+     * call in flight is a fiber inside `runLoop`, so the operator's stop ends
+     * it there instead of waiting for the script to reach its next await
+     * (stories 21 and 26).
+     */
+    const commandLoop = Mailbox.toStream(commands).pipe(
+      Stream.runForEach((command) =>
+        Effect.gen(function* () {
+          switch (command.type) {
+            case "stop": {
+              yield* finish(cancelled(command.reason ?? "stop"));
+              yield* Fiber.interrupt(runLoopFiber);
+              return;
+            }
+
+            case "steer": {
+              yield* emit((seq) => ({
+                ...base(seq),
+                type: "run.steered",
+                messageId: command.messageId,
+                text: command.text,
+              }));
+              yield* Queue.offer(steers, { messageId: command.messageId, text: command.text });
+              return;
+            }
+
+            case "approve":
+            case "deny": {
+              const decision: DecisionOutcome =
+                command.type === "approve"
+                  ? { kind: "approved" }
+                  : { kind: "denied", reason: command.reason };
+
+              yield* deliverDecision(command.callId, decision);
+              return;
+            }
+          }
+        }),
+      ),
+      Effect.catchAllCause((cause) => {
+        if (Cause.isInterrupted(cause)) {
+          return Effect.interrupt;
+        }
+
+        return Effect.gen(function* () {
+          const already = yield* Ref.getAndSet(finished, true);
+
+          if (already) {
+            return;
+          }
+
+          yield* events.failCause(cause);
+        });
+      }),
+    );
+
     yield* emit((seq) => ({ ...base(seq), type: "run.started" }));
-    yield* Effect.forkScoped(runLoop);
+    const runLoopFiber = yield* Effect.forkScoped(runLoop);
+    yield* Effect.forkScoped(commandLoop);
 
     return {
       session: {

@@ -19,6 +19,7 @@ import {
   NameConflictError,
   NotFoundError,
   RunGoneError,
+  RunNotActiveError,
   ToolCallConflictError,
   ToolLedgerError,
   UnknownToolError,
@@ -46,6 +47,11 @@ const samples = {
     status: 409,
   },
   RunGoneError: { error: new RunGoneError("run-1"), code: "NOT_FOUND", status: 404 },
+  RunNotActiveError: {
+    error: new RunNotActiveError("run-1", "completed"),
+    code: "PRECONDITION_FAILED",
+    status: 412,
+  },
   LeaseLostError: { error: new LeaseLostError("run-1"), code: "CONFLICT", status: 409 },
   GateTimeoutError: { error: new GateTimeoutError("call-1"), code: "TIMEOUT", status: 408 },
   ApprovalStoreError: {

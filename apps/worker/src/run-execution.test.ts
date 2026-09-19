@@ -3,7 +3,13 @@ import { emulatorAgentRuntimeLayer } from "@porkbot/adapters";
 import type { EmulatorStep } from "@porkbot/adapters";
 import { createRepositories } from "@porkbot/db";
 import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@porkbot/db";
-import { LeaseLostError, LiveRuns, liveRunsLayer, withLiveRun } from "@porkbot/effect";
+import {
+  consumeRunSession,
+  LeaseLostError,
+  LiveRuns,
+  liveRunsLayer,
+  withLiveRun,
+} from "@porkbot/effect";
 import type { RunStartRequest } from "@porkbot/effect";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
@@ -32,6 +38,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseOwner: "job-1",
     leaseFence: 1,
     leaseExpiresAt: new Date(120_000),
+    stopRequestedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -110,7 +117,7 @@ describe("the run execution harness", () => {
   it("settles a completed run and its attempt, with the lease renewed", async () => {
     const runner = fakeRepositories();
     const execute = createRunExecutor({
-      work: () => Effect.void,
+      work: () => Effect.succeed({ status: "completed" } as const),
       heartbeatIntervalMs: 5,
     });
 
@@ -119,10 +126,59 @@ describe("the run execution harness", () => {
     expect(runner.updates).toHaveLength(1);
     expect(runner.updates[0]).toMatchObject({
       lease: { owner: "job-1", fence: 1 },
-      patch: { status: "completed", completed: true, attempt: "completed" },
+      patch: {
+        status: "completed",
+        completed: true,
+        attempt: "completed",
+        release: true,
+      },
     });
     expect(runner.heartbeats.length).toBeGreaterThan(0);
     expect(runner.abandoned).toEqual([]);
+  });
+
+  it("settles a stopped session as cancelled with its attempt and releases the lease", async () => {
+    const runner = fakeRepositories();
+    const execute = createRunExecutor({
+      work: () => Effect.succeed({ status: "cancelled", reason: "the operator stopped this run" }),
+      heartbeatIntervalMs: 5,
+    });
+
+    await execute(executionFor(runner));
+
+    expect(runner.updates).toHaveLength(1);
+    expect(runner.updates[0]).toMatchObject({
+      patch: {
+        status: "cancelled",
+        errorCode: "cancelled",
+        completed: true,
+        attempt: "cancelled",
+        release: true,
+      },
+    });
+    expect(runner.abandoned).toEqual([]);
+  });
+
+  it("settles a terminal run.failed event as a failed run", async () => {
+    const runner = fakeRepositories();
+    const execute = createRunExecutor({
+      work: () =>
+        Effect.succeed({ status: "failed", error: "the model endpoint is gone", code: "gone" }),
+      heartbeatIntervalMs: 5,
+    });
+
+    await execute(executionFor(runner));
+
+    expect(runner.updates).toHaveLength(1);
+    expect(runner.updates[0]).toMatchObject({
+      patch: {
+        status: "failed",
+        error: "the model endpoint is gone",
+        errorCode: "gone",
+        attempt: "failed",
+        release: true,
+      },
+    });
   });
 
   it("settles a failed run with its attempt rather than leaving it running", async () => {
@@ -196,12 +252,18 @@ describe("the run execution harness", () => {
 
               // The run is worker-owned, so a dead subscriber costs the run
               // nothing: the steer reaches it and the terminal event follows.
-              yield* liveRuns.dispatch(execution.run.id, { type: "steer", text: "continue" });
-              const remaining = yield* Stream.runCollect(session.events);
-              for (const event of remaining) {
-                observed.push(event.type);
-              }
-            }).pipe(Effect.asVoid),
+              yield* liveRuns.dispatch(execution.run.id, {
+                type: "steer",
+                messageId: "message-1",
+                text: "continue",
+              });
+
+              return yield* consumeRunSession(session, (event) =>
+                Effect.sync(() => {
+                  observed.push(event.type);
+                }),
+              );
+            }),
         ).pipe(Effect.provide(liveRunsLayer)),
     });
 

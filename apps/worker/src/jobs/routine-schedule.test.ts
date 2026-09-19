@@ -80,6 +80,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseOwner: null,
     leaseFence: 0,
     leaseExpiresAt: null,
+    stopRequestedAt: null,
     checkpoint: {},
     clientNonce: `routine:routine-1:${slot.getTime()}`,
     sourceMessageId: null,
