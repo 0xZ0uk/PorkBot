@@ -81,6 +81,7 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
   return {
     actor: forActor,
     membership: { requireActive: notExercised },
+    approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
     bots: {
       async findById(id: string): Promise<BotRecord> {
         if (bot.id !== id || bot.spaceId !== forActor.spaceId) {

@@ -49,6 +49,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
   return {
     actor,
     membership: { requireActive: notExercised },
+    approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
     bots: {
       findById: notExercised,
       list: notExercised,

@@ -175,6 +175,14 @@ function memoryApprovals(userId = "user-1"): MemoryApprovals {
     async listForRun() {
       return [...memory.rows.values()].filter((record) => record.runId === runId);
     },
+
+    async list() {
+      return [...memory.rows.values()].map((record) => ({
+        ...record,
+        botId: "bot-1",
+        threadId: "thread-1",
+      }));
+    },
   };
 
   return Object.assign(memory, { store, decisions });

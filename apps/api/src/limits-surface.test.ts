@@ -91,6 +91,10 @@ function contractLeaves(node: unknown, prefix: readonly string[] = []): Contract
 }
 
 const requestBodies: Record<string, string> = {
+  "approvals.list": JSON.stringify({ json: {} }),
+  "approvals.decide": JSON.stringify({
+    json: { runId: "run-1", callId: "call-1", vote: "approve" },
+  }),
   "bots.list": JSON.stringify({ json: { scope: "active" } }),
   "bots.get": JSON.stringify({ json: { id: "bot-1" } }),
   "bots.create": JSON.stringify({
@@ -229,6 +233,8 @@ describe("every contract procedure", () => {
 
     expect(leaves.map((leaf) => leaf.name).sort()).toEqual([
       "account.me",
+      "approvals.decide",
+      "approvals.list",
       "bots.archive",
       "bots.avatar",
       "bots.clearAvatar",
@@ -338,6 +344,7 @@ describe("the typed answer", () => {
     return {
       actor,
       membership: { requireActive: notExercised },
+      approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
       bots: {
         findById: notExercised,
         list: notExercised,

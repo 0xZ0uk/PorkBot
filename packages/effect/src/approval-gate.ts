@@ -117,10 +117,28 @@ export interface ApprovalVoteResult {
   readonly applied: boolean;
 }
 
+/**
+ * The operator's history row. The approval table is keyed by a run, so the
+ * history read joins the run's thread and bot once at the repository boundary
+ * instead of making the console infer either relationship from an event.
+ */
+export interface ApprovalHistoryRecord extends ApprovalRecord {
+  readonly botId: string;
+  readonly threadId: string;
+}
+
+/** Filters for the operator's pending and historical approval list. */
+export interface ApprovalListInput {
+  readonly botId?: string | undefined;
+  readonly runId?: string | undefined;
+  readonly status?: ApprovalStatus | undefined;
+}
+
 /** The operator's durable half, for the API surface that records decisions. */
 export interface ApprovalDecisions {
   decide(input: ApprovalVoteInput): Promise<ApprovalVoteResult>;
   listForRun(runId: string): Promise<readonly ApprovalRecord[]>;
+  list(input?: ApprovalListInput): Promise<readonly ApprovalHistoryRecord[]>;
 }
 
 export interface ApprovalGateOptions {

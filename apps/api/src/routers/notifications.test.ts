@@ -2,6 +2,8 @@ import { NOTIFICATION_KINDS } from "@porkbot/core";
 import type { NotificationKind, NotificationPreferenceSet } from "@porkbot/core";
 import { createApiClient, ORPCError } from "@porkbot/contracts";
 import type { UserActor, UserRepositories } from "@porkbot/db";
+import { NotFoundError } from "@porkbot/effect";
+import type { ApprovalHistoryRecord } from "@porkbot/effect";
 import { createLogger } from "@porkbot/logging";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { InProcessRealtimeFanout } from "@porkbot/adapters";
@@ -30,6 +32,7 @@ const colleague: UserActor = {
 };
 
 const switches = new Map<string, Set<NotificationKind>>();
+const approvalRows = new Map<string, ApprovalHistoryRecord>();
 let sessionActor: UserActor | null = owner;
 
 function keyFor(actor: UserActor): string {
@@ -44,6 +47,10 @@ function readFor(actor: UserActor): NotificationPreferenceSet {
   ) as NotificationPreferenceSet;
 }
 
+function approvalKey(runId: string, callId: string): string {
+  return `${runId}:${callId}`;
+}
+
 function repositoriesFor(actor: UserActor): UserRepositories {
   const notExercised = async (): Promise<never> => {
     throw new Error("not exercised by the notifications suite");
@@ -52,6 +59,41 @@ function repositoriesFor(actor: UserActor): UserRepositories {
   return {
     actor,
     membership: { requireActive: notExercised },
+    approvals: {
+      async decide(input) {
+        const current = approvalRows.get(approvalKey(input.runId, input.callId));
+
+        if (current === undefined) {
+          throw new NotFoundError("approval", input.callId);
+        }
+
+        if (current.status !== "pending") {
+          return { record: current, applied: false };
+        }
+
+        const updated: ApprovalHistoryRecord = {
+          ...current,
+          status: input.vote === "approve" ? "approved" : "denied",
+          decidedBy: actor.userId,
+          decidedAt: new Date("2026-01-01T00:01:00.000Z"),
+          reason: input.vote === "deny" ? (input.reason ?? null) : null,
+        };
+        approvalRows.set(approvalKey(input.runId, input.callId), updated);
+
+        return { record: updated, applied: true };
+      },
+      async listForRun(runId) {
+        return [...approvalRows.values()].filter((approval) => approval.runId === runId);
+      },
+      async list(input = {}) {
+        return [...approvalRows.values()].filter(
+          (approval) =>
+            (input.botId === undefined || approval.botId === input.botId) &&
+            (input.runId === undefined || approval.runId === input.runId) &&
+            (input.status === undefined || approval.status === input.status),
+        );
+      },
+    },
     bots: {
       findById: notExercised,
       list: notExercised,
@@ -270,6 +312,62 @@ describe("the notification preference surface", () => {
 
     const client = createApiClient({ url: `${baseUrl}/rpc` });
     const error = await client.notifications.preferences().catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ORPCError);
+    expect(error).toMatchObject({ code: "UNAUTHORIZED", status: 401, defined: true });
+  });
+});
+
+describe("the approval surface", () => {
+  it("lists pending history with filters and records an idempotent decision", async () => {
+    approvalRows.clear();
+    approvalRows.set(approvalKey("run-1", "call-1"), {
+      id: "approval-1",
+      botId: "bot-1",
+      threadId: "thread-1",
+      runId: "run-1",
+      callId: "call-1",
+      tool: "web_fetch",
+      arguments: { url: "https://example.invalid", token: "[redacted]" },
+      status: "pending",
+      expiresAt: new Date("2026-01-01T00:05:00.000Z"),
+      decidedBy: null,
+      decidedAt: null,
+      reason: null,
+    });
+    sessionActor = owner;
+
+    const client = createApiClient({ url: `${baseUrl}/rpc` });
+
+    await expect(client.approvals.list({ botId: "bot-1", runId: "run-1" })).resolves.toMatchObject({
+      approvals: [
+        {
+          id: "approval-1",
+          tool: "web_fetch",
+          status: "pending",
+          arguments: { token: "[redacted]" },
+          expiresAt: "2026-01-01T00:05:00.000Z",
+        },
+      ],
+    });
+
+    await expect(
+      client.approvals.decide({ runId: "run-1", callId: "call-1", vote: "deny" }),
+    ).resolves.toMatchObject({
+      applied: true,
+      approval: { status: "denied", decidedBy: "user-1" },
+    });
+
+    await expect(
+      client.approvals.decide({ runId: "run-1", callId: "call-1", vote: "approve" }),
+    ).resolves.toMatchObject({ applied: false, approval: { status: "denied" } });
+  });
+
+  it("refuses the approval list without a session", async () => {
+    sessionActor = null;
+
+    const client = createApiClient({ url: `${baseUrl}/rpc` });
+    const error = await client.approvals.list({}).catch((thrown: unknown) => thrown);
 
     expect(error).toBeInstanceOf(ORPCError);
     expect(error).toMatchObject({ code: "UNAUTHORIZED", status: 401, defined: true });

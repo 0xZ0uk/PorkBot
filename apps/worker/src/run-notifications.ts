@@ -3,6 +3,7 @@ import { RUN_RECLAIM_FAILURES } from "@porkbot/core";
 import type { NotificationKind, RunReclaimFailure } from "@porkbot/core";
 import type { RunRecord, SystemRepositories } from "@porkbot/db";
 import { createNotificationDelivery } from "@porkbot/effect";
+import type { ApprovalRecord } from "@porkbot/effect";
 import type { Logger } from "@porkbot/logging";
 
 /**
@@ -107,6 +108,32 @@ export async function notifyStalledRun(
 }
 
 /**
+ * Delivers the interruption for a newly opened approval gate. The message is
+ * intentionally safe for a lock screen: it names the tool and the deadline,
+ * but never copies the redacted arguments or a provider error into a third
+ * party notification. The durable approval row remains the audit surface.
+ */
+export async function notifyApprovalRequested(
+  run: RunRecord,
+  approval: ApprovalRecord,
+  context: RunNotificationContext,
+): Promise<void> {
+  if (approval.status !== "pending") {
+    return;
+  }
+
+  await deliver(
+    run,
+    {
+      kind: "run.needs_approval",
+      title: "Approval needed",
+      body: `A run is waiting for approval to use ${approval.tool}. It will be denied after ${formatDeadline(approval.expiresAt)}.`,
+    },
+    context,
+  );
+}
+
+/**
  * The message for a terminal run. A reclaim failure is the timeout: the
  * worker that owned the run stopped heartbeating, the watchdog reclaimed it
  * and there was no checkpoint to resume, so the run is telling the operator
@@ -156,6 +183,10 @@ function stallBody(stalledForMs: number, tool: string | null): string {
   const step = tool === null ? "running" : `running ${tool}`;
 
   return `No progress for ${minutes} minute${minutes === 1 ? "" : "s"} while ${step}.`;
+}
+
+function formatDeadline(value: Date): string {
+  return value.toISOString();
 }
 
 /** The thread console — the run's timeline — addressed down to the run. */

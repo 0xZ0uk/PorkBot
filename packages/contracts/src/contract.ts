@@ -1,4 +1,5 @@
 import { accountMeContract } from "./account.ts";
+import { approvalsDecideContract, approvalsListContract } from "./approvals.ts";
 import {
   computersBootContract,
   computersProvidersContract,
@@ -101,6 +102,10 @@ export const appContract = {
   notifications: {
     preferences: notificationsPreferencesContract,
     setPreference: notificationsSetPreferenceContract,
+  },
+  approvals: {
+    list: approvalsListContract,
+    decide: approvalsDecideContract,
   },
   bots: {
     list: botsListContract,

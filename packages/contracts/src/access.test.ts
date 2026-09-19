@@ -57,6 +57,8 @@ describe("procedure access", () => {
       "account.me",
       "notifications.preferences",
       "notifications.setPreference",
+      "approvals.list",
+      "approvals.decide",
       "bots.list",
       "bots.get",
       "bots.create",
