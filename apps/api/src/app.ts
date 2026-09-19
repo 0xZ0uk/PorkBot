@@ -47,6 +47,13 @@ import type { ComputerLifecycleProvider } from "./services/computers.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import type { McpService } from "./services/mcp.ts";
+import {
+  attachmentUploadPath,
+  contentDisposition,
+  createFileService,
+  fileDownloadPath,
+  toReadableStream,
+} from "./services/files.ts";
 import { createModelConnectionsService } from "./services/model-connections.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
 import { createThreadsService } from "./services/threads.ts";
@@ -188,6 +195,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const threads = createThreadsService();
   const webhooks = options.webhooks ?? refuseWebhooks(logger);
   const storage = options.services.storage ?? refuseStorage();
+  const files = createFileService(storage);
   const modelRuntime =
     options.services.modelRuntime ??
     ((credentials: CredentialStore) => createOpenAiCompatibleModelRuntime({ credentials }));
@@ -310,6 +318,94 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     return webhookResponse(context, outcome);
   });
 
+  // The attachment upload (slice 7.6, story 32). It is a raw route rather than
+  // an RPC procedure because the bytes are the point: the body streams into
+  // the storage seam without ever becoming JSON, the `upload` family's cap has
+  // already refused an oversized request, and the session is read exactly once
+  // through the gate's `openProcedureContext` before any store is touched. The
+  // file name rides the query, the content type the header, and the answer is
+  // the row the send will address.
+  app.post(attachmentUploadPath, async (context) => {
+    const procedureContext = await openProcedureContext({
+      headers: context.req.raw.headers,
+      logger: context.get("logger"),
+      requestId: context.get("requestId"),
+      clientKey: clientKey(context),
+      limits,
+      resolveActor,
+      repositoriesFor,
+    });
+
+    if (procedureContext.actor === null || procedureContext.repositories === null) {
+      return context.json({ error: "unauthorized" }, 401);
+    }
+
+    const filename = context.req.query("filename") ?? "";
+
+    if (filename.trim() === "") {
+      return context.json({ error: "bad_request", message: "filename is required" }, 400);
+    }
+
+    try {
+      const uploaded = await files.upload({
+        repositories: procedureContext.repositories,
+        threadId: context.req.param("threadId"),
+        filename,
+        contentType: context.req.header("content-type") ?? "",
+        body: uploadBody(context.req.raw),
+      });
+
+      return context.json(uploaded, 201);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  });
+
+  // The stored-file download (slice 7.6, stories 32 and 33). Attachment and
+  // artifact ids share it: the row is the actor-scoped index, the storage seam
+  // holds the bytes, and the response streams the object with its stored name.
+  // The RPC family's actor budget is spent here after the gate resolved the
+  // session, the same order the procedures use.
+  app.get(fileDownloadPath, async (context) => {
+    const procedureContext = await openProcedureContext({
+      headers: context.req.raw.headers,
+      logger: context.get("logger"),
+      requestId: context.get("requestId"),
+      clientKey: clientKey(context),
+      limits,
+      resolveActor,
+      repositoriesFor,
+    });
+
+    if (procedureContext.actor === null || procedureContext.repositories === null) {
+      return context.json({ error: "unauthorized" }, 401);
+    }
+
+    const outcome = limits.enforceRpc(procedureContext.principal);
+
+    if (!outcome.allowed) {
+      return httpRateLimited(context, outcome.retryAfterSeconds);
+    }
+
+    try {
+      const file = await files.read({
+        repositories: procedureContext.repositories,
+        fileId: context.req.param("fileId"),
+      });
+
+      return new Response(toReadableStream(file.body), {
+        status: 200,
+        headers: {
+          "content-type": file.contentType,
+          "content-length": String(file.sizeBytes),
+          "content-disposition": contentDisposition(file.filename),
+        },
+      });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  });
+
   app.use(`${rpcPath}/*`, async (context, next) => {
     // A failure here is before the oRPC boundary exists, so it cannot be a
     // typed procedure error: it is a defect, and Hono's error handler answers
@@ -375,6 +471,50 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
 function requestPath(url: string | URL): string {
   const parsed = url instanceof URL ? url : new URL(url);
   return `${parsed.pathname}${parsed.search}`;
+}
+
+/**
+ * The upload body as the storage seam wants it: the request's stream pulled
+ * one chunk at a time, never buffered. A bodyless request yields nothing and
+ * stores an empty object.
+ */
+async function* uploadBody(request: Request): AsyncIterable<Uint8Array> {
+  const body = request.body;
+
+  if (body === null) {
+    return;
+  }
+
+  const reader = body.getReader();
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        return;
+      }
+
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
+ * The typed refusal of a raw route. `mapError` is the same boundary the
+ * procedures use, so a missing file and an unconfigured store answer the same
+ * statuses here as they do over RPC; the detailed value stays in the request's
+ * redacted error line, never in this body.
+ */
+function errorResponse(error: unknown): Response {
+  const mapped = mapError(error);
+
+  return new Response(JSON.stringify({ error: mapped.error.code }), {
+    status: mapped.error.status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 /**

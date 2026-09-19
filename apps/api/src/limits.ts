@@ -1,8 +1,10 @@
 import type { Context, Env, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { rateLimitedErrorMessage } from "@porkbot/contracts";
+import { MAX_ATTACHMENT_BYTES } from "@porkbot/core";
 import type { UserActor } from "@porkbot/db";
 import { healthPath } from "@porkbot/health";
+import { attachmentUploadRulePath, fileDownloadRulePath } from "./services/files.ts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import { webhookRulePath } from "./webhooks.ts";
 
@@ -34,7 +36,7 @@ import { webhookRulePath } from "./webhooks.ts";
  */
 
 /** The route families a policy can be attached to. */
-export type RouteFamily = "probe" | "rpc" | "webhook" | "fallback";
+export type RouteFamily = "probe" | "rpc" | "webhook" | "upload" | "fallback";
 
 /**
  * A route and the family whose budget it draws from. `method` uses Hono's
@@ -61,6 +63,12 @@ export function routeRules(rpcPath: string): readonly RouteRule[] {
     // ingress profile as a webhook, so it draws that family's per-address
     // budget rather than the anonymous fallback.
     { method: "GET", path: mcpCallbackPath, family: "webhook" },
+    // The attachment upload (slice 7.6): a body the RPC envelope cannot carry,
+    // so it has its own family with the attachment cap, spent before the body
+    // is read. The download draws the RPC family — the route spends the actor's
+    // budget after the gate resolves the session, like every procedure.
+    { method: "POST", path: attachmentUploadRulePath, family: "upload" },
+    { method: "GET", path: fileDownloadRulePath, family: "rpc" },
   ];
 }
 
@@ -108,6 +116,12 @@ export interface LimitsConfig {
   readonly anonymous: PrincipalBudget & BodyBudget;
   /** Per client address: inbound webhooks and provider callbacks (PRD decision 24). */
   readonly webhook: RequestBudget & BodyBudget;
+  /**
+   * Per client address: an attachment upload (slice 7.6). It draws its own
+   * family because its body cap is the attachment limit, far above the RPC
+   * envelope, and the budget is spent before the request body is read.
+   */
+  readonly upload: RequestBudget & BodyBudget;
   /** Per client address: the health probe, kept apart so a 404 flood cannot starve it. */
   readonly probe: RequestBudget;
 }
@@ -127,6 +141,10 @@ export const defaultLimits: LimitsConfig = {
     requestsPerMinute: 120,
     maxBodyBytes: 262_144,
   },
+  upload: {
+    requestsPerMinute: 60,
+    maxBodyBytes: MAX_ATTACHMENT_BYTES,
+  },
   probe: {
     requestsPerMinute: 600,
   },
@@ -136,6 +154,7 @@ export interface LimitsOverrides {
   readonly authenticated?: Partial<LimitsConfig["authenticated"]>;
   readonly anonymous?: Partial<LimitsConfig["anonymous"]>;
   readonly webhook?: Partial<LimitsConfig["webhook"]>;
+  readonly upload?: Partial<LimitsConfig["upload"]>;
   readonly probe?: Partial<LimitsConfig["probe"]>;
 }
 
@@ -145,6 +164,7 @@ export function resolveLimits(overrides: LimitsOverrides = {}): LimitsConfig {
     authenticated: { ...defaultLimits.authenticated, ...overrides.authenticated },
     anonymous: { ...defaultLimits.anonymous, ...overrides.anonymous },
     webhook: { ...defaultLimits.webhook, ...overrides.webhook },
+    upload: { ...defaultLimits.upload, ...overrides.upload },
     probe: { ...defaultLimits.probe, ...overrides.probe },
   };
 }
@@ -199,6 +219,18 @@ export function limitsFromEnvironment(
         env,
         "PORKBOT_LIMIT_MAX_WEBHOOK_BODY_BYTES",
         defaultLimits.webhook.maxBodyBytes,
+      ),
+    },
+    upload: {
+      requestsPerMinute: limitFromEnvironment(
+        env,
+        "PORKBOT_LIMIT_UPLOAD_PER_MINUTE",
+        defaultLimits.upload.requestsPerMinute,
+      ),
+      maxBodyBytes: limitFromEnvironment(
+        env,
+        "PORKBOT_LIMIT_MAX_UPLOAD_BYTES",
+        defaultLimits.upload.maxBodyBytes,
       ),
     },
     probe: {
@@ -403,7 +435,9 @@ export function createRateLimits(config: LimitsConfig, rules: readonly RouteRule
           ? config.probe
           : family === "webhook"
             ? config.webhook
-            : config.anonymous;
+            : family === "upload"
+              ? config.upload
+              : config.anonymous;
 
       return limiter.check(family, `client:${clientKey}`, budget.requestsPerMinute, now);
     },
@@ -427,6 +461,8 @@ export function bodyCapBytes(config: LimitsConfig, family: RouteFamily): number 
       return Math.max(config.authenticated.maxBodyBytes, config.anonymous.maxBodyBytes);
     case "webhook":
       return config.webhook.maxBodyBytes;
+    case "upload":
+      return config.upload.maxBodyBytes;
     case "probe":
     case "fallback":
       return config.anonymous.maxBodyBytes;
@@ -472,7 +508,7 @@ export function installLimits<E extends LimitEnv>(
 ): RateLimits {
   const limits = createRateLimits(options.config, options.rules);
   const caps = new Map<RouteFamily, number>(
-    (["probe", "rpc", "webhook", "fallback"] as const).map((family) => [
+    (["probe", "rpc", "webhook", "upload", "fallback"] as const).map((family) => [
       family,
       bodyCapBytes(options.config, family),
     ]),

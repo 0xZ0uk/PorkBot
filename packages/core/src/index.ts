@@ -115,6 +115,7 @@ export {
   MessageRuleError,
   MessageTooLong,
   MissingClientNonce,
+  TooManyAttachments,
 } from "./messaging-policy.ts";
 export type {
   ActiveRun,
@@ -125,8 +126,31 @@ export type {
   SendMessageRequest,
 } from "./messaging-policy.ts";
 
-export { isMessageBlock, messageText, textMessageBlocks } from "./message-blocks.ts";
-export type { MessageBlock, TextMessageBlock } from "./message-blocks.ts";
+export {
+  isFileMessageBlock,
+  isMessageBlock,
+  isTextMessageBlock,
+  messageBlocksForSend,
+  messageFiles,
+  messagePromptWithAttachments,
+  messageText,
+  textMessageBlocks,
+} from "./message-blocks.ts";
+export type { FileMessageBlock, MessageBlock, TextMessageBlock } from "./message-blocks.ts";
+
+export {
+  attachmentFileName,
+  attachmentWorkspacePath,
+  COMPUTER_HOME_DIRECTORY,
+  confineToHome,
+  contentTypeForFileName,
+  homePathRefusalMessage,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_FILE_NAME_LENGTH,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MESSAGE_ATTACHMENTS_DIRECTORY,
+} from "./files.ts";
+export type { HomePath, HomePathRefusal, HomePathResolution } from "./files.ts";
 
 export {
   decideRoutineDue,

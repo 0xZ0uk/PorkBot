@@ -393,7 +393,8 @@ export class ApprovalStoreError extends Data.TaggedError("ApprovalStoreError")<{
  * broke a rule `@porkbot/core` owns. The reasons are the core rule's own
  * vocabulary, translated at the boundary instead of parsing an error message.
  */
-export type InvalidMessageReason = "empty" | "too_long" | "missing_nonce" | "nonce_too_long";
+export type InvalidMessageReason =
+  "empty" | "too_long" | "missing_nonce" | "nonce_too_long" | "too_many_attachments";
 
 function invalidMessageText(reason: InvalidMessageReason): string {
   switch (reason) {
@@ -405,13 +406,16 @@ function invalidMessageText(reason: InvalidMessageReason): string {
       return "a message requires a client nonce";
     case "nonce_too_long":
       return "the client nonce is longer than the send limit";
+    case "too_many_attachments":
+      return "the message carries more attachments than the send limit";
   }
 }
 
 /**
- * A send that core's message rules refuse: blank text, text over the limit, or
- * a missing or oversized client nonce. It is the caller's own input coming
- * back, answered as a typed `BAD_REQUEST` rather than a 500 (PRD decision 28).
+ * A send that core's message rules refuse: blank text, text over the limit, a
+ * missing or oversized client nonce, or more attachments than one message may
+ * carry. It is the caller's own input coming back, answered as a typed
+ * `BAD_REQUEST` rather than a 500 (PRD decision 28).
  */
 export class InvalidMessageError extends Data.TaggedError("InvalidMessageError")<{
   readonly reason: InvalidMessageReason;
@@ -424,24 +428,30 @@ export class InvalidMessageError extends Data.TaggedError("InvalidMessageError")
 
 /**
  * A client nonce that already names a different send: it was reused for other
- * text, or for a message on another thread. The nonce is the send's
- * idempotency key, so the refusal is a typed `CONFLICT` — the caller's retry
- * answer is the first message, and a resubmission with new text is a new
- * nonce, never a silent overwrite (PRD decision 5).
+ * text, for a different attachment set, or for a message on another thread.
+ * The nonce is the send's idempotency key, so the refusal is a typed
+ * `CONFLICT` — the caller's retry answer is the first message, and a
+ * resubmission with new content is a new nonce, never a silent overwrite (PRD
+ * decision 5).
  */
 export class MessageNonceReusedError extends Data.TaggedError("MessageNonceReusedError")<{
   readonly messageId: string;
-  readonly reason: "different_text" | "another_thread";
+  readonly reason: "different_text" | "different_attachments" | "another_thread";
   readonly message: string;
 }> {
-  constructor(messageId: string, reason: "different_text" | "another_thread") {
+  constructor(
+    messageId: string,
+    reason: "different_text" | "different_attachments" | "another_thread",
+  ) {
     super({
       messageId,
       reason,
       message:
         reason === "different_text"
           ? `client nonce was already used by message ${messageId} for different text`
-          : `client nonce was already used by message ${messageId} on another thread`,
+          : reason === "different_attachments"
+            ? `client nonce was already used by message ${messageId} with different attachments`
+            : `client nonce was already used by message ${messageId} on another thread`,
     });
   }
 }

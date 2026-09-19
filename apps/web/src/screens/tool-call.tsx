@@ -13,9 +13,15 @@ import type { ToolCallSnapshot } from "@porkbot/core";
  * the danger token and shows the error text the run recorded, which is where
  * the typed provider reason lives.
  *
- * The screen is router-free: the artifact link is a plain anchor to the
- * thread-scoped path, so the component renders the same in a test as in the
- * app, and a reload of the result is a normal document load.
+ * The screen is router-free: the artifact links are plain anchors, so the
+ * component renders the same in a test as in the app, and a reload of either
+ * is a normal document load.
+ *
+ * A file-producing tool (slice 7.6) records its output through the storage
+ * seam and answers with a download pointer; when the inline result carries
+ * one, the row offers the file by name. The pointer is validated before it
+ * becomes an anchor — the result is `unknown` on the wire — so a malformed
+ * value renders nothing rather than a broken link.
  */
 
 export interface ToolCallEntryProps {
@@ -35,6 +41,7 @@ export function toolResultPath(threadId: string, runId: string, callId: string):
 export function ToolCallEntry({ threadId, runId, call }: ToolCallEntryProps) {
   const failed = call.status === "failed";
   const artifact = call.resultArtifact;
+  const download = recordedArtifact(call.result);
 
   return (
     <li className={failed ? "tool-call tool-call-failed" : "tool-call"}>
@@ -72,11 +79,52 @@ export function ToolCallEntry({ threadId, runId, call }: ToolCallEntryProps) {
                 Full result ({formatBytes(artifact.bytes)})
               </a>
             )}
+            {download === undefined ? null : (
+              <a className="tool-call-artifact tool-call-download" href={download.downloadPath}>
+                Download {download.filename} ({formatBytes(download.sizeBytes)})
+              </a>
+            )}
           </dd>
         </dl>
       </details>
     </li>
   );
+}
+
+/** The stored artifact a result carries, when it is a shape this build reads. */
+function recordedArtifact(
+  result: unknown,
+):
+  | { readonly filename: string; readonly sizeBytes: number; readonly downloadPath: string }
+  | undefined {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return undefined;
+  }
+
+  const value = (result as Record<string, unknown>)["artifact"];
+
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const filename = record["filename"];
+  const sizeBytes = record["sizeBytes"];
+  const downloadPath = record["downloadPath"];
+
+  if (typeof filename !== "string" || filename === "") {
+    return undefined;
+  }
+
+  if (typeof sizeBytes !== "number" || !Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+    return undefined;
+  }
+
+  if (typeof downloadPath !== "string" || !downloadPath.startsWith("/")) {
+    return undefined;
+  }
+
+  return { filename, sizeBytes, downloadPath };
 }
 
 /**

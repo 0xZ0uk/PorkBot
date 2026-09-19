@@ -20,12 +20,14 @@ import {
 describe("the route register", () => {
   const rules = routeRules("/rpc");
 
-  it("names the health probe, the whole RPC surface, the webhook ingress and the callback", () => {
+  it("names the health probe, the whole RPC surface, the webhook ingress, the callback and the file routes", () => {
     expect(rules).toEqual([
       { method: "GET", path: "/healthz", family: "probe" },
       { method: "ALL", path: "/rpc/*", family: "rpc" },
       { method: "POST", path: "/webhooks/*", family: "webhook" },
       { method: "GET", path: "/oauth/mcp/callback", family: "webhook" },
+      { method: "POST", path: "/threads/:threadId/attachments", family: "upload" },
+      { method: "GET", path: "/files/:fileId", family: "rpc" },
     ]);
   });
 
@@ -194,16 +196,19 @@ describe("the environment configuration", () => {
       PORKBOT_LIMIT_AUTHENTICATED_PER_MINUTE: "10",
       PORKBOT_LIMIT_ANONYMOUS_PER_MINUTE: "11",
       PORKBOT_LIMIT_WEBHOOK_PER_MINUTE: "12",
+      PORKBOT_LIMIT_UPLOAD_PER_MINUTE: "17",
       PORKBOT_LIMIT_PROBE_PER_MINUTE: "13",
       PORKBOT_LIMIT_MAX_STREAMS_PER_ACTOR: "14",
       PORKBOT_LIMIT_MAX_BODY_BYTES: "15",
       PORKBOT_LIMIT_MAX_WEBHOOK_BODY_BYTES: "16",
+      PORKBOT_LIMIT_MAX_UPLOAD_BYTES: "18",
     });
 
     expect(limits).toEqual({
       authenticated: { requestsPerMinute: 10, maxConcurrentStreams: 14, maxBodyBytes: 15 },
       anonymous: { requestsPerMinute: 11, maxConcurrentStreams: 1, maxBodyBytes: 15 },
       webhook: { requestsPerMinute: 12, maxBodyBytes: 16 },
+      upload: { requestsPerMinute: 17, maxBodyBytes: 18 },
       probe: { requestsPerMinute: 13 },
     });
   });

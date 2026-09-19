@@ -159,6 +159,13 @@ change it without breaking what the boundaries and the CI gate protect.
   the `McpServers` and `McpRunServers` seams in `@porkbot/effect`, so install,
   discovery caching and the per-bot grants are auditable in one place.
   Checked by: test (`packages/db/src/mcp-store.call-sites.test.ts`).
+- **One module owns the stored-file rows.** `packages/db/src/file-store.ts` is
+  the only shipped code that reads or writes `message_attachment` or
+  `run_artifact`; the schema defines them and every other path goes through the
+  `FileStore` and `RunFileStore` seams, so an upload, a download, the
+  materialization of a message's attachments and a tool's artifact record are
+  auditable in one place. Checked by: test
+  (`packages/db/src/file-store.call-sites.test.ts`).
 - **One module owns run creation.** `packages/db/src/run-creation.ts` holds
   every run-creation command — message-triggered, routine-triggered and the
   operator's test run — and no other shipped code inserts a `task` or a `run`,

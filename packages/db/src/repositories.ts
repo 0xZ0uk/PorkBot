@@ -17,16 +17,24 @@ import {
   claimSteeringMessages,
   clearThread,
   createAssistantMessageStore,
+  createRunMessageReader,
   createSteeringMessageStore,
   readMessages,
 } from "./messages.ts";
-import type { AssistantMessageWriter, MessageReader, SteeringMessageWriter } from "./messages.ts";
+import type {
+  AssistantMessageWriter,
+  MessageReader,
+  RunMessageReader,
+  SteeringMessageWriter,
+} from "./messages.ts";
 import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 import { createComputerLeaseStore } from "./computer-leases.ts";
 import { createComputerSnapshotStore } from "./computer-snapshots.ts";
 import type { ComputerSnapshots } from "./computer-snapshots.ts";
+import { createFileStore, createRunFileStore } from "./file-store.ts";
+import type { FileStore, RunFileStore } from "./file-store.ts";
 import { createMcpStore } from "./mcp-store.ts";
 import { createMemoryStore } from "./memory-store.ts";
 import { createNotificationStore } from "./notification-store.ts";
@@ -441,7 +449,7 @@ export interface SystemRepositories {
   readonly threads: ThreadReader;
   readonly runs: RunReader & SystemRunWriter;
   /** The run's own output: the assistant messages it produced. */
-  readonly messages: AssistantMessageWriter;
+  readonly messages: AssistantMessageWriter & RunMessageReader;
   /**
    * The live run's command source (slice 6.7): the steering rows it claims
    * and the stop mark it observes. The pump beside the session reads it; the
@@ -487,6 +495,13 @@ export interface SystemRepositories {
    * expired scan is deliberately outside this seam.
    */
   readonly computerLeases: ComputerLeaseStore;
+  /**
+   * The run's stored files (slice 7.6): read the attachments a message
+   * references so they can be materialized into the workspace, and record the
+   * artifact one settled tool call produced. The run's thread, bot and user
+   * come from the run row, never from the caller.
+   */
+  readonly files: RunFileStore;
 }
 
 /**
@@ -569,6 +584,13 @@ export interface UserRepositories {
    * written in the actor's space only.
    */
   readonly computerSnapshots: ComputerSnapshots;
+  /**
+   * The space's stored files (slice 7.6, stories 32 and 33): upload an
+   * attachment for a thread, resolve the attachments a send references, and
+   * read the file a download addresses. The bytes stay behind the storage
+   * seam; this is the row that names them.
+   */
+  readonly files: FileStore;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -618,7 +640,10 @@ export function createRepositories(
         claimNotification: (id) => claimRunNotification(actor, database, id),
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
-      messages: createAssistantMessageStore(actor, database),
+      messages: {
+        ...createAssistantMessageStore(actor, database),
+        ...createRunMessageReader(actor, database),
+      },
       commands: createRunCommandSource(actor, database),
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),
@@ -629,6 +654,7 @@ export function createRepositories(
       },
       usage: createUsageStore(actor, database),
       computerLeases: createComputerLeaseStore(actor, database),
+      files: createRunFileStore(actor, database),
     };
   }
 
@@ -683,6 +709,7 @@ export function createRepositories(
     memory: createMemoryStore(actor, database),
     usage: createUsageStore(actor, database),
     computerSnapshots: createComputerSnapshotStore(actor, database),
+    files: createFileStore(actor, database),
   };
 }
 

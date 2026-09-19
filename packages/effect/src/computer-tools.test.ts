@@ -9,6 +9,7 @@ import type {
   ComputerStatus,
 } from "@porkbot/adapter-kit";
 import { describe, expect, it } from "vitest";
+import type { ArtifactRecorder } from "./artifact-recorder.ts";
 import type { ComputerCommandRunner } from "./computer-commands.ts";
 import { createComputerTools, MAX_COMPUTER_OUTPUT_BYTES } from "./computer-tools.ts";
 import { createToolDispatcher } from "./tool-dispatcher.ts";
@@ -103,11 +104,19 @@ function providerCommands(provider: ComputerProvider): ComputerCommandRunner {
   };
 }
 
-function toolsFor(provider: ComputerProvider, maxDurationMs = 30_000) {
+interface ToolOptions {
+  readonly maxDurationMs?: number;
+  readonly home?: string;
+  readonly artifacts?: ArtifactRecorder;
+}
+
+function toolsFor(provider: ComputerProvider, options: ToolOptions = {}) {
   const registrations = createComputerTools({
     commands: providerCommands(provider),
     computer,
-    maxDurationMs,
+    maxDurationMs: options.maxDurationMs ?? 30_000,
+    ...(options.home === undefined ? {} : { home: options.home }),
+    ...(options.artifacts === undefined ? {} : { artifacts: options.artifacts }),
   });
   const byName = new Map(registrations.map((registration) => [registration.name, registration]));
 
@@ -138,7 +147,7 @@ function expectLabel(value: unknown): { content: string; origin: string; path: s
 describe("the shell tool", () => {
   it("sends the command with the declared budget and labels its output", async () => {
     const provider = new RecordingProvider().queue({ stdout: "hello\n", exitCode: 0 });
-    const tools = toolsFor(provider, 12_345);
+    const tools = toolsFor(provider, { maxDurationMs: 12_345 });
 
     const result = await tools.run("shell", { command: "printf 'hello\\n'" });
 
@@ -196,28 +205,56 @@ describe("the shell tool", () => {
 });
 
 describe("the file tools", () => {
-  it("reads a file through cat and labels it with the path it asked for", async () => {
+  it("resolves a relative read against the home before it names a command", async () => {
     const provider = new RecordingProvider().queue({ stdout: "notes" });
     const tools = toolsFor(provider);
 
     const result = await tools.run("file_read", { path: "notes/todo.md" });
 
-    expect(provider.requests[0]?.command).toBe("cat -- 'notes/todo.md'");
+    expect(provider.requests[0]?.command).toBe("cat -- '/home/agent/notes/todo.md'");
     expect(result).toMatchObject({ ok: true, path: "notes/todo.md", bytes: 5 });
     const labelled = expectLabel((result as { content: unknown }).content);
     expect(labelled.path).toBe("file_read");
-    expect(labelled.origin).toBe("home:notes/todo.md");
+    expect(labelled.origin).toBe("home:/notes/todo.md");
   });
 
-  it("attributes an absolute read to the machine, not the home lane", async () => {
+  it("accepts an absolute read inside the home and refuses one outside it", async () => {
     const provider = new RecordingProvider().queue({ stdout: "x" });
     const tools = toolsFor(provider);
 
-    const result = (await tools.run("file_read", { path: "/etc/hosts" })) as {
+    const result = (await tools.run("file_read", { path: "/home/agent/notes/todo.md" })) as {
       content: { origin: string };
     };
 
-    expect(result.content.origin).toBe("computer:/etc/hosts");
+    expect(result.content.origin).toBe("home:/notes/todo.md");
+    expect(provider.requests[0]?.command).toBe("cat -- '/home/agent/notes/todo.md'");
+
+    const refused = await tools.run("file_read", { path: "/etc/hosts" });
+
+    expect(refused).toMatchObject({ ok: false, reason: "outside_home" });
+    expect(provider.requests).toHaveLength(1);
+  });
+
+  it("refuses a traversal that climbs out of the home without reaching the machine", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+
+    for (const path of ["../etc/passwd", "notes/../../etc/passwd", "/home"]) {
+      await expect(tools.run("file_read", { path })).resolves.toMatchObject({
+        ok: false,
+        reason: "outside_home",
+      });
+      await expect(tools.run("file_write", { path, content: "x" })).resolves.toMatchObject({
+        ok: false,
+        reason: "outside_home",
+      });
+      await expect(tools.run("file_list", { path })).resolves.toMatchObject({
+        ok: false,
+        reason: "outside_home",
+      });
+    }
+
+    expect(provider.requests).toEqual([]);
   });
 
   it("reports a missing file as not_found without throwing", async () => {
@@ -241,8 +278,8 @@ describe("the file tools", () => {
     const result = await tools.run("file_write", { path: "notes/x.txt", content });
 
     const command = provider.requests[0]?.command ?? "";
-    expect(command.startsWith("mkdir -p 'notes' && printf '%s' '")).toBe(true);
-    expect(command).toContain("| base64 -d > 'notes/x.txt'");
+    expect(command.startsWith("mkdir -p '/home/agent/notes' && printf '%s' '")).toBe(true);
+    expect(command).toContain("| base64 -d > '/home/agent/notes/x.txt'");
 
     const encoded = /printf '%s' '([^']*)' \| base64 -d/.exec(command)?.[1] ?? "";
     expect(Buffer.from(encoded, "base64").toString("utf8")).toBe(content);
@@ -260,7 +297,58 @@ describe("the file tools", () => {
     await tools.run("file_write", { path: "note.txt", content: "" });
 
     expect(provider.requests[0]?.command).not.toContain("mkdir -p");
-    expect(provider.requests[0]?.command).toContain("> 'note.txt'");
+    expect(provider.requests[0]?.command).toContain("> '/home/agent/note.txt'");
+  });
+
+  it("keeps a successful write as a downloadable artifact when a recorder is present", async () => {
+    const provider = new RecordingProvider();
+    const recorded: Array<{ callId: string; filename: string; contentType: string; text: string }> =
+      [];
+    const tools = toolsFor(provider, {
+      artifacts: {
+        record: (request) =>
+          Effect.sync(() => {
+            recorded.push({
+              callId: request.callId,
+              filename: request.filename,
+              contentType: request.contentType,
+              text: Buffer.from(request.bytes).toString("utf8"),
+            });
+
+            return {
+              id: "artifact-1",
+              filename: request.filename,
+              contentType: request.contentType,
+              sizeBytes: request.bytes.byteLength,
+              downloadPath: "/files/artifact-1",
+            };
+          }),
+      },
+    });
+
+    const result = await tools.run("file_write", { path: "reports/summary.md", content: "# Hi" });
+
+    expect(recorded).toEqual([
+      {
+        callId: "call-1",
+        filename: "summary.md",
+        contentType: "text/markdown",
+        text: "# Hi",
+      },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      artifact: { id: "artifact-1", downloadPath: "/files/artifact-1", sizeBytes: 4 },
+    });
+  });
+
+  it("reports only the path when no recorder is configured", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+
+    const result = await tools.run("file_write", { path: "note.txt", content: "hi" });
+
+    expect(result).not.toHaveProperty("artifact");
   });
 
   it("lists a directory, defaulting to the home directory, with a labelled listing", async () => {
@@ -275,8 +363,9 @@ describe("the file tools", () => {
     };
 
     expect(result).toMatchObject({ ok: true, path: ".", names: ["a.txt", "b.txt"] });
-    expectLabel(result.listing);
-    expect(provider.requests[0]?.command).toBe("ls");
+    const labelled = expectLabel(result.listing);
+    expect(labelled.origin).toBe("home:/");
+    expect(provider.requests[0]?.command).toBe("ls -- '/home/agent'");
 
     const provider2 = new RecordingProvider().queue({ stdout: "nested\n" });
     const tools2 = toolsFor(provider2);
@@ -286,7 +375,7 @@ describe("the file tools", () => {
       path: "notes",
       names: ["nested"],
     });
-    expect(provider2.requests[0]?.command).toBe("ls -- 'notes'");
+    expect(provider2.requests[0]?.command).toBe("ls -- '/home/agent/notes'");
   });
 });
 
