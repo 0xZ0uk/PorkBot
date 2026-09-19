@@ -25,6 +25,7 @@ import {
   botColumns,
   botSectionColumns,
   eventColumns,
+  modelConnectionColumns,
   runColumns,
   threadColumns,
 } from "./records.ts";
@@ -32,6 +33,7 @@ import type {
   BotRecord,
   BotSectionRecord,
   EventRecord,
+  ModelConnectionRecord,
   RunRecord,
   ThreadRecord,
 } from "./records.ts";
@@ -56,6 +58,7 @@ export type {
   EventRecord,
   MessageRecord,
   MessageRole,
+  ModelConnectionRecord,
   RunRecord,
   TaskRecord,
   TaskStatus,
@@ -124,6 +127,10 @@ export interface NewBot {
    * documented rather than implied.
    */
   readonly computerId?: string | null | undefined;
+  /** A connection in the actor's space; one outside it is a `NotFoundError`. */
+  readonly modelConnectionId?: string | null | undefined;
+  /** The model this bot selects, overriding its connection's default. */
+  readonly model?: string | null | undefined;
 }
 
 /** The mutable bot fields; an absent key is left untouched. */
@@ -139,6 +146,10 @@ export interface BotPatch {
   readonly sectionId?: string | null | undefined;
   /** `null` clears the assignment; E7 adds the reference that validates it. */
   readonly computerId?: string | null | undefined;
+  /** `null` falls back to the space's default connection. */
+  readonly modelConnectionId?: string | null | undefined;
+  /** `null` falls back to the selected connection's default model. */
+  readonly model?: string | null | undefined;
 }
 
 /**
@@ -176,6 +187,68 @@ export interface BotWriter {
   delete(id: string): Promise<BotRecord>;
   /** Points the bot at a storage key; `null` clears it. */
   setAvatar(id: string, avatarKey: string | null): Promise<BotRecord>;
+}
+
+/** What a caller must supply to create a model connection (slice 9.2). */
+export interface NewModelConnection {
+  readonly label: string;
+  readonly baseUrl: string;
+  /** The name a provider resolves; the value stays in the credential store. */
+  readonly credentialName: string;
+  /** The model this connection uses unless a bot overrides it. */
+  readonly defaultModel?: string | null | undefined;
+}
+
+/** The mutable connection fields; an absent key is left untouched. */
+export interface ModelConnectionPatch {
+  readonly label?: string | undefined;
+  readonly baseUrl?: string | undefined;
+  readonly credentialName?: string | undefined;
+  /** `null` clears the connection's default model. */
+  readonly defaultModel?: string | null | undefined;
+}
+
+export interface ModelConnectionReader {
+  /** Throws `NotFoundError` for a missing id and for one in another space alike. */
+  findById(id: string): Promise<ModelConnectionRecord>;
+  list(): Promise<readonly ModelConnectionRecord[]>;
+}
+
+export interface ModelConnectionWriter {
+  /**
+   * Creates the connection. A label already used in the actor's space is a
+   * `NameConflictError`; the first connection is not implicitly the space
+   * default, because "which one is the default" is an explicit operator
+   * decision the settings surface records with `setDefault`.
+   */
+  create(input: NewModelConnection): Promise<ModelConnectionRecord>;
+  update(id: string, patch: ModelConnectionPatch): Promise<ModelConnectionRecord>;
+  /** Makes exactly this connection the space's default; idempotent. */
+  setDefault(id: string): Promise<ModelConnectionRecord>;
+  /** Removes the connection; bots that selected it fall back to the space default. */
+  delete(id: string): Promise<ModelConnectionRecord>;
+}
+
+/**
+ * The model a bot actually runs: the connection (URL and credential name) and
+ * the model id, after the per-bot override and the space default are applied.
+ * Nothing here is a secret: the credential is still only a name.
+ */
+export interface ModelSelection {
+  readonly connectionId: string;
+  readonly baseUrl: string;
+  readonly credentialName: string;
+  readonly model: string;
+}
+
+export interface ModelSelectionReader {
+  /**
+   * The effective selection for one bot: its own connection and model, or the
+   * space's default connection and that connection's default model. Answers
+   * `undefined` when no connection resolves or no model is selected, so the
+   * run executor reports "no model selected" rather than guessing.
+   */
+  resolveForBot(botId: string): Promise<ModelSelection | undefined>;
 }
 
 /** What a caller must supply to create a bot section. */
@@ -331,6 +404,12 @@ export interface SystemRepositories {
    * job can never install, rewrite or grant a server.
    */
   readonly mcp: McpRunServers;
+  /**
+   * The model selection read (slice 9.2): the connection and model a bot
+   * resolves to, after the per-bot override and the space default. A job
+   * resolves a selection; it cannot edit connections or set defaults.
+   */
+  readonly modelConnections: ModelSelectionReader;
 }
 
 /**
@@ -384,6 +463,8 @@ export interface UserRepositories {
    * `credentials`; every shape here carries only the name it resolves under.
    */
   readonly mcp: McpServers;
+  /** The operator's model connections (slice 9.2): endpoints by URL and credential name. */
+  readonly modelConnections: ModelConnectionReader & ModelConnectionWriter;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -435,6 +516,9 @@ export function createRepositories(
       notifications: createNotificationStore(actor, database),
       credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
       mcp: createMcpStore(actor, database),
+      modelConnections: {
+        resolveForBot: (botId) => resolveModelSelection(actor, database, botId),
+      },
     };
   }
 
@@ -476,6 +560,13 @@ export function createRepositories(
     notifications: createNotificationStore(actor, database),
     credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
     mcp: createMcpStore(actor, database),
+    modelConnections: {
+      ...readModelConnections(actor, database),
+      create: (input) => createModelConnection(actor, database, input),
+      update: (id, patch) => updateModelConnection(actor, database, id, patch),
+      setDefault: (id) => setDefaultModelConnection(actor, database, id),
+      delete: (id) => deleteModelConnection(actor, database, id),
+    },
   };
 }
 
@@ -648,23 +739,28 @@ function readEvents(actor: Actor, database: Queryable): EventReader {
 /**
  * Creates the bot or replays the one the spawn key already names.
  *
- * The section is resolved inside the insert with a scoped join: the selected
- * row must belong to the actor's space, and when it does not the statement
- * writes nothing, so a cross-space section can never be assigned and there is
- * no check-then-insert race. The empty result is then reported as the section
- * missing — not-found, never forbidden. `on conflict do update` is the replay:
- * the conflicting insert touches only the key it conflicted on and returns the
- * existing row, so a resubmitted create is answered by the first result.
+ * The section and the model connection are resolved inside the insert with
+ * scoped joins: a selected row must belong to the actor's space, and when it
+ * does not the statement writes nothing, so a cross-space reference can never
+ * be assigned and there is no check-then-insert race. The empty result is then
+ * reported as the reference missing — not-found, never forbidden. `on conflict
+ * do update` is the replay: the conflicting insert touches only the key it
+ * conflicted on and returns the existing row, so a resubmitted create is
+ * answered by the first result and the replay does not re-validate the new
+ * request's references — the row the key already names stands.
  */
 async function createBot(actor: UserActor, database: Queryable, input: NewBot): Promise<BotRecord> {
   const sectionId = input.sectionId ?? null;
+  const modelConnectionId = input.modelConnectionId ?? null;
   const { rows } = await database.query<BotRecord>(
     "insert into bot (space_id, user_id, name, title, description, instructions, color, " +
-      "pinned, position, section_id, computer_id, spawn_key) " +
-      "select $1, $2, $3, $4, $5, $6, $7, $8, $9, s.id, $10, $11 " +
+      "pinned, position, section_id, computer_id, model_connection_id, model, spawn_key) " +
+      "select $1, $2, $3, $4, $5, $6, $7, $8, $9, s.id, $10, c.id, $11, $12 " +
       "from (values (1)) as anchor(n) " +
-      "left join bot_section s on s.id = $12::uuid and s.space_id = $1 and s.user_id = $2 " +
-      "where $12::uuid is null or s.id is not null " +
+      "left join bot_section s on s.id = $13::uuid and s.space_id = $1 and s.user_id = $2 " +
+      "left join model_connection c on c.id = $14::uuid and c.space_id = $1 " +
+      "where ($13::uuid is null or s.id is not null) " +
+      "and ($14::uuid is null or c.id is not null) " +
       "on conflict (space_id, spawn_key) do update set spawn_key = excluded.spawn_key " +
       `returning ${botColumns}`,
     [
@@ -678,13 +774,38 @@ async function createBot(actor: UserActor, database: Queryable, input: NewBot): 
       input.pinned ?? false,
       input.position ?? 0,
       input.computerId ?? null,
+      input.model ?? null,
       input.spawnKey,
       sectionId,
+      modelConnectionId,
     ],
   );
 
-  if (rows[0] === undefined && sectionId !== null) {
-    throw new NotFoundError("bot section", sectionId);
+  // An empty insert means one of the scoped reference guards matched no row;
+  // one read each names which. A missing reference and one in another space
+  // are the same `NotFoundError`, as every scoped read reports them.
+  if (rows[0] === undefined) {
+    if (sectionId !== null) {
+      const { rows: sectionRows } = await database.query<{ readonly id: string }>(
+        "select id from bot_section where id = $1 and space_id = $2 and user_id = $3",
+        [sectionId, actor.spaceId, actor.userId],
+      );
+
+      if (sectionRows[0] === undefined) {
+        throw new NotFoundError("bot section", sectionId);
+      }
+    }
+
+    if (modelConnectionId !== null) {
+      const { rows: connectionRows } = await database.query<{ readonly id: string }>(
+        "select id from model_connection where id = $1 and space_id = $2",
+        [modelConnectionId, actor.spaceId],
+      );
+
+      if (connectionRows[0] === undefined) {
+        throw new NotFoundError("model connection", modelConnectionId);
+      }
+    }
   }
 
   return insertedRow(rows);
@@ -747,6 +868,19 @@ async function updateBot(
     assignments.push(`computer_id = $${values.length}`);
   }
 
+  let modelConnectionParameter: number | undefined;
+
+  if (patch.modelConnectionId !== undefined) {
+    values.push(patch.modelConnectionId);
+    modelConnectionParameter = values.length;
+    assignments.push(`model_connection_id = $${modelConnectionParameter}`);
+  }
+
+  if (patch.model !== undefined) {
+    values.push(patch.model);
+    assignments.push(`model = $${values.length}`);
+  }
+
   values.push(id);
   const idParameter = values.length;
   values.push(actor.spaceId);
@@ -771,15 +905,27 @@ async function updateBot(
         `select 1 from bot_section s where s.id = $${sectionParameter} ` +
         `and s.space_id = $${spaceParameter} and s.user_id = $${userParameter}))`;
 
+  // The connection guard rides in the same statement for the same reason: a
+  // connection the actor does not own matches no row, so the update writes
+  // nothing rather than pointing a bot at another space's endpoint.
+  const modelConnectionGuard =
+    modelConnectionParameter === undefined
+      ? ""
+      : ` and ($${modelConnectionParameter}::uuid is null or exists (` +
+        `select 1 from model_connection c where c.id = $${modelConnectionParameter} ` +
+        `and c.space_id = $${spaceParameter}))`;
+
   const { rows } = await database.query<BotRecord>(
     `update bot set ${assignments.join(", ")} ` +
-      `where id = $${idParameter} and space_id = $${spaceParameter}${sectionGuard} ` +
+      `where id = $${idParameter} and space_id = $${spaceParameter}` +
+      `${sectionGuard}${modelConnectionGuard} ` +
       `returning ${botColumns}`,
     values,
   );
 
-  // An empty update with a section in the patch is the section's refusal or the
-  // bot's absence; one scoped read separates them so the caller hears which.
+  // An empty update with a reference in the patch is that reference's refusal
+  // or the bot's absence; one scoped read each separates them so the caller
+  // hears which.
   if (rows[0] === undefined && patch.sectionId !== undefined && patch.sectionId !== null) {
     const { rows: sectionRows } = await database.query<{ readonly id: string }>(
       "select id from bot_section where id = $1 and space_id = $2 and user_id = $3",
@@ -788,6 +934,21 @@ async function updateBot(
 
     if (sectionRows[0] === undefined) {
       throw new NotFoundError("bot section", patch.sectionId);
+    }
+  }
+
+  if (
+    rows[0] === undefined &&
+    patch.modelConnectionId !== undefined &&
+    patch.modelConnectionId !== null
+  ) {
+    const { rows: connectionRows } = await database.query<{ readonly id: string }>(
+      "select id from model_connection where id = $1 and space_id = $2",
+      [patch.modelConnectionId, actor.spaceId],
+    );
+
+    if (connectionRows[0] === undefined) {
+      throw new NotFoundError("model connection", patch.modelConnectionId);
     }
   }
 
@@ -841,6 +1002,202 @@ async function setBotAvatar(
   );
 
   return requiredRow(rows, "bot", id);
+}
+
+function readModelConnections(actor: Actor, database: Queryable): ModelConnectionReader {
+  return {
+    async findById(id: string): Promise<ModelConnectionRecord> {
+      const { rows } = await database.query<ModelConnectionRecord>(
+        `select ${modelConnectionColumns} from model_connection where id = $1 and space_id = $2`,
+        [id, actor.spaceId],
+      );
+
+      return requiredRow(rows, "model connection", id);
+    },
+
+    async list(): Promise<readonly ModelConnectionRecord[]> {
+      // The default sorts first so an operator's settings list reads the same
+      // way the resolver decides.
+      const { rows } = await database.query<ModelConnectionRecord>(
+        `select ${modelConnectionColumns} from model_connection where space_id = $1 ` +
+          "order by is_default desc, label asc",
+        [actor.spaceId],
+      );
+
+      return rows;
+    },
+  };
+}
+
+/**
+ * Creates the connection or reports the label already in use. The conflict is
+ * `do nothing` plus an explicit read of the result rather than a caught unique
+ * violation, so the only unique index the insert can conflict on is the label;
+ * the space's one-default index is not in play because a create never sets it.
+ */
+async function createModelConnection(
+  actor: UserActor,
+  database: Queryable,
+  input: NewModelConnection,
+): Promise<ModelConnectionRecord> {
+  const { rows } = await database.query<ModelConnectionRecord>(
+    "insert into model_connection (space_id, label, base_url, credential_name, default_model) " +
+      "values ($1, $2, $3, $4, $5) on conflict (space_id, label) do nothing " +
+      `returning ${modelConnectionColumns}`,
+    [actor.spaceId, input.label, input.baseUrl, input.credentialName, input.defaultModel ?? null],
+  );
+
+  if (rows[0] === undefined) {
+    throw new NameConflictError("model connection", input.label);
+  }
+
+  return insertedRow(rows);
+}
+
+async function updateModelConnection(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+  patch: ModelConnectionPatch,
+): Promise<ModelConnectionRecord> {
+  const values: unknown[] = [];
+  const assignments = ["updated_at = now()"];
+
+  if (patch.label !== undefined) {
+    values.push(patch.label);
+    assignments.push(`label = $${values.length}`);
+  }
+
+  if (patch.baseUrl !== undefined) {
+    values.push(patch.baseUrl);
+    assignments.push(`base_url = $${values.length}`);
+  }
+
+  if (patch.credentialName !== undefined) {
+    values.push(patch.credentialName);
+    assignments.push(`credential_name = $${values.length}`);
+  }
+
+  if (patch.defaultModel !== undefined) {
+    values.push(patch.defaultModel);
+    assignments.push(`default_model = $${values.length}`);
+  }
+
+  values.push(id);
+  const idParameter = values.length;
+  values.push(actor.spaceId);
+  const spaceParameter = values.length;
+
+  try {
+    const { rows } = await database.query<ModelConnectionRecord>(
+      `update model_connection set ${assignments.join(", ")} ` +
+        `where id = $${idParameter} and space_id = $${spaceParameter} ` +
+        `returning ${modelConnectionColumns}`,
+      values,
+    );
+
+    return requiredRow(rows, "model connection", id);
+  } catch (error) {
+    if (patch.label !== undefined && isUniqueViolation(error)) {
+      throw new NameConflictError("model connection", patch.label);
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Swaps the space's default connection. The scoped read first means an id that
+ * is missing, or in another space, is a `NotFoundError` that leaves the
+ * current default untouched.
+ *
+ * The clear-then-set order can never expose two defaults to the partial unique
+ * index, only a brief window with none. Two concurrent swaps can interleave so
+ * that the conditional set loses its race — the other writer's default is
+ * present — so it clears and tries again a bounded number of times instead of
+ * answering a 500 for a double-click. The final state is always exactly one
+ * default: the last swap to land.
+ */
+async function setDefaultModelConnection(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+): Promise<ModelConnectionRecord> {
+  const { rows: existing } = await database.query<{ readonly id: string }>(
+    "select id from model_connection where id = $1 and space_id = $2",
+    [id, actor.spaceId],
+  );
+
+  if (existing[0] === undefined) {
+    throw new NotFoundError("model connection", id);
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await database.query(
+      "update model_connection set is_default = false, updated_at = now() " +
+        "where space_id = $1 and is_default and id <> $2",
+      [actor.spaceId, id],
+    );
+
+    const { rows } = await database.query<ModelConnectionRecord>(
+      "update model_connection set is_default = true, updated_at = now() " +
+        "where id = $1 and space_id = $2 and not exists (" +
+        "select 1 from model_connection other where other.space_id = $2 " +
+        "and other.is_default and other.id <> $1) " +
+        `returning ${modelConnectionColumns}`,
+      [id, actor.spaceId],
+    );
+
+    if (rows[0] !== undefined) {
+      return rows[0];
+    }
+  }
+
+  throw new Error("the space's default model connection did not settle; retry the request");
+}
+
+async function deleteModelConnection(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+): Promise<ModelConnectionRecord> {
+  // Bots that selected the connection fall back to the space default: the
+  // foreign key's `on delete set null` is what writes the fallback, so this
+  // statement has nothing to repair by hand.
+  const { rows } = await database.query<ModelConnectionRecord>(
+    `delete from model_connection where id = $1 and space_id = $2 returning ${modelConnectionColumns}`,
+    [id, actor.spaceId],
+  );
+
+  return requiredRow(rows, "model connection", id);
+}
+
+/**
+ * The effective selection for one bot. The join resolves the connection with
+ * `coalesce(bot's own, the space's one default)`, so a bot that selected no
+ * connection follows the default and one that did is not affected by a later
+ * default swap. The model is the same shape: the bot's own, else the
+ * connection's `default_model`. An unset model on both sides filters the row
+ * out, so the caller sees "nothing selected" instead of an empty model id.
+ */
+async function resolveModelSelection(
+  actor: Actor,
+  database: Queryable,
+  botId: string,
+): Promise<ModelSelection | undefined> {
+  const { rows } = await database.query<ModelSelection>(
+    'select c.id as "connectionId", c.base_url as "baseUrl", ' +
+      'c.credential_name as "credentialName", ' +
+      'coalesce(b.model, c.default_model) as "model" from bot b ' +
+      "join model_connection c on c.space_id = b.space_id and c.id = coalesce(" +
+      "b.model_connection_id, (select d.id from model_connection d " +
+      "where d.space_id = b.space_id and d.is_default)) " +
+      "where b.id = $1 and b.space_id = $2 " +
+      "and coalesce(b.model, c.default_model) is not null",
+    [botId, actor.spaceId],
+  );
+
+  return rows[0];
 }
 
 async function createSection(

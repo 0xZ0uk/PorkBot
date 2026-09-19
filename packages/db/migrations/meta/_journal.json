@@ -141,6 +141,20 @@
       "when": 1789776378187,
       "tag": "0019_mcp_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789779758666,
+      "tag": "0020_bumpy_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789779759701,
+      "tag": "0021_model_connection_grants",
+      "breakpoints": true
     }
   ]
 }

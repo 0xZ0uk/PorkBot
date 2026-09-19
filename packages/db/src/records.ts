@@ -27,6 +27,27 @@ export interface BotRecord {
   readonly spawnKey: string;
   readonly avatarKey: string | null;
   readonly computerId: string | null;
+  /** The connection this bot selected, or null to use the space default (slice 9.2). */
+  readonly modelConnectionId: string | null;
+  /** The model this bot selected, or null to use its connection's default (slice 9.2). */
+  readonly model: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * A model connection row (slice 9.2): where an OpenAI-compatible endpoint
+ * lives and which stored credential name opens it. The value of that
+ * credential is never a field; the name is what a provider resolves.
+ */
+export interface ModelConnectionRecord {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly label: string;
+  readonly baseUrl: string;
+  readonly credentialName: string;
+  readonly defaultModel: string | null;
+  readonly isDefault: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -174,7 +195,13 @@ export const botColumns =
   'id, space_id as "spaceId", user_id as "userId", name, title, description, instructions, ' +
   'color, pinned, position, section_id as "sectionId", archived_at as "archivedAt", ' +
   'spawn_key as "spawnKey", avatar_key as "avatarKey", computer_id as "computerId", ' +
+  'model_connection_id as "modelConnectionId", model, ' +
   'created_at as "createdAt", updated_at as "updatedAt"';
+
+export const modelConnectionColumns =
+  'id, space_id as "spaceId", label, base_url as "baseUrl", ' +
+  'credential_name as "credentialName", default_model as "defaultModel", ' +
+  'is_default as "isDefault", created_at as "createdAt", updated_at as "updatedAt"';
 
 export const botSectionColumns =
   'id, space_id as "spaceId", user_id as "userId", name, position, ' +

@@ -27,6 +27,13 @@ export type {
   RecordedModelRequest,
 } from "./model-emulator.ts";
 export { ModelProviderError } from "./model-errors.ts";
+// The real OpenAI-compatible provider (slice 9.2): one interface for a hosted
+// provider and a self-hosted endpoint by URL and stored credential name, with
+// the URL-safety module on the wire and no provider-specific environment
+// variable. The wire client inside it is the same one the emulator's provider
+// half drives, so the tested transport and the shipped transport are one.
+export { createOpenAiCompatibleModelRuntime } from "./openai-compatible.ts";
+export type { OpenAiCompatibleModelRuntimeOptions } from "./openai-compatible.ts";
 
 // Credential stores. The provider resolves its key by name through the
 // `CredentialStore` interface; these are the bootstrap (environment) and test

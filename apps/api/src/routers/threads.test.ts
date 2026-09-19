@@ -88,6 +88,8 @@ function seedBot(): string {
     spawnKey: randomUUID(),
     avatarKey: null,
     computerId: null,
+    modelConnectionId: null,
+    model: null,
     createdAt: now,
     updatedAt: now,
   });
@@ -436,6 +438,14 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       grant: notExercised,
       revoke: notExercised,
       listForServer: notExercised,
+    },
+    modelConnections: {
+      findById: notExercised,
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      setDefault: notExercised,
+      delete: notExercised,
     },
   };
 }

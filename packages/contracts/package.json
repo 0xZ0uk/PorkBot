@@ -17,6 +17,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",

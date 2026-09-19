@@ -29,6 +29,7 @@ export {
 } from "./enums.ts";
 export { approval } from "./approvals.ts";
 export { encryptedCredential } from "./encrypted-credential.ts";
+export { modelConnection } from "./model-connections.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
 export { botMcpServer, mcpServer, mcpServerTool } from "./mcp.ts";

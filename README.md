@@ -1462,8 +1462,23 @@ registers in E7; `createComputerTools` turns `exec` into the model's `shell`,
 `file_read`, `file_write`, `file_list` and `browser` tools with their content
 labelled at the ingestion boundary; and the offline runtime executes tool steps
 through the dispatcher, so a full run does real work with no key, network or
-daemon. The live model launch that fills the worker's work seam arrives with
-the model runtime adapter (slice 9.2).
+daemon. The live model launch that fills the worker's work seam waits on the
+stream bridge from Pi's agent loop to the model runtime.
+
+The model runtime adapter lands with slice 9.2. `createOpenAiCompatibleModelRuntime`
+in `@porkbot/adapters` is the real OpenAI-compatible provider — a hosted
+provider or a self-hosted endpoint, by URL and stored credential name — which
+resolves the key through `CredentialStore` on every call, dials through the
+URL-safety module, and classifies every refusal onto the shared vocabulary.
+Its probe asks the endpoint for its models and then verifies streaming with a
+real streaming request, so "streaming unsupported" is a result rather than a
+guess, and a refusal the probe can classify comes back as data the settings
+surface can render. The wire client is the same one the offline emulator's
+provider half drives, so what is tested offline is what ships. Connections are
+stored per space in `model_connection` (label, base URL, credential name,
+default model, one default per space), a bot selects its own connection and
+model, `resolveForBot` applies bot-over-space-default, and `credentials.store`
+is the write half of the encrypted store whose list can only answer masks.
 
 The thread console lands with slice 6.6: `threads.events` streams into the
 console controller, which folds each frame through the core reducer and renders
