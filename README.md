@@ -372,10 +372,11 @@ stays alive.
 
 The model reaches that machine through `createComputerTools` in
 `packages/effect`: `shell`, `file_read`, `file_write`, `file_list` and
-`browser` are registrations over `exec`. The computer is bound at construction,
-never chosen by a tool argument; every command carries the run's declared
-budget as its hard `timeoutMs`; file writes travel base64-encoded so no shell
-metacharacter is interpreted; and file bytes, shell stdout and browser page
+`browser` are registrations over the fenced command runner, which is
+`ComputerProvider.exec` under the run's computer lease. The computer is bound at
+construction, never chosen by a tool argument; every command carries the run's
+declared budget as its hard `timeoutMs`; file writes travel base64-encoded so no
+shell metacharacter is interpreted; and file bytes, shell stdout and browser page
 text leave as `UntrustedContent` (paths `file_read` and `computer_output`)
 before they can reach a prompt. The browser helper protocol is one `browser`
 command with a JSON argument returning a JSON page record, which is what a real
@@ -389,6 +390,25 @@ completes with real file, shell and browser effects — no key, no network and n
 Docker. `apps/worker/src/offline-run.test.ts` drives that path under the
 worker's execution harness and observes the run settle completed with the
 written file read back and the page text labelled.
+
+A run's commands are fenced like its writes (slice 7.4). `createFencedComputerCommands`
+in `packages/effect` holds the bot's computer for the run's own
+`(runId, owner, fence)` on a durable `computer_lease` row, then holds it again
+after the provider answers and only then records the command's outcome against
+the tool call's durable id. A reclaim moves the fence, so the second hold
+matches nothing and the command fails with the typed `LeaseLostError` — the
+transport's `CONFLICT` — instead of committing a result under an owner that no
+longer exists; a retried command with the same call id replays the recorded
+outcome, and a machine held live by another run is the classified
+`rate_limited` rather than a provider timeout. The computer lease's TTL is
+asserted at that guard never to outlive the run lease's, so a stale holder's
+command dies within the window the run lease already allows; a run that settles
+releases the lease as part of settling, and the watchdog pass below also
+deletes whatever expired rows a crash left behind. `packages/db` owns the
+`computer_lease` rows behind the `ComputerLeaseStore` seam, and its integration
+suite races two real connections against the unique `bot_id` index, drives the
+reclaim through the live guard and ledger, and shows the watchdog scan finding
+and clearing an expired row.
 
 ## Approval gates
 
@@ -454,6 +474,14 @@ stopped before its first checkpoint is failed with a typed reason
 `decideReclaim`, never silently restarted. The resume therefore sees
 `resumed: true`, its checkpoint, and replayed tool-call outcomes instead of a
 second side effect.
+
+The same pass sweeps the computer lease (slice 7.4). `findExpiredComputerLeases`
+is the second deliberate cross-space read, and each expired row is deleted
+through the `SystemActor` its space names, so a machine whose holder stopped
+renewing — a crashed worker, a run whose fence moved, a holder that stopped
+between commands — is free for the next run instead of blocked until someone
+notices. The sweep runs on every pass, including one that finds no expired run
+lease, because a stale computer is stale on its own.
 
 ## Dependencies
 

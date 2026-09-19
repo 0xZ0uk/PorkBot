@@ -463,4 +463,19 @@ describe("heartbeat and budget", () => {
     expect(Exit.isInterrupted(exit)).toBe(true);
     expect(memory.events).toEqual(["begin call-1"]);
   });
+
+  it("re-raises a lease lost inside the handler instead of reporting a tool failure", async () => {
+    // The fenced computer command runner raises the typed loss at its commit
+    // gate (slice 7.4). A claim that may have run cannot read as a tool that
+    // merely failed, and the run must stop rather than continue; the claim is
+    // left for the reclaim to settle, so no `fail` is recorded here.
+    const { dispatcher, memory } = dispatcherOf([
+      registration({ execute: () => Effect.fail(new LeaseLostError("run-1")) }),
+    ]);
+
+    const error = await Effect.runPromise(dispatcher.execute(call()).pipe(Effect.flip));
+
+    expect(error).toBeInstanceOf(LeaseLostError);
+    expect(memory.events).toEqual(["begin call-1"]);
+  });
 });

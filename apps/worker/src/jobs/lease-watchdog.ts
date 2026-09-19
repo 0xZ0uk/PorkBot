@@ -8,6 +8,7 @@ import {
 import {
   createRepositories,
   expiredLeaseReason,
+  findExpiredComputerLeases,
   findExpiredLeases,
   findStalledRuns,
   RUN_WATCHDOG_BATCH_LIMIT,
@@ -22,17 +23,24 @@ import { systemActorForJob } from "../system-actor.ts";
 import { runExecuteIdentifier } from "./run-execute.ts";
 
 /**
- * The lease watchdog (slices 6.3 and 6.10, PRD decisions 25, 26 and 33): the
- * minute-interval job that finds runs whose owner stopped renewing and reclaims
- * them, and runs whose owner is alive but whose progress stopped and marks
- * them.
+ * The lease watchdog (slices 6.3, 6.10 and 7.4, PRD decisions 25, 26 and 33):
+ * the minute-interval job that finds runs whose owner stopped renewing and
+ * reclaims them, runs whose owner is alive but whose progress stopped and marks
+ * them, and computer leases whose holder stopped renewing and releases them.
  *
- * The two passes answer different questions from the same row. An expired lease
+ * The run passes answer different questions from the same row. An expired lease
  * is a dead worker: reclaim it, resume from its checkpoint or fail it with a
  * typed reason. A live lease with stale progress is a hang: the process is
  * healthy, the run is not, and the stall marker plus the E8 notification are
  * the operator's signal — the run itself is left for its owner to interrupt or
  * for the lease to lapse.
+ *
+ * The computer sweep is the same recovery one level down (slice 7.4). A run's
+ * commands hold the bot's computer on a lease whose TTL never outlives the
+ * run's, so a holder that stopped renewing leaves a machine nobody may take
+ * until the row is cleared. This pass finds every expired lease and deletes it
+ * through the space the row names, which is what lets the next run hold the
+ * machine instead of waiting on a dead holder's row.
  *
  * The scan is deliberately global and the writes are deliberately scoped: one
  * cross-space read finds the addressing rows, and every write after it goes
@@ -108,9 +116,16 @@ export function leaseWatchdogJob(
       await context.withPgClient(async (client) => {
         const expired = await findExpiredLeases(client, batchLimit);
         const stalled = await findStalledRuns(client, stallThresholdSeconds, batchLimit);
+        // The computer sweep runs even when no run lease expired: a machine
+        // whose holder stopped renewing between commands is stale on its own,
+        // and the next run must find it free.
+        const computersReleased = await releaseStaleComputers(context, client, batchLimit);
 
         if (expired.length === 0 && stalled.length === 0) {
-          context.logger.info("lease watchdog pass found no expired lease", { batchLimit });
+          context.logger.info("lease watchdog pass found no expired lease", {
+            batchLimit,
+            computersReleased,
+          });
           return;
         }
 
@@ -157,6 +172,7 @@ export function leaseWatchdogJob(
           failed,
           stalled: stalled.length,
           marked,
+          computersReleased,
         });
       });
     },
@@ -164,6 +180,43 @@ export function leaseWatchdogJob(
 }
 
 type CandidateOutcome = "resumed" | "failed" | "skipped";
+
+/**
+ * Releases every computer lease whose TTL has lapsed, one scoped delete per
+ * row through the `SystemActor` its space names. The scan is global and the
+ * writes are scoped, exactly like a reclaim: `findExpiredComputerLeases`
+ * returns addressing only. A delete that loses a race to the holder's own
+ * release matches nothing, which is a skip rather than an error.
+ */
+async function releaseStaleComputers(
+  context: JobContext,
+  client: Queryable,
+  batchLimit: number,
+): Promise<number> {
+  const expired = await findExpiredComputerLeases(client, batchLimit);
+  let released = 0;
+
+  for (const lease of expired) {
+    const actor = systemActorForJob({ jobId: context.jobId, spaceId: lease.spaceId });
+    const repositories = createRepositories(actor, client);
+    const cleared = await repositories.computerLeases.release({
+      botId: lease.botId,
+      runId: lease.runId,
+      owner: lease.owner,
+      fence: lease.fence,
+    });
+
+    if (cleared) {
+      released += 1;
+      context.logger.info("lease watchdog released a stale computer lease", {
+        runId: lease.runId,
+        fence: lease.fence,
+      });
+    }
+  }
+
+  return released;
+}
 
 async function reclaimCandidate(
   spaceId: string,
