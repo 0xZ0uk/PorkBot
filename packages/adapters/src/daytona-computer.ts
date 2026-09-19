@@ -9,9 +9,14 @@ import type {
   ComputerExecResult,
   ComputerProvider,
   ComputerRef,
+  StorageProvider,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
 import { quoteShellArgument } from "./computer-conformance.ts";
+import {
+  createComputerSnapshotStore,
+  DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+} from "./computer-snapshot-store.ts";
 import { computerIdentityHash, createRuntimeComputerProvider } from "./computer-runtime.ts";
 import type {
   ComputerListedMachine,
@@ -56,8 +61,9 @@ import { classifyDaytonaFailure, DaytonaProtocolError } from "./daytona-errors.t
  *
  * What survives what: `stop` parks the sandbox and keeps its filesystem;
  * `remove` deletes it, so the home's durability is the snapshot path — capture
- * writes the home's tar through the toolbox into the provider's snapshot
- * directory, and restore replays it into a fresh sandbox. The home-sync story
+ * writes the home's tar through the toolbox into a staging file, the shared
+ * snapshot store puts it through the storage seam, and restore replays the
+ * verified archive into a fresh sandbox. The home-sync story
  * in `@porkbot/adapter-kit` states that contract for the backup slice.
  */
 
@@ -85,9 +91,6 @@ export const DEFAULT_DAYTONA_CEILINGS: DaytonaComputerCeilings = {
 
 /** The home directory a sandbox starts in, unless configured otherwise. */
 export const DEFAULT_DAYTONA_COMPUTER_HOME = "/home/agent";
-
-/** Where snapshots land until the storage seam takes ownership (slice 7.5). */
-export const DEFAULT_DAYTONA_SNAPSHOT_DIRECTORY = "/var/lib/porkbot/computer-snapshots";
 
 /** The labels every managed sandbox carries, so `list` finds exactly ours. */
 export const daytonaComputerLabels = {
@@ -120,8 +123,14 @@ export interface DaytonaComputerProviderOptions {
     | Partial<DaytonaComputerCeilings>
     | ((computer: ComputerRef) => Partial<DaytonaComputerCeilings>)
     | undefined;
-  /** Where home archives land; the storage seam (slice 7.5) will take this over. */
-  readonly snapshotDirectory?: string | undefined;
+  /**
+   * The storage seam every snapshot archive is written through (slice 7.5).
+   * Required: a provider with nowhere durable to put an archive would answer
+   * `snapshot` with bytes it cannot keep, which is worse than saying so.
+   */
+  readonly storage: StorageProvider;
+  /** Where an archive is staged while it is written or verified. */
+  readonly scratchDirectory?: string | undefined;
   /** Injected for tests; built from the endpoint options when absent. */
   readonly engine?: DaytonaEngine | undefined;
   /**
@@ -600,7 +609,10 @@ export function createDaytonaComputerProvider(
 ): ComputerProvider {
   return createRuntimeComputerProvider({
     runtime: createDaytonaRuntime(options),
-    snapshotDirectory: options.snapshotDirectory ?? DEFAULT_DAYTONA_SNAPSHOT_DIRECTORY,
+    snapshots: createComputerSnapshotStore({
+      storage: options.storage,
+      scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+    }),
     bootTimeoutMs: options.bootTimeoutMs,
   });
 }

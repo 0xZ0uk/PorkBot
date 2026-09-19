@@ -24,6 +24,8 @@ import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 import { createComputerLeaseStore } from "./computer-leases.ts";
+import { createComputerSnapshotStore } from "./computer-snapshots.ts";
+import type { ComputerSnapshots } from "./computer-snapshots.ts";
 import { createMcpStore } from "./mcp-store.ts";
 import { createMemoryStore } from "./memory-store.ts";
 import { createNotificationStore } from "./notification-store.ts";
@@ -535,6 +537,13 @@ export interface UserRepositories {
    * agent cannot delete or restore.
    */
   readonly memory: MemoryDocuments;
+  /**
+   * A bot's captured computers (slice 7.5, PRD story 30): record a capture,
+   * list a bot's captures, and resolve one for a restore. The archive bytes
+   * stay behind the storage seam; this is the row that names them, read and
+   * written in the actor's space only.
+   */
+  readonly computerSnapshots: ComputerSnapshots;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -645,6 +654,7 @@ export function createRepositories(
       delete: (id) => deleteModelConnection(actor, database, id),
     },
     memory: createMemoryStore(actor, database),
+    computerSnapshots: createComputerSnapshotStore(actor, database),
   };
 }
 

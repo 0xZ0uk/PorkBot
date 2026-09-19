@@ -2,11 +2,12 @@ import { isProviderFailure } from "@porkbot/adapter-kit";
 import type {
   ComputerProvider,
   ComputerRef,
+  ComputerSnapshot,
   ComputerStatus,
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
-import type { ComputerView } from "@porkbot/contracts";
-import type { UserRepositories } from "@porkbot/db";
+import type { ComputerSnapshotView, ComputerView } from "@porkbot/contracts";
+import type { ComputerSnapshotRecord, UserRepositories } from "@porkbot/db";
 import { ComputerUnavailableError, NotFoundError } from "@porkbot/effect";
 
 /**
@@ -28,7 +29,17 @@ import { ComputerUnavailableError, NotFoundError } from "@porkbot/effect";
  * A provider failure is translated here, once: the supervisor's classified
  * failure becomes the transport's `ComputerUnavailableError`
  * (`SERVICE_UNAVAILABLE`), so a caller never sees a raw `ComputerProviderError`
- * and no router inspects one.
+ * and no router inspects one. A `not_found` answer is the exception: it is the
+ * supervisor's authoritative "the snapshot named does not exist as it was
+ * captured", so a restore turns it into the contract's `NOT_FOUND` rather than
+ * dressing a missing archive as an unreachable service.
+ *
+ * Snapshots are the operator's index of recoverable states (slice 7.5). The
+ * service records a capture in the actor's space, lists a bot's captures, and
+ * resolves one by its row id before asking the supervisor to restore it — so a
+ * foreign snapshot id, or one belonging to another bot, is a `NOT_FOUND` before
+ * the provider is dialed. The archive bytes are the supervisor's to move; the
+ * API names a row, never a storage key.
  */
 
 /** The lifecycle verbs the supervisor client offers beyond the provider seam. */
@@ -57,6 +68,19 @@ export interface ComputerService {
   recover(input: {
     readonly repositories: UserRepositories;
     readonly botId: string;
+  }): Promise<ComputerView>;
+  snapshot(input: {
+    readonly repositories: UserRepositories;
+    readonly botId: string;
+  }): Promise<ComputerSnapshotView>;
+  snapshots(input: {
+    readonly repositories: UserRepositories;
+    readonly botId: string;
+  }): Promise<{ readonly snapshots: ComputerSnapshotView[] }>;
+  restore(input: {
+    readonly repositories: UserRepositories;
+    readonly botId: string;
+    readonly snapshotId: string;
   }): Promise<ComputerView>;
 }
 
@@ -94,6 +118,15 @@ function toView(status: ComputerStatus): ComputerView {
     : { assigned: true, state: status.state, instanceId: status.instanceId };
 }
 
+/** The row the operator sees; the storage key and checksum stay server-side. */
+function toSnapshotView(record: ComputerSnapshotRecord): ComputerSnapshotView {
+  return {
+    id: record.id,
+    createdAt: record.createdAt.toISOString(),
+    sizeBytes: record.sizeBytes,
+  };
+}
+
 /** The shared vocabulary the supervisor sends; anything else is a defect. */
 function asProviderFailure(error: unknown): {
   readonly kind: ProviderFailureKind;
@@ -125,20 +158,35 @@ export function createComputerService(provider: ComputerLifecycleProvider): Comp
       : { computerId: bot.computerId, botId: bot.id, provider: bot.computerProvider };
   }
 
-  async function call(operation: () => Promise<ComputerStatus>): Promise<ComputerView> {
+  /**
+   * Runs a provider call and re-raises its classified failure through the
+   * caller's translation; an unclassified error is a defect on this seam, so
+   * it passes through rather than being dressed up as capacity.
+   */
+  async function answered(
+    operation: () => Promise<ComputerStatus>,
+    translate: (failure: { readonly kind: ProviderFailureKind; readonly detail: string }) => Error,
+  ): Promise<ComputerStatus> {
     try {
-      return toView(await operation());
+      return await operation();
     } catch (error) {
       const failure = asProviderFailure(error);
 
       if (failure === null) {
-        // Not a classified provider failure: a bug on this seam, which the
-        // boundary answers as a defect rather than dressing up as capacity.
         throw error;
       }
 
-      throw new ComputerUnavailableError(failure.kind, failure.detail);
+      throw translate(failure);
     }
+  }
+
+  const asUnavailable = (failure: {
+    readonly kind: ProviderFailureKind;
+    readonly detail: string;
+  }): Error => new ComputerUnavailableError(failure.kind, failure.detail);
+
+  async function call(operation: () => Promise<ComputerStatus>): Promise<ComputerView> {
+    return toView(await answered(operation, asUnavailable));
   }
 
   async function lifecycle(
@@ -187,6 +235,84 @@ export function createComputerService(provider: ComputerLifecycleProvider): Comp
     recover({ repositories, botId }) {
       return lifecycle(repositories, botId, (ref) =>
         provider.recover === undefined ? provider.ensure(ref) : provider.recover(ref),
+      );
+    },
+
+    async snapshot({ repositories, botId }): Promise<ComputerSnapshotView> {
+      const ref = await reference(repositories, botId);
+
+      if (ref === undefined) {
+        throw new NotFoundError("computer", botId);
+      }
+
+      let handle: ComputerSnapshot;
+
+      try {
+        handle = await provider.snapshot(ref);
+      } catch (error) {
+        const failure = asProviderFailure(error);
+
+        if (failure === null) {
+          throw error;
+        }
+
+        throw new ComputerUnavailableError(failure.kind, failure.detail);
+      }
+
+      // The archive is in storage before the row names it. If the row cannot
+      // be written — the bot was deleted mid-capture, the database refused —
+      // the archive is unreachable rather than restorable, which is the safe
+      // direction: nothing can restore what no row lists.
+      return toSnapshotView(
+        await repositories.computerSnapshots.create({
+          botId,
+          snapshotId: handle.snapshotId,
+          storageKey: handle.key,
+          sizeBytes: handle.size,
+          checksum: handle.checksum,
+        }),
+      );
+    },
+
+    async snapshots({ repositories, botId }) {
+      const records = await repositories.computerSnapshots.listForBot(botId);
+
+      return { snapshots: records.map(toSnapshotView) };
+    },
+
+    async restore({ repositories, botId, snapshotId }): Promise<ComputerView> {
+      const ref = await reference(repositories, botId);
+
+      if (ref === undefined) {
+        throw new NotFoundError("computer", botId);
+      }
+
+      const record = await repositories.computerSnapshots.findById(snapshotId);
+
+      // A snapshot belongs to the bot it captured; one from another bot in the
+      // same space is not this computer's to restore, and the provider would
+      // refuse the key anyway. The scoped read is what makes that a typed
+      // refusal here rather than a dial-out.
+      if (record.botId !== botId) {
+        throw new NotFoundError("snapshot", snapshotId);
+      }
+
+      return toView(
+        await answered(
+          () =>
+            provider.restore(ref, {
+              snapshotId: record.snapshotId,
+              key: record.storageKey,
+              size: record.sizeBytes,
+              checksum: record.checksum,
+            }),
+          // The supervisor answered that the archive is missing or altered;
+          // that is the snapshot refusal, not an unreachable service.
+          (failure) =>
+            failure.kind === "not_found"
+              ? new NotFoundError("snapshot", snapshotId)
+              : asUnavailable(failure),
+        ),
       );
     },
   };

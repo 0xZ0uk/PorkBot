@@ -13,6 +13,7 @@ import {
 import type { DaytonaComputerProviderOptions } from "./daytona-computer.ts";
 import { DaytonaEngineEmulator } from "./daytona-engine-emulator.ts";
 import { DaytonaProtocolError } from "./daytona-errors.ts";
+import { LocalStorageProvider } from "./local-storage.ts";
 
 /**
  * The Daytona computer provider (slice 7.3). Every test drives the shipped
@@ -42,15 +43,18 @@ async function providerOver(
   daemon: DaytonaEngineEmulator,
   overrides: Partial<DaytonaComputerProviderOptions> = {},
 ): Promise<ComputerProvider> {
-  const directory = await mkdtemp(path.join(tmpdir(), "porkbot-daytona-snapshots-"));
-  directories.push(directory);
+  const storage = await mkdtemp(path.join(tmpdir(), "porkbot-daytona-storage-"));
+  const scratch = await mkdtemp(path.join(tmpdir(), "porkbot-daytona-archives-"));
+
+  directories.push(storage, scratch);
 
   return createDaytonaComputerProvider({
     endpoint: daemon.endpoint,
     token: daemon.token,
     image,
     fetch: globalThis.fetch,
-    snapshotDirectory: directory,
+    storage: new LocalStorageProvider({ root: storage }),
+    scratchDirectory: scratch,
     bootTimeoutMs: 5_000,
     requestTimeoutMs: 5_000,
     archiveTimeoutMs: 15_000,

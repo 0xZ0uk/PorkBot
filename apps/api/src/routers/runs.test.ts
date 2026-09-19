@@ -125,6 +125,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       },
     },
     events: { listAfter: notExercised },
+    computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
     toolResults: { read: notExercised },
     messages: {
       listForThread: notExercised,

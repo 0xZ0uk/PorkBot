@@ -1,0 +1,14 @@
+-- hand-edited: role privileges are not modelled by drizzle-kit (the same
+-- reason migrations/0004_database_roles.sql, migrations/0006_run_leases.sql,
+-- migrations/0008_approval_grants.sql, migrations/0009_watchdog_grants.sql,
+-- migrations/0012_routine_grants.sql, migrations/0015_notification_grants.sql,
+-- migrations/0017_credentials_grants.sql, migrations/0019_mcp_grants.sql,
+-- migrations/0021_model_connection_grants.sql, migrations/0024_liveness_grants.sql
+-- and migrations/0028_computer_lease_grants.sql are hand-written). Slice 7.5
+-- makes the snapshot row the operator's index of what was captured: the API
+-- needs SELECT to list and resolve one for a restore, and INSERT to record a
+-- capture. A snapshot is immutable — a restore reads it, never edits it — so
+-- there is no UPDATE, and pruning is not a surface v1.0 ships. The API holds no
+-- archive bytes; the supervisor owns the storage seam, so no other role is
+-- granted anything here.
+grant select, insert on "computer_snapshot" to porkbot_api;

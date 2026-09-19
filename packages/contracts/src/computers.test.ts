@@ -18,11 +18,14 @@ describe("the computer contract", () => {
     expect(computerStateSchema.options).toEqual([...COMPUTER_STATES]);
   });
 
-  it("carries the five lifecycle procedures under the contract's computers key", () => {
+  it("carries the lifecycle and snapshot procedures under the contract's computers key", () => {
     expect(Object.keys(appContract.computers).sort()).toEqual([
       "boot",
       "recover",
       "reset",
+      "restore",
+      "snapshot",
+      "snapshots",
       "status",
       "stop",
     ]);

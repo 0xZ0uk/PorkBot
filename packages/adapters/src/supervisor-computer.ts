@@ -8,7 +8,7 @@ import type {
   ComputerStatus,
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
-import { PROVIDER_FAILURE_KINDS } from "@porkbot/adapter-kit";
+import { PROVIDER_FAILURE_KINDS, snapshotChecksumPattern } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
 
 /**
@@ -229,12 +229,22 @@ function parseSnapshot(value: unknown): ComputerSnapshot {
   const record = value as Record<string, unknown>;
   const snapshotId = record["snapshotId"];
   const key = record["key"];
+  const size = record["size"];
+  const checksum = record["checksum"];
 
-  if (typeof snapshotId !== "string" || typeof key !== "string") {
+  if (
+    typeof snapshotId !== "string" ||
+    typeof key !== "string" ||
+    typeof size !== "number" ||
+    !Number.isSafeInteger(size) ||
+    size < 0 ||
+    typeof checksum !== "string" ||
+    !snapshotChecksumPattern.test(checksum)
+  ) {
     throw new Error("the supervisor reported a malformed snapshot");
   }
 
-  return { snapshotId, key };
+  return { snapshotId, key, size, checksum };
 }
 
 function payloadOf(value: unknown, key: string): unknown {
