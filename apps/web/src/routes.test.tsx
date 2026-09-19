@@ -17,6 +17,7 @@ import {
   fakeThread,
   runCompleted,
   runStarted,
+  scriptedComputerTransport,
   scriptedConnectionsTransport,
   scriptedBotsTransport,
   scriptedMemoryTransport,
@@ -25,6 +26,7 @@ import {
   textMessage,
   tokenDelta,
 } from "../test/fakes.ts";
+import type { ComputerTransport } from "./computer.ts";
 import type { MemoryTransport } from "./memory.ts";
 
 /**
@@ -89,6 +91,7 @@ function appWith(
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),
       connections: scriptedConnectionsTransport(),
+      computer: scriptedComputerTransport(),
     },
     createMemoryHistory({ initialEntries: ["/"] }),
   );
@@ -152,6 +155,7 @@ describe("the shell's route guards", () => {
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({ initialEntries: ["/sign-in"] }),
     );
@@ -236,6 +240,7 @@ describe("the shell's route guards", () => {
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({ initialEntries: ["/"] }),
     );
@@ -309,6 +314,7 @@ describe("the console routes", () => {
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
     );
@@ -350,6 +356,7 @@ describe("the console routes", () => {
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-1"],
@@ -381,6 +388,7 @@ describe("the console routes", () => {
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-missing"],
@@ -410,6 +418,7 @@ describe("the memory route", () => {
         memory,
         usage: scriptedUsageTransport(),
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({ initialEntries: ["/bots/bot-1/memory"] }),
     );
@@ -654,6 +663,7 @@ describe("the usage route", () => {
         memory: scriptedMemoryTransport(),
         usage,
         connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
       },
       createMemoryHistory({ initialEntries: ["/bots/bot-1/usage"] }),
     );
@@ -740,5 +750,89 @@ describe("the usage route", () => {
         (button) => button.textContent === "Try again",
       ),
     ).toBe(true);
+  });
+});
+
+describe("the computer route", () => {
+  function computerRouter(computer: ComputerTransport): ReturnType<typeof createAppRouter> {
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+
+    return createAppRouter(
+      {
+        auth,
+        session,
+        bots: scriptedBotsTransport(),
+        threads: scriptedThreadTransport(),
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
+        computer,
+      },
+      createMemoryHistory({ initialEntries: ["/bots/bot-1/computer"] }),
+    );
+  }
+
+  async function mountComputer(computer: ComputerTransport): Promise<void> {
+    const router = computerRouter(computer);
+
+    await act(async () => {
+      // A failed load rejects `load`; the route's own refusal state is what
+      // this suite asserts, and the rejection is the router's report.
+      await router.load().catch(() => undefined);
+    });
+    await render(<RouterProvider router={router} />);
+  }
+
+  function buttonByText(text: string): HTMLButtonElement {
+    const found = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === text,
+    );
+
+    if (found === undefined) {
+      throw new Error(`no button labelled "${text}"`);
+    }
+
+    return found as HTMLButtonElement;
+  }
+
+  it("shows the deployment's providers and stores a switch", async () => {
+    const computer = scriptedComputerTransport({
+      bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+      computer: { assigned: true, state: "running", instanceId: "i-1" },
+    });
+    await mountComputer(computer);
+
+    expect(container.textContent).toContain("Where this bot's computer runs");
+    expect(container.textContent).toContain("Offline emulator");
+    expect(container.textContent).toContain("Local Docker");
+
+    const docker = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')][2];
+
+    if (docker === undefined) {
+      throw new Error("the Docker radio is missing");
+    }
+
+    await act(async () => {
+      docker.click();
+    });
+
+    expect(container.textContent).toContain("does not move this bot's home");
+
+    await act(async () => {
+      buttonByText("Switch to Local Docker").click();
+    });
+
+    await until(
+      () => container.textContent?.includes("This bot now runs on Local Docker.") === true,
+      "the switch outcome",
+    );
+  });
+
+  it("shows the refusal with a retry when the read fails", async () => {
+    await mountComputer(scriptedComputerTransport({ listFailure: new Error("unreachable") }));
+
+    expect(container.textContent).toContain("The computer settings could not be loaded.");
+    expect(buttonByText("Try again")).toBeDefined();
   });
 });

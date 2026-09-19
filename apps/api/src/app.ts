@@ -203,7 +203,10 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
     notifications: createNotificationsRouter(),
-    bots: createBotsRouter(createBotService(storage)),
+    bots: createBotsRouter(
+      createBotService(storage),
+      createComputerService(options.services.computers ?? unconfiguredComputerProvider()),
+    ),
     computers: createComputersRouter(
       createComputerService(options.services.computers ?? unconfiguredComputerProvider()),
     ),

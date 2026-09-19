@@ -74,6 +74,23 @@ const providerFailureStatus = {
 
 export interface SupervisorServerOptions {
   readonly lifecycle: ComputerLifecycle;
+  /**
+   * The configured kinds and the selection check (slice 9.4). Optional so the
+   * lifecycle suites that build a server around a fake lifecycle need no
+   * catalog; the two selection routes then answer `not_configured` rather than
+   * inventing an availability answer.
+   */
+  readonly providers?:
+    | {
+        readonly defaultKind: string;
+        readonly kinds: readonly string[];
+        readonly validate: (kind: string) => Promise<{
+          readonly kind: string;
+          readonly available: boolean;
+          readonly failure: string | null;
+        }>;
+      }
+    | undefined;
   /** The process credential; empty means the surface answers `not_configured`. */
   readonly serviceToken: string;
   /** Absent until the deployment configures a screen key; screen paths then refuse. */
@@ -627,6 +644,40 @@ export function createSupervisorServer(options: SupervisorServerOptions): Server
 
     if (path === supervisorComputerRoutes.list) {
       sendJson(response, 200, { computers: await options.lifecycle.list() });
+      return;
+    }
+
+    if (path === supervisorComputerRoutes.providers) {
+      if (options.providers === undefined) {
+        throw new SupervisorRequestError(
+          503,
+          "not_configured",
+          "this supervisor was built without a provider catalog",
+        );
+      }
+
+      sendJson(response, 200, {
+        providers: { defaultKind: options.providers.defaultKind, kinds: options.providers.kinds },
+      });
+      return;
+    }
+
+    if (path === supervisorComputerRoutes.validate) {
+      if (options.providers === undefined) {
+        throw new SupervisorRequestError(
+          503,
+          "not_configured",
+          "this supervisor was built without a provider catalog",
+        );
+      }
+
+      const kind = requireString(
+        requireRecord(body, "the validation request"),
+        "kind",
+        "the request",
+      );
+
+      sendJson(response, 200, { validation: await options.providers.validate(kind) });
       return;
     }
 

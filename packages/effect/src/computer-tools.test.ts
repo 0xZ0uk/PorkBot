@@ -44,6 +44,10 @@ class RecordingProvider implements ComputerProvider {
     return this;
   }
 
+  async validate(): Promise<void> {
+    // Nothing to check in a test double.
+  }
+
   async ensure(computer: ComputerRef): Promise<ComputerStatus> {
     return { computer, state: "running" };
   }

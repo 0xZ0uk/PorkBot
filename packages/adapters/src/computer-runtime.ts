@@ -14,17 +14,17 @@ import type { ComputerSnapshotStore } from "./computer-snapshot-store.ts";
  * The provider-neutral computer lifecycle (slices 7.2 and 7.3, PRD decisions 19
  * and 20).
  *
- * `ComputerProvider` names eight operations, and the way they compose — adopt a
+ * `ComputerProvider` names nine operations, and the way they compose — adopt a
  * running machine, start a parked one, create a missing one, wait bounded for
  * readiness, park idempotently, keep ids stable through snapshots, refuse a
  * foreign snapshot key, verify an archive before replacing a machine — is the
  * same whichever wire a provider speaks. This module owns that composition
  * once. A provider supplies a `ComputerRuntime`:
- * the small set of primitives only its own API can answer (find, list, create,
- * start, stop, remove, ready, exec, readHome, writeHome), and the classifier
- * that turns its refusals into the shared vocabulary. The Docker provider and
- * the cloud provider are then two runtimes over one lifecycle, not two copies
- * of one, which is what keeps "the computer is gone" and "a retry is
+ * the small set of primitives only its own API can answer (validate, find,
+ * list, create, start, stop, remove, ready, exec, readHome, writeHome), and the
+ * classifier that turns its refusals into the shared vocabulary. The Docker
+ * provider and the cloud provider are then two runtimes over one lifecycle, not
+ * two copies of one, which is what keeps "the computer is gone" and "a retry is
  * idempotent" single implementations.
  *
  * Everything here is provider-shaped and secret-free. A machine is addressed by
@@ -59,6 +59,12 @@ export interface ComputerListedMachine {
  * bytes before the machine answers.
  */
 export interface ComputerRuntime {
+  /**
+   * The provider's own readiness check, with no machine involved (slice 9.4):
+   * a daemon ping, a cheap authenticated call. Resolves when the deployment
+   * can be selected; throws a classified `ComputerProviderError` otherwise.
+   */
+  validate(): Promise<void>;
   find(computer: ComputerRef): Promise<ComputerMachine | undefined>;
   /** Every machine the provider holds, tagged with the reference it belongs to. */
   list(): Promise<readonly ComputerListedMachine[]>;
@@ -131,6 +137,10 @@ export function createRuntimeComputerProvider(
   const bootTimeoutMs = options.bootTimeoutMs ?? 60_000;
 
   return {
+    async validate(): Promise<void> {
+      return await runtime.validate();
+    },
+
     async ensure(computer: ComputerRef): Promise<ComputerStatus> {
       const existing = await runtime.find(computer);
 

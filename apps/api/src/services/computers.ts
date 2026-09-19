@@ -6,7 +6,12 @@ import type {
   ComputerStatus,
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
-import type { ComputerSnapshotView, ComputerView } from "@porkbot/contracts";
+import type {
+  ComputerProvidersView,
+  ComputerProviderView,
+  ComputerSnapshotView,
+  ComputerView,
+} from "@porkbot/contracts";
 import type { ComputerSnapshotRecord, UserRepositories } from "@porkbot/db";
 import { ComputerUnavailableError, NotFoundError } from "@porkbot/effect";
 
@@ -40,15 +45,45 @@ import { ComputerUnavailableError, NotFoundError } from "@porkbot/effect";
  * foreign snapshot id, or one belonging to another bot, is a `NOT_FOUND` before
  * the provider is dialed. The archive bytes are the supervisor's to move; the
  * API names a row, never a storage key.
+ *
+ * The selection surface (slice 9.4) is the same boundary read the other way:
+ * `providers` reports which kinds the deployment configured and whether each
+ * answers its readiness check, and `assertProviderSelectable` is the gate a
+ * bot write passes before the choice is stored. A supervisor that cannot be
+ * reached at all makes the read a typed `SERVICE_UNAVAILABLE` — the same fact
+ * the lifecycle calls answer — while a supervisor that answers "this kind is
+ * not available" makes the write the contract's `SERVICE_UNAVAILABLE` without
+ * pretending the whole service is down.
  */
 
 /** The lifecycle verbs the supervisor client offers beyond the provider seam. */
 export interface ComputerLifecycleProvider extends ComputerProvider {
   readonly reset?: (computer: ComputerRef) => Promise<ComputerStatus>;
   readonly recover?: (computer: ComputerRef) => Promise<ComputerStatus>;
+  /** Every kind the deployment configured and the default a bot with no selection uses. */
+  readonly providers?: () => Promise<{
+    readonly defaultKind: string;
+    readonly kinds: readonly string[];
+  }>;
+  /** Asks one configured kind to prove itself; the answer is data, not an exception. */
+  readonly validateProvider?: (kind: string) => Promise<{
+    readonly kind: string;
+    readonly available: boolean;
+    readonly failure: ProviderFailureKind | null;
+  }>;
 }
 
 export interface ComputerService {
+  /** The deployment's configured kinds and each one's readiness (slice 9.4). */
+  providers(): Promise<ComputerProvidersView>;
+  /**
+   * The write gate for a bot's provider selection (slice 9.4). A kind the
+   * deployment has not configured, or one whose readiness check refuses, is
+   * the typed `SERVICE_UNAVAILABLE`; `null`/`undefined` (no selection, or the
+   * deployment default) is always allowed, because the supervisor validated
+   * its default at boot.
+   */
+  assertProviderSelectable(kind: string | null | undefined): Promise<void>;
   status(input: {
     readonly repositories: UserRepositories;
     readonly botId: string;
@@ -101,6 +136,7 @@ export function unconfiguredComputerProvider(): ComputerLifecycleProvider {
     );
 
   return {
+    validate: refuse,
     ensure: refuse,
     status: refuse,
     stop: refuse,
@@ -210,6 +246,101 @@ export function createComputerService(provider: ComputerLifecycleProvider): Comp
   }
 
   return {
+    async providers(): Promise<ComputerProvidersView> {
+      if (provider.providers === undefined || provider.validateProvider === undefined) {
+        // The deployment has no supervisor configured: the catalog is
+        // unknowable, which is the same unavailability the lifecycle calls
+        // answer rather than an empty list a client could mistake for "none".
+        throw new ComputerUnavailableError(
+          "auth_failed",
+          "the supervisor client is not configured on this deployment",
+        );
+      }
+
+      const catalog = await provider.providers();
+
+      // Every configured kind is checked, in the catalog's own order, and a
+      // refused check is data rather than an exception: the operator sees
+      // exactly which kinds exist and which of them answer.
+      const checked: ComputerProviderView[] = [];
+
+      for (const kind of catalog.kinds) {
+        try {
+          const validation = await provider.validateProvider(kind);
+
+          checked.push({
+            kind,
+            available: validation.available,
+            failure: validation.failure,
+          });
+        } catch (error) {
+          // The check itself could not be made — a supervisor that went away
+          // mid-read. That is the service being unreachable, not a provider
+          // being unavailable, and it is the typed refusal for it.
+          if (asProviderFailure(error) === null) {
+            throw error;
+          }
+
+          throw new ComputerUnavailableError(
+            "timed_out",
+            `the readiness check for "${kind}" could not be made`,
+          );
+        }
+      }
+
+      return { defaultKind: catalog.defaultKind, providers: checked };
+    },
+
+    async assertProviderSelectable(kind): Promise<void> {
+      // No selection, or the deployment default, is never a choice this gate
+      // has to second-guess: the supervisor refused to boot on an unusable
+      // default, so it is already validated.
+      if (kind === null || kind === undefined) {
+        return;
+      }
+
+      if (provider.providers === undefined || provider.validateProvider === undefined) {
+        throw new ComputerUnavailableError(
+          "auth_failed",
+          "the supervisor client is not configured on this deployment",
+        );
+      }
+
+      const catalog = await provider.providers();
+
+      // A kind this deployment never configured is the same refusal as one it
+      // configured but cannot serve: the operator's write cannot make the
+      // machine exist either way, and both are answered before the row.
+      if (!catalog.kinds.includes(kind)) {
+        throw new ComputerUnavailableError(
+          "not_found",
+          `this deployment has no "${kind}" computer provider configured`,
+        );
+      }
+
+      let validation;
+
+      try {
+        validation = await provider.validateProvider(kind);
+      } catch (error) {
+        if (asProviderFailure(error) === null) {
+          throw error;
+        }
+
+        throw new ComputerUnavailableError(
+          "timed_out",
+          `the readiness check for "${kind}" could not be made`,
+        );
+      }
+
+      if (!validation.available) {
+        throw new ComputerUnavailableError(
+          validation.failure ?? "not_found",
+          `the "${kind}" computer provider is not available`,
+        );
+      }
+    },
+
     async status({ repositories, botId }): Promise<ComputerView> {
       const ref = await reference(repositories, botId);
 

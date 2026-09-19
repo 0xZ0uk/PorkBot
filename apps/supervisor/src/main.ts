@@ -49,6 +49,11 @@ const lifecycle = createComputerLifecycle({
 
 const server = createSupervisorServer({
   lifecycle,
+  providers: {
+    defaultKind: selection.kind,
+    kinds: selection.kinds,
+    validate: selection.validate,
+  },
   serviceToken,
   screenTokens: screenSecret === "" ? undefined : createScreenCapabilityCodec(screenSecret),
   logger,

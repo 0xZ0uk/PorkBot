@@ -67,6 +67,7 @@ describe("procedure access", () => {
       "bots.setAvatar",
       "bots.avatar",
       "bots.clearAvatar",
+      "computers.providers",
       "computers.status",
       "computers.boot",
       "computers.stop",

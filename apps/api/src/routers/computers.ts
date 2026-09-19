@@ -14,6 +14,8 @@ import type { ComputerService } from "../services/computers.ts";
  * `SERVICE_UNAVAILABLE`.
  */
 export function createComputersRouter(service: ComputerService) {
+  const providers = authenticated.computers.providers.handler(async () => service.providers());
+
   const status = authenticated.computers.status.handler(async ({ input, context }) =>
     service.status({ repositories: context.repositories, botId: input.botId }),
   );
@@ -51,6 +53,7 @@ export function createComputersRouter(service: ComputerService) {
   );
 
   return authenticated.computers.router({
+    providers,
     status,
     boot,
     stop,

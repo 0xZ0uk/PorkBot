@@ -1828,6 +1828,26 @@ default from a bot's own connection. The e2e tier drives create, revoke, probe
 and the default swap against a scripted API over a real socket, and the screen
 is captured under `docs/screenshots/`.
 
+Choosing where a bot runs lands with slice 9.4. `computers.providers` is the
+deployment's own answer — every kind its supervisor configured, each asked to
+prove itself by the one readiness check every `ComputerProvider` now answers
+without creating a machine (`ping` for Docker, a sandbox list for the cloud,
+nothing for the emulator) — and a provider that cannot answer is shown as
+unavailable with the classified reason, never as a stored hope. The check runs
+again inside `bots.create` and `bots.update`: a write that names a provider the
+deployment did not configure, or one whose readiness check refuses, is the
+contract's typed `SERVICE_UNAVAILABLE` before the row exists, so an operator
+learns at the choice rather than at the bot's first run. The web surface at
+`/bots/$botId/computer` reads the bot's selection as one of two states — a
+named kind, or "follow the deployment default" — and a switch is a
+confirmation that says what does not move: the home lives on one provider's
+machine and an archive lives in the space's storage, so the panel offers the
+snapshot path (capture first, then restore into the machine on the new kind)
+and the snapshots section makes the restore the second half of it. The e2e tier
+drives the read, the switch and the capture-switch-restore path against a
+scripted API over a real socket, and the screen is captured under
+`docs/screenshots/`.
+
 The thread console lands with slice 6.6: `threads.events` streams into the
 console controller, which folds each frame through the core reducer and renders
 the transcript, the tokens as they arrive, and one connection-status line; a

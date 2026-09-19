@@ -60,6 +60,14 @@ emulator
 
 const server: Server = createSupervisorServer({
   lifecycle: createComputerLifecycle({ provider: emulator }),
+  providers: {
+    defaultKind: "offline",
+    kinds: ["offline", "docker"],
+    validate: async (kind) =>
+      kind === "offline"
+        ? { kind, available: true, failure: null }
+        : { kind, available: false, failure: "timed_out" },
+  },
   serviceToken,
   screenTokens: createScreenCapabilityCodec(screenKey),
   logger,
@@ -206,6 +214,27 @@ describe("the supervisor surface's own refusals", () => {
       .catch((error: unknown) => error);
 
     expect(raised).toMatchObject({ name: "ComputerProviderError", kind: "gone" });
+  });
+
+  it("reports the configured kinds and answers a selection check without touching a machine", async () => {
+    const api = client();
+
+    await expect(api.providers()).resolves.toEqual({
+      defaultKind: "offline",
+      kinds: ["offline", "docker"],
+    });
+    await expect(api.validateProvider("offline")).resolves.toEqual({
+      kind: "offline",
+      available: true,
+      failure: null,
+    });
+    // An unavailable kind is data, not an exception: the operator's surface
+    // renders it and the write gate refuses it.
+    await expect(api.validateProvider("docker")).resolves.toEqual({
+      kind: "docker",
+      available: false,
+      failure: "timed_out",
+    });
   });
 
   it("carries the per-bot provider selection across the wire unchanged", async () => {

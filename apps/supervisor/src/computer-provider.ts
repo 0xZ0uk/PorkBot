@@ -12,11 +12,13 @@ import type {
   DockerComputerProviderOptions,
   DockerProxyOptions,
 } from "@porkbot/adapters";
+import { isProviderFailure } from "@porkbot/adapter-kit";
 import type {
   ComputerProvider,
   ComputerRef,
   ComputerStatus,
   CredentialProxyAdmin,
+  ProviderFailureKind,
   StorageProvider,
 } from "@porkbot/adapter-kit";
 
@@ -61,6 +63,21 @@ export interface ComputerProviderSelection {
   readonly provider: ComputerProvider;
   /** How long a running machine may go without a command before it is parked. */
   readonly idleTimeoutMs: number;
+  /**
+   * Asks one configured kind to prove it is reachable (slice 9.4), answering
+   * the shared vocabulary's kind on refusal rather than throwing, so the
+   * operator's selection surface can show an unavailable provider instead of
+   * failing the write with it.
+   */
+  readonly validate: (kind: string) => Promise<ComputerProviderValidation>;
+}
+
+/** What one kind's selection check found. */
+export interface ComputerProviderValidation {
+  readonly kind: string;
+  readonly available: boolean;
+  /** The shared vocabulary's kind when the provider refused, else `null`. */
+  readonly failure: ProviderFailureKind | null;
 }
 
 /** The default idle window: a quarter-hour of no commands parks the machine. */
@@ -182,6 +199,21 @@ function createProviderRegistry(
     : undefined;
 
   return {
+    async validate(): Promise<void> {
+      // The registry's own readiness question has no kind to name, so it asks
+      // the default — the kind a bot with no selection runs on, which boot
+      // already proved is configured.
+      const provider = providers[defaultKind];
+
+      if (provider === undefined) {
+        throw new ComputerProviderError(
+          "not_found",
+          `this deployment has no "${defaultKind}" computer provider configured`,
+        );
+      }
+
+      return await provider.validate();
+    },
     async ensure(computer) {
       return await resolve(computer).ensure(computer);
     },
@@ -376,5 +408,35 @@ export function createComputerProviderSelection(
     kinds: Object.keys(providers),
     provider: createProviderRegistry(providers, defaultKind),
     idleTimeoutMs,
+    validate: (kind) => validateProvider(providers, kind),
   };
+}
+
+/**
+ * The selection check (slice 9.4): a kind this deployment configured is asked
+ * to prove itself, and its answer is data rather than an exception. A kind
+ * that was never configured is a defect — the caller reached past the catalog
+ * — so it is refused loudly instead of being dressed as "unavailable".
+ */
+async function validateProvider(
+  providers: Readonly<Record<string, ComputerProvider>>,
+  kind: string,
+): Promise<ComputerProviderValidation> {
+  const provider = providers[kind];
+
+  if (provider === undefined) {
+    throw new Error(`this deployment has no "${kind}" computer provider configured`);
+  }
+
+  try {
+    await provider.validate();
+
+    return { kind, available: true, failure: null };
+  } catch (error) {
+    if (!isProviderFailure(error)) {
+      throw error;
+    }
+
+    return { kind, available: false, failure: error.kind as ProviderFailureKind };
+  }
 }
