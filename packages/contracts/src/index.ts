@@ -105,12 +105,36 @@ export {
 } from "./threads.ts";
 export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 
-// Stored credentials (slice 9.1, PRD decision 10; stories 14 and 15): the list
-// surface answers masked summaries only. The schema has no field for a value,
-// so "no endpoint returns a full secret" is a property of the contract rather
-// than a promise about a handler.
-export { credentialSchema, credentialsListContract } from "./credentials.ts";
+// Stored credentials (slices 9.1 and 9.2, PRD decision 10; stories 14 and 15):
+// the list surface answers masked summaries only and `store` takes a value in
+// and answers a mask back. No output schema has a field for a value, so "no
+// endpoint returns a full secret" is a property of the contract rather than a
+// promise about a handler.
+export {
+  credentialSchema,
+  credentialsListContract,
+  credentialsStoreContract,
+} from "./credentials.ts";
 export type { Credential } from "./credentials.ts";
+
+// Model connections (slice 9.2, PRD decisions 12, 13 and 19; stories 12 and
+// 13): an OpenAI-compatible endpoint by URL and credential name, a real probe
+// and the per-space default. The key travels only through `credentials.store`.
+export {
+  credentialNameSchema,
+  modelBaseUrlSchema,
+  modelConnectionSchema,
+  modelConnectionsCreateContract,
+  modelConnectionsListContract,
+  modelConnectionsProbeContract,
+  modelConnectionsRemoveContract,
+  modelConnectionsSetDefaultContract,
+  modelConnectionsUpdateContract,
+  modelDescriptorSchema,
+  modelFailureKindSchema,
+  modelProbeSchema,
+} from "./model-connections.ts";
+export type { ModelConnection, ModelFailureKind, ModelProbe } from "./model-connections.ts";
 
 // MCP servers (slice 9.5, PRD story 38): install by URL, read back discovery,
 // grant to bots and revoke. The output schemas have no field for a token or a

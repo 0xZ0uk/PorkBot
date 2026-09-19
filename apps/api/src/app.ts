@@ -5,6 +5,7 @@ import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { moduleInfo as contractsModule } from "@porkbot/contracts";
 import { moduleInfo as coreModule } from "@porkbot/core";
+import { createOpenAiCompatibleModelRuntime } from "@porkbot/adapters";
 import {
   boundaryReports,
   mapError,
@@ -15,7 +16,12 @@ import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
-import type { RealtimeFanout, StorageProvider } from "@porkbot/adapter-kit";
+import type {
+  CredentialStore,
+  ModelRuntimeProvider,
+  RealtimeFanout,
+  StorageProvider,
+} from "@porkbot/adapter-kit";
 import type { UserActor, UserRepositories } from "@porkbot/db";
 import { assembleRouter, openProcedureContext } from "./gate.ts";
 import { createCursorCodec } from "./cursors.ts";
@@ -26,6 +32,7 @@ import { createBotsRouter } from "./routers/bots.ts";
 import { createCredentialsRouter } from "./routers/credentials.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
 import { createMcpRouter } from "./routers/mcp.ts";
+import { createModelConnectionsRouter } from "./routers/model-connections.ts";
 import { createNotificationsRouter } from "./routers/notifications.ts";
 import { createRoutinesRouter } from "./routers/routines.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
@@ -34,6 +41,7 @@ import { createBotService } from "./services/bots.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import type { McpService } from "./services/mcp.ts";
+import { createModelConnectionsService } from "./services/model-connections.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
 import { createThreadsService } from "./services/threads.ts";
 import { refuseWebhooks, webhookPath } from "./webhooks.ts";
@@ -76,6 +84,14 @@ export interface ApiServices {
    * state ledger.
    */
   readonly mcp?: McpService;
+  /**
+   * Builds the model runtime a probe uses for one request over the actor's
+   * credential store (slice 9.2). The default is the shipped
+   * OpenAI-compatible provider over the URL-safety transport; a test injects
+   * the emulator-backed one, so the probe suite crosses a real wire with no
+   * network and no key.
+   */
+  readonly modelRuntime?: (credentials: CredentialStore) => ModelRuntimeProvider;
 }
 
 export interface ApiAppOptions {
@@ -157,6 +173,9 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const threads = createThreadsService();
   const webhooks = options.webhooks ?? refuseWebhooks(logger);
   const storage = options.services.storage ?? refuseStorage();
+  const modelRuntime =
+    options.services.modelRuntime ??
+    ((credentials: CredentialStore) => createOpenAiCompatibleModelRuntime({ credentials }));
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
     account: createAccountRouter(),
@@ -167,6 +186,9 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     routines: createRoutinesRouter(),
     credentials: createCredentialsRouter(),
     mcpServers: createMcpRouter(options.services.mcp),
+    modelConnections: createModelConnectionsRouter(
+      createModelConnectionsService({ runtime: modelRuntime }),
+    ),
   });
   const rpc = new RPCHandler(router, {
     interceptors: [

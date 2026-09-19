@@ -111,6 +111,14 @@ function fakeRepositories(calls: Calls): UserRepositories {
         calls.order.push(`credentials.remove:${name}`);
       }),
     },
+    modelConnections: {
+      findById: notExercised,
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      setDefault: notExercised,
+      delete: notExercised,
+    },
     mcp: {
       list: vi.fn(async () => [view()]),
       findById: vi.fn(async (id: string) => {

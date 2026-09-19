@@ -46,6 +46,8 @@ export function createBotsRouter(service: BotService) {
         position: input.position,
         sectionId: input.sectionId,
         computerId: input.computerId,
+        modelConnectionId: input.modelConnectionId,
+        model: input.model,
       }),
     ),
   );
@@ -115,6 +117,8 @@ export function botOutput(record: BotRecord): Bot {
     sectionId: record.sectionId,
     avatarKey: record.avatarKey,
     computerId: record.computerId,
+    modelConnectionId: record.modelConnectionId,
+    model: record.model,
     archivedAt: record.archivedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),

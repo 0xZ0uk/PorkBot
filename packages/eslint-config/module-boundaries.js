@@ -27,7 +27,11 @@ export const workspacePackages = {
   "@porkbot/contracts": {
     role: "schemas and transport types",
     imports: ["@porkbot/core"],
-    testImports: ["@porkbot/testkit"],
+    // The model-connections suite pins the probe's failure enum to the
+    // provider vocabulary in @porkbot/adapter-kit, so the transport cannot
+    // drift from the classification lifecycle code branches on. Test-only:
+    // shipped contract code still names no adapter.
+    testImports: ["@porkbot/testkit", "@porkbot/adapter-kit"],
   },
   "@porkbot/adapter-kit": {
     role: "provider interfaces only",

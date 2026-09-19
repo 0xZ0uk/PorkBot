@@ -164,6 +164,8 @@ export function fakeBot(id: string, name: string): Bot {
     sectionId: null,
     avatarKey: null,
     computerId: null,
+    modelConnectionId: null,
+    model: null,
     archivedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",

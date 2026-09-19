@@ -322,6 +322,11 @@ async function createBot(space: SpaceHandle, name: string): Promise<BotRecord> {
   });
 }
 
+interface ModelConnectionSeed {
+  readonly connectionId: string;
+  readonly botId: string;
+}
+
 interface ThreadSeed {
   readonly botId: string;
   readonly threadId: string;
@@ -390,6 +395,49 @@ export const resources: readonly Resource<unknown>[] = [
           : "refused",
       write: (subject, seed) =>
         appliedOn(() => subject.repositories.sections.update(seed.id, { position: 7 })),
+    },
+  }),
+
+  resource<ModelConnectionSeed>({
+    entity: "model_connection",
+    tables: ["model_connection"],
+    seed: async (space) => {
+      const connection = await space.ownerRepositories.modelConnections.create({
+        label: `Matrix connection ${randomUUID()}`,
+        baseUrl: "https://model.example.invalid/v1",
+        credentialName: "matrix-model-key",
+        defaultModel: "matrix-model",
+      });
+      const bot = await createBot(space, "Model host");
+      await space.ownerRepositories.bots.update(bot.id, { modelConnectionId: connection.id });
+
+      return { connectionId: connection.id, botId: bot.id };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          'select label, base_url as "baseUrl", default_model as "defaultModel", ' +
+            'is_default as "isDefault" from model_connection where id = $1',
+          [seed.connectionId],
+        ),
+      ),
+    user: {
+      read: (subject, seed) =>
+        visibleOn(() => subject.repositories.modelConnections.findById(seed.connectionId)),
+      write: (subject, seed) =>
+        appliedOn(() =>
+          subject.repositories.modelConnections.update(seed.connectionId, {
+            defaultModel: "matrix-updated",
+          }),
+        ),
+    },
+    system: {
+      // The selection read is the job's seam: in the acting space the bot
+      // resolves through its connection, and a foreign space resolves nothing.
+      read: async (subject, seed) =>
+        (await subject.repositories.modelConnections.resolveForBot(seed.botId)) === undefined
+          ? "refused"
+          : "visible",
     },
   }),
 

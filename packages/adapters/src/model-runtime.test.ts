@@ -1,21 +1,13 @@
-import type {
-  ModelConnection,
-  ModelRuntimeProvider,
-  ModelStreamEvent,
-  ModelTurnRequest,
-  ProviderFailureKind,
-} from "@porkbot/adapter-kit";
+import type { ModelStreamEvent, ModelTurnRequest, ProviderFailureKind } from "@porkbot/adapter-kit";
 import { PROVIDER_FAILURE_KINDS } from "@porkbot/adapter-kit";
 import { afterEach, describe, expect, it } from "vitest";
 import { ModelEmulator } from "./index.ts";
 import type { ModelEmulatorScript } from "./index.ts";
-
-interface RuntimeHarness {
-  readonly runtime: ModelRuntimeProvider;
-  readonly connection: ModelConnection;
-}
-
-type RuntimeHarnessFactory = (script: ModelEmulatorScript) => Promise<RuntimeHarness>;
+import {
+  collectModelEvents,
+  modelRuntimeConformance,
+  modelTurnRequest,
+} from "./model-conformance.ts";
 
 const openEmulators: ModelEmulator[] = [];
 
@@ -27,102 +19,6 @@ async function createEmulator(script: ModelEmulatorScript): Promise<ModelEmulato
   const emulator = await ModelEmulator.start(script, globalThis.fetch);
   openEmulators.push(emulator);
   return emulator;
-}
-
-async function collect(stream: AsyncIterable<ModelStreamEvent>): Promise<ModelStreamEvent[]> {
-  const events: ModelStreamEvent[] = [];
-
-  for await (const event of stream) {
-    events.push(event);
-  }
-
-  return events;
-}
-
-function turn(connection: ModelConnection, model = "fixture-model"): ModelTurnRequest {
-  return {
-    connection,
-    model,
-    messages: [{ role: "user", content: "What is the weather?" }],
-    tools: [
-      {
-        name: "weather",
-        description: "Read the weather",
-        parameters: {
-          type: "object",
-          properties: { city: { type: "string" } },
-          required: ["city"],
-        },
-      },
-    ],
-  };
-}
-
-/**
- * The provider-neutral model runtime contract. New real adapters register the
- * same harness factory here, so text streaming, tool reconstruction and probe
- * semantics cannot drift between the offline and hosted implementations.
- */
-function modelRuntimeConformance(name: string, create: RuntimeHarnessFactory): void {
-  describe(`${name} model runtime conformance`, () => {
-    it("probes the models and streaming support", async () => {
-      const harness = await create({ models: ["fixture-model", "fallback-model"], turns: [] });
-
-      await expect(harness.runtime.probe(harness.connection)).resolves.toEqual({
-        reachable: true,
-        models: [{ id: "fixture-model" }, { id: "fallback-model" }],
-        streaming: true,
-      });
-    });
-
-    it("streams text and ends exactly once", async () => {
-      const harness = await create({
-        turns: [
-          {
-            steps: [
-              { type: "text", delta: "Hello" },
-              { type: "text", delta: " world" },
-            ],
-          },
-        ],
-      });
-
-      await expect(collect(harness.runtime.stream(turn(harness.connection)))).resolves.toEqual([
-        { type: "text.delta", delta: "Hello" },
-        { type: "text.delta", delta: " world" },
-        { type: "completed", finishReason: "stop" },
-      ]);
-    });
-
-    it("preserves tool argument deltas and emits one completed call", async () => {
-      const harness = await create({
-        turns: [
-          {
-            steps: [
-              {
-                type: "tool_call",
-                callId: "call-1",
-                name: "weather",
-                argumentDeltas: ['{"city":', '"Lisbon"}'],
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(collect(harness.runtime.stream(turn(harness.connection)))).resolves.toEqual([
-        { type: "tool.delta", callId: "call-1", argumentsDelta: '{"city":' },
-        { type: "tool.delta", callId: "call-1", argumentsDelta: '"Lisbon"}' },
-        {
-          type: "tool.requested",
-          callId: "call-1",
-          name: "weather",
-          arguments: { city: "Lisbon" },
-        },
-        { type: "completed", finishReason: "tool_calls" },
-      ]);
-    });
-  });
 }
 
 modelRuntimeConformance("offline emulator", async (script) => {
@@ -268,7 +164,7 @@ describe("the model emulator wire protocol", () => {
       name: string,
       messages: ModelTurnRequest["messages"],
     ): Promise<ModelStreamEvent[]> => {
-      const result = collect(
+      const result = collectModelEvents(
         emulator.stream({
           connection: emulator.connection,
           model: "fixture-model",
@@ -286,7 +182,7 @@ describe("the model emulator wire protocol", () => {
     ]);
 
     const steeringAbort = new AbortController();
-    const interrupted = collect(
+    const interrupted = collectModelEvents(
       emulator.stream({
         connection: emulator.connection,
         model: "fixture-model",
@@ -300,7 +196,7 @@ describe("the model emulator wire protocol", () => {
     await emulator.waitForGateExit("steer");
 
     await expect(
-      collect(
+      collectModelEvents(
         emulator.stream({
           connection: emulator.connection,
           model: "fixture-model",
@@ -325,7 +221,9 @@ describe("the model emulator wire protocol", () => {
   it.each(PROVIDER_FAILURE_KINDS)("injects an OpenAI-shaped %s failure", async (kind) => {
     const emulator = await createEmulator({ turns: [{ failure: kind }] });
 
-    await expect(collect(emulator.stream(turn(emulator.connection)))).rejects.toMatchObject({
+    await expect(
+      collectModelEvents(emulator.stream(modelTurnRequest(emulator.connection))),
+    ).rejects.toMatchObject({
       name: "ModelProviderError",
       kind,
     });
@@ -377,8 +275,8 @@ describe("the model emulator wire protocol", () => {
     const second = await createEmulator(script);
 
     const [firstEvents, secondEvents] = await Promise.all([
-      collect(first.stream(turn(first.connection))),
-      collect(second.stream(turn(second.connection))),
+      collectModelEvents(first.stream(modelTurnRequest(first.connection))),
+      collectModelEvents(second.stream(modelTurnRequest(second.connection))),
     ]);
 
     expect(firstEvents).toEqual(secondEvents);
@@ -392,7 +290,7 @@ describe("the model emulator wire protocol", () => {
         { steps: [{ type: "text", delta: "second" }] },
       ],
     });
-    const first = collect(emulator.stream(turn(emulator.connection)));
+    const first = collectModelEvents(emulator.stream(modelTurnRequest(emulator.connection)));
     await emulator.waitForGate("only-turn");
 
     const overlap = await fetch(`${emulator.baseUrl}/chat/completions`, {
@@ -412,7 +310,9 @@ describe("the model emulator wire protocol", () => {
 
     emulator.releaseGate("only-turn");
     await first;
-    await expect(collect(emulator.stream(turn(emulator.connection)))).resolves.toEqual([
+    await expect(
+      collectModelEvents(emulator.stream(modelTurnRequest(emulator.connection))),
+    ).resolves.toEqual([
       { type: "text.delta", delta: "second" },
       { type: "completed", finishReason: "stop" },
     ]);

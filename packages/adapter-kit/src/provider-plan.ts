@@ -151,7 +151,7 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         name: "createOpenAiCompatibleModelRuntime",
         slice: "9.2",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
       },
     ],
   },
