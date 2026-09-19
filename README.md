@@ -130,6 +130,21 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   `PORKBOT_COMPUTER_DISK_MB` are one bot's share of the host floor under "A
   bot's computer". `PORKBOT_COMPUTER_IDLE_MS` (default fifteen minutes, zero
   disables) parks a machine no run is using; the home volume survives.
+- **Credentials never enter a sandbox.** Model and provider keys stay
+  server-side; a run's tools reach an upstream through a per-computer
+  credential proxy that injects the credential on its own leg. The sandbox
+  carries only a short-lived capability — the proxy's address and a signed
+  token bound to one run and one computer — so a confused or compromised agent
+  has nothing to exfiltrate. A Docker deployment configures the sidecar with
+  `PORKBOT_COMPUTER_PROXY_IMAGE` (the image carrying the proxy entrypoint),
+  `PORKBOT_PROXY_TOKEN_SECRET` (the capability-signing key, on the worker and
+  the sidecars alike) and `PORKBOT_COMPUTER_EGRESS_NETWORK` (the deployment's
+  egress network, the sidecar's second leg); the three are all-or-nothing, and
+  unset means no proxy runs. Grants are written only by the supervisor, through
+  the daemon's archive API, onto the sidecar's own layer — no bind, no shared
+  volume, removed with the sidecar when the machine parks; a run's grant is
+  revoked when the run ends and expires at the run's lease end regardless. `docs/credential-proxy.md` describes the boundary and what the
+  deferred screen-takeover work inherits from it.
 - **CI runs the same command.** The integration tier starts the stack with
   `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
   of booting its own container, runs the integration suites against it, and

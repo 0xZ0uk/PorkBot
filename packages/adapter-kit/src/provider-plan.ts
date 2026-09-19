@@ -145,6 +145,29 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
     ],
   },
   {
+    interface: "CredentialProxyAdmin",
+    module: "./computer.ts",
+    capability:
+      "the run-scoped grant a computer's credential proxy holds, so no key ever enters a sandbox",
+    failures: computerFailures,
+    implementations: [
+      {
+        name: "ComputerEmulator",
+        slice: "7.8",
+        owner: "@porkbot/adapters",
+        status: "shipped",
+        note: "Runs the real credential-proxy server on loopback, so the grant file, the capability check and the upstream allowlist are exercised offline over real HTTP with no daemon and no keys.",
+      },
+      {
+        name: "createDockerComputerProvider",
+        slice: "7.8",
+        owner: "@porkbot/adapters",
+        status: "shipped",
+        note: "Runs the proxy as a per-computer sidecar on the computer's own isolated network — the only network peer a sandbox can reach — plus the deployment's egress network for the upstream leg. Grants are written through the daemon's archive API, so the Docker socket holder is the only writer and the material never crosses the sandbox's boundary. The cloud provider joins this seam when its sandbox boundary can place a proxy peer.",
+      },
+    ],
+  },
+  {
     interface: "ModelRuntimeProvider",
     module: "./model-runtime.ts",
     capability: "the model endpoint the agent loop talks to",
@@ -305,6 +328,9 @@ export const PROVIDER_SHAPES: readonly ProviderShape[] = [
       "ComputerExecResult",
       "ComputerSnapshot",
       "ComputerFrame",
+      "ComputerProxyGrant",
+      "ComputerProxyEndpoint",
+      "ProxyUpstreamGrant",
     ],
   },
   {

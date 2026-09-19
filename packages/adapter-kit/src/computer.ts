@@ -67,11 +67,19 @@ export interface ComputerStatus {
  * fencing are not parameters here — a durable `callId` (slice 5.5) and the
  * computer lease (slice 7.4) guard a command above this seam, which is where
  * "a retried command is a no-op" is decided.
+ *
+ * `environment` is per-command environment, applied to the exec'd process
+ * alone: it is never written into the computer's own container spec, so it
+ * cannot become a credential that outlives the call (slice 7.8). The fenced
+ * command runner is the only writer — the tool layer never sets it — and what
+ * it carries is a capability, never a stored credential: the proxy URL the
+ * command may call and the short-lived run token the proxy verifies.
  */
 export interface ComputerExecRequest {
   readonly computer: ComputerRef;
   readonly command: string;
   readonly timeoutMs: number;
+  readonly environment?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface ComputerExecResult {
@@ -130,6 +138,80 @@ export type ComputerInput =
   | { readonly type: "key"; readonly key: string }
   | { readonly type: "text"; readonly text: string };
 
+/**
+ * One upstream a run may reach through its computer's credential proxy (slice
+ * 7.8, PRD decision 29; audit P1 item 7).
+ *
+ * The sandbox addresses the upstream by `name` alone — it never learns the
+ * origin, and the `headers` the proxy injects are the credential material the
+ * run resolved server-side. A name with no `headers` is a plain allowlist
+ * entry: reachable, but carrying nothing the run did not already know.
+ */
+export interface ProxyUpstreamGrant {
+  /** The name the sandbox calls, for example `model` or `github`. */
+  readonly name: string;
+  /** The absolute origin the proxy forwards to: `https://host[:port]`, no path. */
+  readonly origin: string;
+  /** Headers the proxy adds to every forwarded request for this upstream. */
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+}
+
+/**
+ * The whole of one run's credentialed egress, in one grant (slice 7.8).
+ *
+ * The grant is written to the computer's proxy when the run starts and removed
+ * when it ends; `expiresAtSeconds` is the bound a crashed writer cannot
+ * escape, because the proxy refuses the grant once the wall clock passes it.
+ * The proxy holds the material; the sandbox holds only the capability token
+ * that names this grant's run.
+ */
+export interface ComputerProxyGrant {
+  readonly runId: string;
+  /** The grant's hard deadline, in whole Unix seconds. */
+  readonly expiresAtSeconds: number;
+  /** Every upstream this run may reach; anything unnamed is refused. */
+  readonly upstreams: readonly ProxyUpstreamGrant[];
+}
+
+/** Where a computer's proxy is reached from inside the sandbox. */
+export interface ComputerProxyEndpoint {
+  /** The base URL a command calls, for example `http://porkbot-proxy-abc123:8321`. */
+  readonly url: string;
+}
+
+/**
+ * The credential-proxy administration seam (slice 7.8, PRD decision 29).
+ *
+ * A computer's proxy is the only door credentialed egress takes out of a
+ * sandbox: the run's grants live in it, the sandbox holds a scoped capability
+ * rather than a key, and a grant dies with the run that wrote it. Providers
+ * implement it differently — Docker runs a per-computer sidecar on the
+ * isolated network, the emulator runs the same proxy on loopback — but the
+ * semantics are shared: `grant` publishes or replaces one run's upstream set,
+ * `revoke` removes it, and `endpoint` names the address the run's commands
+ * are given, when the provider runs a proxy at all.
+ *
+ * A provider without one leaves `proxy` unset, which is the honest answer for
+ * a provider that cannot isolate a proxy inside its sandbox boundary — the
+ * caller learns there is no proxy instead of pretending credentials crossed
+ * a boundary they did not.
+ */
+export interface CredentialProxyAdmin {
+  /**
+   * Publish one run's grant on the computer's proxy, replacing any grant the
+   * run already held. Returns the endpoint the sandbox addresses; the caller
+   * hands it to the command's environment together with the run's capability.
+   */
+  grant(computer: ComputerRef, grant: ComputerProxyGrant): Promise<ComputerProxyEndpoint>;
+  /**
+   * Remove the run's grant. Idempotent, because the settle path calls it on
+   * every terminal run whether or not a grant was ever written.
+   */
+  revoke(computer: ComputerRef, runId: string): Promise<void>;
+  /** The proxy's endpoint for this computer, or `undefined` when it has none. */
+  endpoint(computer: ComputerRef): Promise<ComputerProxyEndpoint | undefined>;
+}
+
 export interface ComputerProvider {
   /**
    * Bring the computer up, or adopt the one already running. Idempotent: a
@@ -172,6 +254,11 @@ export interface ComputerProvider {
   frames?(computer: ComputerRef): AsyncIterable<ComputerFrame>;
   /** Reserved for v1.1 screen takeover. */
   input?(computer: ComputerRef, input: ComputerInput): Promise<void>;
+  /**
+   * The computer's credential proxy administration (slice 7.8), present only
+   * on providers that can run one inside the sandbox's isolation boundary.
+   */
+  readonly proxy?: CredentialProxyAdmin;
 }
 
 export const failureMapping: FailureMapping = {

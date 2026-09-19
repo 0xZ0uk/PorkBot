@@ -35,6 +35,7 @@ import { createSupervisorServer } from "./server.ts";
 
 const serviceToken = "supervisor-service-token";
 const screenKey = "screen-capability-key";
+const proxyKey = "proxy-capability-key";
 const serviceName = "@porkbot/supervisor";
 
 const lines: string[] = [];
@@ -43,7 +44,7 @@ const logger: Logger = createLogger({
   write: (line) => lines.push(line),
 });
 
-const emulator = new ComputerEmulator();
+const emulator = new ComputerEmulator({ proxy: { tokenSecret: proxyKey } });
 emulator
   .servePage({
     url: CONFORMANCE_PAGE_URL,
@@ -234,6 +235,179 @@ describe("the supervisor surface's own refusals", () => {
     });
 
     expect(response.status).toBe(400);
+  });
+
+  it("carries a bounded per-command environment and refuses an unbounded one", async () => {
+    const ref = { computerId: "env-carried", botId: "bot-env" };
+    await client().ensure(ref);
+
+    const accepted = await rawCall("/v1/computers/exec", {
+      body: JSON.stringify({
+        computer: ref,
+        command: "printf hello",
+        timeoutMs: 1_000,
+        environment: { PORKBOT_PROXY_URL: "http://proxy:8321" },
+      }),
+    });
+
+    expect(accepted.status).toBe(200);
+
+    // An oversized value is refused by the body cap before a handler runs; a
+    // non-string value and an over-long name reach the handler and are refused
+    // by the environment rule. Either way the command never runs.
+    const oversizedValue = await rawCall("/v1/computers/exec", {
+      body: JSON.stringify({
+        computer: ref,
+        command: "printf hello",
+        timeoutMs: 1_000,
+        environment: { PORKBOT_PROXY_TOKEN: "x".repeat(9_000) },
+      }),
+    });
+    const nonString = await rawCall("/v1/computers/exec", {
+      body: JSON.stringify({
+        computer: ref,
+        command: "printf hello",
+        timeoutMs: 1_000,
+        environment: { PORKBOT_PROXY_TOKEN: 42 },
+      }),
+    });
+    const longName = await rawCall("/v1/computers/exec", {
+      body: JSON.stringify({
+        computer: ref,
+        command: "printf hello",
+        timeoutMs: 1_000,
+        environment: { ["x".repeat(200)]: "value" },
+      }),
+    });
+
+    expect(oversizedValue.status).toBe(413);
+    expect(nonString.status).toBe(400);
+    expect(longName.status).toBe(400);
+  });
+});
+
+describe("the credential-proxy routes", () => {
+  const ref = { computerId: "proxy-carried", botId: "bot-proxy" };
+  const grant = {
+    runId: "run-1",
+    expiresAtSeconds: 4_102_444_800,
+    upstreams: [
+      {
+        name: "model",
+        origin: "https://api.model.example",
+        headers: { authorization: "Bearer sk-marker" },
+      },
+    ],
+  };
+
+  it("grants through the client and answers the endpoint", async () => {
+    await client().ensure(ref);
+
+    const endpoint = await client().proxy?.grant(ref, grant);
+
+    expect(endpoint?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await expect(client().proxy?.endpoint(ref)).resolves.toEqual(endpoint);
+
+    await client().proxy?.revoke(ref, "run-1");
+  });
+
+  it("refuses a grant with a plaintext or credentialed origin before a handler sees it", async () => {
+    await client().ensure(ref);
+
+    const plaintext = await rawCall("/v1/computers/proxy/grant", {
+      body: JSON.stringify({
+        computer: ref,
+        grant: {
+          ...grant,
+          upstreams: [{ name: "model", origin: "http://insecure.example" }],
+        },
+      }),
+    });
+    const credentialed = await rawCall("/v1/computers/proxy/grant", {
+      body: JSON.stringify({
+        computer: ref,
+        grant: {
+          ...grant,
+          upstreams: [{ name: "model", origin: "https://user:pass@api.model.example" }],
+        },
+      }),
+    });
+    const pathed = await rawCall("/v1/computers/proxy/grant", {
+      body: JSON.stringify({
+        computer: ref,
+        grant: {
+          ...grant,
+          upstreams: [{ name: "model", origin: "https://api.model.example/v1" }],
+        },
+      }),
+    });
+
+    expect(plaintext.status).toBe(400);
+    expect(credentialed.status).toBe(400);
+    expect(pathed.status).toBe(400);
+  });
+
+  it("refuses a grant that injects a framing header, on the wire and at the client", async () => {
+    await client().ensure(ref);
+
+    const response = await rawCall("/v1/computers/proxy/grant", {
+      body: JSON.stringify({
+        computer: ref,
+        grant: {
+          ...grant,
+          upstreams: [
+            {
+              name: "model",
+              origin: "https://api.model.example",
+              headers: { host: "elsewhere.example", authorization: "Bearer sk-marker" },
+            },
+          ],
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(
+      client().proxy?.grant(ref, {
+        ...grant,
+        upstreams: [
+          {
+            name: "model",
+            origin: "https://api.model.example",
+            headers: { "content-length": "0" },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/refused .* with status 400/);
+  });
+
+  it("answers a deployment with no proxy as the shared not_found", async () => {
+    const bare = createSupervisorServer({
+      lifecycle: createComputerLifecycle({ provider: new ComputerEmulator() }),
+      serviceToken,
+      logger,
+      serviceName,
+    });
+    await new Promise<void>((resolve) => {
+      bare.listen(0, "127.0.0.1", resolve);
+    });
+    const address = bare.address();
+    const port = address !== null && typeof address === "object" ? address.port : 0;
+    const bareClient = createSupervisorComputerProvider({
+      baseUrl: `http://127.0.0.1:${port}`,
+      token: serviceToken,
+    });
+
+    try {
+      await expect(bareClient.proxy?.grant(ref, grant)).rejects.toMatchObject({
+        kind: "not_found",
+      });
+      await expect(bareClient.proxy?.endpoint(ref)).resolves.toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve) => {
+        bare.close(() => resolve());
+      });
+    }
   });
 });
 

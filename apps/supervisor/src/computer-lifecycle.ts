@@ -2,10 +2,13 @@ import { assertComputerNetworkPlan, planComputerNetwork } from "@porkbot/core";
 import type {
   ComputerExecRequest,
   ComputerExecResult,
+  ComputerProxyEndpoint,
+  ComputerProxyGrant,
   ComputerProvider,
   ComputerRef,
   ComputerSnapshot,
   ComputerStatus,
+  CredentialProxyAdmin,
   ProviderFailure,
 } from "@porkbot/adapter-kit";
 
@@ -90,6 +93,13 @@ export interface ComputerLifecycle {
   reconcile(): Promise<ReconciliationReport>;
   /** Parks every machine whose last real activity is older than the idle timeout. */
   stopIdle(): Promise<IdleStopReport>;
+  /**
+   * The credential proxy's administration (slice 7.8), present only when the
+   * selected provider runs a proxy. Grants are addressed to a machine — a
+   * stopped machine has no reachable proxy — and a grant is refused before the
+   * provider sees it for an identity whose network plan is not isolated.
+   */
+  readonly proxy?: CredentialProxyAdmin;
 }
 
 export interface ComputerLifecycleOptions {
@@ -117,6 +127,7 @@ function failureDetail(error: unknown): string {
 
 export function createComputerLifecycle(options: ComputerLifecycleOptions): ComputerLifecycle {
   const provider = options.provider;
+  const proxyAdmin = provider.proxy;
   const idleTimeoutMs = options.idleTimeoutMs ?? 0;
   const now = options.now ?? (() => Date.now());
   /** When each computer last did real work, by computer id. */
@@ -265,5 +276,26 @@ export function createComputerLifecycle(options: ComputerLifecycleOptions): Comp
 
       return { checked, stopped, failed };
     },
+
+    ...(proxyAdmin === undefined
+      ? {}
+      : {
+          proxy: {
+            async grant(
+              computer: ComputerRef,
+              grant: ComputerProxyGrant,
+            ): Promise<ComputerProxyEndpoint> {
+              // The same door check every lifecycle operation gets: a grant for
+              // an identity that cannot produce an isolated network is refused
+              // here rather than written onto a machine that can see the host.
+              assertIsolated(computer);
+              return await proxyAdmin.grant(computer, grant);
+            },
+            revoke: (computer: ComputerRef, runId: string): Promise<void> =>
+              proxyAdmin.revoke(computer, runId),
+            endpoint: (computer: ComputerRef): Promise<ComputerProxyEndpoint | undefined> =>
+              proxyAdmin.endpoint(computer),
+          } satisfies CredentialProxyAdmin,
+        }),
   };
 }
