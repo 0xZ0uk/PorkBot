@@ -4,10 +4,10 @@ import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
 import { leaseWatchdogIdentifier, leaseWatchdogJob } from "./jobs/lease-watchdog.ts";
-import type { StallNotificationTarget } from "./jobs/lease-watchdog.ts";
 import { routineTickIdentifier, routineTickJob } from "./jobs/routine-schedule.ts";
 import { runExecuteJob } from "./jobs/run-execute.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
+import type { RunNotificationTarget } from "./run-notifications.ts";
 
 /**
  * The watchdog's schedule: every minute, on the minute. PRD decision 26 asks
@@ -80,24 +80,21 @@ export interface WorkerOptions {
    */
   readonly scheduleRoutines?: boolean;
   /**
-   * Where a stalled run's notification goes (slice 6.10). Absent, the watchdog
-   * records the stall but sends nothing; slice 8.7 composes the provider and
-   * the link's origin in `main.ts`.
+   * Where the run-liveness notifications go (slices 6.10 and 8.7): the
+   * finished, failed, timed-out and stuck-run messages share one target, which
+   * `main.ts` composes from the generic notification configuration. Absent, the
+   * states are recorded and logged but nothing is sent.
    */
-  readonly stallNotification?: StallNotificationTarget;
+  readonly runNotifications?: RunNotificationTarget;
 }
 
 export async function startWorker(options: WorkerOptions): Promise<Runner> {
+  const notifications =
+    options.runNotifications === undefined ? {} : { runNotifications: options.runNotifications };
   const registry = createJobRegistry({
     jobs: [
-      defineJob(runExecuteJob(options.executeRun)),
-      defineJob(
-        leaseWatchdogJob(
-          options.stallNotification === undefined
-            ? {}
-            : { stallNotification: options.stallNotification },
-        ),
-      ),
+      defineJob(runExecuteJob(options.executeRun, notifications)),
+      defineJob(leaseWatchdogJob(notifications)),
       defineJob(routineTickJob()),
     ],
     logger: options.logger,

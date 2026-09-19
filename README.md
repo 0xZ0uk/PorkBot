@@ -996,9 +996,35 @@ without retrying, and returns a `delivered`, `suppressed` or `undelivered`
 outcome — an undelivered notification is an error log and an outcome the caller
 holds, never a silent drop. The operator surface ships with it:
 `notifications.preferences` and `notifications.setPreference` are authenticated
-procedures that read and flip the actor's own switches. The run lifecycle
-producers that fire on finish, failure and stuck-run detection land with slice
-8.7.
+procedures that read and flip the actor's own switches.
+
+The run-liveness producers ship with slice 8.7.
+`apps/worker/src/run-notifications.ts` is the one producer: a run that finished,
+a run that failed, a run whose worker timed out and had nothing to resume, and a
+run the watchdog found stuck all compose one message there and hand it to the
+same delivery path. The stuck case reuses the E6 assessment
+(`assessRunLiveness`) rather than a second heuristic, and its sentence names the
+silence and the last step without carrying a tool argument. Every message links
+to the run's timeline: the thread console, addressed down to the run itself
+(`/threads/{threadId}?run={runId}`).
+
+Duplicate suppression is durable, not incidental. A settled run claims its one
+terminal notification in the run row's `notified_at` before anything is sent, so
+a retried job or a producer racing the watchdog finds the claim taken and sends
+nothing; a `cancelled` run is the operator's own act and never claims one. A
+stall claims per episode through the `stalled_at` marker the watchdog already
+writes, so a run that recovers and stalls again is announced again while one
+long stall is announced once. The claim is taken before the preference is read,
+so a quiet operator cannot leave the run unclaimed for a later producer to
+re-announce.
+
+The worker composes the provider in `main.ts`: the emulator is the default, so
+the product notifies with nothing configured, and a deployment that sets
+`PORKBOT_NOTIFICATION_WEBHOOK_URL` gets the HTTPS provider, with its key read
+through the generic environment credential store under
+`PORKBOT_NOTIFICATION_WEBHOOK_KEY`. `PORKBOT_WEB_ORIGIN` is the absolute web
+origin links are built from; unset, it falls back to loopback with a warning,
+because a link the operator cannot open is worth saying out loud.
 
 ## URL safety
 

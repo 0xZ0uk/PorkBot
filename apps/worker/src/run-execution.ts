@@ -6,6 +6,8 @@ import type { FencedRunPatch, RunRecord, SystemRepositories } from "@porkbot/db"
 import { LeaseLostError, withRunFence } from "@porkbot/effect";
 import type { RunSessionOutcome } from "@porkbot/effect";
 import type { RunExecution, RunExecutor } from "./jobs/run-execute.ts";
+import { notifySettledRun } from "./run-notifications.ts";
+import type { RunNotificationTarget } from "./run-notifications.ts";
 
 /**
  * The worker's execution harness (slice 6.3, PRD decisions 25 and 26).
@@ -56,6 +58,12 @@ export interface RunExecutionOptions {
    * interval; tests shorten it so a lost lease interrupts promptly.
    */
   readonly heartbeatIntervalMs?: number;
+  /**
+   * The E8 delivery path (slice 8.7). Absent, a settled run is recorded and
+   * logged but no notification is sent; the composition root supplies the
+   * provider and the link's origin.
+   */
+  readonly notificationTarget?: RunNotificationTarget;
 }
 
 export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
@@ -70,7 +78,8 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
       const outcome = yield* options.work({ ...execution, progress }).pipe(Effect.exit);
 
       if (Exit.isSuccess(outcome)) {
-        yield* settle(repositories, run, lease, settlement(outcome.value));
+        const settled = yield* settle(repositories, run, lease, settlement(outcome.value));
+        yield* notify(settled, execution, options.notificationTarget);
         return;
       }
 
@@ -83,13 +92,14 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
         return yield* Effect.fail(new LeaseLostError(run.id));
       }
 
-      yield* settle(repositories, run, lease, {
+      const settled = yield* settle(repositories, run, lease, {
         status: "failed",
         error: workFailureMessage(outcome.cause),
         attempt: "failed",
         completed: true,
         release: true,
       });
+      yield* notify(settled, execution, options.notificationTarget);
     });
 
     const exit = await Effect.runPromise(
@@ -195,20 +205,45 @@ function heartbeatEffect(
  * One fenced run write inside the heartbeat's scope, so the lease is renewed
  * right up to the settlement. A write that cannot be made is a lost lease as
  * far as this harness is concerned: the run stays where it is and the watchdog
- * recovers it.
+ * recovers it. The settled row is returned because the notification step reads
+ * its final status and `error_code`, never the patch this process intended.
  */
 function settle(
   repositories: SystemRepositories,
   run: RunRecord,
   lease: { readonly owner: string; readonly fence: number },
   patch: FencedRunPatch,
-): Effect.Effect<void, LeaseLostError> {
+): Effect.Effect<RunRecord, LeaseLostError> {
   return Effect.tryPromise({
-    try: async () => {
-      await repositories.runs.update(run.id, lease, patch);
-    },
+    try: async () => repositories.runs.update(run.id, lease, patch),
     catch: (error) => (error instanceof LeaseLostError ? error : new LeaseLostError(run.id)),
   });
+}
+
+/**
+ * The notification step of a settlement. It never fails: a run must not read
+ * as lease-lost, and a job must not be retried, because an operator could not
+ * be told about a state that is already durable. The claim inside
+ * `notifySettledRun` is what makes a retry harmless, and the catch here keeps
+ * an unexpected defect in the notifier from interrupting the settlement's
+ * scope.
+ */
+function notify(
+  run: RunRecord,
+  execution: RunExecution,
+  target: RunNotificationTarget | undefined,
+): Effect.Effect<void> {
+  if (target === undefined) {
+    return Effect.void;
+  }
+
+  return Effect.tryPromise(() =>
+    notifySettledRun(run, {
+      repositories: execution.repositories,
+      logger: execution.logger,
+      target,
+    }),
+  ).pipe(Effect.catchAllCause(() => Effect.void));
 }
 
 function workFailureMessage(cause: Cause.Cause<unknown>): string {

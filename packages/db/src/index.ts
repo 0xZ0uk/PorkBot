@@ -199,12 +199,14 @@ export type {
   RunProgressStamp,
 } from "./run-leases.ts";
 
-// Run-stall detection (slice 6.10, PRD decision 33): the cross-space scan for
-// active runs whose progress stopped and the guarded episode marker the
-// notification path keys its exactly-once delivery on. Like
-// `findExpiredLeases`, the scan returns addressing only and cannot be reached
-// through `createRepositories`; the mark is a `SystemRunWriter` method.
-export { findStalledRuns, markRunStalled } from "./run-liveness.ts";
+// Run-liveness detection and its notification claims (slices 6.10 and 8.7,
+// PRD decision 33): the cross-space scan for active runs whose progress
+// stopped, the guarded episode marker a stall notification keys its
+// exactly-once delivery on, and the guarded terminal claim that does the same
+// for finish and failure. Like `findExpiredLeases`, the scan returns
+// addressing only and cannot be reached through `createRepositories`; both
+// claims are `SystemRunWriter` methods.
+export { claimRunNotification, findStalledRuns, markRunStalled } from "./run-liveness.ts";
 export type { StalledRun } from "./run-liveness.ts";
 export type {
   AttemptStatus,

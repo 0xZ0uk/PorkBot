@@ -193,6 +193,7 @@ describe("the heartbeat's liveness stamp", () => {
       currentStep: null,
       currentStepTool: null,
       stalledAt: null,
+      notifiedAt: null,
     });
   });
 });

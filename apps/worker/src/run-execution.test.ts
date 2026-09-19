@@ -1,6 +1,6 @@
 import { Effect, Fiber, Stream } from "effect";
 import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
-import { emulatorAgentRuntimeLayer } from "@porkbot/adapters";
+import { emulatorAgentRuntimeLayer, NotificationEmulator } from "@porkbot/adapters";
 import type { EmulatorStep } from "@porkbot/adapters";
 import { createRepositories } from "@porkbot/db";
 import type {
@@ -51,6 +51,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     currentStep: null,
     currentStepTool: null,
     stalledAt: null,
+    notifiedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -67,12 +68,17 @@ interface FakeRunner {
   readonly heartbeats: Array<{ readonly lease: RunLease; readonly progress: RunProgressStamp }>;
   readonly updates: Array<{ readonly lease: RunLease; readonly patch: FencedRunPatch }>;
   readonly abandoned: Array<{ readonly fence: number; readonly reason: string }>;
+  readonly claims: string[];
 }
 
-function fakeRepositories(options: { readonly heartbeatFails?: boolean } = {}): FakeRunner {
+function fakeRepositories(
+  options: { readonly heartbeatFails?: boolean; readonly notificationEnabled?: boolean } = {},
+): FakeRunner {
   const heartbeats: Array<{ lease: RunLease; progress: RunProgressStamp }> = [];
   const updates: Array<{ lease: RunLease; patch: FencedRunPatch }> = [];
   const abandoned: Array<{ fence: number; reason: string }> = [];
+  const claims: string[] = [];
+  const claimed = new Set<string>();
 
   const actor = { kind: "system" as const, spaceId: "space-1", jobId: "job-1" };
   const repositories = createRepositories(actor, {
@@ -93,15 +99,35 @@ function fakeRepositories(options: { readonly heartbeatFails?: boolean } = {}): 
   repositories.runs.update = async (_id, lease, patch) => {
     updates.push({ lease, patch });
 
-    return runRecord();
+    // The row the fenced write returns is the settled one; the notification
+    // producers read the status and error code from it, never from the patch.
+    return runRecord({
+      status: patch.status ?? "running",
+      error: patch.error ?? null,
+      errorCode: patch.errorCode ?? null,
+      completedAt: patch.completed === true ? new Date(0) : null,
+    });
   };
+  repositories.runs.claimNotification = async (id) => {
+    claims.push(id);
+
+    if (claimed.has(id)) {
+      return false;
+    }
+
+    claimed.add(id);
+
+    return true;
+  };
+  repositories.notifications.eligibility = async () =>
+    options.notificationEnabled === false ? "disabled" : "enabled";
   repositories.runs.abandonAttempt = async (_id, fence, reason) => {
     abandoned.push({ fence, reason });
 
     return true;
   };
 
-  return { repositories, heartbeats, updates, abandoned };
+  return { repositories, heartbeats, updates, abandoned, claims };
 }
 
 function executionFor(runner: FakeRunner, run: RunRecord = runRecord()): RunExecution {
@@ -326,5 +352,107 @@ describe("the run execution harness", () => {
     expect(runner.updates[0]).toMatchObject({ patch: { status: "completed" } });
     expect(observed).not.toContain("run.cancelled");
     expect(observed.at(-1)).toBe("run.completed");
+  });
+});
+
+describe("the harness's run notifications", () => {
+  const target = (emulator: NotificationEmulator) => ({
+    origin: "https://porkbot.example.invalid",
+    provider: emulator,
+  });
+
+  it("announces a finished run once, linking the run's timeline", async () => {
+    const runner = fakeRepositories();
+    const emulator = new NotificationEmulator();
+    const execute = createRunExecutor({
+      work: () => Effect.succeed({ status: "completed" } as const),
+      heartbeatIntervalMs: 5,
+      notificationTarget: target(emulator),
+    });
+
+    await execute(executionFor(runner));
+
+    expect(emulator.size).toBe(1);
+    expect(emulator.last()).toMatchObject({
+      title: "A run has finished",
+      url: "https://porkbot.example.invalid/threads/thread-1?run=run-1",
+    });
+  });
+
+  it("announces a failed run and stays silent for a cancelled one", async () => {
+    const failing = fakeRepositories();
+    const failedEmulator = new NotificationEmulator();
+    const fail = createRunExecutor({
+      work: () => Effect.fail(new Error("the computer is gone")),
+      heartbeatIntervalMs: 5,
+      notificationTarget: target(failedEmulator),
+    });
+
+    await fail(executionFor(failing));
+
+    expect(failedEmulator.last()).toMatchObject({ title: "A run has failed" });
+
+    const stopped = fakeRepositories();
+    const cancelledEmulator = new NotificationEmulator();
+    const cancel = createRunExecutor({
+      work: () => Effect.succeed({ status: "cancelled", reason: "the operator stopped this run" }),
+      heartbeatIntervalMs: 5,
+      notificationTarget: target(cancelledEmulator),
+    });
+
+    await cancel(executionFor(stopped));
+
+    expect(cancelledEmulator.size).toBe(0);
+    // A cancellation is not a state worth claiming, so it cannot suppress a
+    // later terminal announcement either.
+    expect(stopped.claims).toEqual([]);
+  });
+
+  it("sends nothing on a lost lease: the winner owns the run's announcement", async () => {
+    const runner = fakeRepositories({ heartbeatFails: true });
+    const emulator = new NotificationEmulator();
+    const execute = createRunExecutor({
+      work: () => Effect.never,
+      heartbeatIntervalMs: 5,
+      notificationTarget: target(emulator),
+    });
+
+    await execute(executionFor(runner));
+
+    expect(emulator.size).toBe(0);
+    expect(runner.claims).toEqual([]);
+  });
+
+  it("suppresses a duplicate announcement for a state another settlement claimed", async () => {
+    const runner = fakeRepositories();
+    const emulator = new NotificationEmulator();
+    const execute = createRunExecutor({
+      work: () => Effect.succeed({ status: "completed" } as const),
+      heartbeatIntervalMs: 5,
+      notificationTarget: target(emulator),
+    });
+
+    await execute(executionFor(runner));
+    // The retry the durable claim exists for: a redelivered job whose first
+    // attempt already settled and announced the run.
+    await execute(executionFor(runner));
+
+    expect(runner.claims).toEqual(["run-1", "run-1"]);
+    expect(emulator.size).toBe(1);
+  });
+
+  it("respects the operator's preference: a disabled kind claims but never sends", async () => {
+    const runner = fakeRepositories({ notificationEnabled: false });
+    const emulator = new NotificationEmulator();
+    const execute = createRunExecutor({
+      work: () => Effect.succeed({ status: "completed" } as const),
+      heartbeatIntervalMs: 5,
+      notificationTarget: target(emulator),
+    });
+
+    await execute(executionFor(runner));
+
+    expect(emulator.size).toBe(0);
+    expect(runner.claims).toEqual(["run-1"]);
   });
 });
