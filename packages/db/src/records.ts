@@ -111,6 +111,47 @@ export interface MessageRecord {
 }
 
 /**
+ * A message attachment row (slice 7.6): the operator's uploaded file. The
+ * bytes stay in the storage seam under `storageKey`; this is the space-scoped
+ * index a download, a materialization or a message block resolves.
+ */
+export interface MessageAttachmentRecord {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly threadId: string;
+  readonly botId: string;
+  readonly userId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly storageKey: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
+ * A run artifact row (slice 7.6): the file one settled tool call produced.
+ * The row names the run and the durable call id beside the stored bytes, so a
+ * retried recording is idempotent on `(runId, callId)` and a download finds
+ * the bytes after the run and after a reload.
+ */
+export interface RunArtifactRecord {
+  readonly id: string;
+  readonly spaceId: string;
+  readonly threadId: string;
+  readonly botId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly callId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly storageKey: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+/**
  * One persisted thread event: the durable row an SSE subscription replays from.
  * `seq` is the cursor position — contiguous and per-thread, with
  * `(thread_id, seq)` unique — and `type` plus `payload` are the wire event the
@@ -241,6 +282,17 @@ export const messageColumns =
 export const eventColumns =
   'id, space_id as "spaceId", thread_id as "threadId", seq, type, payload, ' +
   'run_id as "runId", created_at as "createdAt"';
+
+export const messageAttachmentColumns =
+  'id, space_id as "spaceId", thread_id as "threadId", bot_id as "botId", ' +
+  'user_id as "userId", filename, content_type as "contentType", size_bytes as "sizeBytes", ' +
+  'storage_key as "storageKey", created_at as "createdAt", updated_at as "updatedAt"';
+
+export const runArtifactColumns =
+  'id, space_id as "spaceId", thread_id as "threadId", bot_id as "botId", ' +
+  'user_id as "userId", run_id as "runId", call_id as "callId", filename, ' +
+  'content_type as "contentType", size_bytes as "sizeBytes", ' +
+  'storage_key as "storageKey", created_at as "createdAt", updated_at as "updatedAt"';
 
 export const routineColumns =
   'id, space_id as "spaceId", bot_id as "botId", user_id as "userId", thread_id as "threadId", ' +

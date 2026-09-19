@@ -204,6 +204,8 @@ describe("the route list", () => {
       "GET /healthz",
       "GET /oauth/mcp/callback",
       "POST /webhooks/:source",
+      "POST /threads/:threadId/attachments",
+      "GET /files/:fileId",
     ]);
 
     for (const route of routes) {
@@ -367,6 +369,11 @@ describe("the typed answer", () => {
         listForThread: notExercised,
         findByNonce: notExercised,
         steer: notExercised,
+      },
+      files: {
+        createAttachment: notExercised,
+        findAttachments: notExercised,
+        findStoredFile: notExercised,
       },
       computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
       toolResults: { read: notExercised },
