@@ -59,6 +59,8 @@ interface CredentialRow {
 const credentialRows = new Map<string, CredentialRow>();
 const connections = new Map<string, ModelConnectionRecord>();
 const openEmulators: ModelEmulator[] = [];
+/** When set, `markUsed` throws it, for the best-effort stamp path. */
+let markUsedFailure: unknown;
 
 let sessionActor: UserActor | null = owner;
 
@@ -149,6 +151,7 @@ function modelConnectionRepository(actor: UserActor) {
         credentialName: input.credentialName,
         defaultModel: input.defaultModel ?? null,
         isDefault: false,
+        lastUsedAt: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -178,6 +181,19 @@ function modelConnectionRepository(actor: UserActor) {
       const record = await findScoped(id);
       connections.delete(id);
       return record;
+    },
+    async markUsed(id: string) {
+      if (markUsedFailure !== undefined) {
+        throw markUsedFailure;
+      }
+
+      const record = connections.get(id);
+
+      // The SQL write is scoped and silent about a missing row; the fake
+      // mirrors that so a concurrent delete cannot turn a probe into a 404.
+      if (record !== undefined && record.spaceId === actor.spaceId) {
+        connections.set(id, { ...record, lastUsedAt: new Date() });
+      }
     },
   };
 }
@@ -311,6 +327,7 @@ afterEach(async () => {
   connections.clear();
   credentialRows.clear();
   sessionActor = owner;
+  markUsedFailure = undefined;
   await Promise.all(openEmulators.splice(0).map((emulator) => emulator.stop()));
 });
 
@@ -399,6 +416,7 @@ describe("the connection surface", () => {
       credentialName: "model-key",
       defaultModel: null,
       isDefault: false,
+      lastUsedAt: null,
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
@@ -457,6 +475,56 @@ describe("the probe", () => {
 
     await expect(client().modelConnections.probe({ id: connection.id })).resolves.toMatchObject({
       probe: { reachable: false, models: [], streaming: false, failure: "auth_failed" },
+    });
+
+    // The request left, so the refusal still counts as a use.
+    const [probed] = (await client().modelConnections.list()).connections;
+    expect(probed?.lastUsedAt).not.toBeNull();
+  });
+
+  it("stamps last-used on a live answer and leaves it alone for a defect", async () => {
+    const emulator = await startEmulator({ apiKey: secret, models: ["fixture-model"], turns: [] });
+    await storeSecret("model-key", secret);
+    const connection = await connect("model-key", emulator);
+
+    expect(connection.lastUsedAt).toBeNull();
+
+    await client().modelConnections.probe({ id: connection.id });
+
+    const [probed] = (await client().modelConnections.list()).connections;
+    expect(probed?.lastUsedAt).not.toBeNull();
+
+    // A missing credential is a defect the probe never dialed for: the store
+    // answered nothing, no request left, and no use is recorded.
+    const broken = await client().modelConnections.create({
+      label: "No key yet",
+      baseUrl: emulator.baseUrl,
+      credentialName: "missing-key",
+    });
+
+    await client()
+      .modelConnections.probe({ id: broken.id })
+      .catch(() => undefined);
+
+    const listed = (await client().modelConnections.list()).connections;
+    expect(listed.find((entry) => entry.id === broken.id)?.lastUsedAt).toBeNull();
+  });
+
+  it("answers the probe even when the display-only stamp cannot be written", async () => {
+    const emulator = await startEmulator({
+      apiKey: secret,
+      models: ["fixture-model"],
+      turns: [],
+    });
+    await storeSecret("model-key", secret);
+    const connection = await connect("model-key", emulator);
+
+    markUsedFailure = new Error("the store is busy");
+
+    // The answer is the point; the timestamp is beside it.
+    await expect(client().modelConnections.probe({ id: connection.id })).resolves.toMatchObject({
+      connectionId: connection.id,
+      probe: { reachable: true, streaming: true, failure: null },
     });
   });
 

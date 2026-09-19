@@ -50,6 +50,8 @@ export interface ModelConnectionRecord {
   readonly credentialName: string;
   readonly defaultModel: string | null;
   readonly isDefault: boolean;
+  /** When a request last left for this endpoint, or null for never. */
+  readonly lastUsedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -218,7 +220,8 @@ export const botColumns =
 export const modelConnectionColumns =
   'id, space_id as "spaceId", label, base_url as "baseUrl", ' +
   'credential_name as "credentialName", default_model as "defaultModel", ' +
-  'is_default as "isDefault", created_at as "createdAt", updated_at as "updatedAt"';
+  'is_default as "isDefault", last_used_at as "lastUsedAt", ' +
+  'created_at as "createdAt", updated_at as "updatedAt"';
 
 export const botSectionColumns =
   'id, space_id as "spaceId", user_id as "userId", name, position, ' +

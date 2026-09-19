@@ -103,6 +103,7 @@ describe("procedure access", () => {
       "usage.bot",
       "credentials.list",
       "credentials.store",
+      "credentials.remove",
       "modelConnections.list",
       "modelConnections.create",
       "modelConnections.update",
