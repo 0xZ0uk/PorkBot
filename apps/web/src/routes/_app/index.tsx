@@ -59,6 +59,11 @@ function HomeRoute() {
           Memory
         </Link>
       )}
+      renderUsage={(bot) => (
+        <Link to="/bots/$botId/usage" params={{ botId: bot.id }}>
+          Usage
+        </Link>
+      )}
       renderThread={(thread) => (
         <li key={thread.id}>
           <Link to="/threads/$threadId" params={{ threadId: thread.id }}>

@@ -42,3 +42,4 @@ export { attempt, run } from "./runs.ts";
 export { steeringMessage } from "./steering-messages.ts";
 export { task } from "./tasks.ts";
 export { thread } from "./threads.ts";
+export { usageRecord } from "./usage.ts";

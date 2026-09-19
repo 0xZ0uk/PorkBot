@@ -144,6 +144,7 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
       write: notExercised,
       restore: notExercised,
     },
+    usage: { forBot: notExercised },
   };
 }
 

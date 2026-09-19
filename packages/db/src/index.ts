@@ -280,6 +280,16 @@ export type {
 // each actor's repository set.
 export { createNotificationStore } from "./notification-store.ts";
 
+// The durable half of token usage (slice 8.8, PRD story 34): the one module in
+// the package that names the usage rows. A job appends one record per completed
+// model turn through the `UsageRecorder` seam, taking the bot and space from
+// the run row; an operator reads one bot's all-time total and its daily
+// buckets. Null token fields are "not reported" and stay null through the
+// aggregate. This is a display ledger: no budget, limit or payment path reads
+// it (PRD out-of-scope #183).
+export { createUsageStore } from "./usage-store.ts";
+export type { UsagePeriod, UsageReader, UsageSummary, UsageTotals } from "./usage-store.ts";
+
 // The encrypted credential store (slice 9.1, PRD decision 10; stories 14 and
 // 15): AES-256-GCM envelopes in the encrypted credential rows, each bound to
 // its `(space, name)` identity and carrying its key id, so a second key can be

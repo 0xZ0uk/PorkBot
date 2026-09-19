@@ -97,6 +97,7 @@ describe("procedure access", () => {
       "memory.update",
       "memory.remove",
       "memory.restore",
+      "usage.bot",
       "credentials.list",
       "credentials.store",
       "modelConnections.list",

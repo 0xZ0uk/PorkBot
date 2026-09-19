@@ -13,13 +13,14 @@ import {
 } from "effect";
 import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
-import { AgentRuntime, requestScoped, UnknownToolError } from "@porkbot/effect";
+import { AgentRuntime, reportUsage, requestScoped, UnknownToolError } from "@porkbot/effect";
 import type {
   AgentRuntimeLayer,
   RunCommand,
   RunSession,
   RunStartRequest,
   ToolDispatcher,
+  UsageRecorder,
 } from "@porkbot/effect";
 
 /**
@@ -78,6 +79,20 @@ export type EmulatorStep =
       readonly arguments: unknown;
       readonly result?: unknown;
     }
+  /**
+   * One completed model turn's usage (slice 8.8, story 34). Omitted or null
+   * fields are "not reported" — the script can say a provider stayed silent,
+   * which a test asserts is never rendered as a zero. Reported through the
+   * runtime's `usage` recorder when one was supplied; a script without a
+   * recorder simply has no ledger to write to.
+   */
+  | {
+      readonly kind: "usage";
+      readonly provider?: string | null;
+      readonly model?: string | null;
+      readonly inputTokens?: number | null;
+      readonly outputTokens?: number | null;
+    }
   /** Suspends until a steer arrives, then answers with `run.steered` and continues. */
   | { readonly kind: "await.steer" }
   | { readonly kind: "run.completed"; readonly messageId?: string }
@@ -90,6 +105,12 @@ export type EmulatorStep =
  */
 export interface EmulatorRuntimeOptions {
   readonly tools?: ToolDispatcher | undefined;
+  /**
+   * Where completed turns' usage goes (slice 8.8, story 34). The run executor
+   * passes its per-run recorder here; absent, a `usage` step records nothing,
+   * which keeps the scripted seam tests database-free.
+   */
+  readonly usage?: UsageRecorder | undefined;
 }
 
 /**
@@ -400,6 +421,17 @@ export function emulatorAgentRuntimeLayer(
               }));
             }
 
+            break;
+          }
+
+          case "usage": {
+            yield* reportUsage(options.usage, {
+              runId: request.runId,
+              provider: step.provider ?? null,
+              model: step.model ?? null,
+              inputTokens: step.inputTokens ?? null,
+              outputTokens: step.outputTokens ?? null,
+            });
             break;
           }
 
