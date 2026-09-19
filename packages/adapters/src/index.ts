@@ -178,6 +178,26 @@ export type { WebAccessConfigurationReason } from "./web-access-errors.ts";
 export { createHttpWebAccessProvider } from "./http-web-access.ts";
 export type { HttpWebAccessOptions, HttpWebAccessSearchOptions } from "./http-web-access.ts";
 
+// MCP servers (slice 9.5, PRD story 38). The interface lives in
+// @porkbot/adapter-kit; this package ships the two implementations the rule
+// requires, held to one conformance suite. The emulator is the scripted server
+// the product runs on with nothing configured — it is what install, discovery
+// and the run path are exercised against offline — and the HTTP provider speaks
+// the streamable-HTTP JSON-RPC transport through the URL-safety module by
+// default, with OAuth metadata, authorization and token endpoints. Neither
+// provider formats a credential: tokens are passed per request, so the
+// encrypted store stays the only place a secret rests.
+export { McpServerEmulator } from "./mcp-emulator.ts";
+export type { EmulatedMcpAnswer, EmulatedMcpFailure, EmulatedMcpOAuth } from "./mcp-emulator.ts";
+export { McpProviderError } from "./mcp-errors.ts";
+export { createHttpMcpServerProvider } from "./http-mcp-server.ts";
+export type { HttpMcpServerOptions } from "./http-mcp-server.ts";
+export { mcpServerConformance } from "./mcp-conformance.ts";
+export type {
+  McpServerConformanceFactory,
+  McpServerConformanceHarness,
+} from "./mcp-conformance.ts";
+
 // The adversarial fixtures for the injection-resistance suite (slice 10.1, for
 // E10.4): hostile content as each ingestion path receives it, labelled through
 // the same boundary the product uses, with a marker that must never surface as

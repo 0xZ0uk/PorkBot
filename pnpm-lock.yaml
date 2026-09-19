@@ -246,6 +246,9 @@ importers:
         specifier: 0.18.0
         version: 0.18.0(typescript@7.0.2)
     devDependencies:
+      '@porkbot/adapter-kit':
+        specifier: workspace:*
+        version: link:../../packages/adapter-kit
       '@porkbot/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters

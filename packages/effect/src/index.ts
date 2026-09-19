@@ -17,9 +17,11 @@ export {
   DeploymentSettingsConflictError,
   GateTimeoutError,
   InvalidMessageError,
+  InvalidOAuthStateError,
   InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
+  McpServerUnavailableError,
   MessageNonceReusedError,
   NameConflictError,
   NotFoundError,
@@ -33,6 +35,7 @@ export type {
   CredentialStoreFailure,
   CursorRejection,
   InvalidMessageReason,
+  OAuthCallbackRejection,
   RoutineScheduleRejection,
   TypedError,
   TypedErrorTag,
@@ -224,6 +227,36 @@ export type {
 // summaries and never values; the store raises the typed
 // `CredentialStoreError` when its keyring cannot unlock a row.
 export type { CredentialRotation, CredentialSummary, Credentials } from "./credential-store.ts";
+
+// MCP servers (slice 9.5, PRD story 38). The durable seams `@porkbot/db`
+// implements over the server, tool and grant rows; the credential codec the
+// install and callback paths share; and the tool factory that turns a granted
+// server's discovered tools into dispatcher registrations. Every registration
+// re-asks the grant before each call, so a revoke stops the next call rather
+// than the next run, and every result is labelled `mcp_output` as it enters the
+// prompt.
+export type {
+  McpAuthMode,
+  McpGrantRecord,
+  McpGrantedServer,
+  McpRunServers,
+  McpServerRecord,
+  McpServerStatus,
+  McpServers,
+  McpServerView,
+  McpToolRecord,
+  NewMcpServer,
+} from "./mcp-store.ts";
+export { parseMcpCredential, serializeMcpCredential } from "./mcp-credentials.ts";
+export type { McpCredential } from "./mcp-credentials.ts";
+export {
+  createMcpTools,
+  DEFAULT_MCP_TOOL_DURATION_MS,
+  MAX_MCP_TOOL_NAME_LENGTH,
+  McpGrantRevokedError,
+  mcpToolName,
+} from "./mcp-tools.ts";
+export type { McpToolOptions, McpToolServer } from "./mcp-tools.ts";
 
 // URL safety (slice 4.6, PRD decision 23). Every fetch of a user-supplied URL
 // enters through `safeFetch`; the rules, the guarded lookup and the typed

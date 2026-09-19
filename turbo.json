@@ -59,6 +59,7 @@
   "globalPassThroughEnv": [
     "DATABASE_URL",
     "PORKBOT_STORAGE_DIR",
+    "PORKBOT_MCP_CALLBACK_URL",
     "PORKBOT_WEB_ROOT",
     "GITHUB_ACTIONS",
     "GITHUB_STEP_SUMMARY"

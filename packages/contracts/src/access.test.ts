@@ -85,6 +85,13 @@ describe("procedure access", () => {
       "routines.testRun",
       "routines.outcomes",
       "credentials.list",
+      "mcpServers.list",
+      "mcpServers.get",
+      "mcpServers.create",
+      "mcpServers.remove",
+      "mcpServers.grants",
+      "mcpServers.grant",
+      "mcpServers.revoke",
     ]);
   });
 
@@ -147,6 +154,13 @@ describe("procedure access", () => {
     // cursor is the Last-Event-ID header, and the space is the actor's.
     expectTypeOf<Parameters<AppClient["threads"]["events"]>[0]>().toEqualTypeOf<{
       threadId: string;
+    }>();
+
+    // Granting a server names the server and the bot and nothing else: the
+    // space is the actor's, and the target bot is validated inside that scope.
+    expectTypeOf<Parameters<AppClient["mcpServers"]["grant"]>[0]>().toEqualTypeOf<{
+      id: string;
+      botId: string;
     }>();
   });
 });

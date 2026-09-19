@@ -14,6 +14,15 @@ import {
 } from "./bots.ts";
 import { deploymentStatusContract } from "./deployment.ts";
 import {
+  mcpServersCreateContract,
+  mcpServersGetContract,
+  mcpServersGrantContract,
+  mcpServersGrantsContract,
+  mcpServersListContract,
+  mcpServersRemoveContract,
+  mcpServersRevokeContract,
+} from "./mcp-servers.ts";
+import {
   notificationsPreferencesContract,
   notificationsSetPreferenceContract,
 } from "./notifications.ts";
@@ -97,6 +106,15 @@ export const appContract = {
   },
   credentials: {
     list: credentialsListContract,
+  },
+  mcpServers: {
+    list: mcpServersListContract,
+    get: mcpServersGetContract,
+    create: mcpServersCreateContract,
+    remove: mcpServersRemoveContract,
+    grants: mcpServersGrantsContract,
+    grant: mcpServersGrantContract,
+    revoke: mcpServersRevokeContract,
   },
 };
 

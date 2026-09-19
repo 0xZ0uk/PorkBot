@@ -231,4 +231,17 @@ describe("the URL-safety call sites", () => {
     expect(source).toContain("safeFetch");
     expect(source).toContain("options.fetch ?? safeFetch");
   });
+
+  it("keeps the MCP server provider on the module's transport by default", () => {
+    // The provider dials through a `fetchImpl` binding rather than a literal
+    // `fetch(`, which the textual scan above cannot tell from a raw client, so
+    // the default is pinned here the same way the web-access provider's is.
+    const source = readFileSync(
+      path.join(repoRoot, "packages/adapters/src/http-mcp-server.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("safeFetch");
+    expect(source).toContain("options.fetch ?? safeFetch");
+  });
 });

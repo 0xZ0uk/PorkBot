@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { rateLimitedErrorMessage } from "@porkbot/contracts";
 import type { UserActor } from "@porkbot/db";
 import { healthPath } from "@porkbot/health";
+import { mcpCallbackPath } from "./services/mcp.ts";
 import { webhookRulePath } from "./webhooks.ts";
 
 /**
@@ -56,6 +57,10 @@ export function routeRules(rpcPath: string): readonly RouteRule[] {
     { method: "GET", path: healthPath, family: "probe" },
     { method: "ALL", path: `${rpcPath}/*`, family: "rpc" },
     { method: "POST", path: webhookRulePath, family: "webhook" },
+    // The OAuth callback is a provider redirect with no session, the same
+    // ingress profile as a webhook, so it draws that family's per-address
+    // budget rather than the anonymous fallback.
+    { method: "GET", path: mcpCallbackPath, family: "webhook" },
   ];
 }
 
@@ -101,7 +106,7 @@ export interface LimitsConfig {
   readonly authenticated: PrincipalBudget & BodyBudget;
   /** Per client address: public procedures, unmatched paths and public streams. */
   readonly anonymous: PrincipalBudget & BodyBudget;
-  /** Per client address: inbound webhooks (PRD decision 24). */
+  /** Per client address: inbound webhooks and provider callbacks (PRD decision 24). */
   readonly webhook: RequestBudget & BodyBudget;
   /** Per client address: the health probe, kept apart so a 404 flood cannot starve it. */
   readonly probe: RequestBudget;

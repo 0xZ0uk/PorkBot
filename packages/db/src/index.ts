@@ -16,7 +16,7 @@ export * from "./schema/index.ts";
 // `pg`/`drizzle-orm`; `readDeploymentSettings` is the pre-auth read the signup
 // gate needs, and it is deliberately not actor-scoped because no actor exists
 // before registration.
-export { openDatabase } from "./database.ts";
+export { openDatabase, queryable } from "./database.ts";
 export type { DatabaseHandle, PostgresDatabase } from "./database.ts";
 export { readDeploymentSettings } from "./deployment-settings.ts";
 
@@ -31,8 +31,8 @@ export type { BootstrapInput, BootstrapResult } from "./bootstrap.ts";
 // membership it holds. It takes a user id, never a space id, and returns
 // `null` for a user with no membership, which the gate answers as 401 (slice
 // 3.2). Nothing else resolves an actor from a session.
-export { resolveUserActor } from "./membership.ts";
-export type { ResolveActorInput } from "./membership.ts";
+export { resolveBoundActor, resolveUserActor } from "./membership.ts";
+export type { BoundActorInput, ResolveActorInput } from "./membership.ts";
 
 // The ingress ledgers (slice 4.5): the pre-actor paths the unauthenticated
 // webhook and OAuth-callback surfaces use. A delivery id is deduped under a
@@ -259,6 +259,17 @@ export { createNotificationStore } from "./notification-store.ts";
 // is declared in `@porkbot/effect`; `createRepositories` exposes the matching
 // half on each actor's repository set and takes the keyring in its options.
 export { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
+
+// The durable half of MCP servers (slice 9.5, PRD story 38): the installed
+// server rows, the tool list discovery cached and the per-bot grants. This
+// module is the only one in the package — and, by the call-site suite beside
+// it, in the shipped source — that names the three tables. The factory splits
+// by actor: an operator installs, refreshes, removes and grants, while a job
+// reads the servers a bot was granted and re-checks one grant before a call.
+// The seams it implements (`McpServers`, `McpRunServers`) are declared in
+// `@porkbot/effect`, and `createRepositories` exposes the matching half on each
+// actor's repository set.
+export { createMcpStore } from "./mcp-store.ts";
 
 // The envelope itself: the versioned ciphertext format, the deployment keyring
 // and the mask a list response shows. They are exported for the composition

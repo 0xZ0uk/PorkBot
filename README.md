@@ -163,8 +163,8 @@ format:check` verifies it, and CI runs the check.
 ## Provider seams
 
 `packages/adapter-kit` declares one interface per external capability — mail,
-credentials, computers, the model runtime, memory, notifications, realtime
-fanout, storage and web access — plus the shared failure vocabulary (`gone`,
+credentials, computers, the model runtime, memory, MCP servers, notifications,
+realtime fanout, storage and web access — plus the shared failure vocabulary (`gone`,
 `not_found`, `rate_limited`, `timed_out`, `auth_failed`) that every adapter
 translates its own errors into. It ships no implementation and imports no vendor
 SDK; implementations and their offline emulators live in `packages/adapters`,
@@ -733,8 +733,45 @@ The OAuth-callback half of the same surface is the `oauth_state` table: an OAuth
 only as its SHA-256, and consumed by one atomic
 `update ... where consumed_at is null and expires_at > now()`. The first
 callback wins, a replay matches no row, and an expired state cannot be consumed.
-The callback route itself lands with the MCP OAuth flow (slice 9.5), which is
-the first slice that can issue a state.
+The MCP OAuth flow (slice 9.5) is the first issuer: it puts the server id in the
+state's prefix and a fresh nonce after it, so a state can only complete the
+server it was started for.
+
+## MCP servers
+
+An MCP server is installed by URL (`mcpServers.create`), discovered, granted to
+bots (`mcpServers.grant`) and revoked (`mcpServers.revoke`). The seam in
+`@porkbot/adapter-kit` speaks the streamable-HTTP JSON-RPC transport with OAuth
+metadata and token endpoints; `McpServerEmulator` is the scripted offline server
+the install, discovery and run paths are exercised against, and
+`createHttpMcpServerProvider` is the real one, dialing through the URL-safety
+module so a non-HTTPS URL or a private address is refused before a request is
+made.
+
+- **Installing persists before it dials.** The URL passes `assertAllowedUrl`
+  first, the server row is created, the OAuth client credential is encrypted
+  through the credential seam, and only then is the consent URL built. A
+  discovery failure records an operator-readable status and answers the shared
+  vocabulary's `SERVICE_UNAVAILABLE`; a second install of the same name is the
+  typed `CONFLICT`.
+- **OAuth is one-time and bound.** `servers.create` issues the state from the
+  actor; the callback (`GET /oauth/mcp/callback`, no session) consumes it
+  exactly once, re-resolves the initiating membership and refuses a replay, a
+  foreign server or a membership that is gone with the typed `BAD_REQUEST`. The
+  tokens are stored encrypted under the server's credential name and are never
+  returned, echoed or listed — the contract's output schemas have no field for
+  one.
+- **A grant is per bot, and a revoke lands mid-run.** The run path builds its
+  MCP registrations from the servers `listGrantedForBot` reports, and the tool
+  layer re-reads `isGranted` before every call, so a revoke stops the next call
+  of an open run rather than the next run. Tools are namespaced
+  `mcp_<server>_<tool>` so two servers cannot shadow each other or a built-in,
+  and every result is labelled `mcp_output` untrusted at the boundary.
+
+The callback's absolute URL is `PORKBOT_MCP_CALLBACK_URL`; unset, the API falls
+back to `http://localhost:<port>/oauth/mcp/callback` and logs a warning, because
+a provider may refuse an http redirect and a local default is not a public
+origin.
 
 ## Worker and jobs
 

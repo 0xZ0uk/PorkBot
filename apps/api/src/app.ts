@@ -5,7 +5,12 @@ import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { moduleInfo as contractsModule } from "@porkbot/contracts";
 import { moduleInfo as coreModule } from "@porkbot/core";
-import { boundaryReports, webhookDeliveryHeader, webhookSignatureHeader } from "@porkbot/effect";
+import {
+  boundaryReports,
+  mapError,
+  webhookDeliveryHeader,
+  webhookSignatureHeader,
+} from "@porkbot/effect";
 import { healthPath } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
@@ -20,12 +25,15 @@ import { createAccountRouter } from "./routers/account.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createCredentialsRouter } from "./routers/credentials.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
+import { createMcpRouter } from "./routers/mcp.ts";
 import { createNotificationsRouter } from "./routers/notifications.ts";
 import { createRoutinesRouter } from "./routers/routines.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
 import { createBotService } from "./services/bots.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
+import { mcpCallbackPath } from "./services/mcp.ts";
+import type { McpService } from "./services/mcp.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
 import { createThreadsService } from "./services/threads.ts";
 import { refuseWebhooks, webhookPath } from "./webhooks.ts";
@@ -59,6 +67,15 @@ export interface ApiServices {
    * `PORKBOT_STORAGE_DIR`.
    */
   readonly storage?: StorageProvider;
+  /**
+   * MCP install, OAuth completion and discovery (slice 9.5). Optional so a
+   * test app that never installs a server needs no provider or keyring; the
+   * list, get, grant and revoke procedures read the durable store and work
+   * without it, while `create` refuses as a miscomposition when it is absent.
+   * `main.ts` supplies the real service over the HTTP provider and the ingress
+   * state ledger.
+   */
+  readonly mcp?: McpService;
 }
 
 export interface ApiAppOptions {
@@ -149,6 +166,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     threads: createThreadsRouter(threadEvents, threads),
     routines: createRoutinesRouter(),
     credentials: createCredentialsRouter(),
+    mcpServers: createMcpRouter(options.services.mcp),
   });
   const rpc = new RPCHandler(router, {
     interceptors: [
@@ -203,6 +221,35 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
       modules: [coreModule.name, contractsModule.name, loggingModule.name],
     }),
   );
+
+  // The OAuth callback (slice 9.5). It arrives in the operator's browser with
+  // no session of its own, so the one-time state is the capability: the service
+  // consumes it, re-reads the initiating membership inside the binding's space
+  // and answers the typed refusal for a replayed, foreign or missing one. No
+  // actor is fabricated here, and the response never carries a token.
+  app.get(mcpCallbackPath, async (context) => {
+    const service = options.services.mcp;
+
+    if (service === undefined) {
+      return context.json({ error: "internal_error" }, 500);
+    }
+
+    try {
+      const result = await service.completeAuthorization(
+        context.req.query("state") ?? "",
+        context.req.query("code"),
+      );
+
+      return context.json({ status: "connected", serverId: result.server.id }, 200);
+    } catch (error) {
+      const mapped = mapError(error);
+
+      return new Response(JSON.stringify({ error: mapped.error.code }), {
+        status: mapped.error.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+  });
 
   // The one unauthenticated write surface (slice 4.5). It reads the raw bytes
   // and hands them to the ingress, which verifies the signature before

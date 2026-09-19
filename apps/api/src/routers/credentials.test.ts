@@ -115,6 +115,17 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
     },
     notifications: { read: notExercised, set: notExercised },
     credentials: createEncryptedCredentialStore(actor, database, keyring),
+    mcp: {
+      list: notExercised,
+      findById: notExercised,
+      create: notExercised,
+      setStatus: notExercised,
+      replaceTools: notExercised,
+      remove: notExercised,
+      grant: notExercised,
+      revoke: notExercised,
+      listForServer: notExercised,
+    },
   };
 }
 

@@ -7,6 +7,8 @@ import type {
   ApprovalStore,
   Credentials,
   CredentialStore,
+  McpRunServers,
+  McpServers,
   MemoryDocuments,
   MemoryProposals,
   RunEventSink,
@@ -17,6 +19,7 @@ import {
   createCredentialKeyring,
   createEncryptedCredentialStore,
   createExternalEffectLedger,
+  createMcpStore,
   createMemoryStore,
   createRepositories,
   createRunEventSink,
@@ -109,6 +112,9 @@ export interface SpaceHandle {
   readonly credentials: Credentials;
   readonly memberCredentials: Credentials;
   readonly systemCredentials: CredentialStore;
+  readonly mcp: McpServers;
+  readonly memberMcp: McpServers;
+  readonly systemMcp: McpRunServers;
   readonly query: <Row>(text: string, values?: readonly unknown[]) => Promise<readonly Row[]>;
 }
 
@@ -189,6 +195,9 @@ export async function mountSpace(database: Queryable, label: string): Promise<Sp
     credentials: createEncryptedCredentialStore(owner, database, keyring),
     memberCredentials: createEncryptedCredentialStore(member, database, keyring),
     systemCredentials: createEncryptedCredentialStore(system, database, keyring),
+    mcp: createMcpStore(owner, database),
+    memberMcp: createMcpStore(member, database),
+    systemMcp: createMcpStore(system, database),
     query: (text, values) => database.query(text, values),
   };
 }
@@ -744,6 +753,63 @@ export const resources: readonly Resource<unknown>[] = [
 
         return fired === undefined ? "refused" : "applied";
       },
+    },
+  }),
+
+  resource<{ readonly serverId: string; readonly botId: string }>({
+    entity: "mcp_server",
+    tables: ["mcp_server", "mcp_server_tool", "bot_mcp_server"],
+    seed: async (space) => {
+      const name = `matrix-${randomUUID()}`;
+      const server = await space.ownerRepositories.mcp.create({
+        name,
+        url: "https://mcp.example.invalid/mcp",
+        auth: "none",
+        credentialName: `mcp:${name}`,
+      });
+
+      await space.ownerRepositories.mcp.replaceTools(server.id, [
+        { name: "list_issues", description: "List open issues.", parameters: { type: "object" } },
+      ]);
+
+      const bot = await createBot(space, "MCP host");
+      await space.ownerRepositories.mcp.grant(bot.id, server.id);
+
+      return { serverId: server.id, botId: bot.id };
+    },
+    state: async (space) => {
+      return json(
+        await space.query(
+          "select (select count(*)::int from mcp_server where space_id = $1) as servers, " +
+            "(select count(*)::int from mcp_server_tool where space_id = $1) as tools, " +
+            "(select count(*)::int from bot_mcp_server where space_id = $1) as grants, " +
+            "(select count(*)::int from bot_mcp_server where space_id = $1 and revoked_at is not null) " +
+            "as revoked",
+          [space.spaceId],
+        ),
+      );
+    },
+    user: {
+      read: (subject, seed) =>
+        visibleOn(async () => {
+          await subject.repositories.mcp.findById(seed.serverId);
+          await subject.repositories.mcp.listForServer(seed.serverId);
+        }),
+      write: (subject, seed) =>
+        appliedOn(() =>
+          subject.repositories.mcp.replaceTools(seed.serverId, [
+            {
+              name: "replacement",
+              description: "Replaced by the matrix.",
+              parameters: { type: "object" },
+            },
+          ]),
+        ),
+    },
+    system: {
+      // The run path's read: the servers and tools one granted bot holds.
+      read: (subject, seed) =>
+        visibleOn(() => subject.repositories.mcp.listGrantedForBot(seed.botId)),
     },
   }),
 ];

@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import type { Queryable } from "./queryable.ts";
 
 /**
  * The long-lived database handle, so the driver stays inside this package.
@@ -16,7 +17,14 @@ import { Pool } from "pg";
  * `end()` on a released pool throws.
  */
 
-export type PostgresDatabase = NodePgDatabase;
+export type PostgresDatabase = NodePgDatabase & {
+  /**
+   * The pool behind the drizzle view. It is named so `queryable()` can borrow
+   * one connection per statement without a second pool; the driver stays
+   * inside this package, which the module map requires.
+   */
+  readonly $client: Pool;
+};
 
 export interface DatabaseHandle {
   /** The drizzle view over the pool: query builders and adapter transactions. */
@@ -38,6 +46,29 @@ export function openDatabase(connectionString: string): DatabaseHandle {
 
       closed = true;
       await pool.end();
+    },
+  };
+}
+
+/**
+ * The `Queryable` view of a handle, for a path that builds actor-scoped
+ * repositories without an HTTP request's checked-out client — the API's OAuth
+ * callback is the first. Each statement borrows one pooled connection; a
+ * caller that needs several statements on one connection (a transaction)
+ * still checks a client out itself.
+ */
+export function queryable(handle: DatabaseHandle): Queryable {
+  return {
+    async query<Row>(
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<{ readonly rows: readonly Row[] }> {
+      const result = await handle.database.$client.query(
+        text,
+        values === undefined ? undefined : [...values],
+      );
+
+      return { rows: result.rows as readonly Row[] };
     },
   };
 }

@@ -54,6 +54,25 @@ export type {
   ModelTurnRequest,
 } from "./model-runtime.ts";
 
+// The MCP server seam (slice 9.5, PRD story 38): install a server by URL,
+// discover the tools it advertises, call one, and complete the OAuth code
+// exchange when the server requires it. Every implementation dials through the
+// URL-safety module; tokens are passed per request, never read from the
+// environment. The offline emulator and the real HTTP provider live in
+// @porkbot/adapters.
+export type {
+  McpAuthorizationRequest,
+  McpCallRequest,
+  McpCallResult,
+  McpCodeExchangeRequest,
+  McpDiscoverRequest,
+  McpOAuthTokens,
+  McpServerDescription,
+  McpServerProvider,
+  McpToolDescriptor,
+} from "./mcp.ts";
+export { failureMapping as mcpFailureMapping } from "./mcp.ts";
+
 // The memory retrieval seam (slice 8.1): durable documents live in Postgres
 // with their revisions, and this interface indexes them for recall.
 export type {
