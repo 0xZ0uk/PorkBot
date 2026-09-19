@@ -145,6 +145,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       setDefault: notExercised,
       delete: notExercised,
     },
+    toolResults: { read: notExercised },
   };
 }
 
