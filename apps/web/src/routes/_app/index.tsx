@@ -1,33 +1,51 @@
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { useState } from "react";
+import { latestActivity, readComputerHealth } from "../../bots.ts";
+import type { BotListItem, BotsTransport } from "../../bots.ts";
 import { HomeScreen } from "../../screens/home.tsx";
+import type { Bot } from "@porkbot/contracts";
 
-/**
- * The signed-in home: the actor's bots, their recent threads, and the one
- * action that opens the console. The loader reads bots and threads through the
- * console transport, so the guards, the console and this screen all consume
- * the same derived client and a refusal shows the route's error component
- * rather than a half-rendered list.
- */
 export const Route = createFileRoute("/_app/")({
   loader: async ({ context }) => {
-    const bots = await context.threads.listBots();
-    const groups = await Promise.all(
-      bots.map(async (bot) => ({ bot, threads: await context.threads.listThreads(bot.id) })),
-    );
+    const [activeBots, archivedBots, sections] = await Promise.all([
+      context.bots.listBots("active"),
+      context.bots.listBots("archived"),
+      context.bots.listSections(),
+    ]);
+    const [active, archived] = await Promise.all([
+      enrichBots(context.bots, activeBots),
+      enrichBots(context.bots, archivedBots),
+    ]);
 
-    return { bots: groups };
+    return { active, archived, sections };
   },
   component: HomeRoute,
   errorComponent: HomeUnavailable,
 });
 
+async function enrichBots(
+  transport: BotsTransport,
+  bots: readonly Bot[],
+): Promise<readonly BotListItem[]> {
+  return Promise.all(
+    bots.map(async (bot) => {
+      const [threads, computer] = await Promise.all([
+        transport.listThreads(bot.id),
+        readComputerHealth(transport, bot.id),
+      ]);
+
+      return { bot, threads, computer, lastActivityAt: latestActivity(threads) };
+    }),
+  );
+}
+
 function HomeRoute() {
-  const { bots } = Route.useLoaderData();
-  const { threads: transport } = Route.useRouteContext();
+  const { active, archived, sections } = Route.useLoaderData();
+  const { bots: botsTransport, threads } = Route.useRouteContext();
   const navigate = useNavigate();
+  const router = useRouter();
   const [pendingBotId, setPendingBotId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,11 +54,30 @@ function HomeRoute() {
     setError(null);
 
     try {
-      const thread = await transport.createThread(botId);
-
+      const thread = await threads.createThread(botId);
       await navigate({ to: "/threads/$threadId", params: { threadId: thread.id } });
     } catch {
-      setError("The thread could not be started.");
+      setError("The thread could not be started. Try again.");
+    } finally {
+      setPendingBotId(null);
+    }
+  }
+
+  async function changeArchive(botId: string, action: "archive" | "restore"): Promise<void> {
+    setPendingBotId(botId);
+    setError(null);
+
+    try {
+      await (action === "archive"
+        ? botsTransport.archiveBot(botId)
+        : botsTransport.restoreBot(botId));
+      await router.invalidate();
+    } catch {
+      setError(
+        action === "archive"
+          ? "The bot could not be archived. Try again."
+          : "The bot could not be restored. Try again.",
+      );
     } finally {
       setPendingBotId(null);
     }
@@ -48,12 +85,20 @@ function HomeRoute() {
 
   return (
     <HomeScreen
-      bots={bots}
+      active={active}
+      archived={archived}
+      sections={sections}
       pendingBotId={pendingBotId}
       error={error}
-      onNewThread={(botId) => {
-        void createThread(botId);
-      }}
+      onNewThread={(botId) => void createThread(botId)}
+      onArchive={(botId) => changeArchive(botId, "archive")}
+      onRestore={(botId) => changeArchive(botId, "restore")}
+      renderCreate={() => <Link to="/bots/new">New bot</Link>}
+      renderEdit={(bot) => (
+        <Link to="/bots/$botId/edit" params={{ botId: bot.id }}>
+          Edit
+        </Link>
+      )}
       renderMemory={(bot) => (
         <Link to="/bots/$botId/memory" params={{ botId: bot.id }}>
           Memory
@@ -75,12 +120,11 @@ function HomeRoute() {
   );
 }
 
-/** A bot or thread read that failed: one sentence and one retry. */
 function HomeUnavailable({ reset }: ErrorComponentProps) {
   return (
     <section className="console">
       <p className="form-error" role="alert">
-        The console could not be loaded.
+        The bot list could not be loaded.
       </p>
       <Button onClick={reset}>Try again</Button>
     </section>
