@@ -20,11 +20,12 @@ import {
 describe("the route register", () => {
   const rules = routeRules("/rpc");
 
-  it("names the health probe, the whole RPC surface and the webhook ingress", () => {
+  it("names the health probe, the whole RPC surface, the webhook ingress and the callback", () => {
     expect(rules).toEqual([
       { method: "GET", path: "/healthz", family: "probe" },
       { method: "ALL", path: "/rpc/*", family: "rpc" },
       { method: "POST", path: "/webhooks/*", family: "webhook" },
+      { method: "GET", path: "/oauth/mcp/callback", family: "webhook" },
     ]);
   });
 

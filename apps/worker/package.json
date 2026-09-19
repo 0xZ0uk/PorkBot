@@ -22,6 +22,7 @@
     "graphile-worker": "0.18.0"
   },
   "devDependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
     "@porkbot/adapters": "workspace:*",
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",

@@ -2,6 +2,7 @@ import type { FailureMapping } from "./failures.ts";
 import { failureMapping as computerFailures } from "./computer.ts";
 import { failureMapping as credentialFailures } from "./credentials.ts";
 import { failureMapping as mailFailures } from "./mail.ts";
+import { failureMapping as mcpFailures } from "./mcp.ts";
 import { failureMapping as memoryFailures } from "./memory.ts";
 import { failureMapping as modelRuntimeFailures } from "./model-runtime.ts";
 import { failureMapping as notificationFailures } from "./notification.ts";
@@ -155,6 +156,26 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
     ],
   },
   {
+    interface: "McpServerProvider",
+    module: "./mcp.ts",
+    capability: "installing an MCP server by URL, discovering its tools and calling them",
+    failures: mcpFailures,
+    implementations: [
+      {
+        name: "McpServerEmulator",
+        slice: "9.5",
+        owner: "@porkbot/adapters",
+        status: "shipped",
+      },
+      {
+        name: "createHttpMcpServerProvider",
+        slice: "9.5",
+        owner: "@porkbot/adapters",
+        status: "shipped",
+      },
+    ],
+  },
+  {
     interface: "MemoryProvider",
     module: "./memory.ts",
     capability: "memory document retrieval and ranking",
@@ -286,6 +307,19 @@ export const PROVIDER_SHAPES: readonly ProviderShape[] = [
       "ModelMessage",
       "ModelToolDefinition",
       "ModelTurnRequest",
+    ],
+  },
+  {
+    module: "./mcp.ts",
+    interfaces: [
+      "McpToolDescriptor",
+      "McpServerDescription",
+      "McpDiscoverRequest",
+      "McpCallRequest",
+      "McpCallResult",
+      "McpAuthorizationRequest",
+      "McpCodeExchangeRequest",
+      "McpOAuthTokens",
     ],
   },
   {

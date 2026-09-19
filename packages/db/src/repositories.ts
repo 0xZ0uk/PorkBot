@@ -1,7 +1,13 @@
 import type { CredentialStore } from "@porkbot/adapter-kit";
 import { ACTIVE_RUN_STATUSES } from "@porkbot/core";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
-import type { Credentials, NotificationPreferences, NotificationRecipients } from "@porkbot/effect";
+import type {
+  Credentials,
+  McpRunServers,
+  McpServers,
+  NotificationPreferences,
+  NotificationRecipients,
+} from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import {
   clearThread,
@@ -13,6 +19,7 @@ import type { AssistantMessageWriter, MessageReader, SteeringMessageWriter } fro
 import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
+import { createMcpStore } from "./mcp-store.ts";
 import { createNotificationStore } from "./notification-store.ts";
 import {
   botColumns,
@@ -318,6 +325,12 @@ export interface SystemRepositories {
    * job's space. A system actor cannot enumerate or write credentials.
    */
   readonly credentials: CredentialStore;
+  /**
+   * The run half of MCP servers (slice 9.5): the servers and tools a bot was
+   * granted, and the live grant re-check the tool layer asks before a call. A
+   * job can never install, rewrite or grant a server.
+   */
+  readonly mcp: McpRunServers;
 }
 
 /**
@@ -365,6 +378,12 @@ export interface UserRepositories {
   readonly notifications: NotificationPreferences;
   /** The operator's stored credentials (slice 9.1), masked on list. */
   readonly credentials: Credentials;
+  /**
+   * The operator's MCP servers (slice 9.5): install, inspect, refresh, remove
+   * and the per-bot grants. The credential value itself stays behind
+   * `credentials`; every shape here carries only the name it resolves under.
+   */
+  readonly mcp: McpServers;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -415,6 +434,7 @@ export function createRepositories(
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),
       credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
+      mcp: createMcpStore(actor, database),
     };
   }
 
@@ -455,6 +475,7 @@ export function createRepositories(
     routines: createRoutineStore(actor, database),
     notifications: createNotificationStore(actor, database),
     credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),
+    mcp: createMcpStore(actor, database),
   };
 }
 

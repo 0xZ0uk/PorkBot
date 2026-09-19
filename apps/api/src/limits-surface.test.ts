@@ -133,6 +133,18 @@ const requestBodies: Record<string, string> = {
   "routines.preview": JSON.stringify({ json: { cron: "0 9 * * *", timezone: "UTC" } }),
   "routines.testRun": JSON.stringify({ json: { id: "routine-1", clientNonce: "nonce-1" } }),
   "routines.outcomes": JSON.stringify({ json: { id: "routine-1" } }),
+  "mcpServers.get": JSON.stringify({ json: { id: "server-1" } }),
+  "mcpServers.create": JSON.stringify({
+    json: { name: "research", url: "https://mcp.example.invalid/mcp", auth: "none" },
+  }),
+  "mcpServers.remove": JSON.stringify({ json: { id: "server-1" } }),
+  "mcpServers.grants": JSON.stringify({ json: { id: "server-1" } }),
+  "mcpServers.grant": JSON.stringify({
+    json: { id: "server-1", botId: "00000000-0000-4000-8000-000000000000" },
+  }),
+  "mcpServers.revoke": JSON.stringify({
+    json: { id: "server-1", botId: "00000000-0000-4000-8000-000000000000" },
+  }),
 };
 
 describe("the route list", () => {
@@ -148,6 +160,7 @@ describe("the route list", () => {
     // fallback.
     expect(routes.map((route) => `${route.method} ${route.path}`)).toEqual([
       "GET /healthz",
+      "GET /oauth/mcp/callback",
       "POST /webhooks/:source",
     ]);
 
@@ -159,6 +172,9 @@ describe("the route list", () => {
     }
 
     expect(routeRuleFor(rules, "POST", "/webhooks/:source")?.family).toBe("webhook");
+    // The callback is an unauthenticated provider redirect, the same ingress
+    // profile as a webhook, so it draws that family rather than the fallback.
+    expect(routeRuleFor(rules, "GET", "/oauth/mcp/callback")?.family).toBe("webhook");
   });
 });
 
@@ -180,6 +196,13 @@ describe("every contract procedure", () => {
       "bots.update",
       "credentials.list",
       "deployment.status",
+      "mcpServers.create",
+      "mcpServers.get",
+      "mcpServers.grant",
+      "mcpServers.grants",
+      "mcpServers.list",
+      "mcpServers.remove",
+      "mcpServers.revoke",
       "notifications.preferences",
       "notifications.setPreference",
       "routines.create",
@@ -284,6 +307,18 @@ describe("the typed answer", () => {
         list: notExercised,
         store: notExercised,
         rotate: notExercised,
+        remove: notExercised,
+      },
+      mcp: {
+        list: notExercised,
+        findById: notExercised,
+        create: notExercised,
+        setStatus: notExercised,
+        replaceTools: notExercised,
+        remove: notExercised,
+        grant: notExercised,
+        revoke: notExercised,
+        listForServer: notExercised,
       },
       routines: {
         findById: notExercised,

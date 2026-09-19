@@ -127,6 +127,20 @@
       "when": 1789750554883,
       "tag": "0017_credentials_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789776364753,
+      "tag": "0018_careless_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789776378187,
+      "tag": "0019_mcp_grants",
+      "breakpoints": true
     }
   ]
 }

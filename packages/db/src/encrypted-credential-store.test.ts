@@ -173,6 +173,18 @@ describe("the operator's half", () => {
     expect(select?.values).toEqual(["space-1"]);
   });
 
+  it("removes one scoped row without needing the keyring", async () => {
+    const database = fakeDatabase();
+    const store = createEncryptedCredentialStore(operator, database, undefined);
+
+    await store.remove("model-key");
+
+    expect(database.calls).toHaveLength(1);
+    expect(database.calls[0]?.text).toContain("delete from encrypted_credential");
+    expect(database.calls[0]?.text).toContain("where space_id = $1 and name = $2");
+    expect(database.calls[0]?.values).toEqual(["space-1", "model-key"]);
+  });
+
   it("fails the list rather than hiding a row it cannot decrypt", async () => {
     const database = fakeDatabase(() => [{ ...row("alpha"), envelope: row("other").envelope }]);
     const store = createEncryptedCredentialStore(operator, database, keys);

@@ -153,6 +153,12 @@ change it without breaking what the boundaries and the CI gate protect.
   `@porkbot/effect`, so the ciphertext, its key id and the rotation pass are
   auditable in one place. Checked by: test
   (`packages/db/src/encrypted-credential-store.call-sites.test.ts`).
+- **One module owns the MCP server rows.** `packages/db/src/mcp-store.ts` is the
+  only shipped code that reads or writes `mcp_server`, `mcp_server_tool` or
+  `bot_mcp_server`; the schema defines them and every other path goes through
+  the `McpServers` and `McpRunServers` seams in `@porkbot/effect`, so install,
+  discovery caching and the per-bot grants are auditable in one place.
+  Checked by: test (`packages/db/src/mcp-store.call-sites.test.ts`).
 - **One module owns run creation.** `packages/db/src/run-creation.ts` holds
   every run-creation command — message-triggered, routine-triggered and the
   operator's test run — and no other shipped code inserts a `task` or a `run`,

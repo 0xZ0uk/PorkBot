@@ -152,6 +152,16 @@ export function createEncryptedCredentialStore(
       };
     },
 
+    async remove(name: string): Promise<void> {
+      // Deleting needs no keyring: the row is addressed by its scoped name and
+      // nothing is decrypted, so an operator can clean up after a missing key
+      // instead of being locked out of both reading and removing the row.
+      await database.query("delete from encrypted_credential where space_id = $1 and name = $2", [
+        actor.spaceId,
+        name,
+      ]);
+    },
+
     async rotate(): Promise<CredentialRotation> {
       // One pass per row, not one transaction for all of them: a credential
       // written mid-rotation is caught by the next pass, and a row already on

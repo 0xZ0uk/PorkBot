@@ -10,9 +10,11 @@ import {
   DeploymentSettingsConflictError,
   GateTimeoutError,
   InvalidMessageError,
+  InvalidOAuthStateError,
   InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
+  McpServerUnavailableError,
   MessageNonceReusedError,
   NameConflictError,
   NotFoundError,
@@ -108,6 +110,16 @@ const samples = {
   },
   InvalidRoutineScheduleError: {
     error: new InvalidRoutineScheduleError("invalid_cron", "the cron expression is invalid"),
+    code: "BAD_REQUEST",
+    status: 400,
+  },
+  McpServerUnavailableError: {
+    error: new McpServerUnavailableError("timed_out", "the server did not answer"),
+    code: "SERVICE_UNAVAILABLE",
+    status: 503,
+  },
+  InvalidOAuthStateError: {
+    error: new InvalidOAuthStateError("unknown_or_used"),
     code: "BAD_REQUEST",
     status: 400,
   },

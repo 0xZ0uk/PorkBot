@@ -112,6 +112,27 @@ export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.t
 export { credentialSchema, credentialsListContract } from "./credentials.ts";
 export type { Credential } from "./credentials.ts";
 
+// MCP servers (slice 9.5, PRD story 38): install by URL, read back discovery,
+// grant to bots and revoke. The output schemas have no field for a token or a
+// client secret, so "a response never carries a server credential" is a
+// property of the wire shape rather than a promise about a handler.
+export {
+  mcpAuthModeSchema,
+  mcpGrantSchema,
+  mcpServerDetailSchema,
+  mcpServerStatusSchema,
+  mcpServersCreateContract,
+  mcpServersGetContract,
+  mcpServersGrantContract,
+  mcpServersGrantsContract,
+  mcpServersListContract,
+  mcpServersRemoveContract,
+  mcpServersRevokeContract,
+  mcpServerSummarySchema,
+  mcpToolSchema,
+} from "./mcp-servers.ts";
+export type { McpGrant, McpServerDetail, McpServerSummary, McpTool } from "./mcp-servers.ts";
+
 // The client: a type derived from the contract plus the factory that builds it.
 export { createApiClient } from "./client.ts";
 export type { ApiClientOptions, AppClient } from "./client.ts";

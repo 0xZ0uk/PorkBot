@@ -1,15 +1,25 @@
 import process from "node:process";
 import {
   createEnvironmentCredentialStore,
+  createHttpMcpServerProvider,
   InProcessRealtimeFanout,
   LocalStorageProvider,
 } from "@porkbot/adapters";
-import { createIngressStore, openDatabase, readDeploymentSettings } from "@porkbot/db";
+import {
+  createIngressStore,
+  createRepositories,
+  credentialKeyringFromEnvironment,
+  openDatabase,
+  queryable,
+  readDeploymentSettings,
+} from "@porkbot/db";
+import type { CredentialKeyring } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { createApiServer, moduleInfo } from "./index.ts";
 import { limitsFromEnvironment } from "./limits.ts";
 import type { LimitsConfig } from "./limits.ts";
 import { createDeploymentStatusService } from "./services/deployment.ts";
+import { createMcpService, mcpCallbackPath } from "./services/mcp.ts";
 import { createWebhookIngress } from "./webhooks.ts";
 import type { WebhookHandler } from "./webhooks.ts";
 
@@ -47,6 +57,27 @@ try {
 // The pool is lazy: constructing it opens no connection, so the process boots
 // and answers its healthcheck while Postgres finishes coming up.
 const database = openDatabase(connectionString);
+
+// The credential keyring is optional at boot: without it the encrypted store
+// is locked (a typed 503 at every credential and MCP call), and the process
+// still serves everything that does not touch a secret.
+const credentialKeys = readCredentialKeys();
+
+// The OAuth callback's absolute URL. A self-hosted deployment reaches its own
+// API on loopback unless the operator names a public origin; the value is what
+// the authorization server redirects the browser back to, so an unset value is
+// worth saying out loud — a provider may refuse an http redirect, and a local
+// default is not a public origin.
+const configuredCallbackUrl = process.env["PORKBOT_MCP_CALLBACK_URL"]?.trim();
+const mcpCallbackUrl =
+  configuredCallbackUrl ?? `http://localhost:${String(requestedPort)}${mcpCallbackPath}`;
+
+if (configuredCallbackUrl === undefined) {
+  logger.warn("PORKBOT_MCP_CALLBACK_URL is not set; OAuth callbacks fall back to loopback http", {
+    path: mcpCallbackPath,
+  });
+}
+
 const server = createApiServer({
   logger,
   limits,
@@ -54,6 +85,14 @@ const server = createApiServer({
     deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
     realtime: new InProcessRealtimeFanout(),
     storage: new LocalStorageProvider({ root: storageRoot }),
+    mcp: createMcpService({
+      provider: createHttpMcpServerProvider(),
+      ingress: createIngressStore(database.database),
+      callbackUrl: mcpCallbackUrl,
+      database: database.database,
+      repositoriesFor: (actor) =>
+        createRepositories(actor, queryable(database), { credentialKeys }),
+    }),
   },
   // The verified ingress: secrets from the environment through the generic
   // credential store, delivery dedupe through the database. No source is
@@ -79,3 +118,21 @@ process.on("SIGTERM", () => {
     void database.close().then(() => process.exit(0));
   });
 });
+
+/**
+ * Parses the optional keyring once at boot. Unset keys are not a boot failure
+ * — only the secret-bearing procedures depend on them — but they are worth a
+ * warning line, and a malformed value is worth saying out loud rather than
+ * silently locking every credential.
+ */
+function readCredentialKeys(): CredentialKeyring | undefined {
+  try {
+    return credentialKeyringFromEnvironment(process.env);
+  } catch (error) {
+    logger.warn("PORKBOT_CREDENTIAL_KEYS is not usable; encrypted credentials are locked", {
+      error,
+    });
+
+    return undefined;
+  }
+}

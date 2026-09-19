@@ -75,6 +75,13 @@ export interface Credentials extends CredentialStore {
    * held. Returns the summary, never the value.
    */
   store(name: string, value: string): Promise<CredentialSummary>;
+  /**
+   * Deletes the row under `name`, if it exists. A caller removing the resource
+   * a credential belongs to — an MCP server being uninstalled — must not leave
+   * the ciphertext behind. Deleting a name the store does not hold is a no-op,
+   * so a retried removal succeeds the same way.
+   */
+  remove(name: string): Promise<void>;
   /** Re-encrypts every row not on the active key. */
   rotate(): Promise<CredentialRotation>;
 }
