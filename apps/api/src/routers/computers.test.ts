@@ -103,6 +103,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       listForThread: notExercised,
       findActiveForThread: notExercised,
       create: notExercised,
+      requestStop: notExercised,
     },
     events: { listAfter: notExercised },
     messages: { listForThread: notExercised, findByNonce: notExercised, steer: notExercised },
