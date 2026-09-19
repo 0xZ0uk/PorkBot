@@ -1,0 +1,2 @@
+ALTER TABLE "bot" ADD COLUMN "computer_provider" text;--> statement-breakpoint
+ALTER TABLE "bot" ADD CONSTRAINT "bot_computer_provider_check" CHECK ("bot"."computer_provider" is null or length(btrim("bot"."computer_provider")) > 0);

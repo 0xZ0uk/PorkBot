@@ -34,10 +34,20 @@ export const COMPUTER_STATES = ["running", "stopped", "gone"] as const;
  */
 export type ComputerState = (typeof COMPUTER_STATES)[number];
 
-/** A bot's computer, addressed the same way by every provider. */
+/**
+ * A bot's computer, addressed the same way by every provider.
+ *
+ * `provider` is the operator's per-bot selection (slice 7.3): the supervisor
+ * resolves it against the kinds its deployment configured, and an absent value
+ * means the deployment's default. A direct provider ignores it — the two live
+ * providers address a machine by its ids alone — and reconciliation re-tags a
+ * listed machine with the provider that holds it, so a stop never routes to
+ * the wrong machine.
+ */
 export interface ComputerRef {
   readonly computerId: string;
   readonly botId: string;
+  readonly provider?: string | undefined;
 }
 
 export interface ComputerStatus {

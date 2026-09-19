@@ -27,6 +27,8 @@ export interface BotRecord {
   readonly spawnKey: string;
   readonly avatarKey: string | null;
   readonly computerId: string | null;
+  /** The computer provider this bot selected, or null for the deployment default (slice 7.3). */
+  readonly computerProvider: string | null;
   /** The connection this bot selected, or null to use the space default (slice 9.2). */
   readonly modelConnectionId: string | null;
   /** The model this bot selected, or null to use its connection's default (slice 9.2). */
@@ -209,6 +211,7 @@ export const botColumns =
   'id, space_id as "spaceId", user_id as "userId", name, title, description, instructions, ' +
   'color, pinned, position, section_id as "sectionId", archived_at as "archivedAt", ' +
   'spawn_key as "spawnKey", avatar_key as "avatarKey", computer_id as "computerId", ' +
+  'computer_provider as "computerProvider", ' +
   'model_connection_id as "modelConnectionId", model, ' +
   'created_at as "createdAt", updated_at as "updatedAt"';
 

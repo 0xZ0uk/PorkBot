@@ -214,6 +214,7 @@ export function fakeBot(id: string, name: string): Bot {
     sectionId: null,
     avatarKey: null,
     computerId: null,
+    computerProvider: null,
     modelConnectionId: null,
     model: null,
     archivedAt: null,

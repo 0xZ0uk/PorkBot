@@ -170,6 +170,40 @@ export type {
   RecordedBrowserAction,
 } from "./computer-emulator.ts";
 export { ComputerProviderError } from "./computer-errors.ts";
+export { computerFailureKind } from "./computer-failure.ts";
+export type {
+  ComputerFailureInput,
+  ComputerFailureOrigin,
+  ComputerFailureRule,
+  ComputerFailureSubject,
+  ComputerFailureVerdict,
+} from "./computer-failure.ts";
+export { createRuntimeComputerProvider } from "./computer-runtime.ts";
+export type {
+  ComputerListedMachine,
+  ComputerMachine,
+  ComputerRuntime,
+  RuntimeComputerProviderOptions,
+} from "./computer-runtime.ts";
+export {
+  computerSnapshotKeyPattern,
+  computerIdentityHash,
+  snapshotScope,
+} from "./computer-runtime.ts";
+export { readTar, writeTar } from "./computer-archive.ts";
+export type { TarEntry } from "./computer-archive.ts";
+export {
+  createShellWorld,
+  createFileSystem,
+  cloneFileSystem,
+  pathAncestors,
+} from "./computer-shell-world.ts";
+export type {
+  DirectoryNode,
+  FileNode,
+  FileSystemNode,
+  ShellWorldOptions,
+} from "./computer-shell-world.ts";
 
 // The Docker computer provider (slice 7.2, PRD decisions 19 and 20; stories
 // 27, 29). It is constructed inside the supervisor process only — the process
@@ -202,16 +236,57 @@ export type {
   DockerFailureOrigin,
   DockerStreamBody,
 } from "./docker-engine.ts";
-export { DockerEngineEmulator, readTar, writeTar } from "./docker-engine-emulator.ts";
+export { DockerEngineEmulator } from "./docker-engine-emulator.ts";
 export type {
   DockerEngineEmulatorOptions,
   EmulatedDockerRequest,
 } from "./docker-engine-emulator.ts";
 
+// The Daytona computer provider (slice 7.3, PRD decisions 19 and 20; stories
+// 27, 29 and 31). The cloud implementation of the same seam, constructed
+// inside the supervisor process like the Docker one and selected per bot
+// through the bot's computer settings. It speaks Daytona's REST control plane
+// and toolbox — plain JSON over HTTPS, no SDK — and every control-plane or
+// toolbox refusal is translated into the shared failure vocabulary by
+// `daytona-errors.ts`. `daytona-engine-emulator.ts` is the offline API the
+// provider is tested against, over the same HTTP a real deployment dials.
+export {
+  createDaytonaComputerProvider,
+  DEFAULT_DAYTONA_CEILINGS,
+  DEFAULT_DAYTONA_COMPUTER_HOME,
+  DEFAULT_DAYTONA_SNAPSHOT_DIRECTORY,
+  daytonaComputerLabels,
+} from "./daytona-computer.ts";
+export type {
+  DaytonaComputerCeilings,
+  DaytonaComputerProviderOptions,
+} from "./daytona-computer.ts";
+export { classifyDaytonaFailure, DaytonaProtocolError } from "./daytona-errors.ts";
+export {
+  createDaytonaEngine,
+  DAYTONA_SANDBOX_STATES,
+  DaytonaEngineError,
+} from "./daytona-engine.ts";
+export type {
+  DaytonaCreateSandboxSpec,
+  DaytonaEngine,
+  DaytonaEngineOptions,
+  DaytonaExecResponse,
+  DaytonaFailureOrigin,
+  DaytonaSandbox,
+  DaytonaSandboxState,
+} from "./daytona-engine.ts";
+export { DaytonaEngineEmulator } from "./daytona-engine-emulator.ts";
+export type {
+  DaytonaEngineEmulatorOptions,
+  EmulatedDaytonaRequest,
+} from "./daytona-engine-emulator.ts";
+
 // The computer conformance suite: one set of behaviors every provider must
 // show, whatever it is made of. The emulator runs it directly, the supervisor
-// runs it over its wire, and the Docker provider will run it against a real
-// container (slice 7.2). An implementation that drifts from the seam fails
+// runs it over its wire, the Docker provider runs it against a real container
+// (slice 7.2) and the Daytona provider runs the same suite against its offline
+// API emulator (slice 7.3). An implementation that drifts from the seam fails
 // here rather than in the run that depends on it.
 export {
   computerConformance,

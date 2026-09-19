@@ -160,12 +160,21 @@ services:
       # access entirely; v1.1's screen watch is the surface that will mint one.
       PORKBOT_SCREEN_TOKEN_SECRET: ${PORKBOT_SCREEN_TOKEN_SECRET:-porkbot-screen-local}
       # Which computer a bot gets, through generic computer settings: the
-      # offline emulator by default, or the Docker provider when the operator
-      # names the image to boot. A Docker selection without an image fails
-      # closed at supervisor boot, not at a bot's first run.
+      # offline emulator by default, Docker when the operator names an image to
+      # boot, or a cloud provider when the operator names an endpoint and key.
+      # A bot may select its own configured kind through its settings; a
+      # selection whose kind this deployment did not configure is refused
+      # fail-closed, and a default without its settings fails at supervisor
+      # boot rather than at a bot's first run.
       PORKBOT_COMPUTER_PROVIDER: ${PORKBOT_COMPUTER_PROVIDER:-offline}
       PORKBOT_COMPUTER_IMAGE: ${PORKBOT_COMPUTER_IMAGE:-}
       PORKBOT_COMPUTER_SOCKET: ${PORKBOT_COMPUTER_SOCKET:-/var/run/docker.sock}
+      # The cloud control plane this deployment may reach. The endpoint, key
+      # and image together make the cloud provider selectable per bot; empty
+      # values keep the stack offline.
+      PORKBOT_COMPUTER_ENDPOINT: ${PORKBOT_COMPUTER_ENDPOINT:-}
+      PORKBOT_COMPUTER_TOKEN: ${PORKBOT_COMPUTER_TOKEN:-}
+      PORKBOT_COMPUTER_TOOLBOX_URL: ${PORKBOT_COMPUTER_TOOLBOX_URL:-}
       PORKBOT_COMPUTER_SNAPSHOT_DIR: /var/lib/porkbot/computer-snapshots
       # A machine whose last command is older than this is parked; the home
       # volume survives. Zero disables the idle sweep.
