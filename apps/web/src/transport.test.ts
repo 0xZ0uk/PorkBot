@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { textMessage } from "../test/fakes.ts";
-import { createHttpAuthTransport, createHttpConsoleTransport } from "./transport.ts";
+import { fakeUsage, textMessage } from "../test/fakes.ts";
+import {
+  createHttpAuthTransport,
+  createHttpConsoleTransport,
+  createHttpUsageTransport,
+} from "./transport.ts";
 
 /**
  * The transports build the contract's client with an absolute URL. The client
@@ -73,6 +77,20 @@ describe("the web transports", () => {
     expect(fetched.calls.map((call) => call.url)).toEqual([
       "https://console.example.invalid/rpc/account/me",
     ]);
+  });
+
+  it("asks for one bot's usage on the resolved endpoint", async () => {
+    vi.stubGlobal("location", { origin: "https://console.example.invalid" });
+    const usage = fakeUsage({ botId: "bot-1" });
+    const fetched = stubFetch(() => usage);
+
+    const transport = createHttpUsageTransport();
+
+    await expect(transport.forBot("bot-1")).resolves.toEqual(usage);
+    expect(fetched.calls.map((call) => call.url)).toEqual([
+      "https://console.example.invalid/rpc/usage/bot",
+    ]);
+    expect(JSON.parse(fetched.calls[0]?.body ?? "{}")).toEqual({ json: { botId: "bot-1" } });
   });
 
   it("walks the transcript pages forward so the newest turn is included", async () => {

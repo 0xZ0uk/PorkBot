@@ -1,9 +1,16 @@
 import { Cause, Effect, Layer, Mailbox, Ref, Stream } from "effect";
 import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
-import { AgentRuntime, requestScoped } from "@porkbot/effect";
-import type { AgentRuntimeLayer, RunCommand, RunSession, RunStartRequest } from "@porkbot/effect";
+import { AgentRuntime, reportUsage, requestScoped } from "@porkbot/effect";
+import type {
+  AgentRuntimeLayer,
+  RunCommand,
+  RunSession,
+  RunStartRequest,
+  UsageRecorder,
+} from "@porkbot/effect";
 import { PiRunTranslator } from "./pi-events.ts";
+import type { PiUsageReport } from "./pi-events.ts";
 
 /**
  * The Pi runtime adapted to the duplex `RunSession` seam (slice 5.3, PRD
@@ -94,12 +101,24 @@ export class PiRunControlError extends PiRunError {
 }
 
 /**
+ * What the live Pi launch may inject into the adapter (slice 8.8, story 34).
+ * The usage recorder is the run's ledger write; absent, usage is simply not
+ * recorded, which is how the offline corpus replay and the seam tests run with
+ * no database at all. The seam itself never fails a run over a usage write —
+ * `reportUsage` owns that policy.
+ */
+export interface PiRuntimeOptions {
+  readonly usage?: UsageRecorder | undefined;
+}
+
+/**
  * Adapts one Pi run to the shipped `AgentRuntimeLayer`: events out, commands
  * in, cancellation through interruption. Build it inside the run's scope.
  */
 export function piAgentRuntimeLayer(
   request: RunStartRequest,
   source: PiRunSource,
+  options: PiRuntimeOptions = {},
 ): AgentRuntimeLayer {
   const acquire = Effect.gen(function* () {
     const events = yield* Mailbox.make<RunEvent, unknown>();
@@ -184,6 +203,16 @@ export function piAgentRuntimeLayer(
     };
 
     /**
+     * Records one completed model call's usage. The report rides beside the
+     * events — usage is not transcript — and `reportUsage` makes the write
+     * best-effort: observability must never fail the run it observes, and a
+     * provider that said nothing is recorded as "not reported", never as a
+     * zero (slice 8.8, PRD story 34; out-of-scope #183 forbids charging).
+     */
+    const report = (usage: PiUsageReport) =>
+      reportUsage(options.usage, { runId: request.runId, ...usage });
+
+    /**
      * The event half: pull one Pi event at a time, translate it with the
      * mapping table, and offer the resulting `RunEvent`s in order. An
      * untranslatable event is a defect — the stream has no error channel by
@@ -216,6 +245,10 @@ export function piAgentRuntimeLayer(
         if (!result.ok) {
           yield* Effect.die(result.error);
           return;
+        }
+
+        if (result.usageReport !== undefined) {
+          yield* report(result.usageReport);
         }
 
         for (const event of result.events) {

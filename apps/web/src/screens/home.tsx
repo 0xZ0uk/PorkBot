@@ -26,6 +26,8 @@ export interface HomeScreenProps {
   readonly onNewThread: (botId: string) => void;
   /** The link into one bot's memory, rendered by the route. */
   readonly renderMemory: (bot: Bot) => ReactNode;
+  /** The link into one bot's usage, rendered by the route. */
+  readonly renderUsage: (bot: Bot) => ReactNode;
   readonly renderThread: (thread: Thread) => ReactNode;
 }
 
@@ -35,6 +37,7 @@ export function HomeScreen({
   error,
   onNewThread,
   renderMemory,
+  renderUsage,
   renderThread,
 }: HomeScreenProps) {
   return (
@@ -55,6 +58,7 @@ export function HomeScreen({
                 <h3>{bot.name}</h3>
                 <div className="bot-actions">
                   {renderMemory(bot)}
+                  {renderUsage(bot)}
                   <Button disabled={pendingBotId === bot.id} onClick={() => onNewThread(bot.id)}>
                     New thread
                   </Button>

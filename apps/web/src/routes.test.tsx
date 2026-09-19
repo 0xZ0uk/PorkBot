@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router.tsx";
 import { createSessionController } from "./session.ts";
 import type { AuthTransport, SessionActor } from "./session.ts";
-import type { ConsoleTransport } from "./transport.ts";
+import type { ConsoleTransport, UsageTransport } from "./transport.ts";
 import {
   createScriptedEvents,
   fakeBot,
@@ -18,6 +18,7 @@ import {
   runCompleted,
   runStarted,
   scriptedMemoryTransport,
+  scriptedUsageTransport,
   scriptedThreadTransport,
   textMessage,
   tokenDelta,
@@ -78,7 +79,13 @@ function appWith(
   const session = createSessionController({ transport: auth });
 
   return createAppRouter(
-    { auth, session, threads: transport, memory: scriptedMemoryTransport() },
+    {
+      auth,
+      session,
+      threads: transport,
+      memory: scriptedMemoryTransport(),
+      usage: scriptedUsageTransport(),
+    },
     createMemoryHistory({ initialEntries: ["/"] }),
   );
 }
@@ -133,7 +140,13 @@ describe("the shell's route guards", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: scriptedThreadTransport(), memory: scriptedMemoryTransport() },
+      {
+        auth,
+        session,
+        threads: scriptedThreadTransport(),
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+      },
       createMemoryHistory({ initialEntries: ["/sign-in"] }),
     );
 
@@ -209,7 +222,13 @@ describe("the shell's route guards", () => {
     });
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: scriptedThreadTransport(), memory: scriptedMemoryTransport() },
+      {
+        auth,
+        session,
+        threads: scriptedThreadTransport(),
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+      },
       createMemoryHistory({ initialEntries: ["/"] }),
     );
 
@@ -257,6 +276,10 @@ describe("the console routes", () => {
     const memoryLink = container.querySelector("a[href='/bots/bot-1/memory']");
 
     expect(memoryLink?.textContent).toBe("Memory");
+
+    const usageLink = container.querySelector("a[href='/bots/bot-1/usage']");
+
+    expect(usageLink?.textContent).toBe("Usage");
   });
 
   it("renders a thread's streamed text on the console route", async () => {
@@ -270,7 +293,13 @@ describe("the console routes", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: transport, memory: scriptedMemoryTransport() },
+      {
+        auth,
+        session,
+        threads: transport,
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+      },
       createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
     );
 
@@ -303,7 +332,13 @@ describe("the console routes", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: transport, memory: scriptedMemoryTransport() },
+      {
+        auth,
+        session,
+        threads: transport,
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+      },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-1"],
       }),
@@ -326,7 +361,13 @@ describe("the console routes", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: scriptedThreadTransport(), memory: scriptedMemoryTransport() },
+      {
+        auth,
+        session,
+        threads: scriptedThreadTransport(),
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+      },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-missing"],
       }),
@@ -347,7 +388,13 @@ describe("the memory route", () => {
     const session = createSessionController({ transport: auth });
 
     return createAppRouter(
-      { auth, session, threads: scriptedThreadTransport(), memory },
+      {
+        auth,
+        session,
+        threads: scriptedThreadTransport(),
+        memory,
+        usage: scriptedUsageTransport(),
+      },
       createMemoryHistory({ initialEntries: ["/bots/bot-1/memory"] }),
     );
   }
@@ -574,5 +621,106 @@ describe("the memory route", () => {
     );
 
     expect(container.textContent).toContain("v3");
+  });
+});
+
+describe("the usage route", () => {
+  function usageRouter(usage: UsageTransport): ReturnType<typeof createAppRouter> {
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+
+    return createAppRouter(
+      {
+        auth,
+        session,
+        threads: scriptedThreadTransport(),
+        memory: scriptedMemoryTransport(),
+        usage,
+      },
+      createMemoryHistory({ initialEntries: ["/bots/bot-1/usage"] }),
+    );
+  }
+
+  async function mountUsage(usage: UsageTransport): Promise<void> {
+    const router = usageRouter(usage);
+
+    await act(async () => {
+      // A failed loader rejects `load`; the route's error component is what
+      // this suite asserts, and the rejection is the router's own report.
+      await router.load().catch(() => undefined);
+    });
+    await render(<RouterProvider router={router} />);
+  }
+
+  it("renders the all-time total and each day's bucket", async () => {
+    await mountUsage(
+      scriptedUsageTransport({
+        usage: {
+          botId: "bot-1",
+          total: { inputTokens: 3500, outputTokens: 700, reported: 4, unreported: 1 },
+          periods: [
+            {
+              startsAt: "2026-01-02T00:00:00.000Z",
+              inputTokens: 1200,
+              outputTokens: 200,
+              reported: 2,
+              unreported: 0,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(container.textContent).toContain("Usage");
+    expect(container.textContent).toContain("All time");
+    expect(container.textContent).toContain("3500");
+    expect(container.textContent).toContain("700");
+    expect(container.textContent).toContain("2026-01-02");
+    expect(container.textContent).toContain("1200");
+    expect(container.textContent).toContain("1 of 5 not reported");
+  });
+
+  it("renders an unreported figure as such, never as a zero", async () => {
+    await mountUsage(
+      scriptedUsageTransport({
+        usage: {
+          botId: "bot-1",
+          total: { inputTokens: null, outputTokens: null, reported: 0, unreported: 2 },
+          periods: [],
+        },
+      }),
+    );
+
+    const values = [...container.querySelectorAll(".usage-totals dd")].map(
+      (value) => value.textContent,
+    );
+
+    expect(values).toEqual(["Not reported", "Not reported", "2"]);
+    expect(container.textContent).toContain("No usage in this period.");
+  });
+
+  it("shows a bot with no calls as an empty state rather than zero rows", async () => {
+    await mountUsage(
+      scriptedUsageTransport({
+        usage: {
+          botId: "bot-1",
+          total: { inputTokens: null, outputTokens: null, reported: 0, unreported: 0 },
+          periods: [],
+        },
+      }),
+    );
+
+    expect(container.textContent).toContain("No usage recorded yet.");
+  });
+
+  it("shows the refusal with a retry when the read fails", async () => {
+    await mountUsage(scriptedUsageTransport({ failure: new Error("connection refused") }));
+
+    expect(container.textContent).toContain("Usage could not be loaded.");
+    expect(
+      [...container.querySelectorAll("button")].some(
+        (button) => button.textContent === "Try again",
+      ),
+    ).toBe(true);
   });
 });

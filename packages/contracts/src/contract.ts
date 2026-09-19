@@ -76,6 +76,7 @@ import {
   threadsSendContract,
   threadsToolResultContract,
 } from "./threads.ts";
+import { usageBotContract } from "./usage.ts";
 
 /**
  * The application contract: the one source of transport truth (PRD decision
@@ -152,6 +153,9 @@ export const appContract = {
     update: memoryUpdateContract,
     remove: memoryRemoveContract,
     restore: memoryRestoreContract,
+  },
+  usage: {
+    bot: usageBotContract,
   },
   credentials: {
     list: credentialsListContract,

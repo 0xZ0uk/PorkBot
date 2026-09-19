@@ -118,7 +118,8 @@ export const PI_EVENT_MAPPING = {
   message_end: {
     emits: [],
     terminal: false,
-    description: "A message completes; completion is signalled by agent_end, never here.",
+    description:
+      "A message completes; an assistant message's final usage is carried beside the events, and completion is signalled by agent_end.",
   },
   tool_execution_start: {
     emits: ["tool.requested"],
@@ -262,6 +263,23 @@ export class PiEventSequenceError extends PiEventError {
   }
 }
 
+/**
+ * One completed assistant message's usage as the adapter reads it (slice 8.8,
+ * story 34). `provider` and `model` are the names Pi put on the message when it
+ * had them; the token counts are null where the provider reported nothing.
+ *
+ * Pi initialises a streamed message's usage to all zeros and replaces it only
+ * when a usage chunk arrives, so an all-zero report is Pi's stand-in for "the
+ * provider did not report" — it must degrade to null rather than become a
+ * measured zero. That distinction lives in `parseMessageUsage` below.
+ */
+export interface PiUsageReport {
+  readonly provider: string | null;
+  readonly model: string | null;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+}
+
 /** A validated Pi event, narrowed to the fields the mapping needs. */
 export type ParsedPiEvent =
   | { readonly type: "agent_start" }
@@ -278,7 +296,12 @@ export type ParsedPiEvent =
       readonly role: string;
       readonly update: { readonly type: PiAssistantMessageEventType; readonly delta?: string };
     }
-  | { readonly type: "message_end"; readonly role: string }
+  | {
+      readonly type: "message_end";
+      readonly role: string;
+      /** Present for an assistant message: the model call's usage, never a fake zero. */
+      readonly usageReport?: PiUsageReport;
+    }
   | {
       readonly type: "tool_execution_start";
       readonly toolCallId: string;
@@ -372,6 +395,85 @@ function parseMessageRole(record: Record<string, unknown>, eventType: string): F
   }
 
   return { ok: true, value: role };
+}
+
+/** A non-empty string field, or null when absent, blank or mistyped. */
+function optionalName(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/** A non-negative integer token count, or null when absent or mistyped. */
+function tokenCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Reads one completed assistant message's usage. The parse is deliberately
+ * lenient where the strict event parser is not: usage is observability, and a
+ * provider whose usage shape this adapter does not understand must cost the
+ * operator a figure, never a run. Anything missing or mistyped becomes null —
+ * "not reported" — and the call is still recorded, so the ledger counts the
+ * call and says its tokens are unknown.
+ */
+function parseMessageUsage(message: Record<string, unknown>): PiUsageReport {
+  const provider = optionalName(message["provider"]);
+  const model = optionalName(message["model"]);
+  const usage = message["usage"];
+
+  if (!isRecord(usage)) {
+    return { provider, model, inputTokens: null, outputTokens: null };
+  }
+
+  const input = tokenCount(usage["input"]);
+  const output = tokenCount(usage["output"]);
+  const cacheRead = tokenCount(usage["cacheRead"]);
+  const cacheWrite = tokenCount(usage["cacheWrite"]);
+  const total = tokenCount(usage["totalTokens"]);
+
+  // All-zero is Pi's zero value, not a measurement: a streamed message keeps
+  // the initialised usage when the provider's stream carries no usage chunk.
+  // A call that truly spent nothing is not a thing, so this degrades to null
+  // rather than reporting a fake zero (story 34's acceptance criterion).
+  //
+  // Pi's `input` already excludes cache reads and writes, so a cache-only
+  // report (input and output zero, cache nonzero) is a real measurement and is
+  // recorded as reported zeros — the ledger stores what the provider said
+  // rather than re-deriving a number Pi did not report.
+  if (
+    (input ?? 0) === 0 &&
+    (output ?? 0) === 0 &&
+    (cacheRead ?? 0) === 0 &&
+    (cacheWrite ?? 0) === 0 &&
+    (total ?? 0) === 0
+  ) {
+    return { provider, model, inputTokens: null, outputTokens: null };
+  }
+
+  return { provider, model, inputTokens: input, outputTokens: output };
+}
+
+/** A `message_end` with an assistant role carries the call's usage; others do not. */
+function parseMessageEnd(record: Record<string, unknown>): PiEventParseResult {
+  const role = parseMessageRole(record, "message_end");
+
+  if (!role.ok) {
+    return role;
+  }
+
+  if (role.value !== "assistant") {
+    return { ok: true, event: { type: "message_end", role: role.value } };
+  }
+
+  const message = record["message"];
+
+  return {
+    ok: true,
+    event: {
+      type: "message_end",
+      role: role.value,
+      usageReport: parseMessageUsage(isRecord(message) ? message : {}),
+    },
+  };
 }
 
 function parseAgentEnd(record: Record<string, unknown>): PiEventParseResult {
@@ -503,10 +605,8 @@ export function parsePiEvent(value: unknown): PiEventParseResult {
       const role = parseMessageRole(value, "message_start");
       return role.ok ? { ok: true, event: { type: "message_start", role: role.value } } : role;
     }
-    case "message_end": {
-      const role = parseMessageRole(value, "message_end");
-      return role.ok ? { ok: true, event: { type: "message_end", role: role.value } } : role;
-    }
+    case "message_end":
+      return parseMessageEnd(value);
     case "message_update":
       return parseMessageUpdate(value);
     case "tool_execution_start": {
@@ -585,7 +685,18 @@ export interface PiTranslationBase {
 }
 
 export type PiTranslationResult =
-  | { readonly ok: true; readonly events: readonly RunEvent[]; readonly terminal: boolean }
+  | {
+      readonly ok: true;
+      readonly events: readonly RunEvent[];
+      readonly terminal: boolean;
+      /**
+       * A completed assistant message's usage, when one arrived. It is not a
+       * `RunEvent` — usage is not transcript — so it travels beside the events
+       * the caller already drains, and the runtime reports it through the
+       * usage seam (PRD story 34).
+       */
+      readonly usageReport?: PiUsageReport;
+    }
   | { readonly ok: false; readonly error: PiEventError };
 
 /**
@@ -706,11 +817,17 @@ export class PiRunTranslator {
               callId: event.toolCallId,
               result: event.result,
             }));
+      case "message_end": {
+        const report = event.usageReport;
+
+        return report === undefined
+          ? { ok: true, events: [], terminal: false }
+          : { ok: true, events: [], terminal: false, usageReport: report };
+      }
       case "agent_end":
         return this.endRun(event.stopReason, event.errorMessage);
       case "turn_start":
       case "turn_end":
-      case "message_end":
       case "tool_execution_update":
         return { ok: true, events: [], terminal: false };
     }

@@ -16,6 +16,7 @@ import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
 import { Route as AppBotsBotIdMemoryRouteImport } from './routes/_app/bots.$botId.memory'
+import { Route as AppBotsBotIdUsageRouteImport } from './routes/_app/bots.$botId.usage'
 import { Route as AppThreadsThreadIdToolResultsRunIdCallIdRouteImport } from './routes/_app/threads.$threadId_.tool-results.$runId.$callId'
 
 const AppRoute = AppRouteImport.update({
@@ -51,6 +52,11 @@ const AppBotsBotIdMemoryRoute = AppBotsBotIdMemoryRouteImport.update({
   path: '/bots/$botId/memory',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBotsBotIdUsageRoute = AppBotsBotIdUsageRouteImport.update({
+  id: '/bots/$botId/usage',
+  path: '/bots/$botId/usage',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppThreadsThreadIdToolResultsRunIdCallIdRoute =
   AppThreadsThreadIdToolResultsRunIdCallIdRouteImport.update({
     id: '/threads/$threadId_/tool-results/$runId/$callId',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof AuthSignUpRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
+  '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
   '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesByTo {
@@ -72,6 +79,7 @@ export interface FileRoutesByTo {
   '/sign-up': typeof AuthSignUpRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
+  '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
   '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesById {
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
+  '/_app/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
   '/_app/threads/$threadId_/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRouteTypes {
@@ -93,6 +102,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/threads/$threadId'
     | '/bots/$botId/memory'
+    | '/bots/$botId/usage'
     | '/threads/$threadId/tool-results/$runId/$callId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -101,6 +111,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/threads/$threadId'
     | '/bots/$botId/memory'
+    | '/bots/$botId/usage'
     | '/threads/$threadId/tool-results/$runId/$callId'
   id:
     | '__root__'
@@ -111,6 +122,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/threads/$threadId'
     | '/_app/bots/$botId/memory'
+    | '/_app/bots/$botId/usage'
     | '/_app/threads/$threadId_/tool-results/$runId/$callId'
   fileRoutesById: FileRoutesById
 }
@@ -170,6 +182,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBotsBotIdMemoryRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bots/$botId/usage': {
+      id: '/_app/bots/$botId/usage'
+      path: '/bots/$botId/usage'
+      fullPath: '/bots/$botId/usage'
+      preLoaderRoute: typeof AppBotsBotIdUsageRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/threads/$threadId_/tool-results/$runId/$callId': {
       id: '/_app/threads/$threadId_/tool-results/$runId/$callId'
       path: '/threads/$threadId/tool-results/$runId/$callId'
@@ -184,6 +203,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
   AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
+  AppBotsBotIdUsageRoute: typeof AppBotsBotIdUsageRoute
   AppThreadsThreadIdToolResultsRunIdCallIdRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 
@@ -191,6 +211,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
   AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,
+  AppBotsBotIdUsageRoute: AppBotsBotIdUsageRoute,
   AppThreadsThreadIdToolResultsRunIdCallIdRoute:
     AppThreadsThreadIdToolResultsRunIdCallIdRoute,
 }
