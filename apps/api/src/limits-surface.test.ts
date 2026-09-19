@@ -240,6 +240,7 @@ describe("every contract procedure", () => {
       "bots.setAvatar",
       "bots.update",
       "computers.boot",
+      "computers.providers",
       "computers.recover",
       "computers.reset",
       "computers.restore",

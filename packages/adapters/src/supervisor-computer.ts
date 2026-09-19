@@ -8,6 +8,7 @@ import type {
   ComputerStatus,
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
+
 import { PROVIDER_FAILURE_KINDS, snapshotChecksumPattern } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
 
@@ -56,6 +57,8 @@ export const supervisorMaxBodyBytes = 1_048_576;
 /** The paths one computer's lifecycle is addressed by; the server serves these. */
 export const supervisorComputerRoutes = {
   list: supervisorComputerBasePath,
+  providers: `${supervisorComputerBasePath}/providers`,
+  validate: `${supervisorComputerBasePath}/providers/validate`,
   ensure: `${supervisorComputerBasePath}/ensure`,
   status: `${supervisorComputerBasePath}/status`,
   stop: `${supervisorComputerBasePath}/stop`,
@@ -134,13 +137,39 @@ export interface SupervisorComputerProviderOptions {
 
 /**
  * The supervisor client: the `ComputerProvider` seam plus the two lifecycle
- * operations that are compositions rather than provider primitives.
+ * operations that are compositions rather than provider primitives, and the
+ * selection reads (slice 9.4) that name no computer at all.
  */
 export interface SupervisorComputerProvider extends ComputerProvider {
   /** Destroy the machine and bring a clean one up; the home is what the provider defined it to be. */
   reset(computer: ComputerRef): Promise<ComputerStatus>;
   /** Adopt, start or re-provision whatever state the machine is in. */
   recover(computer: ComputerRef): Promise<ComputerStatus>;
+  /** Every kind this deployment configured, and which one a bot with no selection uses. */
+  providers(): Promise<SupervisorProviderCatalog>;
+  /**
+   * Ask one configured kind to prove it is reachable. Answers whether it is,
+   * rather than throwing: an unavailable provider is the answer to the
+   * question the operator asked, so the caller renders it instead of
+   * unwinding. A kind this deployment never configured stays a defect.
+   */
+  validateProvider(kind: string): Promise<SupervisorProviderValidation>;
+}
+
+/** The kinds a supervisor deployment configured, and its default. */
+export interface SupervisorProviderCatalog {
+  /** The kind a bot with no selection runs on. */
+  readonly defaultKind: string;
+  /** Every kind a bot may select, in the order the deployment configured them. */
+  readonly kinds: readonly string[];
+}
+
+/** What a selection check found for one kind. */
+export interface SupervisorProviderValidation {
+  readonly kind: string;
+  readonly available: boolean;
+  /** The shared vocabulary's kind when the provider refused, else `null`. */
+  readonly failure: ProviderFailureKind | null;
 }
 
 /**
@@ -202,6 +231,57 @@ export function parseComputerStatus(value: unknown): ComputerStatus {
         state: parseComputerState(record["state"]),
         instanceId,
       };
+}
+
+/** Validates one configured-kind list the wire carried; a drift fails here. */
+export function parseProviderCatalog(value: unknown): SupervisorProviderCatalog {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("the supervisor reported a malformed provider catalog");
+  }
+
+  const record = value as Record<string, unknown>;
+  const defaultKind = record["defaultKind"];
+  const kinds = record["kinds"];
+
+  if (
+    typeof defaultKind !== "string" ||
+    defaultKind.trim() === "" ||
+    !Array.isArray(kinds) ||
+    kinds.some((kind) => typeof kind !== "string" || kind.trim() === "")
+  ) {
+    throw new Error("the supervisor reported a malformed provider catalog");
+  }
+
+  return { defaultKind, kinds: kinds as string[] };
+}
+
+/** Validates one selection check; an unknown failure kind is a drift, not a guess. */
+export function parseProviderValidation(value: unknown): SupervisorProviderValidation {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("the supervisor reported a malformed provider validation");
+  }
+
+  const record = value as Record<string, unknown>;
+  const kind = record["kind"];
+  const available = record["available"];
+  const failure = record["failure"];
+
+  if (typeof kind !== "string" || kind.trim() === "" || typeof available !== "boolean") {
+    throw new Error("the supervisor reported a malformed provider validation");
+  }
+
+  if (failure === null || failure === undefined) {
+    return { kind, available, failure: null };
+  }
+
+  if (
+    typeof failure !== "string" ||
+    !(PROVIDER_FAILURE_KINDS as readonly string[]).includes(failure)
+  ) {
+    throw new Error("the supervisor reported an unknown provider failure kind");
+  }
+
+  return { kind, available, failure: failure as ProviderFailureKind };
 }
 
 function parseExecResult(value: unknown): ComputerExecResult {
@@ -435,7 +515,37 @@ export function createSupervisorComputerProvider(
     return parseComputerStatus(payloadOf(await call(path, { computer }, budgetMs), "status"));
   }
 
+  async function providers(): Promise<SupervisorProviderCatalog> {
+    const body = await call(supervisorComputerRoutes.providers, {}, requestTimeoutMs);
+
+    return parseProviderCatalog(payloadOf(body, "providers"));
+  }
+
+  async function validateProvider(kind: string): Promise<SupervisorProviderValidation> {
+    const body = await call(supervisorComputerRoutes.validate, { kind }, requestTimeoutMs);
+
+    return parseProviderValidation(payloadOf(body, "validation"));
+  }
+
   return {
+    async validate(): Promise<void> {
+      // The seam's own `validate` has no kind to name, so it asks the
+      // deployment's default — the kind a bot with no selection runs on.
+      const catalog = await providers();
+      const result = await validateProvider(catalog.defaultKind);
+
+      if (!result.available) {
+        throw new ComputerProviderError(
+          result.failure ?? "not_found",
+          `the default computer provider "${catalog.defaultKind}" is not available`,
+        );
+      }
+    },
+
+    providers,
+
+    validateProvider,
+
     async ensure(computer): Promise<ComputerStatus> {
       return statusOf(supervisorComputerRoutes.ensure, computer, requestTimeoutMs);
     },

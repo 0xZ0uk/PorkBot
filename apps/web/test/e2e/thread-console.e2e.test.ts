@@ -12,6 +12,7 @@ import {
   runCompleted,
   runStarted,
   scriptedBotsTransport,
+  scriptedComputerTransport,
   scriptedConnectionsTransport,
   scriptedMemoryTransport,
   scriptedUsageTransport,
@@ -113,6 +114,7 @@ async function mountConsole(
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),
       connections: scriptedConnectionsTransport(),
+      computer: scriptedComputerTransport(),
     },
     createMemoryHistory({ initialEntries: [path] }),
   );

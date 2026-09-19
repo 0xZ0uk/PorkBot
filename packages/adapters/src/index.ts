@@ -328,6 +328,8 @@ export {
   createSupervisorComputerProvider,
   isSupervisorErrorBody,
   parseComputerStatus,
+  parseProviderCatalog,
+  parseProviderValidation,
   supervisorAuthorizationHeader,
   supervisorBearer,
   supervisorComputerBasePath,
@@ -341,6 +343,8 @@ export type {
   SupervisorComputerProvider,
   SupervisorComputerProviderOptions,
   SupervisorErrorBody,
+  SupervisorProviderCatalog,
+  SupervisorProviderValidation,
 } from "./supervisor-computer.ts";
 
 // Web access (slices 6.9 and 10.1, PRD decision 30). The interface lives in
