@@ -5,12 +5,14 @@ import { BootstrappingScreen } from "./screens/bootstrapping.tsx";
 import { createSessionController } from "./session.ts";
 import {
   createHttpAuthTransport,
+  createHttpBotsTransport,
   createHttpConnectionsTransport,
   createHttpConsoleTransport,
   createHttpMemoryTransport,
   createHttpUsageTransport,
 } from "./transport.ts";
 import type { ConnectionsTransport } from "./connections.ts";
+import type { BotsTransport } from "./bots.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type { AuthTransport, SessionController } from "./session.ts";
 import type { ConsoleTransport, UsageTransport } from "./transport.ts";
@@ -25,6 +27,8 @@ import type { ConsoleTransport, UsageTransport } from "./transport.ts";
 export interface RouterContext {
   readonly session: SessionController;
   readonly auth: AuthTransport;
+  /** Bot CRUD, sections, avatars and computer health for the product home. */
+  readonly bots: BotsTransport;
   /** The console's data surface: bots, threads and one thread's stream. */
   readonly threads: ConsoleTransport;
   /** The memory screen's data surface: documents, history and the operator's writes. */
@@ -54,6 +58,7 @@ export function getRouter() {
 
   return createAppRouter({
     auth,
+    bots: createHttpBotsTransport(),
     session: createSessionController({ transport: auth }),
     threads: createHttpConsoleTransport(),
     memory: createHttpMemoryTransport(),

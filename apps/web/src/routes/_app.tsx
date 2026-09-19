@@ -58,7 +58,9 @@ function AppLayout() {
   return (
     <>
       <header className="app-header">
-        <h1>PorkBot</h1>
+        <h1>
+          <Link to="/">PorkBot</Link>
+        </h1>
         <div className="app-header-actions">
           <Link to="/settings/connections">Connections</Link>
           <Button

@@ -11,6 +11,7 @@ import { createHttpConsoleTransport } from "../../src/transport.ts";
 import {
   runCompleted,
   runStarted,
+  scriptedBotsTransport,
   scriptedConnectionsTransport,
   scriptedMemoryTransport,
   scriptedUsageTransport,
@@ -107,6 +108,7 @@ async function mountConsole(
     {
       auth,
       session,
+      bots: scriptedBotsTransport(transport),
       threads: transport,
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),

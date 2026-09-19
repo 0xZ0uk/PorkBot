@@ -1,5 +1,6 @@
 import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "@porkbot/contracts";
 import type { Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
+import type { BotsTransport } from "./bots.ts";
 import { AuthRefusal } from "./session.ts";
 import type { ConnectionsTransport } from "./connections.ts";
 import type { ThreadConsoleTransport } from "./console.ts";
@@ -222,6 +223,31 @@ export function createHttpConsoleTransport(
     },
 
     events: client.threads.events,
+  };
+}
+
+/** The bot-management surface, kept separate from the conversation console. */
+export function createHttpBotsTransport(options: HttpAuthTransportOptions = {}): BotsTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    listBots: async (scope) => (await client.bots.list({ scope })).bots,
+    getBot: (id) => client.bots.get({ id }),
+    listSections: async () => (await client.sections.list()).sections,
+    listThreads: async (botId) =>
+      (await client.threads.list({ botId, limit: defaultThreadPageSize })).threads,
+    computerStatus: (botId) => client.computers.status({ botId }),
+    createBot: (input) => client.bots.create(input),
+    updateBot: (id, input) => client.bots.update({ id, ...input }),
+    archiveBot: (id) => client.bots.archive({ id }),
+    restoreBot: (id) => client.bots.restore({ id }),
+    createSection: (name) => client.sections.create({ name }),
+    readAvatar: (id) => client.bots.avatar({ id }),
+    setAvatar: (input) => client.bots.setAvatar(input),
+    clearAvatar: (id) => client.bots.clearAvatar({ id }),
+    bootComputer: (botId) => client.computers.boot({ botId }),
+    stopComputer: (botId) => client.computers.stop({ botId }),
+    recoverComputer: (botId) => client.computers.recover({ botId }),
   };
 }
 

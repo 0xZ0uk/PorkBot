@@ -14,8 +14,10 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
+import { Route as AppBotsNewRouteImport } from './routes/_app/bots.new'
 import { Route as AppSettingsConnectionsRouteImport } from './routes/_app/settings.connections'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
+import { Route as AppBotsBotIdEditRouteImport } from './routes/_app/bots.$botId.edit'
 import { Route as AppBotsBotIdMemoryRouteImport } from './routes/_app/bots.$botId.memory'
 import { Route as AppBotsBotIdUsageRouteImport } from './routes/_app/bots.$botId.usage'
 import { Route as AppThreadsThreadIdToolResultsRunIdCallIdRouteImport } from './routes/_app/threads.$threadId_.tool-results.$runId.$callId'
@@ -43,6 +45,11 @@ const AuthSignUpRoute = AuthSignUpRouteImport.update({
   path: '/sign-up',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppBotsNewRoute = AppBotsNewRouteImport.update({
+  id: '/bots/new',
+  path: '/bots/new',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsConnectionsRoute = AppSettingsConnectionsRouteImport.update({
   id: '/settings/connections',
   path: '/settings/connections',
@@ -51,6 +58,11 @@ const AppSettingsConnectionsRoute = AppSettingsConnectionsRouteImport.update({
 const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
   id: '/threads/$threadId',
   path: '/threads/$threadId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBotsBotIdEditRoute = AppBotsBotIdEditRouteImport.update({
+  id: '/bots/$botId/edit',
+  path: '/bots/$botId/edit',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBotsBotIdMemoryRoute = AppBotsBotIdMemoryRouteImport.update({
@@ -74,8 +86,10 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
+  '/bots/new': typeof AppBotsNewRoute
   '/settings/connections': typeof AppSettingsConnectionsRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
   '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
@@ -84,8 +98,10 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
+  '/bots/new': typeof AppBotsNewRoute
   '/settings/connections': typeof AppSettingsConnectionsRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
   '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
@@ -97,8 +113,10 @@ export interface FileRoutesById {
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/sign-up': typeof AuthSignUpRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/bots/new': typeof AppBotsNewRoute
   '/_app/settings/connections': typeof AppSettingsConnectionsRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/_app/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/_app/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
   '/_app/threads/$threadId_/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
@@ -109,8 +127,10 @@ export interface FileRouteTypes {
     | '/'
     | '/sign-in'
     | '/sign-up'
+    | '/bots/new'
     | '/settings/connections'
     | '/threads/$threadId'
+    | '/bots/$botId/edit'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
     | '/threads/$threadId/tool-results/$runId/$callId'
@@ -119,8 +139,10 @@ export interface FileRouteTypes {
     | '/'
     | '/sign-in'
     | '/sign-up'
+    | '/bots/new'
     | '/settings/connections'
     | '/threads/$threadId'
+    | '/bots/$botId/edit'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
     | '/threads/$threadId/tool-results/$runId/$callId'
@@ -131,8 +153,10 @@ export interface FileRouteTypes {
     | '/_auth/sign-in'
     | '/_auth/sign-up'
     | '/_app/'
+    | '/_app/bots/new'
     | '/_app/settings/connections'
     | '/_app/threads/$threadId'
+    | '/_app/bots/$botId/edit'
     | '/_app/bots/$botId/memory'
     | '/_app/bots/$botId/usage'
     | '/_app/threads/$threadId_/tool-results/$runId/$callId'
@@ -180,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignUpRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/bots/new': {
+      id: '/_app/bots/new'
+      path: '/bots/new'
+      fullPath: '/bots/new'
+      preLoaderRoute: typeof AppBotsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/connections': {
       id: '/_app/settings/connections'
       path: '/settings/connections'
@@ -192,6 +223,13 @@ declare module '@tanstack/react-router' {
       path: '/threads/$threadId'
       fullPath: '/threads/$threadId'
       preLoaderRoute: typeof AppThreadsThreadIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/bots/$botId/edit': {
+      id: '/_app/bots/$botId/edit'
+      path: '/bots/$botId/edit'
+      fullPath: '/bots/$botId/edit'
+      preLoaderRoute: typeof AppBotsBotIdEditRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/bots/$botId/memory': {
@@ -220,8 +258,10 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppBotsNewRoute: typeof AppBotsNewRoute
   AppSettingsConnectionsRoute: typeof AppSettingsConnectionsRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
+  AppBotsBotIdEditRoute: typeof AppBotsBotIdEditRoute
   AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
   AppBotsBotIdUsageRoute: typeof AppBotsBotIdUsageRoute
   AppThreadsThreadIdToolResultsRunIdCallIdRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
@@ -229,8 +269,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppBotsNewRoute: AppBotsNewRoute,
   AppSettingsConnectionsRoute: AppSettingsConnectionsRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
+  AppBotsBotIdEditRoute: AppBotsBotIdEditRoute,
   AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,
   AppBotsBotIdUsageRoute: AppBotsBotIdUsageRoute,
   AppThreadsThreadIdToolResultsRunIdCallIdRoute:
