@@ -358,6 +358,8 @@ describe("the catalog's answer", () => {
       worker_inserts_occurrence: boolean;
       api_inserts_routine: boolean;
       api_reads_occurrence: boolean;
+      api_deletes_credential: boolean;
+      worker_deletes_credential: boolean;
       api_reads_jobs: boolean;
       worker_creates_jobs: boolean;
       api_creates_schemas: boolean;
@@ -395,6 +397,8 @@ describe("the catalog's answer", () => {
         "has_table_privilege($2, 'public.routine_occurrence', 'INSERT') as worker_inserts_occurrence, " +
         "has_table_privilege($1, 'public.routine', 'INSERT') as api_inserts_routine, " +
         "has_table_privilege($1, 'public.routine_occurrence', 'SELECT') as api_reads_occurrence, " +
+        "has_table_privilege($1, 'public.encrypted_credential', 'DELETE') as api_deletes_credential, " +
+        "has_table_privilege($2, 'public.encrypted_credential', 'DELETE') as worker_deletes_credential, " +
         "has_table_privilege($2, 'public.computer_lease', 'SELECT') as worker_reads_computer_lease, " +
         "has_table_privilege($2, 'public.computer_lease', 'INSERT') as worker_inserts_computer_lease, " +
         "has_table_privilege($2, 'public.computer_lease', 'UPDATE') as worker_updates_computer_lease, " +
@@ -438,6 +442,11 @@ describe("the catalog's answer", () => {
       api_reads_computer_lease: false,
       api_inserts_routine: true,
       api_reads_occurrence: true,
+      // The revoke's privilege (granted with the MCP uninstall, migration
+      // 0019) belongs to the operator's API; a job resolves one named
+      // credential and can never enumerate or revoke the store.
+      api_deletes_credential: true,
+      worker_deletes_credential: false,
       api_reads_jobs: false,
       worker_creates_jobs: true,
       api_creates_schemas: false,

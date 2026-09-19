@@ -1,6 +1,7 @@
 import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "@porkbot/contracts";
 import type { Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
 import { AuthRefusal } from "./session.ts";
+import type { ConnectionsTransport } from "./connections.ts";
 import type { ThreadConsoleTransport } from "./console.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type {
@@ -257,5 +258,35 @@ export function createHttpUsageTransport(options: HttpAuthTransportOptions = {})
 
   return {
     forBot: (botId) => client.usage.bot({ botId }),
+  };
+}
+
+/**
+ * The connections screen's API surface (slice 9.3): the connection and
+ * credential list reads, the writes the screen offers, and the probe. It is the
+ * same derived client narrowed to the procedures the connections controller
+ * calls, so the screen never sees a wire shape it invented — and a create is
+ * the two calls the contract splits it into: the key goes to
+ * `credentials.store`, the connection names it.
+ */
+export function createHttpConnectionsTransport(
+  options: HttpAuthTransportOptions = {},
+): ConnectionsTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    listConnections: async () => (await client.modelConnections.list()).connections,
+    listCredentials: async () => (await client.credentials.list()).credentials,
+    listBots: async () => (await client.bots.list({ scope: "active" })).bots,
+    createConnection: (input) => client.modelConnections.create(input),
+    storeCredential: (input) => client.credentials.store(input),
+    revokeCredential: async (name) => {
+      await client.credentials.remove({ name });
+    },
+    setDefaultConnection: (id) => client.modelConnections.setDefault({ id }),
+    removeConnection: (id) => client.modelConnections.remove({ id }),
+    probeConnection: async (id) => (await client.modelConnections.probe({ id })).probe,
+    setBotConnection: (input) =>
+      client.bots.update({ id: input.botId, modelConnectionId: input.connectionId }),
   };
 }

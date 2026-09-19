@@ -66,8 +66,9 @@ export type ModelProbe = z.infer<typeof modelProbeSchema>;
 /**
  * A connection as every response carries it: the URL and credential *name*,
  * the mask the store derives for that name (null when the store holds no such
- * credential), the connection's default model and whether it is the space's
- * default. There is no field for the credential's value or its ciphertext.
+ * credential), the connection's default model, whether it is the space's
+ * default, and when a request last left for it. There is no field for the
+ * credential's value or its ciphertext.
  */
 export const modelConnectionSchema = z.object({
   id: z.string().min(1),
@@ -78,6 +79,12 @@ export const modelConnectionSchema = z.object({
   credentialMaskedValue: z.string().nullable(),
   defaultModel: z.string().nullable(),
   isDefault: z.boolean(),
+  /**
+   * When a request last left for this endpoint — a probe today, a run's model
+   * selection when runs select one — or `null` for never. A display fact; the
+   * settings list renders it and nothing branches on it.
+   */
+  lastUsedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

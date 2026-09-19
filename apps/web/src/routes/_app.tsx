@@ -1,4 +1,11 @@
-import { Outlet, createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  redirect,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { UnavailableScreen } from "../screens/unavailable.tsx";
 
@@ -52,13 +59,16 @@ function AppLayout() {
     <>
       <header className="app-header">
         <h1>PorkBot</h1>
-        <Button
-          onClick={() => {
-            void signOut();
-          }}
-        >
-          Sign out
-        </Button>
+        <div className="app-header-actions">
+          <Link to="/settings/connections">Connections</Link>
+          <Button
+            onClick={() => {
+              void signOut();
+            }}
+          >
+            Sign out
+          </Button>
+        </div>
       </header>
       {/* Focusable so the skip link and programmatic focus land somewhere
           meaningful; the signed-in screens render inside it. */}

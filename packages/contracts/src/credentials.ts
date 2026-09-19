@@ -15,7 +15,8 @@ import { authenticatedProcedure } from "./access.ts";
  * endpoint never returns a secret" is a property of the schema rather than a
  * promise about a handler. `credentials.store` (slice 9.2) is the write half —
  * the value is an input, the output is only the mask the store derives — and
- * revoking a credential is slice 9.3; they add procedures here, not a second
+ * `credentials.remove` (slice 9.3) is the revoke half, which deletes the row
+ * and reports the name it was addressed by. None of the three invents a second
  * source of the mask.
  */
 
@@ -81,3 +82,25 @@ export const credentialsStoreContract = authenticatedProcedure
     },
   })
   .output(credentialSchema);
+
+/**
+ * Revoke a stored credential. The delete is addressed by name and needs no
+ * keyring, so it works even when the store cannot be read; a name no row holds
+ * is a no-op, which makes a retried revoke the same success. The answer is the
+ * name the caller addressed — never the value, which this path never touches.
+ *
+ * The effect is immediate in the only way that matters: every provider resolves
+ * through the store on each call, and a revoked name resolves to nothing from
+ * the next call on. What breaks is a read of state the settings surface already
+ * has (the connections that name this credential), so the client reports it
+ * rather than this endpoint growing a second question.
+ */
+export const credentialsRemoveContract = authenticatedProcedure
+  .route({
+    method: "DELETE",
+    path: "/credentials/{name}",
+    operationId: "credentialsRemove",
+    summary: "Revoke a stored credential by name",
+  })
+  .input(z.object({ name: z.string().min(1).max(200) }))
+  .output(z.object({ name: z.string().min(1) }));

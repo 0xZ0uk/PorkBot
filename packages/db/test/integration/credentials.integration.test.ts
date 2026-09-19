@@ -116,6 +116,27 @@ describe("the encrypted credential row", () => {
     );
   });
 
+  it("revokes a name for the next resolve and leaves another space's row alone", async () => {
+    const keys = ring("k1", [["k1", 1]]);
+    const storeA = storeFor(spaceA, keys);
+    const storeB = storeFor(spaceB, keys);
+
+    await storeA.store("revoked-key", value);
+    await storeB.store("revoked-key", "sk-other-0123456789abcdef");
+
+    await expect(storeA.resolve("revoked-key")).resolves.toBe(value);
+
+    await storeA.remove("revoked-key");
+
+    // The next resolve reads the table and the row is gone: the revoke is
+    // immediate, and the same name in another space is not addressed at all.
+    await expect(storeA.resolve("revoked-key")).resolves.toBeUndefined();
+    await expect(storeB.resolve("revoked-key")).resolves.toBe("sk-other-0123456789abcdef");
+
+    // Revoking a name no row holds is the same success, so a retry is safe.
+    await expect(storeA.remove("revoked-key")).resolves.toBeUndefined();
+  });
+
   it("fails authentication when the envelope is moved to another row", async () => {
     const store = storeFor(spaceA, ring("k1", [["k1", 1]]));
 

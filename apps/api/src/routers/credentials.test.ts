@@ -136,6 +136,7 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
       update: notExercised,
       setDefault: notExercised,
       delete: notExercised,
+      markUsed: notExercised,
     },
     memory: {
       list: notExercised,
@@ -261,6 +262,40 @@ describe("the stored credential surface", () => {
     expect(lines.join("\n")).not.toContain(secret);
     expect(calls[0]?.text).toContain("insert into encrypted_credential");
     expect(JSON.stringify(calls)).not.toContain(secret);
+  });
+
+  it("revokes by name through the scoped delete and echoes only the name", async () => {
+    sessionActor = owner;
+    const calls: Array<{ readonly text: string; readonly values: readonly unknown[] }> = [];
+    const database: Queryable = {
+      async query<Row>(text: string, values: readonly unknown[] = []) {
+        calls.push({ text, values });
+
+        return { rows: [] as readonly Row[] };
+      },
+    };
+    const app = createApiApp({
+      services,
+      logger,
+      resolveActor: async () => owner,
+      repositoriesFor: (actor) => repositoriesWith(database, actor),
+    });
+    const response = await app.request("/rpc/credentials/remove", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ json: { name: "model-key" } }),
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(body)).toEqual({ json: { name: "model-key" } });
+    expect(calls).toEqual([
+      {
+        text: "delete from encrypted_credential where space_id = $1 and name = $2",
+        values: ["space-1", "model-key"],
+      },
+    ]);
+    expect(body).not.toContain(secret);
   });
 
   it("answers the typed 401 without a session", async () => {
