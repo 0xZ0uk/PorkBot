@@ -182,6 +182,10 @@
   cursor: pointer;
 }
 
+.tool-call-run {
+  font-size: 0.75rem;
+}
+
 .tool-call-name {
   font-family: var(--pb-font-mono);
   font-size: 0.875rem;
@@ -240,6 +244,31 @@
   overflow-wrap: anywhere;
 }
 
+.approval-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+  margin-top: var(--pb-space-sm);
+  padding: var(--pb-space-sm);
+  background: var(--pb-color-background);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-sm);
+}
+
+.approval-deadline {
+  font-size: 0.875rem;
+}
+
+.approval-buttons {
+  display: flex;
+  gap: var(--pb-space-sm);
+  flex-wrap: wrap;
+}
+
+.approval-controls .form-error {
+  margin: 0;
+}
+
 .tool-call-artifact {
   display: inline-block;
   margin-top: var(--pb-space-xs);
@@ -249,6 +278,94 @@
 .tool-result-title {
   margin: 0;
   font-size: 1rem;
+}
+
+.approvals-screen {
+  max-width: 64rem;
+}
+
+.approval-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--pb-space-md);
+  flex-wrap: wrap;
+  padding: var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-md);
+}
+
+.approval-filters .field {
+  min-width: 10rem;
+  flex: 1;
+}
+
+.approval-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+}
+
+.approval-record {
+  padding: var(--pb-space-sm);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-sm);
+}
+
+.approval-record-pending {
+  border-color: var(--pb-color-accent);
+}
+
+.approval-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pb-space-sm);
+  cursor: pointer;
+}
+
+.approval-tool {
+  font-family: var(--pb-font-mono);
+  font-size: 0.875rem;
+}
+
+.approval-status {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pb-color-text-muted);
+}
+
+.approval-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-xs);
+  margin: var(--pb-space-md) 0 0;
+}
+
+.approval-body dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pb-color-text-muted);
+}
+
+.approval-body dd {
+  margin: 0;
+}
+
+.approval-body a {
+  color: var(--pb-color-accent);
+}
+
+@media (max-width: 40rem) {
+  .approval-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .bot-list,

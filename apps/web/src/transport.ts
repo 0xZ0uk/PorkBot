@@ -1,5 +1,5 @@
 import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "@porkbot/contracts";
-import type { Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
+import type { Approval, Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
 import type { BotsTransport } from "./bots.ts";
 import { AuthRefusal } from "./session.ts";
 import type { ComputerTransport } from "./computer.ts";
@@ -177,6 +177,21 @@ export interface ConsoleTransport extends ThreadConsoleTransport {
   }): Promise<{ readonly tool: string; readonly result: unknown }>;
 }
 
+/** The pending/history approval surface shared by the thread and history screens. */
+export interface ApprovalTransport {
+  list(filters?: {
+    readonly botId?: string;
+    readonly runId?: string;
+    readonly status?: "pending" | "approved" | "denied" | "timed_out";
+  }): Promise<readonly Approval[]>;
+  decide(input: {
+    readonly runId: string;
+    readonly callId: string;
+    readonly vote: "approve" | "deny";
+    readonly reason?: string;
+  }): Promise<{ readonly approval: Approval; readonly applied: boolean }>;
+}
+
 /**
  * How many transcript pages one console start walks. The contract pages
  * forward from the oldest row, and the console wants the turn that started the
@@ -224,6 +239,17 @@ export function createHttpConsoleTransport(
     },
 
     events: client.threads.events,
+  };
+}
+
+export function createHttpApprovalTransport(
+  options: HttpAuthTransportOptions = {},
+): ApprovalTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    list: (filters = {}) => client.approvals.list(filters).then((result) => result.approvals),
+    decide: (input) => client.approvals.decide(input),
   };
 }
 

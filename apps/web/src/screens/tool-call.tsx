@@ -1,4 +1,6 @@
 import type { ToolCallSnapshot } from "@porkbot/core";
+import { Button } from "@porkbot/ui";
+import { useState } from "react";
 
 /**
  * One tool call in the console's timeline: which tool ran, with what
@@ -29,6 +31,15 @@ export interface ToolCallEntryProps {
   /** The run the call belongs to; the artifact read is scoped by it. */
   readonly runId: string;
   readonly call: ToolCallSnapshot;
+  /** The thread route wires this to the actor-scoped approval procedure. */
+  readonly onApprovalDecision?:
+    | ((input: {
+        readonly runId: string;
+        readonly callId: string;
+        readonly vote: "approve" | "deny";
+        readonly reason?: string;
+      }) => Promise<void>)
+    | undefined;
 }
 
 /** The artifact view's path: the same triple the API read is addressed by. */
@@ -38,16 +49,18 @@ export function toolResultPath(threadId: string, runId: string, callId: string):
   )}/${encodeURIComponent(callId)}`;
 }
 
-export function ToolCallEntry({ threadId, runId, call }: ToolCallEntryProps) {
+export function ToolCallEntry({ threadId, runId, call, onApprovalDecision }: ToolCallEntryProps) {
   const failed = call.status === "failed";
+  const pending = call.approval?.status === "pending";
   const artifact = call.resultArtifact;
   const download = recordedArtifact(call.result);
 
   return (
     <li className={failed ? "tool-call tool-call-failed" : "tool-call"}>
-      <details className="tool-call-details">
+      <details className="tool-call-details" open={pending}>
         <summary className="tool-call-summary">
           <span className="tool-call-name">{call.tool}</span>
+          <span className="tool-call-run muted">Run {runId}</span>
           <span
             className={failed ? "tool-call-status tool-call-status-failed" : "tool-call-status"}
           >
@@ -85,9 +98,83 @@ export function ToolCallEntry({ threadId, runId, call }: ToolCallEntryProps) {
               </a>
             )}
           </dd>
+          {pending ? (
+            <dd className="approval-controls-cell">
+              <ApprovalControls
+                runId={runId}
+                callId={call.callId}
+                expiresAt={call.approval.expiresAt}
+                onDecision={onApprovalDecision}
+              />
+            </dd>
+          ) : null}
         </dl>
       </details>
     </li>
+  );
+}
+
+function ApprovalControls({
+  runId,
+  callId,
+  expiresAt,
+  onDecision,
+}: {
+  readonly runId: string;
+  readonly callId: string;
+  readonly expiresAt: string;
+  readonly onDecision?: ToolCallEntryProps["onApprovalDecision"];
+}) {
+  const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
+  const [error, setError] = useState(false);
+
+  async function decide(vote: "approve" | "deny"): Promise<void> {
+    if (onDecision === undefined) {
+      return;
+    }
+
+    setBusy(vote);
+    setError(false);
+
+    try {
+      await onDecision({ runId, callId, vote });
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="approval-controls">
+      <p className="approval-deadline muted">
+        Waiting for your decision until {formatApprovalDeadline(expiresAt)}.
+      </p>
+      <div className="approval-buttons">
+        <Button
+          tone="primary"
+          disabled={onDecision === undefined || busy !== null}
+          onClick={() => {
+            void decide("approve");
+          }}
+        >
+          {busy === "approve" ? "Approving…" : "Approve"}
+        </Button>
+        <Button
+          disabled={onDecision === undefined || busy !== null}
+          onClick={() => {
+            void decide("deny");
+          }}
+        >
+          {busy === "deny" ? "Denying…" : "Deny"}
+        </Button>
+      </div>
+      {error ? (
+        <p className="form-error" role="alert">
+          The decision could not be recorded. Try again.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -163,4 +250,10 @@ function formatDuration(durationMs: number): string {
 
 function formatBytes(bytes: number): string {
   return bytes < 1_024 ? `${bytes} B` : `${(bytes / 1_024).toFixed(1)} KiB`;
+}
+
+function formatApprovalDeadline(value: string): string {
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }

@@ -301,6 +301,34 @@ describe("the tool-call timeline", () => {
 
     expect(container.querySelector(".tool-call-status")?.textContent).toBe("Waiting for approval");
   });
+
+  it("answers a pending approval from the transcript with its run and call", async () => {
+    const onApprovalDecision = vi.fn().mockResolvedValue(undefined);
+
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({ approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" } }),
+        )}
+        onRetry={vi.fn()}
+        onApprovalDecision={onApprovalDecision}
+      />,
+    );
+
+    const approve = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Approve",
+    );
+
+    await act(async () => {
+      approve?.click();
+    });
+
+    expect(onApprovalDecision).toHaveBeenCalledWith({
+      runId: "run-1",
+      callId: "call-1",
+      vote: "approve",
+    });
+  });
 });
 
 describe("the console's liveness line", () => {
