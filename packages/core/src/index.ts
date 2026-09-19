@@ -273,6 +273,17 @@ export type {
   StoredNotificationPreference,
 } from "./notification-policy.ts";
 
+// The MCP server registry's closed vocabularies (slice 9.5, PRD story 38):
+// auth mode and lifecycle status. The database enum, the durable store and the
+// transport schema build from these constants so none of them can disagree.
+export {
+  isMcpServerStatus,
+  MCP_AUTH_MODES,
+  MCP_SERVER_INITIAL_STATUS,
+  MCP_SERVER_STATUSES,
+} from "./mcp-registry.ts";
+export type { McpAuthMode, McpServerStatus } from "./mcp-registry.ts";
+
 export {
   INGESTION_PATH_DEFINITIONS,
   INGESTION_PATHS,

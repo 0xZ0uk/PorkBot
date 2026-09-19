@@ -424,6 +424,18 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       list: notExercised,
       store: notExercised,
       rotate: notExercised,
+      remove: notExercised,
+    },
+    mcp: {
+      list: notExercised,
+      findById: notExercised,
+      create: notExercised,
+      setStatus: notExercised,
+      replaceTools: notExercised,
+      remove: notExercised,
+      grant: notExercised,
+      revoke: notExercised,
+      listForServer: notExercised,
     },
   };
 }

@@ -1,5 +1,7 @@
 import {
   APPROVAL_STATUSES,
+  MCP_AUTH_MODES,
+  MCP_SERVER_STATUSES,
   MEMORY_KINDS,
   MEMORY_WRITE_ORIGINS,
   NOTIFICATION_KINDS,
@@ -83,3 +85,12 @@ export const memoryWriteOrigin = pgEnum("memory_write_origin", MEMORY_WRITE_ORIG
  * adds a kind, and the store ignores a kind the running code does not know.
  */
 export const notificationKind = pgEnum("notification_kind", NOTIFICATION_KINDS);
+
+/**
+ * The MCP server registry's closed vocabularies (slice 9.5), built from
+ * `@porkbot/core` for the same reason run status is: the install path, the
+ * callback and the run's grant check must not disagree about what "ready" or
+ * "oauth" means. A new mode or status is a core constant plus a migration.
+ */
+export const mcpServerAuth = pgEnum("mcp_server_auth", MCP_AUTH_MODES);
+export const mcpServerStatus = pgEnum("mcp_server_status", MCP_SERVER_STATUSES);

@@ -8,7 +8,12 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createSuiteDatabase } from "@porkbot/testkit";
 import type { SuiteDatabase } from "@porkbot/testkit";
-import { createIngressStore, openDatabase, resolveUserActor } from "../../../src/index.ts";
+import {
+  createIngressStore,
+  openDatabase,
+  resolveBoundActor,
+  resolveUserActor,
+} from "../../../src/index.ts";
 import type { DatabaseHandle, IngressStore } from "../../../src/index.ts";
 import * as schema from "../../../src/schema/index.ts";
 import { memberSubject, mountSpace, resources, systemSubject, userSubject } from "./matrix.ts";
@@ -337,6 +342,49 @@ function defineMembershipSuite(): void {
 
       await expect(
         resolveUserActor(drizzle().database, { userId: revoked.owner.userId }),
+      ).resolves.toBeNull();
+    });
+
+    it("resolves a bound actor in the binding's space, not the user's oldest membership", async () => {
+      const first = await mountSpace(db(), "bound first");
+      const second = await mountSpace(db(), "bound second");
+
+      // The OAuth callback's resolver takes the space from the one-time
+      // binding, so a user who belongs to two spaces completes the flow in the
+      // space it was started in — while the session resolver still answers the
+      // oldest membership.
+      await db().query(
+        "insert into space_member (space_id, user_id, role) " +
+          "values ($1, $2, 'member'::space_member_role)",
+        [second.spaceId, first.owner.userId],
+      );
+
+      await expect(
+        resolveUserActor(drizzle().database, { userId: first.owner.userId }),
+      ).resolves.toMatchObject({ spaceId: first.spaceId });
+
+      await expect(
+        resolveBoundActor(drizzle().database, {
+          spaceId: second.spaceId,
+          userId: first.owner.userId,
+        }),
+      ).resolves.toMatchObject({
+        spaceId: second.spaceId,
+        userId: first.owner.userId,
+        role: "member",
+      });
+
+      // A membership that is gone resolves to null before anything is written.
+      await db().query("delete from space_member where space_id = $1 and user_id = $2", [
+        second.spaceId,
+        first.owner.userId,
+      ]);
+
+      await expect(
+        resolveBoundActor(drizzle().database, {
+          spaceId: second.spaceId,
+          userId: first.owner.userId,
+        }),
       ).resolves.toBeNull();
     });
   });

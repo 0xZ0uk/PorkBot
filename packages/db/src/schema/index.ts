@@ -18,6 +18,8 @@ export {
   approvalStatus,
   attemptStatus,
   effectStatus,
+  mcpServerAuth,
+  mcpServerStatus,
   memoryKind,
   memoryWriteOrigin,
   messageRole,
@@ -29,6 +31,7 @@ export { approval } from "./approvals.ts";
 export { encryptedCredential } from "./encrypted-credential.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";
+export { botMcpServer, mcpServer, mcpServerTool } from "./mcp.ts";
 export { memoryDocument, memoryRevision } from "./memory.ts";
 export { notificationPreference } from "./notification.ts";
 export { oauthState, webhookDelivery } from "./ingress.ts";

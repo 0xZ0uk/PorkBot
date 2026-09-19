@@ -1,4 +1,5 @@
 import { Data } from "effect";
+import type { ProviderFailureKind } from "@porkbot/adapter-kit";
 
 /**
  * The shared typed-error vocabulary the transport boundary maps from (PRD
@@ -454,6 +455,67 @@ export class InvalidRoutineScheduleError extends Data.TaggedError("InvalidRoutin
 }
 
 /**
+ * An MCP server could not be installed, discovered or called (slice 9.5). The
+ * provider classified the failure into the shared vocabulary inside
+ * `@porkbot/adapters`; this is that classification crossing the transport
+ * boundary, so an install that cannot reach the URL answers a typed
+ * `SERVICE_UNAVAILABLE` rather than an opaque 500. The detail is the
+ * operator-safe sentence the adapter wrote and never a response body.
+ */
+export class McpServerUnavailableError extends Data.TaggedError("McpServerUnavailableError")<{
+  readonly kind: ProviderFailureKind;
+  readonly detail: string;
+  readonly message: string;
+}> {
+  constructor(kind: ProviderFailureKind, detail: string) {
+    super({
+      kind,
+      detail,
+      message: `the MCP server could not be reached (${kind}): ${detail}`,
+    });
+  }
+}
+
+/**
+ * Why an OAuth callback was refused before any code was exchanged. The reasons
+ * are distinct because they mean different things to whoever reads a log: the
+ * state was unknown, already consumed or expired; the state named a server the
+ * initiating actor cannot see; the membership that started the flow is gone; or
+ * the callback carried no code at all.
+ */
+export type OAuthCallbackRejection =
+  "unknown_or_used" | "unknown_server" | "missing_code" | "actor_gone";
+
+function oauthCallbackText(reason: OAuthCallbackRejection): string {
+  switch (reason) {
+    case "unknown_or_used":
+      return "the OAuth state is unknown, already used or expired";
+    case "unknown_server":
+      return "the OAuth state names a server that does not exist in the initiating space";
+    case "missing_code":
+      return "the OAuth callback carried no authorization code";
+    case "actor_gone":
+      return "the membership that started the OAuth flow no longer exists";
+  }
+}
+
+/**
+ * A callback that cannot complete the flow (slice 9.5). The state is the
+ * one-time binding the install issued, so a replay, a foreign server id or a
+ * missing code is the caller's bad request — the contract's typed `BAD_REQUEST`
+ * — never a 500 and never a silent success. The error carries no part of the
+ * state, which is a bearer value.
+ */
+export class InvalidOAuthStateError extends Data.TaggedError("InvalidOAuthStateError")<{
+  readonly reason: OAuthCallbackRejection;
+  readonly message: string;
+}> {
+  constructor(reason: OAuthCallbackRejection) {
+    super({ reason, message: oauthCallbackText(reason) });
+  }
+}
+
+/**
  * Every error that has a row in the mapping table. A new member fails the
  * `satisfies` check in `mapping.ts` until it has a status, and that is the
  * exhaustiveness the table's test suite then proves at runtime.
@@ -476,7 +538,9 @@ export type TypedError =
   | ToolLedgerError
   | InvalidMessageError
   | MessageNonceReusedError
-  | InvalidRoutineScheduleError;
+  | InvalidRoutineScheduleError
+  | McpServerUnavailableError
+  | InvalidOAuthStateError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */
 export type TypedErrorTag = TypedError["_tag"];

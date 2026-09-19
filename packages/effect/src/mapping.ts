@@ -9,9 +9,11 @@ import {
   DeploymentSettingsConflictError,
   GateTimeoutError,
   InvalidMessageError,
+  InvalidOAuthStateError,
   InvalidRoutineScheduleError,
   InvalidToolCallError,
   LeaseLostError,
+  McpServerUnavailableError,
   MessageNonceReusedError,
   NameConflictError,
   NotFoundError,
@@ -151,6 +153,18 @@ export const errorMappings = {
     message: "The routine schedule is invalid.",
     matches: (error: unknown): error is InvalidRoutineScheduleError =>
       error instanceof InvalidRoutineScheduleError,
+  },
+  McpServerUnavailableError: {
+    code: "SERVICE_UNAVAILABLE",
+    message: "The MCP server could not be reached.",
+    matches: (error: unknown): error is McpServerUnavailableError =>
+      error instanceof McpServerUnavailableError,
+  },
+  InvalidOAuthStateError: {
+    code: "BAD_REQUEST",
+    message: "The OAuth callback is not valid for this flow.",
+    matches: (error: unknown): error is InvalidOAuthStateError =>
+      error instanceof InvalidOAuthStateError,
   },
 } as const satisfies { readonly [K in TypedErrorTag]: ErrorMapping };
 
