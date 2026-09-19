@@ -140,6 +140,8 @@ export interface RunRecord {
   readonly leaseOwner: string | null;
   readonly leaseFence: number;
   readonly leaseExpiresAt: Date | null;
+  /** When the operator asked this run to stop, if they did (slice 6.7). */
+  readonly stopRequestedAt: Date | null;
   readonly checkpoint: Record<string, unknown>;
   readonly clientNonce: string;
   readonly sourceMessageId: string | null;
@@ -238,6 +240,7 @@ export const runColumns =
   'id, space_id as "spaceId", bot_id as "botId", thread_id as "threadId", ' +
   'task_id as "taskId", user_id as "userId", status::text as "status", "trigger", error, ' +
   'error_code as "errorCode", lease_owner as "leaseOwner", lease_fence as "leaseFence", ' +
-  'lease_expires_at as "leaseExpiresAt", checkpoint, client_nonce as "clientNonce", ' +
+  'lease_expires_at as "leaseExpiresAt", stop_requested_at as "stopRequestedAt", ' +
+  'checkpoint, client_nonce as "clientNonce", ' +
   'source_message_id as "sourceMessageId", started_at as "startedAt", ' +
   'completed_at as "completedAt", created_at as "createdAt", updated_at as "updatedAt"';

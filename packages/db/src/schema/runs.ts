@@ -50,6 +50,14 @@ import { thread } from "./threads.ts";
  * `trigger` is text with a check constraint rather than an enum: the set is
  * expected to grow (routines, then more), and PRD decision 16 says a growing
  * set is text plus a check, never an enum.
+ *
+ * `stop_requested_at` is the operator's stop request (slice 6.7, story 21): a
+ * nullable instant, set once by the API and never cleared. It is a request
+ * rather than a status because the worker executing the run owns the
+ * transition — the live session cancels itself, emits `run.cancelled` and lets
+ * the fenced executor settle the row — so a stop survives a worker restart
+ * (a resumed session finds the mark and cancels immediately) and cannot race a
+ * settlement the worker is already making.
  */
 export const run = pgTable(
   "run",
@@ -77,6 +85,7 @@ export const run = pgTable(
     leaseOwner: text("lease_owner"),
     leaseFence: integer("lease_fence").notNull().default(0),
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    stopRequestedAt: timestamp("stop_requested_at", { withTimezone: true }),
     checkpoint: jsonb("checkpoint").notNull().default({}),
     clientNonce: text("client_nonce").notNull(),
     sourceMessageId: uuid("source_message_id").references((): AnyPgColumn => message.id, {

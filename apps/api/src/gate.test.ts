@@ -125,6 +125,7 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
         return undefined;
       },
       create: notExercised,
+      requestStop: notExercised,
     },
     events: {
       async listAfter(): Promise<never[]> {

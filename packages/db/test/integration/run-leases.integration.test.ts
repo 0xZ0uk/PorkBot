@@ -6,10 +6,12 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "../../src/actor.ts";
 import { createRepositories } from "../../src/repositories.ts";
+import { createExternalEffectLedger } from "../../src/tool-call-ledger.ts";
 
 let suite: SuiteDatabase | undefined;
 let client: Client | undefined;
 let user: UserActor;
+let botId: string;
 let runId: string;
 
 function db(): Client {
@@ -59,6 +61,7 @@ beforeAll(async () => {
     color: "fixture-color",
     spawnKey: randomUUID(),
   });
+  botId = bot.id;
   const thread = await repositories.threads.createForBot(bot.id);
   runId = (
     await repositories.runs.create({
@@ -166,5 +169,58 @@ describe("run lease compare-and-swap", () => {
     await expect(
       repositories.runs.update(runId, lease, { checkpoint: { tooLate: true } }),
     ).rejects.toBeInstanceOf(LeaseLostError);
+  });
+
+  it("settles a cancelled run's calls in flight and releases its lease", async () => {
+    const userRepositories = createRepositories(user, db());
+    const thread = await userRepositories.threads.createForBot(botId);
+    const created = await userRepositories.runs.create({
+      threadId: thread.id,
+      clientNonce: randomUUID(),
+      prompt: "run a tool that will be interrupted",
+      blocks: [{ type: "text", text: "run a tool that will be interrupted" }],
+    });
+
+    const actor = system("job-e");
+    const workerRepositories = createRepositories(actor, db());
+    const claimed = await workerRepositories.runs.claim(created.run.id, 0, "worker-e");
+    if (claimed === undefined) {
+      throw new Error("the cancellation fixture's claim lost its race");
+    }
+
+    const ledger = createExternalEffectLedger(actor, db());
+    await ledger.begin({
+      runId: created.run.id,
+      callId: "call-1",
+      tool: "shell",
+      arguments: { command: "sleep 3600" },
+    });
+
+    const settled = await workerRepositories.runs.update(
+      created.run.id,
+      { owner: "worker-e", fence: claimed.leaseFence },
+      {
+        status: "cancelled",
+        completed: true,
+        attempt: "cancelled",
+        release: true,
+        settleInFlight: "the run was cancelled before this tool call settled",
+      },
+    );
+
+    expect(settled).toMatchObject({ status: "cancelled", leaseOwner: null, leaseExpiresAt: null });
+
+    const { rows } = await db().query<{ readonly status: string; readonly result: unknown }>(
+      "select status::text as status, result from external_effect " +
+        "where run_id = $1 and idempotency_key = 'call-1'",
+      [created.run.id],
+    );
+
+    expect(rows).toEqual([
+      {
+        status: "failed",
+        result: { error: "the run was cancelled before this tool call settled" },
+      },
+    ]);
   });
 });

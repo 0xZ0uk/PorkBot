@@ -31,6 +31,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseOwner: null,
     leaseFence: 0,
     leaseExpiresAt: null,
+    stopRequestedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,

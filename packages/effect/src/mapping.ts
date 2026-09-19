@@ -19,6 +19,7 @@ import {
   NameConflictError,
   NotFoundError,
   RunGoneError,
+  RunNotActiveError,
   ToolCallConflictError,
   ToolLedgerError,
   UnknownToolError,
@@ -72,6 +73,11 @@ export const errorMappings = {
     code: "NOT_FOUND",
     message: "This run no longer exists.",
     matches: (error: unknown): error is RunGoneError => error instanceof RunGoneError,
+  },
+  RunNotActiveError: {
+    code: "PRECONDITION_FAILED",
+    message: "That run is no longer active.",
+    matches: (error: unknown): error is RunNotActiveError => error instanceof RunNotActiveError,
   },
   LeaseLostError: {
     code: "CONFLICT",

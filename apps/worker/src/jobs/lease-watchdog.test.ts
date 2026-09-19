@@ -35,6 +35,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseOwner: "dead-worker",
     leaseFence: 3,
     leaseExpiresAt: new Date(0),
+    stopRequestedAt: null,
     checkpoint: { step: 2 },
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -128,6 +129,7 @@ function world(options: {
     spaceId: "space-1",
     leaseFence: 3,
     leaseExpiresAt: new Date(0),
+    stopRequestedAt: null,
   };
   const runs = new Map<string, RunRecord>();
 

@@ -1,10 +1,11 @@
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import { emulatorAgentRuntimeLayer, McpServerEmulator } from "@porkbot/adapters";
 import type { EmulatorStep } from "@porkbot/adapters";
 import { serializeMcpCredential } from "@porkbot/effect";
 import { createRepositories } from "@porkbot/db";
 import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@porkbot/db";
 import {
+  consumeRunSession,
   createMcpTools,
   createRunEventRecorder,
   createToolDispatcher,
@@ -64,6 +65,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseOwner: "job-1",
     leaseFence: 1,
     leaseExpiresAt: new Date(120_000),
+    stopRequestedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -286,18 +288,19 @@ async function runWithMcp(options: {
 
         definitions = tools.definitions().map((definition) => definition.name);
 
-        yield* withLiveRun(
+        return yield* withLiveRun(
           execution.run.id,
           emulatorAgentRuntimeLayer(startRequest(execution.run.id), script, { tools }),
           (session) => {
             const recorder = createRunEventRecorder();
 
-            return session.events.pipe(
-              Stream.tap((event) => Effect.sync(() => recorded.push(recorder.record(event)))),
-              Stream.runDrain,
+            return consumeRunSession(session, (event) =>
+              Effect.sync(() => {
+                recorded.push(recorder.record(event));
+              }),
             );
           },
-        ).pipe(Effect.provide(liveRunsLayer), Effect.asVoid);
+        ).pipe(Effect.provide(liveRunsLayer));
       }),
   });
 

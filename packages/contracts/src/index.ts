@@ -120,6 +120,13 @@ export {
 } from "./threads.ts";
 export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 
+// Run control (slice 6.7, story 21): the operator's one write into a single
+// run. A stop is recorded as a durable request the worker's live session
+// observes, so the cancellation keeps the session's event sequence and lease
+// release; the answer is the run's state, and a finished run answers it too.
+export { runsStopContract, runStatusSchema, runStopSchema } from "./runs.ts";
+export type { RunStop } from "./runs.ts";
+
 // Stored credentials (slices 9.1 and 9.2, PRD decision 10; stories 14 and 15):
 // the list surface answers masked summaries only and `store` takes a value in
 // and answers a mask back. No output schema has a field for a value, so "no

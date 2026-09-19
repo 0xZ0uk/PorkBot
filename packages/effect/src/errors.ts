@@ -1,5 +1,6 @@
 import { Data } from "effect";
 import type { ProviderFailureKind } from "@porkbot/adapter-kit";
+import type { RunStatus } from "@porkbot/core";
 
 /**
  * The shared typed-error vocabulary the transport boundary maps from (PRD
@@ -62,6 +63,26 @@ export class RunGoneError extends Data.TaggedError("RunGoneError")<{
 }> {
   constructor(runId: string) {
     super({ runId, message: `run ${runId} no longer exists` });
+  }
+}
+
+/**
+ * A run an operator command addressed exists in the caller's space but is no
+ * longer active: it completed, failed or was cancelled. Steering is a write
+ * into a live run, so a finished one refuses the command rather than dropping
+ * the message silently or starting a second run (slice 6.7, PRD story 20). The
+ * status travels because the caller's next move depends on it — a finished run
+ * means "send again to start fresh", a cancelled one means the operator
+ * already stopped it — and the mapping answers `PRECONDITION_FAILED`: the run
+ * was the precondition, and it no longer holds.
+ */
+export class RunNotActiveError extends Data.TaggedError("RunNotActiveError")<{
+  readonly runId: string;
+  readonly status: RunStatus;
+  readonly message: string;
+}> {
+  constructor(runId: string, status: RunStatus) {
+    super({ runId, status, message: `run ${runId} is no longer active (${status})` });
   }
 }
 
@@ -546,6 +567,7 @@ export type TypedError =
   | NotFoundError
   | NameConflictError
   | RunGoneError
+  | RunNotActiveError
   | LeaseLostError
   | GateTimeoutError
   | ApprovalStoreError

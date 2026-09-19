@@ -1,11 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { NotFoundError } from "@porkbot/effect";
+import { NotFoundError, RunNotActiveError } from "@porkbot/effect";
 import { findRepoRoot } from "@porkbot/testkit";
 import { describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "./actor.ts";
 import {
+  claimSteeringMessages,
   clearThread,
   createAssistantMessageStore,
   createSteeringMessageStore,
@@ -275,6 +276,117 @@ describe("the steering command", () => {
 
     expect(appended).toMatchObject({ id: "message-1", role: "user" });
     expect(database.calls.filter((call) => call.text === "rollback")).toHaveLength(1);
+  });
+
+  it("guards the allocation on a live run, not only an existing one", async () => {
+    const database = fakeDatabase([
+      [/select id from thread where id = \$1 and space_id = \$2/, [{ id: "thread-1" }]],
+    ]);
+    const store = createSteeringMessageStore(owner, database);
+
+    const outcome = await store
+      .steer({
+        threadId: "thread-1",
+        clientNonce: "steer-1",
+        blocks: [{ type: "text", text: "stop" }],
+        runId: "run-1",
+      })
+      .catch((error: unknown) => error);
+
+    // The UPDATE's EXISTS carries the same active-status set the state machine
+    // exports, so a run that finished between the send's read and this write
+    // matches no row instead of taking a message no session will claim.
+    const allocation = database.calls[1];
+    expect(allocation?.text).toContain("r.status = any($4::run_status[])");
+    expect(allocation?.values).toEqual([
+      "thread-1",
+      "space-1",
+      "run-1",
+      ["queued", "running", "waiting_approval"],
+    ]);
+    expect(outcome).toBeInstanceOf(NotFoundError);
+    if (outcome instanceof NotFoundError) {
+      expect(outcome.resource).toBe("run");
+    }
+  });
+
+  it("refuses a steer into a finished run with the typed RunNotActiveError", async () => {
+    const database = fakeDatabase([
+      [/select id from thread where id = \$1 and space_id = \$2/, [{ id: "thread-1" }]],
+      [/select status::text as status from run/, [{ status: "completed" }]],
+    ]);
+    const store = createSteeringMessageStore(owner, database);
+
+    const outcome = await store
+      .steer({
+        threadId: "thread-1",
+        clientNonce: "steer-1",
+        blocks: [{ type: "text", text: "stop" }],
+        runId: "run-1",
+      })
+      .catch((error: unknown) => error);
+
+    expect(outcome).toBeInstanceOf(RunNotActiveError);
+    if (outcome instanceof RunNotActiveError) {
+      expect(outcome.runId).toBe("run-1");
+      expect(outcome.status).toBe("completed");
+    }
+
+    expect(database.calls.some((call) => call.text.startsWith("insert into message"))).toBe(false);
+    expect(database.calls.some((call) => call.text === "commit")).toBe(false);
+  });
+
+  it("keeps a run the actor cannot see as the shared not-found", async () => {
+    const database = fakeDatabase([
+      [/select id from thread where id = \$1 and space_id = \$2/, [{ id: "thread-1" }]],
+    ]);
+    const store = createSteeringMessageStore(owner, database);
+
+    const outcome = await store
+      .steer({
+        threadId: "thread-1",
+        clientNonce: "steer-1",
+        blocks: [{ type: "text", text: "stop" }],
+        runId: "run-foreign",
+      })
+      .catch((error: unknown) => error);
+
+    expect(outcome).toBeInstanceOf(NotFoundError);
+    expect(outcome).not.toBeInstanceOf(RunNotActiveError);
+  });
+});
+
+describe("the live run's steering claim", () => {
+  it("claims the run's unclaimed steers with their text, scoped to the job's space", async () => {
+    const database = fakeDatabase([
+      [
+        /with claimed as/,
+        [
+          { messageId: "message-1", blocks: [{ type: "text", text: "focus on the report" }] },
+          { messageId: "message-2", blocks: [{ type: "text", text: "and be brief" }] },
+        ],
+      ],
+    ]);
+
+    const steers = await claimSteeringMessages(job, database, "run-1");
+
+    expect(steers).toEqual([
+      { messageId: "message-1", text: "focus on the report" },
+      { messageId: "message-2", text: "and be brief" },
+    ]);
+
+    const call = database.calls[0];
+    expect(call?.text).toContain("claimed_at is null");
+    expect(call?.text).toContain("r.space_id = $2");
+    expect(call?.text).toContain("r.status = any($3::run_status[])");
+    expect(call?.text).toContain("order by m.seq asc");
+    expect(call?.values).toEqual(["run-1", "space-1", ["queued", "running", "waiting_approval"]]);
+  });
+
+  it("claims nothing once every steer has been handed over", async () => {
+    const database = fakeDatabase();
+
+    expect(await claimSteeringMessages(job, database, "run-1")).toEqual([]);
   });
 });
 
