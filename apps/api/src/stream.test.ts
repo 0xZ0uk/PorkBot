@@ -187,6 +187,7 @@ function fakeRepositories(actor: UserActor): UserRepositories {
       findByNonce: notExercised,
       steer: notExercised,
     },
+    toolResults: { read: notExercised },
     events: {
       async listAfter(threadId: string, afterSeq: number, limit: number): Promise<EventRecord[]> {
         onListAfter?.();

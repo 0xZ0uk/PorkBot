@@ -102,6 +102,7 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
       findByNonce: notExercised,
       steer: notExercised,
     },
+    toolResults: { read: notExercised },
     routines: {
       findById: notExercised,
       list: notExercised,

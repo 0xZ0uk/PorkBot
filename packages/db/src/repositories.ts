@@ -53,6 +53,8 @@ import {
 } from "./run-leases.ts";
 import type { FencedRunPatch, ReclaimOptions, RunLease } from "./run-leases.ts";
 import { insertedRow, isUniqueViolation, requiredRow } from "./rows.ts";
+import { createToolResultReader } from "./tool-call-ledger.ts";
+import type { ToolResultReader } from "./tool-call-ledger.ts";
 
 export type {
   BotRecord,
@@ -470,6 +472,12 @@ export interface UserRepositories {
   readonly events: EventReader;
   /** The transcript: page reads, the nonce lookup, and sending a steer. */
   readonly messages: MessageReader & SteeringMessageWriter;
+  /**
+   * The full value behind a tool call whose event carried only a preview
+   * (slice 6.8). Keyed by the artifact pointer's `(threadId, runId, callId)`,
+   * so the console follows the link the event gave it without naming a row.
+   */
+  readonly toolResults: ToolResultReader;
   readonly routines: RoutineReader & RoutineWriter;
   /** The operator's own notification switches (slice 8.6). */
   readonly notifications: NotificationPreferences;
@@ -576,6 +584,7 @@ export function createRepositories(
       ...messages,
       steer: (input) => steering.steer(input),
     },
+    toolResults: createToolResultReader(actor, database),
     routines: createRoutineStore(actor, database),
     notifications: createNotificationStore(actor, database),
     credentials: createEncryptedCredentialStore(actor, database, options?.credentialKeys),

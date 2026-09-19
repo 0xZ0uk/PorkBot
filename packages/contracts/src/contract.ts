@@ -57,6 +57,7 @@ import {
   threadsListContract,
   threadsMessagesContract,
   threadsSendContract,
+  threadsToolResultContract,
 } from "./threads.ts";
 
 /**
@@ -102,6 +103,7 @@ export const appContract = {
     messages: threadsMessagesContract,
     send: threadsSendContract,
     clear: threadsClearContract,
+    toolResult: threadsToolResultContract,
     events: threadsEventsContract,
   },
   runs: {

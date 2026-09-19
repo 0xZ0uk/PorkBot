@@ -90,6 +90,7 @@ function fakeRepositories(calls: Calls): UserRepositories {
       findByNonce: notExercised,
       steer: notExercised,
     },
+    toolResults: { read: notExercised },
     routines: {
       findById: notExercised,
       list: notExercised,

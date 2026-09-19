@@ -8,7 +8,15 @@ import { createAppRouter } from "../../src/router.tsx";
 import { createSessionController } from "../../src/session.ts";
 import type { AuthTransport, SessionActor } from "../../src/session.ts";
 import { createHttpConsoleTransport } from "../../src/transport.ts";
-import { runCompleted, runStarted, textMessage, tokenDelta } from "../fakes.ts";
+import {
+  runCompleted,
+  runStarted,
+  textMessage,
+  tokenDelta,
+  toolCompleted,
+  toolFailed,
+  toolRequested,
+} from "../fakes.ts";
 import { startScriptedThreadApi } from "./scripted-thread-api.ts";
 import type { ScriptedThreadApi } from "./scripted-thread-api.ts";
 
@@ -85,13 +93,16 @@ interface MountedConsole {
  * console transport talks to the scripted API over HTTP, and the DOM is the
  * console screen. Mounting twice is the reload.
  */
-async function mountConsole(api: ScriptedThreadApi): Promise<MountedConsole> {
+async function mountConsole(
+  api: ScriptedThreadApi,
+  path = `/threads/${threadId}`,
+): Promise<MountedConsole> {
   const auth = fakeAuth();
   const session = createSessionController({ transport: auth });
   const transport = createHttpConsoleTransport({ origin: api.url });
   const router = createAppRouter(
     { auth, session, threads: transport },
-    createMemoryHistory({ initialEntries: [`/threads/${threadId}`] }),
+    createMemoryHistory({ initialEntries: [path] }),
   );
   const container = document.createElement("div");
 
@@ -245,6 +256,95 @@ describe("the streaming console over the real wire", () => {
       expect(entries.map((entry) => entry.textContent)).toEqual(["Youcount", "BotOne two"]);
     } finally {
       await view.unmount();
+      await api.close();
+    }
+  });
+
+  it("renders the tool-call timeline from the wire and resolves its artifact over HTTP", async () => {
+    const callId = "01900000-0000-7000-8000-0000000000c0";
+    const failedCallId = "01900000-0000-7000-8000-0000000000c1";
+    const api = await startScriptedThreadApi({
+      threadId,
+      messages: [userMessage()],
+      events: [
+        runStarted(threadId, runId, 1),
+        toolRequested(threadId, runId, 2, callId, "shell", {
+          command: "cat report.txt",
+          token: "[redacted]",
+        }),
+        toolCompleted(threadId, runId, 3, callId, "preview [truncated]", {
+          durationMs: 250,
+          resultArtifact: { kind: "tool_call", callId, bytes: 20_480 },
+        }),
+        toolRequested(threadId, runId, 4, failedCallId, "rm", { path: "/etc" }),
+        toolFailed(
+          threadId,
+          runId,
+          5,
+          failedCallId,
+          'tool "rm" failed (timed_out): no answer',
+          30_000,
+        ),
+        tokenDelta(threadId, runId, 6, assistantMessageId, "One two"),
+        runCompleted(threadId, runId, 7, assistantMessageId),
+      ],
+      toolResults: { [`${runId}:${callId}`]: { tool: "shell", result: { stdout: "all of it" } } },
+    });
+    const view = await mountConsole(api);
+
+    try {
+      await until(
+        () => view.container.querySelectorAll(".tool-call").length === 2,
+        "the tool timeline",
+      );
+
+      // The calls sit in the transcript where the run made them: after the
+      // prompt, before the answer.
+      const items = [...view.container.querySelectorAll(".transcript > li")];
+
+      expect(
+        items.map((item) => item.querySelector(".tool-call-name")?.textContent ?? null),
+      ).toEqual([null, "shell", "rm", null]);
+
+      const calls = [...view.container.querySelectorAll(".tool-call")];
+
+      expect(calls[0]?.querySelector(".tool-call-status")?.textContent).toBe("Completed");
+      expect(calls[0]?.querySelector(".tool-call-duration")?.textContent).toBe("250 ms");
+      expect(calls[0]?.className).not.toContain("tool-call-failed");
+      expect(calls[1]?.className).toContain("tool-call-failed");
+      expect(calls[1]?.querySelector(".tool-call-status")?.textContent).toBe("Failed");
+      expect(calls[1]?.textContent).toContain('tool "rm" failed (timed_out): no answer');
+
+      // The wire carried the redacted argument and the DOM shows exactly it.
+      expect(calls[0]?.textContent).toContain("[redacted]");
+      expect(view.container.textContent).not.toContain("sk-live");
+
+      const link = calls[0]?.querySelector("a.tool-call-artifact");
+
+      expect(link?.getAttribute("href")).toBe(
+        `/threads/${threadId}/tool-results/${runId}/${callId}`,
+      );
+    } finally {
+      await view.unmount();
+    }
+
+    // The destination resolves over the same HTTP API: the preview the event
+    // carried and the full value the artifact holds are different values.
+    const artifact = await mountConsole(
+      api,
+      `/threads/${threadId}/tool-results/${runId}/${callId}`,
+    );
+
+    try {
+      await until(
+        () => artifact.container.textContent?.includes("all of it") === true,
+        "the full result",
+      );
+
+      expect(artifact.container.textContent).toContain("shell");
+      expect(artifact.container.textContent).not.toContain("[truncated]");
+    } finally {
+      await artifact.unmount();
       await api.close();
     }
   });

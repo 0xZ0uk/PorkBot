@@ -10,7 +10,7 @@ import {
 } from "@porkbot/core";
 import type { MessageRuleError } from "@porkbot/core";
 import type { Message, Thread, ThreadCursor } from "@porkbot/contracts";
-import type { MessageRecord, ThreadRecord, UserRepositories } from "@porkbot/db";
+import type { MessageRecord, ThreadRecord, ToolCallResult, UserRepositories } from "@porkbot/db";
 import { InvalidMessageError, MessageNonceReusedError } from "@porkbot/effect";
 
 /**
@@ -79,6 +79,19 @@ export interface ThreadsService {
     readonly repositories: UserRepositories;
     readonly threadId: string;
   }): Promise<ThreadRecord>;
+  /**
+   * The full value behind a truncated tool event (slice 6.8). The reader binds
+   * the actor's space and joins through the thread and the run, so the thread,
+   * the run and the call are validated by one scoped statement; there is no
+   * decision to make between the transport and the rows, which is why this
+   * service method is a pass-through.
+   */
+  toolResult(input: {
+    readonly repositories: UserRepositories;
+    readonly threadId: string;
+    readonly runId: string;
+    readonly callId: string;
+  }): Promise<ToolCallResult>;
 }
 
 /** The first transcript position; `seq > -1` is every message from zero. */
@@ -208,6 +221,10 @@ export function createThreadsService(): ThreadsService {
 
     async clear({ repositories, threadId }): Promise<ThreadRecord> {
       return repositories.threads.clear(threadId);
+    },
+
+    async toolResult({ repositories, threadId, runId, callId }): Promise<ToolCallResult> {
+      return repositories.toolResults.read({ threadId, runId, callId });
     },
   };
 }

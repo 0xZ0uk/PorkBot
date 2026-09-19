@@ -102,6 +102,7 @@ export {
   threadsListContract,
   threadsMessagesContract,
   threadsSendContract,
+  threadsToolResultContract,
 } from "./threads.ts";
 export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 

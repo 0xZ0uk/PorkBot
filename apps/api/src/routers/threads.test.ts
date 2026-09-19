@@ -50,6 +50,8 @@ interface Store {
   readonly events: Map<string, EventRecord>;
   readonly bots: Map<string, BotRecord>;
   readonly steering: Set<string>;
+  /** Settled tool results keyed by `(runId, callId)`, the ledger's unique key. */
+  readonly toolResults: Map<string, { readonly tool: string; readonly result: unknown }>;
   sequence: number;
   clock: number;
 }
@@ -61,6 +63,7 @@ const store: Store = {
   events: new Map(),
   bots: new Map(),
   steering: new Set(),
+  toolResults: new Map(),
   sequence: 0,
   clock: 0,
 };
@@ -400,6 +403,23 @@ function repositoriesFor(actor: UserActor): UserRepositories {
           .slice(0, limit);
       },
     },
+    toolResults: {
+      async read({ threadId, runId, callId }) {
+        scopedThread(actor, threadId);
+
+        const run = store.runs.get(runId);
+        const stored =
+          run !== undefined && run.spaceId === actor.spaceId && run.threadId === threadId
+            ? store.toolResults.get(`${runId}:${callId}`)
+            : undefined;
+
+        if (stored === undefined) {
+          throw new NotFoundError("tool result", callId);
+        }
+
+        return stored;
+      },
+    },
     messages: {
       async listForThread(threadId, page) {
         scopedThread(actor, threadId);
@@ -737,6 +757,41 @@ describe("the transcript and clearing", () => {
     });
     await expect(
       api.threads.send({ threadId: foreign.id, text: "hello", clientNonce: randomUUID() }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("the tool result behind a truncated call", () => {
+  it("returns the full value and refuses a foreign thread or an unknown call", async () => {
+    const api = client();
+    const thread = seedThread(seedBot());
+    const sent = await api.threads.send({
+      threadId: thread.id,
+      text: "run it",
+      clientNonce: randomUUID(),
+    });
+
+    if (sent.runId === null) {
+      throw new Error("the send started no run");
+    }
+
+    const callId = randomUUID();
+    store.toolResults.set(`${sent.runId}:${callId}`, {
+      tool: "shell",
+      result: { stdout: "the whole output" },
+    });
+
+    await expect(
+      api.threads.toolResult({ threadId: thread.id, runId: sent.runId, callId }),
+    ).resolves.toEqual({ tool: "shell", result: { stdout: "the whole output" } });
+
+    await expect(
+      api.threads.toolResult({ threadId: thread.id, runId: sent.runId, callId: randomUUID() }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    const foreign = seedThread(seedBot(), "space-2");
+    await expect(
+      api.threads.toolResult({ threadId: foreign.id, runId: sent.runId, callId }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

@@ -76,6 +76,7 @@ describe("procedure access", () => {
       "threads.messages",
       "threads.send",
       "threads.clear",
+      "threads.toolResult",
       "threads.events",
       "runs.stop",
       "routines.list",

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ToolCallSnapshot } from "@porkbot/core";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
@@ -10,7 +11,10 @@ import { ThreadConsoleScreen } from "./thread-console.tsx";
 /**
  * The console screen in a real DOM: the transcript renders each turn with its
  * role, the connection line appears only when the stream is not plainly live,
- * and a refusal is an alert with one retry.
+ * and a refusal is an alert with one retry. The tool-call timeline is the same
+ * transcript: a call collapses to name, status and duration, expands to the
+ * recorded arguments and result, links a truncated result to its artifact, and
+ * marks a failure in the danger token with the reason it recorded.
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -19,12 +23,27 @@ const base: ThreadConsoleState = {
   threadId: "thread-1",
   status: "ready",
   entries: [
-    { id: "message-0", role: "user", text: "do it", streaming: false },
-    { id: "message-1", role: "assistant", text: "Hello", streaming: true },
+    { kind: "message", id: "message-0", role: "user", text: "do it", streaming: false },
+    { kind: "message", id: "message-1", role: "assistant", text: "Hello", streaming: true },
   ],
   refusal: null,
   connection: "live",
 };
+
+function call(overrides: Partial<ToolCallSnapshot> = {}): ToolCallSnapshot {
+  return { callId: "call-1", tool: "shell", arguments: {}, status: "requested", ...overrides };
+}
+
+function withCall(callSnapshot: ToolCallSnapshot): ThreadConsoleState {
+  return {
+    ...base,
+    entries: [
+      { kind: "message", id: "message-0", role: "user", text: "audit it", streaming: false },
+      { kind: "tool", id: `tool:run-1:${callSnapshot.callId}`, runId: "run-1", call: callSnapshot },
+      { kind: "message", id: "message-1", role: "assistant", text: "Done", streaming: false },
+    ],
+  };
+}
 
 let container: HTMLDivElement;
 let root: Root;
@@ -120,5 +139,114 @@ describe("the thread console screen", () => {
     });
 
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the tool-call timeline", () => {
+  it("collapses a call to name, status and duration, and expands to its arguments and result", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({
+            status: "completed",
+            arguments: { command: "ls", apiKey: "[redacted]" },
+            result: { stdout: "report.txt" },
+            durationMs: 120,
+          }),
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const item = container.querySelector(".tool-call");
+
+    expect(item).not.toBeNull();
+    expect(item?.querySelector(".tool-call-name")?.textContent).toBe("shell");
+    expect(item?.querySelector(".tool-call-status")?.textContent).toBe("Completed");
+    expect(item?.querySelector(".tool-call-duration")?.textContent).toBe("120 ms");
+    expect(item?.className).not.toContain("tool-call-failed");
+
+    const details = container.querySelector("details.tool-call-details") as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+
+    await act(async () => {
+      container
+        .querySelector("summary.tool-call-summary")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(details.open).toBe(true);
+
+    const json = [...container.querySelectorAll(".tool-call-json")].map((node) => node.textContent);
+
+    // The arguments are the recorded value verbatim: the placeholder the
+    // recorder stored is what a reader sees, never the secret behind it.
+    expect(json[0]).toContain('"command": "ls"');
+    expect(json[0]).toContain("[redacted]");
+    expect(json[0]).not.toContain("sk-live");
+    expect(json[1]).toContain('"stdout": "report.txt"');
+  });
+
+  it("links a truncated result to its artifact instead of stopping at the preview", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({
+            status: "completed",
+            result: "x".repeat(64) + " [truncated]",
+            resultArtifact: { kind: "tool_call", callId: "call-1", bytes: 4_096 },
+            durationMs: 2_500,
+          }),
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const link = container.querySelector("a.tool-call-artifact");
+
+    expect(link?.getAttribute("href")).toBe("/threads/thread-1/tool-results/run-1/call-1");
+    expect(link?.textContent).toBe("Full result (4.0 KiB)");
+    expect(container.textContent).toContain("[truncated]");
+    expect(container.querySelector(".tool-call-duration")?.textContent).toBe("2.5 s");
+  });
+
+  it("marks a failure in the danger token and shows the typed reason", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({
+            callId: "call-2",
+            tool: "rm",
+            status: "failed",
+            error: 'tool "rm" failed (timed_out): no answer before the deadline',
+            durationMs: 30_000,
+          }),
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const item = container.querySelector(".tool-call");
+
+    expect(item?.className).toContain("tool-call-failed");
+    expect(item?.querySelector(".tool-call-status")?.textContent).toBe("Failed");
+    expect(container.querySelector(".tool-call-error")?.textContent).toBe(
+      'tool "rm" failed (timed_out): no answer before the deadline',
+    );
+  });
+
+  it("says a call is waiting for approval rather than calling it running", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({
+            approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" },
+          }),
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".tool-call-status")?.textContent).toBe("Waiting for approval");
   });
 });

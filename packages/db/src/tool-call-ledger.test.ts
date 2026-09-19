@@ -1,9 +1,9 @@
 import { NotFoundError } from "@porkbot/effect";
 import type { ToolCall } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
-import type { SystemActor } from "./actor.ts";
+import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
-import { createExternalEffectLedger } from "./tool-call-ledger.ts";
+import { createExternalEffectLedger, createToolResultReader } from "./tool-call-ledger.ts";
 
 /**
  * The ledger without a server: a recording fake stands in for the pg client, so
@@ -239,5 +239,32 @@ describe("settling a claim", () => {
     await expect(ledger.fail(call(), "it broke")).rejects.toThrow(
       "the tool-call ledger no longer holds the claim it admitted",
     );
+  });
+});
+
+const reader: UserActor = { kind: "user", spaceId: "space-1", userId: "user-1", role: "owner" };
+
+describe("reading a settled result", () => {
+  it("resolves the artifact pointer through the thread, the run and the call id", async () => {
+    const database = fakeDatabase(() => [{ tool: "shell", result: { stdout: "all of it" } }]);
+    const results = createToolResultReader(reader, database);
+
+    await expect(
+      results.read({ threadId: "thread-1", runId: "run-1", callId: "call-1" }),
+    ).resolves.toEqual({ tool: "shell", result: { stdout: "all of it" } });
+
+    const [query] = database.calls;
+    expect(query?.text).toContain("t.space_id = e.space_id");
+    expect(query?.text).toContain("e.status = 'completed'::effect_status");
+    expect(query?.values).toEqual(["space-1", "thread-1", "run-1", "call-1"]);
+  });
+
+  it("answers a foreign or unknown call with the same not-found, and one that never completed", async () => {
+    const database = fakeDatabase(() => []);
+    const results = createToolResultReader(reader, database);
+
+    await expect(
+      results.read({ threadId: "thread-1", runId: "run-1", callId: "call-foreign" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

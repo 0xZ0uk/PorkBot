@@ -200,6 +200,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       findByNonce: notExercised,
       steer: notExercised,
     },
+    toolResults: { read: notExercised },
     routines: {
       findById: notExercised,
       list: notExercised,

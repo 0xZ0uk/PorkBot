@@ -285,4 +285,50 @@ describe("the console routes", () => {
 
     await until(() => container.textContent?.includes("Hello") === true, "the completed text");
   });
+
+  it("resolves a truncated call's artifact on its own route", async () => {
+    const transport = scriptedThreadTransport({
+      toolResults: {
+        "run-1:call-1": { tool: "shell", result: { stdout: "the whole output" } },
+      },
+    });
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+    const router = createAppRouter(
+      { auth, session, threads: transport },
+      createMemoryHistory({
+        initialEntries: ["/threads/thread-1/tool-results/run-1/call-1"],
+      }),
+    );
+
+    await act(async () => {
+      await router.load();
+    });
+    await render(<RouterProvider router={router} />);
+
+    expect(container.textContent).toContain("Tool result");
+    expect(container.textContent).toContain("shell");
+    expect(container.textContent).toContain('"stdout": "the whole output"');
+    expect(container.querySelector("a[href='/threads/thread-1']")?.textContent).toBe(
+      "Back to thread",
+    );
+  });
+
+  it("shows a refusal when the artifact is not there", async () => {
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+    const router = createAppRouter(
+      { auth, session, threads: scriptedThreadTransport() },
+      createMemoryHistory({
+        initialEntries: ["/threads/thread-1/tool-results/run-1/call-missing"],
+      }),
+    );
+
+    await act(async () => {
+      await router.load().catch(() => undefined);
+    });
+    await render(<RouterProvider router={router} />);
+
+    expect(container.textContent).toContain("The tool result could not be loaded.");
+  });
 });

@@ -215,7 +215,8 @@ export type {
 // second side effect. It is built from a `SystemActor` and binds the actor's
 // space into every statement, exactly like the repositories; the seam it
 // implements is declared in `@porkbot/effect`.
-export { createExternalEffectLedger } from "./tool-call-ledger.ts";
+export { createExternalEffectLedger, createToolResultReader } from "./tool-call-ledger.ts";
+export type { ToolCallResult, ToolResultReader } from "./tool-call-ledger.ts";
 
 // The durable half of the run's event stream (slice 5.6): `createRunEventSink`
 // appends the recorder's events to the `event` table in one scoped statement,

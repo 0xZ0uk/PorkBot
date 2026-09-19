@@ -134,6 +134,9 @@ const requestBodies: Record<string, string> = {
     json: { threadId: "thread-1", text: "hello", clientNonce: "nonce-1" },
   }),
   "threads.clear": JSON.stringify({ json: { threadId: "thread-1" } }),
+  "threads.toolResult": JSON.stringify({
+    json: { threadId: "thread-1", runId: "run-1", callId: "call-1" },
+  }),
   "threads.events": JSON.stringify({ json: { threadId: "thread-1" } }),
   "routines.create": JSON.stringify({
     json: {
@@ -246,6 +249,7 @@ describe("every contract procedure", () => {
       "threads.list",
       "threads.messages",
       "threads.send",
+      "threads.toolResult",
     ]);
 
     for (const leaf of leaves) {
@@ -326,6 +330,7 @@ describe("the typed answer", () => {
         findByNonce: notExercised,
         steer: notExercised,
       },
+      toolResults: { read: notExercised },
       notifications: { read: notExercised, set: notExercised },
       credentials: {
         resolve: notExercised,

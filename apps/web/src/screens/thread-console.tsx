@@ -1,9 +1,11 @@
 import { Button } from "@porkbot/ui";
 import type { ThreadConsoleState } from "../console.ts";
+import { ToolCallEntry } from "./tool-call.tsx";
 
 /**
- * The thread console: the transcript, the tokens as they arrive, and one
- * status line that says when the stream is not plainly live.
+ * The thread console: the transcript, the tokens as they arrive, the tool
+ * calls each run made, and one status line that says when the stream is not
+ * plainly live.
  *
  * The screen is a pure function of the console's state — the controller owns
  * every decision — so the render is the same while a run streams and after a
@@ -45,15 +47,24 @@ export function ThreadConsoleScreen({ state, onRetry }: ThreadConsoleScreenProps
         ) : null
       ) : (
         <ol className="transcript">
-          {state.entries.map((entry) => (
-            <li
-              key={entry.id}
-              className={entry.streaming ? "message message-streaming" : "message"}
-            >
-              <span className="message-role muted">{entry.role === "user" ? "You" : "Bot"}</span>
-              <p className="message-text">{entry.text}</p>
-            </li>
-          ))}
+          {state.entries.map((entry) =>
+            entry.kind === "tool" ? (
+              <ToolCallEntry
+                key={entry.id}
+                threadId={state.threadId}
+                runId={entry.runId}
+                call={entry.call}
+              />
+            ) : (
+              <li
+                key={entry.id}
+                className={entry.streaming ? "message message-streaming" : "message"}
+              >
+                <span className="message-role muted">{entry.role === "user" ? "You" : "Bot"}</span>
+                <p className="message-text">{entry.text}</p>
+              </li>
+            ),
+          )}
         </ol>
       )}
     </section>

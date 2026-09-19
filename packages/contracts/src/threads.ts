@@ -333,6 +333,47 @@ export const runEventSchema = z.discriminatedUnion("type", [
 
 export type RunEventMessage = z.infer<typeof runEventSchema>;
 
+/**
+ * The full value behind a truncated tool event (slice 6.8). The `tool.completed`
+ * event carries a bounded preview plus a `resultArtifact` pointer, and this
+ * procedure resolves that pointer: the triple names the thread, the run and the
+ * call's durable id, and the artifact pointer's `kind` is `tool_call` in both
+ * places. A call outside the actor's space and a call that is not settled as
+ * completed are the same typed `NOT_FOUND`, so the pointer never becomes a
+ * cross-space read.
+ *
+ * The output is deliberately the shape of the durable row, not a new document
+ * model: `result` is the value the handler produced, whole.
+ */
+export const threadsToolResultContract = authenticatedProcedure
+  .route({
+    method: "GET",
+    path: "/threads/{threadId}/runs/{runId}/tool-results/{callId}",
+    operationId: "threadsToolResult",
+    summary: "The full result a truncated tool event pointed at",
+  })
+  .input(
+    z.object({
+      threadId: z.string().min(1),
+      runId: z.string().min(1),
+      /** The artifact pointer's `callId`. */
+      callId: z.string().min(1),
+    }),
+  )
+  .errors({
+    NOT_FOUND: {
+      status: 404,
+      message: "No such tool result in this space",
+    },
+  })
+  .output(
+    z.object({
+      /** The tool the call ran, so a reader can label the value. */
+      tool: z.string().min(1),
+      result: z.unknown(),
+    }),
+  );
+
 export const threadsEventsContract = authenticatedProcedure
   .route({
     method: "GET",
