@@ -36,6 +36,12 @@ export const COMPUTER_HOME_SYNC: readonly ComputerHomeSyncStory[] = [
     throughStorage: false,
   },
   {
+    provider: "createSupervisorComputerProvider",
+    story:
+      "The client holds no home: it is the transport the API and the worker use to reach whichever provider the supervisor owns. Snapshot and restore cross this seam unchanged, so the home's bytes reach the storage seam through the delegate's story — the Docker volume or the cloud instance behind the supervisor — and a deployment that never runs the snapshot job has no home backup.",
+    throughStorage: true,
+  },
+  {
     provider: "createDockerComputerProvider",
     story:
       "The home is a named Docker volume on the host. A backup reads it through the snapshot path — capture the home, write the archive through the storage seam — so the archive outlives the container and the volume, and restore replays it into a rebuilt computer. A deployment that never runs the snapshot job has no home backup.",

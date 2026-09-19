@@ -110,6 +110,22 @@ export interface ComputerProvider {
   ensure(computer: ComputerRef): Promise<ComputerStatus>;
   /** Current state; `gone` is an answer, not an error, so reconciliation can act on it. */
   status(computer: ComputerRef): Promise<ComputerStatus>;
+  /**
+   * Park the computer without destroying it (slice 7.1): the machine stops
+   * answering, its home and its artifacts survive, and `ensure` starts it
+   * again. Idempotent, like `ensure` — stopping a stopped or never-seen
+   * computer is a status report, not an error — so the supervisor's stop path
+   * is safe to retry after a crash.
+   */
+  stop(computer: ComputerRef): Promise<ComputerStatus>;
+  /**
+   * Every computer the provider currently holds, running or stopped (slice
+   * 7.1). Reconciliation reads this after a supervisor crash to adopt what is
+   * still alive instead of leaking it, so a provider that cannot enumerate its
+   * own instances cannot be recovered from. A machine the provider has already
+   * destroyed is absent, never a `gone` entry.
+   */
+  list(): Promise<readonly ComputerStatus[]>;
   /** Run one command; a command against a `gone` computer fails with `gone`. */
   exec(request: ComputerExecRequest): Promise<ComputerExecResult>;
   /** Capture the agent home and declared state; processes and external sessions are not captured. */

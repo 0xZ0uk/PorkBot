@@ -3,6 +3,7 @@ import { ORPCError } from "@porkbot/contracts";
 import {
   ApprovalStoreError,
   BlockedUrlError,
+  ComputerUnavailableError,
   CredentialMissingError,
   CredentialStoreError,
   CursorRejectedError,
@@ -165,6 +166,12 @@ export const errorMappings = {
     message: "The MCP server could not be reached.",
     matches: (error: unknown): error is McpServerUnavailableError =>
       error instanceof McpServerUnavailableError,
+  },
+  ComputerUnavailableError: {
+    code: "SERVICE_UNAVAILABLE",
+    message: "The computer service could not be reached.",
+    matches: (error: unknown): error is ComputerUnavailableError =>
+      error instanceof ComputerUnavailableError,
   },
   InvalidOAuthStateError: {
     code: "BAD_REQUEST",

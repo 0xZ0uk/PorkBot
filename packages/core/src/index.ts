@@ -322,3 +322,17 @@ export type {
   EgressHostRejection,
   EgressHostRule,
 } from "./egress-policy.ts";
+
+export {
+  assertComputerNetworkPlan,
+  COMPUTER_NETWORK_PREFIX,
+  computerNetworkPlanProblems,
+  MAX_COMPUTER_NETWORK_NAME_LENGTH,
+  planComputerNetwork,
+  RESERVED_NETWORK_NAMES,
+} from "./computer-network.ts";
+export type {
+  ComputerIdentity,
+  ComputerNetworkPlan,
+  ComputerNetworkPlanProblem,
+} from "./computer-network.ts";
