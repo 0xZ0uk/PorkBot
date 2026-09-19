@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { MemoryDocumentView } from "@porkbot/contracts";
 import { createMemoryController } from "./memory.ts";
 import type { MemoryController, MemoryState, MemoryTransport } from "./memory.ts";
 import { fakeMemoryDocument, fakeMemoryRevision, scriptedMemoryTransport } from "../test/fakes.ts";
@@ -79,6 +80,37 @@ describe("loading the list", () => {
 
     await until(controller, (state) => state.status === "refused", "the refusal");
     expect(controller.state().refusal).toBe("Memory could not be loaded.");
+  });
+
+  it("does not let a superseded list load replace a newer answer", async () => {
+    let releaseFirst: (documents: readonly MemoryDocumentView[]) => void = () => undefined;
+    const first = new Promise<readonly MemoryDocumentView[]>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    const transport: MemoryTransport = {
+      ...scriptedMemoryTransport(),
+      list: async () => {
+        calls += 1;
+
+        return calls === 1 ? first : [fakeMemoryDocument({ documentId: "doc-new" })];
+      },
+    };
+    const controller = createMemoryController({ transport, botId: "bot-1" });
+
+    controller.load();
+    controller.load();
+
+    await until(
+      controller,
+      (state) => state.documents[0]?.documentId === "doc-new",
+      "the newer list",
+    );
+
+    releaseFirst([fakeMemoryDocument({ documentId: "doc-old" })]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(controller.state().documents[0]?.documentId).toBe("doc-new");
   });
 });
 
