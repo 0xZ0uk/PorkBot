@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { primaryKeyId, timestamps } from "./columns.ts";
 import { approvalStatus } from "./enums.ts";
 import { user } from "./identity.ts";
@@ -17,6 +26,11 @@ import { space } from "./tenancy.ts";
  * than inferring it from a socket. `expires_at` is the deadline; a timeout is a
  * compare-and-set on `status = 'pending'`, never a wall-clock guess by whoever
  * happens to be watching.
+ *
+ * `arguments` is the redacted tool-call payload the decision was made about
+ * (slice 10.2): the operator reviews what the call would do, and the durable
+ * record answers "approved what?" without a join to the event stream. The gate
+ * redacts before the write, so a secret-shaped argument is not stored here.
  *
  * The resolution check makes "who, when and which call" structural:
  *
@@ -44,6 +58,7 @@ export const approval = pgTable(
       .references(() => run.id, { onDelete: "cascade" }),
     callId: text("call_id").notNull(),
     tool: text("tool").notNull(),
+    arguments: jsonb("arguments").notNull().default({}),
     status: approvalStatus("status").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     decidedByUserId: uuid("decided_by_user_id").references(() => user.id, {

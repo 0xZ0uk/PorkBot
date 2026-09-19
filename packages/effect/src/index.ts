@@ -405,14 +405,19 @@ export type {
   ScreenCapabilityRejection,
 } from "./screen-capability.ts";
 
-// Untrusted ingestion and egress (slice 10.1, PRD decision 30). The egress
-// guard is the allowlist's enforcement edge: an allowlisted host proceeds, any
-// other destination records a durable approval and waits on the row, and a
-// deadline that passes denies rather than hangs. The web tools are the model's
-// one door to the web, so they guard the fetch, label the page through the
+// Untrusted ingestion, egress and dangerous actions (slices 10.1 and 10.2,
+// PRD decision 30; story 40). The danger guard is the policy's enforcement
+// edge: `@porkbot/core` owns the register of dangerous classes, and a flagged
+// call records a durable approval and waits on the row, while a deadline that
+// passes denies rather than hangs. The web tools are the model's one door to
+// the web, so they guard the fetch through it, label the page through the
 // ingestion boundary and keep it out of the instruction channel.
-export { createEgressGuard } from "./egress-guard.ts";
-export type { EgressAuthorization, EgressGuardOptions, EgressGuardShape } from "./egress-guard.ts";
+export { actionRefusalResult, createDangerousActionGuard } from "./danger-guard.ts";
+export type {
+  ActionAuthorization,
+  DangerousActionGuardOptions,
+  DangerousActionGuardShape,
+} from "./danger-guard.ts";
 export {
   createWebTools,
   MAX_WEB_BYTES,
