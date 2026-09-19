@@ -31,6 +31,7 @@ export { approval } from "./approvals.ts";
 export { computerLease, computerSnapshot } from "./computers.ts";
 export { messageAttachment, runArtifact } from "./files.ts";
 export { encryptedCredential } from "./encrypted-credential.ts";
+export { botSecret } from "./bot-secret.ts";
 export { modelConnection } from "./model-connections.ts";
 export { event } from "./events.ts";
 export { externalEffect } from "./external-effects.ts";

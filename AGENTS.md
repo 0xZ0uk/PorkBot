@@ -153,6 +153,13 @@ change it without breaking what the boundaries and the CI gate protect.
   `@porkbot/effect`, so the ciphertext, its key id and the rotation pass are
   auditable in one place. Checked by: test
   (`packages/db/src/encrypted-credential-store.call-sites.test.ts`).
+- **One module owns the bot secret rows.** `packages/db/src/bot-secret-store.ts`
+  is the only shipped code that reads or writes `bot_secret`; the schema defines
+  it and every other path goes through the `BotSecrets`, `BotSecretRequests` and
+  `BotSecretResolver` seams in `@porkbot/effect`, so the ciphertext, its
+  destination binding, the forget and the rotation pass are auditable in one
+  place, and the run's half has no method that returns a value. Checked by: test
+  (`packages/db/src/bot-secret-store.call-sites.test.ts`).
 - **One module owns the MCP server rows.** `packages/db/src/mcp-store.ts` is the
   only shipped code that reads or writes `mcp_server`, `mcp_server_tool` or
   `bot_mcp_server`; the schema defines them and every other path goes through
@@ -240,12 +247,13 @@ change it without breaking what the boundaries and the CI gate protect.
   `packages/effect/src/danger-guard.test.ts`) and review.
 - **"Dangerous" is one register, and the gate fires from it.**
   `DANGEROUS_ACTION_CLASSES` in `packages/core/src/dangerous-actions.ts` is the
-  whole definition — credential-store access, a write outside the bot's home,
-  egress to a host outside the run's allowlist, and any send or delete — and a
-  tool whose target the arguments name consults it before it acts, opening the
-  run's durable approval gate for a flagged call and refusing one when no gate
-  is configured. `shell` is deliberately outside the register: a command string
-  names no single class, and the sandbox is its boundary. Checked by: test
+  whole definition — credential-store access, a request to use a stored bot
+  secret, a write outside the bot's home, egress to a host outside the run's
+  allowlist, and any send or delete — and a tool whose target the arguments name
+  consults it before it acts, opening the run's durable approval gate for a
+  flagged call and refusing one when no gate is configured. `shell` is
+  deliberately outside the register: a command string names no single class, and
+  the sandbox is its boundary. Checked by: test
   (`packages/core/src/dangerous-actions.test.ts`,
   `packages/effect/src/danger-guard.test.ts`) and review.
 - **Hostile fixtures ship with the path they attack.** The injection fixtures

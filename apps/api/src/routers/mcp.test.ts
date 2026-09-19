@@ -120,6 +120,13 @@ function fakeRepositories(calls: Calls): UserRepositories {
         calls.order.push(`credentials.remove:${name}`);
       }),
     },
+    botSecrets: {
+      list: notExercised,
+      find: notExercised,
+      put: notExercised,
+      forget: notExercised,
+      rotate: notExercised,
+    },
     modelConnections: {
       findById: notExercised,
       list: notExercised,
