@@ -28,6 +28,7 @@ function lifecycleOver(provider: ComputerProvider = new ComputerEmulator()) {
 /** A provider that delegates every method, overriding `ensure` for one machine. */
 function withFailingEnsure(base: ComputerProvider, failing: ComputerRef): ComputerProvider {
   return {
+    validate: () => base.validate(),
     ensure: (ref) =>
       ref.computerId === failing.computerId
         ? Promise.reject(
@@ -168,6 +169,7 @@ describe("the boot reconciliation pass", () => {
   it("surfaces an unreachable provider instead of pretending the fleet is empty", async () => {
     const provider: ComputerProvider = {
       ...new ComputerEmulator(),
+      validate: () => Promise.resolve(),
       list: () => Promise.reject(new ComputerProviderError("timed_out", "the daemon is not there")),
       status: () => Promise.reject(new ComputerProviderError("timed_out", "unreachable")),
       stop: () => Promise.reject(new ComputerProviderError("timed_out", "unreachable")),
@@ -256,6 +258,7 @@ describe("the idle sweep", () => {
     const emulator = new ComputerEmulator();
     const clock = { ms: 0 };
     const provider: ComputerProvider = {
+      validate: () => Promise.resolve(),
       ensure: (ref: ComputerRef) => emulator.ensure(ref),
       status: (ref: ComputerRef) => emulator.status(ref),
       stop: (ref: ComputerRef) =>

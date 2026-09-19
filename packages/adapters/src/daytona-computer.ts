@@ -396,6 +396,16 @@ function createDaytonaRuntime(options: DaytonaComputerProviderOptions): Computer
   }
 
   return {
+    async validate(): Promise<void> {
+      // A read of the deployment's own sandboxes is the cheapest call that
+      // proves the key: an accepted token answers, a refused one classifies as
+      // `auth_failed`, and an unreachable control plane as `timed_out`. It
+      // creates nothing, so a selection check leaves no sandbox behind.
+      await engine
+        .listSandboxes(requestTimeoutMs)
+        .catch((error: unknown) => failure(error, "sandbox"));
+    },
+
     async find(computer: ComputerRef): Promise<ComputerMachine | undefined> {
       const sandbox = await inspectFor(computer);
 
