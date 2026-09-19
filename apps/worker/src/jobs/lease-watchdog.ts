@@ -5,7 +5,6 @@ import {
   reclaimFailureMessage,
   RUN_STALL_THRESHOLD_SECONDS,
 } from "@porkbot/core";
-import type { NotificationProvider } from "@porkbot/adapter-kit";
 import {
   createRepositories,
   expiredLeaseReason,
@@ -14,9 +13,11 @@ import {
   RUN_WATCHDOG_BATCH_LIMIT,
 } from "@porkbot/db";
 import type { Queryable, RunRecord, SystemRepositories } from "@porkbot/db";
-import { createNotificationDelivery, NotFoundError } from "@porkbot/effect";
+import { NotFoundError } from "@porkbot/effect";
 import { JobPayloadError } from "../job-registry.ts";
 import type { JobContext, JobDefinition } from "../job-registry.ts";
+import { notifySettledRun, notifyStalledRun } from "../run-notifications.ts";
+import type { RunNotificationTarget } from "../run-notifications.ts";
 import { systemActorForJob } from "../system-actor.ts";
 import { runExecuteIdentifier } from "./run-execute.ts";
 
@@ -45,9 +46,13 @@ import { runExecuteIdentifier } from "./run-execute.ts";
  * against the row the marker just returned; the durable `stalled_at` guard is
  * what makes the notification exactly once per episode, and the heartbeat that
  * reports renewed progress clears it. The delivery target is the E8 path
- * (`NotificationDelivery`), injected because slice 8.7 owns the composition of
- * the HTTP provider and the link's origin; without one, a stall is still
- * recorded and logged.
+ * (`NotificationDelivery`), injected by the composition root; without one, a
+ * stall is still recorded and logged.
+ *
+ * The reclaim path also notifies (slice 8.7): a run failed here because its
+ * worker timed out and there was nothing to resume, and the terminal claim in
+ * `run.notified_at` is what keeps that message to one even if the executor's
+ * own delivery raced it.
  */
 
 export const leaseWatchdogIdentifier = "run.watchdog";
@@ -77,29 +82,17 @@ export function parseLeaseWatchdogPayload(payload: unknown): LeaseWatchdogPayloa
   return {};
 }
 
-/**
- * Where a stall notification goes: the provider that sends it and the absolute
- * origin the run's thread link is built from. Both are deployment facts the job
- * must not invent, so they arrive together from the composition root. The
- * delivery path itself is built per candidate, because its recipient check is
- * scoped to the run's space and this job deliberately spans spaces; slice 8.7
- * owns the HTTP provider's configuration.
- */
-export interface StallNotificationTarget {
-  readonly provider: NotificationProvider;
-  readonly origin: string;
-}
-
 export interface LeaseWatchdogOptions {
   /** How many candidates one pass addresses. Defaults to the shared batch limit. */
   readonly batchLimit?: number;
   /** How long a run may go without progress before it is stalled. */
   readonly stallThresholdSeconds?: number;
   /**
-   * The E8 delivery path. Absent, a detected stall is marked and logged but no
-   * notification is sent; slice 8.7 composes the provider.
+   * The E8 delivery path (slice 8.7): the provider and the timeline link's
+   * origin. Absent, a detected stall or timeout is recorded and logged but no
+   * notification is sent; the composition root supplies the target.
    */
-  readonly stallNotification?: StallNotificationTarget;
+  readonly runNotifications?: RunNotificationTarget;
 }
 
 export function leaseWatchdogJob(
@@ -131,6 +124,7 @@ export function leaseWatchdogJob(
             candidate.runId,
             context,
             client,
+            options,
           );
 
           if (outcome === "resumed") {
@@ -176,6 +170,7 @@ async function reclaimCandidate(
   runId: string,
   context: JobContext,
   client: Queryable,
+  options: LeaseWatchdogOptions,
 ): Promise<CandidateOutcome> {
   const logger = context.logger.child({ runId });
   const actor = systemActorForJob({ jobId: context.jobId, spaceId });
@@ -202,7 +197,8 @@ async function reclaimCandidate(
   const decision = decideReclaim(claimed.checkpoint);
 
   if (!decision.resume) {
-    await failRun(repositories, claimed, decision.reason);
+    const failed = await failRun(repositories, claimed, decision.reason);
+    await notifyTimeout(failed, repositories, context, options);
     logger.warn("lease watchdog failed a reclaimed run with nothing to resume", {
       fence: claimed.leaseFence,
       reason: decision.reason,
@@ -269,13 +265,14 @@ async function recordStall(
 
 /**
  * Sends at most one notification per stall episode. The episode marker is
- * already durable, so a delivery failure loses this message rather than
- * re-sending it on every later pass; the outcome is logged either way, and an
- * unclassified adapter error is caught here because a broken notifier must not
- * fail the recovery job.
+ * already durable when this is called, so a delivery failure loses this message
+ * rather than re-sending it on every later pass; the shared notification
+ * module catches and logs the failure, because a broken notifier must not fail
+ * the recovery job.
  *
- * The delivery is built per run so its recipient check is the run's own
- * space — the provider is deployment-wide, the preference read is not.
+ * The assessment is the E6 one, rendered against the marked row; the delivery
+ * is built per run so its recipient check is the run's own space — the
+ * provider is deployment-wide, the preference read is not.
  */
 async function notifyStall(
   run: RunRecord,
@@ -284,7 +281,7 @@ async function notifyStall(
   options: LeaseWatchdogOptions,
   thresholdSeconds: number,
 ): Promise<void> {
-  const target = options.stallNotification;
+  const target = options.runNotifications;
 
   if (target === undefined) {
     return;
@@ -292,60 +289,51 @@ async function notifyStall(
 
   const actor = systemActorForJob({ jobId: context.jobId, spaceId: run.spaceId });
   const repositories = createRepositories(actor, client);
-  const delivery = createNotificationDelivery({
-    provider: target.provider,
-    recipients: repositories.notifications,
-  });
   const liveness = assessRunLiveness(run, new Date(), thresholdSeconds);
-  const stalledForMs = liveness?.sinceProgressMs ?? 0;
-  const tool = liveness?.tool ?? null;
 
-  try {
-    const outcome = await delivery.deliver({
-      recipientUserId: run.userId,
-      kind: "run.stalled",
-      title: "A run has stalled",
-      body: stallBody(stalledForMs, tool),
-      url: `${target.origin}/threads/${run.threadId}`,
-    });
-
-    context.logger.info("lease watchdog answered a stall notification", {
-      runId: run.id,
-      outcome: outcome.status,
-    });
-  } catch (error) {
-    context.logger.warn("lease watchdog could not deliver a stall notification", {
-      runId: run.id,
-      error,
-    });
-  }
+  await notifyStalledRun(
+    run,
+    {
+      stalledForMs: liveness?.sinceProgressMs ?? 0,
+      tool: liveness?.tool ?? null,
+    },
+    { repositories, logger: context.logger, target },
+  );
 }
 
 /**
- * The sentence the operator receives. It names the last step (never a tool
- * argument) and the silence in whole minutes, so the message says what happened
- * and how long it has been happening without carrying anything from the run's
- * own payloads.
+ * Tells the operator a reclaimed run timed out: the previous worker stopped
+ * heartbeating and there was no checkpoint to resume. The claim is the terminal
+ * one, so if the executor's own delivery won the race this sends nothing.
  */
-function stallBody(stalledForMs: number, tool: string | null): string {
-  const minutes = Math.max(1, Math.round(stalledForMs / 60_000));
-  const step = tool === null ? "running" : `running ${tool}`;
+async function notifyTimeout(
+  run: RunRecord,
+  repositories: SystemRepositories,
+  context: JobContext,
+  options: LeaseWatchdogOptions,
+): Promise<void> {
+  const target = options.runNotifications;
 
-  return `No progress for ${minutes} minute${minutes === 1 ? "" : "s"} while ${step}.`;
+  if (target === undefined) {
+    return;
+  }
+
+  await notifySettledRun(run, { repositories, logger: context.logger, target });
 }
 
+/** Fails the reclaimed run and returns the settled row the notification reads. */
 async function failRun(
   repositories: SystemRepositories,
   run: RunRecord,
   reason: Parameters<typeof reclaimFailureMessage>[0],
-): Promise<void> {
+): Promise<RunRecord> {
   const owner = run.leaseOwner;
 
   if (owner === null) {
     throw new Error(`run ${run.id} was reclaimed without a lease owner`);
   }
 
-  await repositories.runs.update(
+  return repositories.runs.update(
     run.id,
     { owner, fence: run.leaseFence },
     {

@@ -152,6 +152,8 @@ export interface RunRecord {
   readonly currentStepTool: string | null;
   /** When the watchdog recorded the current stall episode, if it did. */
   readonly stalledAt: Date | null;
+  /** When the terminal notification was claimed, if it was (slice 8.7). */
+  readonly notifiedAt: Date | null;
   readonly checkpoint: Record<string, unknown>;
   readonly clientNonce: string;
   readonly sourceMessageId: string | null;
@@ -253,6 +255,6 @@ export const runColumns =
   'lease_expires_at as "leaseExpiresAt", stop_requested_at as "stopRequestedAt", ' +
   'last_heartbeat_at as "lastHeartbeatAt", last_progress_at as "lastProgressAt", ' +
   'current_step as "currentStep", current_step_tool as "currentStepTool", ' +
-  'stalled_at as "stalledAt", checkpoint, client_nonce as "clientNonce", ' +
+  'stalled_at as "stalledAt", notified_at as "notifiedAt", checkpoint, client_nonce as "clientNonce", ' +
   'source_message_id as "sourceMessageId", started_at as "startedAt", ' +
   'completed_at as "completedAt", created_at as "createdAt", updated_at as "updatedAt"';

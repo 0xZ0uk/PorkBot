@@ -54,7 +54,7 @@ import {
   updateClaimedRun,
 } from "./run-leases.ts";
 import type { FencedRunPatch, ReclaimOptions, RunLease, RunProgressStamp } from "./run-leases.ts";
-import { markRunStalled } from "./run-liveness.ts";
+import { claimRunNotification, markRunStalled } from "./run-liveness.ts";
 import { insertedRow, isUniqueViolation, requiredRow } from "./rows.ts";
 import { createToolResultReader } from "./tool-call-ledger.ts";
 import type { ToolResultReader } from "./tool-call-ledger.ts";
@@ -397,6 +397,13 @@ export interface SystemRunWriter {
    * between the scan and this write, so only one detector notifies.
    */
   markStalled(id: string, thresholdSeconds: number): Promise<RunRecord | undefined>;
+  /**
+   * Claims the run's one terminal notification (slice 8.7): true only for the
+   * caller that set `notified_at`, so a retry or a concurrent producer sends
+   * nothing for a state another caller already claimed. A non-terminal or
+   * foreign run is never claimed.
+   */
+  claimNotification(id: string): Promise<boolean>;
   /** Closes this fence's own attempt after ownership moved on; true when it did. */
   abandonAttempt(id: string, fence: number, reason: string): Promise<boolean>;
 }
@@ -555,6 +562,7 @@ export function createRepositories(
         update: (id, lease, patch) => updateClaimedRun(actor, database, id, lease, patch),
         markStalled: (id, thresholdSeconds) =>
           markRunStalled(actor, database, id, thresholdSeconds),
+        claimNotification: (id) => claimRunNotification(actor, database, id),
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
       messages: createAssistantMessageStore(actor, database),

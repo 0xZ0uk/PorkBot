@@ -5,7 +5,8 @@ import type { RunRecord } from "./records.ts";
 import { RUN_WATCHDOG_BATCH_LIMIT } from "./run-leases.ts";
 
 /**
- * The durable half of run-stall detection (slice 6.10, PRD decision 33).
+ * The durable half of run-liveness detection and its notification claims
+ * (slices 6.10 and 8.7, PRD decision 33).
  *
  * A stalled run is not one whose lease expired — that is the watchdog's reclaim
  * path — but one whose worker is alive and renewing while the run itself has
@@ -21,6 +22,12 @@ import { RUN_WATCHDOG_BATCH_LIMIT } from "./run-leases.ts";
  * notification path delivers one message per episode rather than one per
  * minute. A heartbeat that reports progress clears it in the same statement
  * that renews the lease.
+ *
+ * `notified_at` is the terminal notification's claim: the run row's one
+ * announcement that it finished or failed. The guarded write below is what
+ * makes duplicate suppression structural rather than incidental — whichever
+ * producer settles the run claims before it sends, and a second caller finds
+ * the claim already taken.
  */
 
 /** One run whose worker is alive but whose progress has stopped. */
@@ -87,4 +94,32 @@ export async function markRunStalled(
   );
 
   return rows[0];
+}
+
+/**
+ * Claims the run's one terminal notification (slice 8.7): true for the caller
+ * that set `notified_at`, false when it was already claimed, the run is not
+ * terminal, or the run is outside the actor's space. The status guard lives
+ * here rather than at the call sites so a `cancelled` run — the operator's own
+ * act — can never be announced, whichever producer asks.
+ *
+ * The claim is durable and independent of any delivery: a process that claims
+ * and then dies loses that message rather than re-sending it on a later pass.
+ * That is the delivery path's stated trade — bounded retries, then one final
+ * outcome — and it keeps a broken notifier from turning one finished run into a
+ * message per recovery pass.
+ */
+export async function claimRunNotification(
+  actor: SystemActor,
+  database: Queryable,
+  runId: string,
+): Promise<boolean> {
+  const { rows } = await database.query<{ readonly id: string }>(
+    "update run set notified_at = now(), updated_at = now() " +
+      "where id = $1 and space_id = $2 and notified_at is null " +
+      "and status in ('completed', 'failed') returning id",
+    [runId, actor.spaceId],
+  );
+
+  return rows.length > 0;
 }

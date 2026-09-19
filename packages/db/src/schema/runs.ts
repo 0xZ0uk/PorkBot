@@ -77,6 +77,14 @@ const runStepKindList = sql.raw(RUN_STEP_KINDS.map((kind) => `'${kind}'`).join("
  * is the distinction "work versus hang" is built from. `current_step` is a
  * closed vocabulary checked against `@porkbot/core`'s `RUN_STEP_KINDS`, and
  * the tool is only meaningful for the two kinds that name one.
+ *
+ * `notified_at` (slice 8.7) is the terminal notification's claim: a guarded
+ * write sets it before the operator is told a run finished or failed, so the
+ * same run state is announced at most once — a second producer, a retry or a
+ * concurrent recovery pass finds the claim taken. A `cancelled` run is the
+ * operator's own act and never claims one; a stall claims per episode through
+ * `stalled_at`, because a run that resumes and stalls again is a new thing to
+ * say.
  */
 export const run = pgTable(
   "run",
@@ -110,6 +118,7 @@ export const run = pgTable(
     currentStep: text("current_step"),
     currentStepTool: text("current_step_tool"),
     stalledAt: timestamp("stalled_at", { withTimezone: true }),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
     checkpoint: jsonb("checkpoint").notNull().default({}),
     clientNonce: text("client_nonce").notNull(),
     sourceMessageId: uuid("source_message_id").references((): AnyPgColumn => message.id, {

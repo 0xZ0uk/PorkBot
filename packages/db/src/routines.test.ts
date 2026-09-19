@@ -97,6 +97,7 @@ const run: RunRecord = {
   currentStep: null,
   currentStepTool: null,
   stalledAt: null,
+  notifiedAt: null,
   checkpoint: {},
   clientNonce: routineRunNonce(routine.id, routine.nextRunAt),
   sourceMessageId: null,
