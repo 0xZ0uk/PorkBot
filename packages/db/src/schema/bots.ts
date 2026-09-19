@@ -88,6 +88,14 @@ export const bot = pgTable(
     avatarKey: text("avatar_key"),
     computerId: uuid("computer_id"),
     /**
+     * The computer provider this bot selected, or null to use the
+     * deployment's default (slice 7.3). The kinds are an extensible set, so
+     * the column is text with a non-blank check rather than an enum; the
+     * supervisor is what knows which kinds its deployment configured, and it
+     * refuses an unknown one fail-closed at the first lifecycle call.
+     */
+    computerProvider: text("computer_provider"),
+    /**
      * The model this bot runs, and the connection it runs on (slice 9.2). Both
      * are nullable: an unset connection falls back to the space's default, and
      * an unset model falls back to that connection's `default_model`. Setting
@@ -118,5 +126,11 @@ export const bot = pgTable(
     // empty string would otherwise be returned and sent to a provider as the
     // model. The connection's `default_model` carries the same check.
     check("bot_model_check", sql`${table.model} is null or length(btrim(${table.model})) > 0`),
+    // A blank provider kind is not a selection either; null means "the
+    // deployment's default".
+    check(
+      "bot_computer_provider_check",
+      sql`${table.computerProvider} is null or length(btrim(${table.computerProvider})) > 0`,
+    ),
   ],
 );

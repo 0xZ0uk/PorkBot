@@ -127,11 +127,25 @@ function requireString(record: Record<string, unknown>, field: string, what: str
 
 function requireComputer(value: unknown): ComputerRef {
   const record = requireRecord(value, "computer");
-
-  return {
+  const provider = record["provider"];
+  const computer: ComputerRef = {
     computerId: requireString(record, "computerId", "computer"),
     botId: requireString(record, "botId", "computer"),
   };
+
+  if (provider === undefined) {
+    return computer;
+  }
+
+  if (typeof provider !== "string" || provider.trim() === "") {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      "computer.provider must be a non-empty string when present",
+    );
+  }
+
+  return { ...computer, provider };
 }
 
 function computerOf(body: unknown): ComputerRef {

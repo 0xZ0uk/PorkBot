@@ -207,6 +207,23 @@ describe("the supervisor surface's own refusals", () => {
     expect(raised).toMatchObject({ name: "ComputerProviderError", kind: "gone" });
   });
 
+  it("carries the per-bot provider selection across the wire unchanged", async () => {
+    const ref = { computerId: "provider-carried", botId: "bot-carried", provider: "offline" };
+
+    await expect(client().ensure(ref)).resolves.toMatchObject({ computer: ref, state: "running" });
+    await expect(client().status(ref)).resolves.toMatchObject({ computer: ref });
+  });
+
+  it("refuses a blank provider kind before a handler sees it", async () => {
+    const response = await rawCall("/v1/computers/status", {
+      body: JSON.stringify({
+        computer: { computerId: "blank-provider", botId: "bot-1", provider: "  " },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it("refuses a command whose budget is beyond what the supervisor will hold open", async () => {
     const response = await rawCall("/v1/computers/exec", {
       body: JSON.stringify({

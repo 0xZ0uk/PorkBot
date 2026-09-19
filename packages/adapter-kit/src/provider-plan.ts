@@ -136,10 +136,11 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         note: "Runs inside the supervisor process only: the provider is the thing that holds the Docker socket, and the supervisor is the only process that may construct it. It speaks the Engine API over that socket, creates the per-computer internal network, bounds CPU, memory, processes and (optionally) disk per bot, parks idle machines and keeps the home volume through stop, destroy and reset.",
       },
       {
-        name: "createCloudComputerProvider",
+        name: "createDaytonaComputerProvider",
         slice: "7.3",
         owner: "@porkbot/adapters",
-        status: "planned",
+        status: "shipped",
+        note: "The cloud implementation, chosen over E2B and Box because its control plane and sandbox toolbox are plain REST + JSON with a published OpenAPI document, so the adapter and its offline emulator speak the real wire without a generated Connect client. It shares the lifecycle composition in computer-runtime.ts with the Docker runtime, is selected per bot through the bot's computer settings, and leaves the reserved frames()/input() path unimplemented.",
       },
     ],
   },

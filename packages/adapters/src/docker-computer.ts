@@ -1,6 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { assertComputerNetworkPlan, planComputerNetwork } from "@porkbot/core";
@@ -10,14 +8,18 @@ import type {
   ComputerExecResult,
   ComputerProvider,
   ComputerRef,
-  ComputerSnapshot,
   ComputerState,
-  ComputerStatus,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
-import { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
 import { createDockerEngine } from "./docker-engine.ts";
 import type { DockerContainerInspect, DockerEngine } from "./docker-engine.ts";
+import { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
+import { computerIdentityHash, createRuntimeComputerProvider } from "./computer-runtime.ts";
+import type {
+  ComputerListedMachine,
+  ComputerMachine,
+  ComputerRuntime,
+} from "./computer-runtime.ts";
 
 /**
  * The Docker computer provider (slice 7.2, PRD decisions 19, 20 and 32; stories
@@ -30,18 +32,24 @@ import type { DockerContainerInspect, DockerEngine } from "./docker-engine.ts";
  * the Docker socket (slice 7.1) — and reaches the daemon through the Engine
  * API in `docker-engine.ts`. No other process imports it.
  *
+ * This file is the Docker runtime: the primitives only Docker can answer.
+ * `computer-runtime.ts` owns the lifecycle composition those primitives feed —
+ * idempotent boot and stop, bounded readiness, `gone` answers, scoped
+ * snapshots — so the cloud provider (slice 7.3) shares it rather than copying
+ * it, and the two providers cannot drift on what `ensure` or `destroy` means.
+ *
  * What survives what is the contract this file exists to keep:
  *
  *   - `stop` parks the container; the home volume is untouched, so an idle
  *     machine is shut down without losing the agent home;
- *   - `destroy` removes the container and keeps the named home volume, so the
+ *   - `remove` removes the container and keeps the named home volume, so the
  *     supervisor's reset (destroy, then ensure) rebuilds a clean machine with
  *     the bot's files intact;
- *   - `snapshot` streams the home out through the daemon's archive API into
- *     the provider's snapshot directory, and `restore` replaces the machine
- *     and streams the archive back in, so a snapshot outlives the container it
- *     came from. The storage seam (slice 7.5) is the next owner of the archive
- *     directory; until then it is configuration.
+ *   - `readHome` streams the home out through the daemon's archive API into
+ *     the provider's snapshot directory, and `writeHome` streams an archive
+ *     back in, so a snapshot outlives the container it came from. The storage
+ *     seam (slice 7.5) is the next owner of the archive directory; until then
+ *     it is configuration.
  *
  * Failure mapping: every daemon error goes through `classifyDockerFailure`
  * (slice 7.2, PRD decision 19), so `ensure` on a missing container is `gone`,
@@ -51,13 +59,13 @@ import type { DockerContainerInspect, DockerEngine } from "./docker-engine.ts";
  * `docker-errors.ts`' one job, checked by
  * `docker-failure.call-sites.test.ts`.
  *
- * Isolation: the provider computes the network plan from the computer's
+ * Isolation: the runtime computes the network plan from the computer's
  * identity with `planComputerNetwork` and asserts it before anything is
  * created, then creates the network with the plan's `internal` and
  * `gateway_mode_ipv4=isolated` properties and attaches the container to it —
- * never to the default bridge, the host network or a published port. An
- * existing network under the planned name is adopted only when it still
- * carries the isolation the plan declares.
+ * never to the default bridge, the host network or a published port. The
+ * isolation check itself lives in the supervisor's lifecycle for every
+ * provider; this runtime creates the plan it is given.
  *
  * Ceilings: CPU (fractional cores), memory (with swap pinned to the same
  * size), the process count and an optional write-layer disk quota come from
@@ -152,23 +160,12 @@ export interface DockerComputerProviderOptions {
   readonly engine?: DockerEngine | undefined;
 }
 
-/** A snapshot's key as this provider names it: `<scope>/<snapshotId>.tar`. */
-const snapshotKeyPattern = /^([0-9a-f]{16})\/([0-9a-f-]{36})\.tar$/;
-
-function identityHash(input: string): string {
-  return createHash("sha256").update(input).digest("hex").slice(0, 16);
-}
-
 function containerName(computer: ComputerRef): string {
-  return `porkbot-computer-${identityHash(`${computer.botId}\u0000${computer.computerId}`)}`;
+  return `porkbot-computer-${computerIdentityHash(`${computer.botId}\u0000${computer.computerId}`)}`;
 }
 
 function volumeName(computer: ComputerRef): string {
-  return `porkbot-home-${identityHash(`${computer.botId}\u0000${computer.computerId}`)}`;
-}
-
-function snapshotScope(computer: ComputerRef): string {
-  return identityHash(`snapshot\u0000${computer.botId}\u0000${computer.computerId}`);
+  return `porkbot-home-${computerIdentityHash(`${computer.botId}\u0000${computer.computerId}`)}`;
 }
 
 function assertCeilings(ceilings: ComputerCeilings): void {
@@ -194,13 +191,13 @@ function assertCeilings(ceilings: ComputerCeilings): void {
   }
 }
 
-/** Maps the daemon's container record onto the seam's three states. */
+/** Maps the daemon's container record onto the seam's two live states. */
 function stateOf(inspect: DockerContainerInspect): ComputerState {
   return inspect.State?.Running === true ? "running" : "stopped";
 }
 
-function statusOf(computer: ComputerRef, inspect: DockerContainerInspect): ComputerStatus {
-  return { computer: { ...computer }, state: stateOf(inspect), instanceId: inspect.Id };
+function machineOf(inspect: DockerContainerInspect): ComputerMachine {
+  return { instanceId: inspect.Id, state: stateOf(inspect) === "running" ? "running" : "stopped" };
 }
 
 function refFromLabels(
@@ -226,9 +223,8 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-export function createDockerComputerProvider(
-  options: DockerComputerProviderOptions,
-): ComputerProvider {
+/** Builds the runtime over one daemon; `createDockerComputerProvider` owns the seam. */
+function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRuntime {
   if (options.image.trim() === "") {
     throw new RangeError("the Docker computer provider needs an image");
   }
@@ -239,7 +235,6 @@ export function createDockerComputerProvider(
     throw new RangeError(`home must be an absolute path below the root, received "${home}"`);
   }
 
-  const snapshotDirectory = options.snapshotDirectory ?? DEFAULT_DOCKER_SNAPSHOT_DIRECTORY;
   const bootTimeoutMs = options.bootTimeoutMs ?? 60_000;
   const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
   const archiveTimeoutMs = options.archiveTimeoutMs ?? 120_000;
@@ -303,7 +298,7 @@ export function createDockerComputerProvider(
     await guarded(engine.pullImage(options.image, archiveTimeoutMs), "image");
   }
 
-  async function waitReady(id: string, budgetMs: number): Promise<DockerContainerInspect> {
+  async function waitReady(id: string, budgetMs: number): Promise<ComputerMachine> {
     const deadline = Date.now() + budgetMs;
 
     for (;;) {
@@ -319,7 +314,7 @@ export function createDockerComputerProvider(
       const health = inspect.State?.Health?.Status;
 
       if (inspect.State?.Running === true && (health === undefined || health === "healthy")) {
-        return inspect;
+        return machineOf(inspect);
       }
 
       if (health === "unhealthy") {
@@ -392,79 +387,19 @@ export function createDockerComputerProvider(
     );
   }
 
-  function snapshotFile(key: string): string | undefined {
-    const match = snapshotKeyPattern.exec(key);
-
-    if (match === null) {
-      return undefined;
-    }
-
-    // The key is scope-checked against the computer before a path is built, so
-    // a hand-assembled key cannot point at another machine's archive or escape
-    // the snapshot directory.
-    return path.join(snapshotDirectory, match[1] ?? "", `${match[2] ?? ""}.tar`);
-  }
-
   return {
-    async ensure(computer: ComputerRef): Promise<ComputerStatus> {
-      const network = planFor(computer);
-      const existing = await inspectFor(computer);
-
-      if (existing !== undefined && existing.State?.Running === true) {
-        return statusOf(computer, await waitReady(existing.Id, bootTimeoutMs));
-      }
-
-      let id: string;
-
-      if (existing === undefined) {
-        await ensureImage(requestTimeoutMs);
-        await guarded(engine.ensureNetwork(network, requestTimeoutMs), "network");
-        id = await createFor(computer, network.name);
-      } else {
-        id = existing.Id;
-      }
-
-      await engine
-        .startContainer(id, bootTimeoutMs)
-        .catch((error: unknown) => failure(error, "container"));
-
-      return statusOf(computer, await waitReady(id, bootTimeoutMs));
-    },
-
-    async status(computer: ComputerRef): Promise<ComputerStatus> {
+    async find(computer: ComputerRef): Promise<ComputerMachine | undefined> {
       const inspect = await inspectFor(computer);
 
-      return inspect === undefined
-        ? { computer: { ...computer }, state: "gone" }
-        : statusOf(computer, inspect);
+      return inspect === undefined ? undefined : machineOf(inspect);
     },
 
-    async stop(computer: ComputerRef): Promise<ComputerStatus> {
-      const inspect = await inspectFor(computer);
-
-      if (inspect === undefined || inspect.State?.Running !== true) {
-        return inspect === undefined
-          ? { computer: { ...computer }, state: "gone" }
-          : statusOf(computer, inspect);
-      }
-
-      await engine
-        .stopContainer(inspect.Id, 10, requestTimeoutMs)
-        .catch((error: unknown) => failure(error, "container"));
-
-      const stopped = await inspectFor(computer);
-
-      return stopped === undefined
-        ? { computer: { ...computer }, state: "gone" }
-        : statusOf(computer, stopped);
-    },
-
-    async list(): Promise<readonly ComputerStatus[]> {
+    async list(): Promise<readonly ComputerListedMachine[]> {
       const summaries = await guarded(
         engine.listContainers({ [dockerComputerLabels.managed]: "true" }, requestTimeoutMs),
         "container",
       );
-      const statuses: ComputerStatus[] = [];
+      const listed: ComputerListedMachine[] = [];
 
       for (const summary of summaries) {
         const computer = refFromLabels(summary.Labels);
@@ -473,26 +408,68 @@ export function createDockerComputerProvider(
           continue;
         }
 
-        statuses.push({
+        listed.push({
           computer,
-          state: summary.State === "running" ? "running" : "stopped",
-          instanceId: summary.Id,
+          machine: {
+            instanceId: summary.Id,
+            state: summary.State === "running" ? "running" : "stopped",
+          },
         });
       }
 
-      return statuses;
+      return listed;
     },
 
-    async exec(request: ComputerExecRequest): Promise<ComputerExecResult> {
-      if (!Number.isSafeInteger(request.timeoutMs) || request.timeoutMs <= 0) {
-        throw new RangeError(
-          `timeoutMs must be a positive integer of milliseconds, received ${String(request.timeoutMs)}`,
-        );
-      }
+    async prepare(computer: ComputerRef): Promise<void> {
+      await ensureImage(requestTimeoutMs);
+      await guarded(engine.ensureNetwork(planFor(computer), requestTimeoutMs), "network");
+    },
 
+    async create(computer: ComputerRef): Promise<ComputerMachine> {
+      const network = planFor(computer);
+      const id = await createFor(computer, network.name);
+
+      return { instanceId: id, state: "stopped" };
+    },
+
+    async start(machine: ComputerMachine): Promise<ComputerMachine> {
+      await engine
+        .startContainer(machine.instanceId, bootTimeoutMs)
+        .catch((error: unknown) => failure(error, "container"));
+
+      return { instanceId: machine.instanceId, state: "running" };
+    },
+
+    async stop(machine: ComputerMachine): Promise<ComputerMachine | undefined> {
+      await engine
+        .stopContainer(machine.instanceId, 10, requestTimeoutMs)
+        .catch((error: unknown) => failure(error, "container"));
+
+      const stopped = await engine
+        .inspectContainer(machine.instanceId, requestTimeoutMs)
+        .catch((error: unknown) => failure(error, "container"));
+
+      return stopped === undefined ? undefined : machineOf(stopped);
+    },
+
+    async remove(machine: ComputerMachine): Promise<void> {
+      await engine
+        .removeContainer(machine.instanceId, { force: true }, requestTimeoutMs)
+        .catch((error: unknown) => failure(error, "container"));
+    },
+
+    async ready(machine: ComputerMachine, _computer: ComputerRef, budgetMs: number) {
+      return await waitReady(machine.instanceId, budgetMs);
+    },
+
+    async exec(
+      machine: ComputerMachine,
+      _computer: ComputerRef,
+      request: ComputerExecRequest,
+    ): Promise<ComputerExecResult> {
       const result = await engine
         .exec({
-          containerId: containerName(request.computer),
+          containerId: machine.instanceId,
           command: request.command,
           workingDirectory: home,
           timeoutMs: request.timeoutMs,
@@ -519,115 +496,46 @@ export function createDockerComputerProvider(
       };
     },
 
-    async snapshot(computer: ComputerRef): Promise<ComputerSnapshot> {
-      const inspect = await inspectFor(computer);
-
-      if (inspect === undefined) {
-        throw new ComputerProviderError(
-          "gone",
-          `no computer ${computer.computerId} is provisioned`,
-        );
-      }
-
-      const scope = snapshotScope(computer);
-      const snapshotId = randomUUID();
-      const directory = path.join(snapshotDirectory, scope);
-      const file = path.join(directory, `${snapshotId}.tar`);
-
-      await mkdir(directory, { recursive: true });
+    async readHome(machine: ComputerMachine, _computer: ComputerRef, destination: string) {
+      const archive = await engine
+        .getArchive(machine.instanceId, home, archiveTimeoutMs)
+        .catch((error: unknown) => failure(error, "archive"));
 
       try {
-        const archive = await engine
-          .getArchive(inspect.Id, home, archiveTimeoutMs)
-          .catch((error: unknown) => failure(error, "archive"));
-        await pipeline(archive.stream, createWriteStream(file));
+        await pipeline(archive.stream, createWriteStream(destination));
       } catch (error) {
-        await rm(file, { force: true }).catch(() => undefined);
         // A stream that failed mid-copy is a transport fault, and an already
         // classified failure passes through with its kind intact.
         failure(error, "archive");
       }
-
-      return { snapshotId, key: `${scope}/${snapshotId}.tar` };
     },
 
-    async restore(computer: ComputerRef, snapshot: ComputerSnapshot): Promise<ComputerStatus> {
-      const network = planFor(computer);
-      const file = snapshotFile(snapshot.key);
-
-      if (
-        file === undefined ||
-        snapshot.key !== `${snapshotScope(computer)}/${snapshot.snapshotId}.tar` ||
-        snapshot.snapshotId.trim() === ""
-      ) {
-        throw new ComputerProviderError(
-          "not_found",
-          `no snapshot is stored under "${snapshot.key}" for this computer`,
-        );
-      }
-
-      const archive = await stat(file).catch(() => undefined);
-
-      if (archive === undefined || !archive.isFile()) {
-        throw new ComputerProviderError(
-          "not_found",
-          `no snapshot archive exists at "${snapshot.key}"`,
-        );
-      }
-
-      await ensureImage(requestTimeoutMs);
-      await guarded(engine.ensureNetwork(network, requestTimeoutMs), "network");
-
-      // Restore means the snapshot wins: the old container and its home are
-      // replaced, so nothing the snapshot does not carry can survive into the
-      // restored machine, and then the archive is streamed back into the
-      // fresh home before the machine starts.
-      const existing = await inspectFor(computer);
-
-      if (existing !== undefined) {
-        await engine
-          .removeContainer(existing.Id, { force: true }, requestTimeoutMs)
-          .catch((error: unknown) => failure(error, "container"));
-      }
+    async writeHome(
+      machine: ComputerMachine,
+      _computer: ComputerRef,
+      source: string,
+      byteLength: number,
+    ) {
+      const stream = createReadStream(source);
 
       await engine
-        .removeVolume(volumeName(computer), requestTimeoutMs)
-        .catch((error: unknown) => failure(error, "container"));
-
-      const id = await createFor(computer, network.name);
-      const stream = createReadStream(file);
-
-      try {
-        await engine
-          .putArchive(id, path.dirname(home), { stream, length: archive.size }, archiveTimeoutMs)
-          .catch((error: unknown) => failure(error, "archive"));
-
-        await engine
-          .startContainer(id, bootTimeoutMs)
-          .catch((error: unknown) => failure(error, "container"));
-      } catch (error) {
-        // A restore that failed after the old home was replaced leaves no
-        // half-booted machine behind: the clean container is removed, so the
-        // next attempt starts from gone rather than from an empty home.
-        await engine.removeContainer(id, { force: true }, requestTimeoutMs).catch(() => undefined);
-        throw error;
-      }
-
-      return statusOf(computer, await waitReady(id, bootTimeoutMs));
-    },
-
-    async destroy(computer: ComputerRef): Promise<void> {
-      const inspect = await inspectFor(computer);
-
-      if (inspect === undefined) {
-        return;
-      }
-
-      // The named home volume is deliberately not removed: the bot's home is
-      // what a reset keeps, and what a snapshot is for.
-      await engine
-        .removeContainer(inspect.Id, { force: true }, requestTimeoutMs)
-        .catch((error: unknown) => failure(error, "container"));
+        .putArchive(
+          machine.instanceId,
+          path.dirname(home),
+          { stream, length: byteLength },
+          archiveTimeoutMs,
+        )
+        .catch((error: unknown) => failure(error, "archive"));
     },
   };
+}
+
+export function createDockerComputerProvider(
+  options: DockerComputerProviderOptions,
+): ComputerProvider {
+  return createRuntimeComputerProvider({
+    runtime: createDockerRuntime(options),
+    snapshotDirectory: options.snapshotDirectory ?? DEFAULT_DOCKER_SNAPSHOT_DIRECTORY,
+    bootTimeoutMs: options.bootTimeoutMs,
+  });
 }

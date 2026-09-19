@@ -63,6 +63,13 @@ export const botSchema = z.object({
    */
   computerId: z.string().nullable(),
   /**
+   * The computer provider this bot selected (`offline`, `docker`, a cloud
+   * kind), or null to run on the deployment's default (slice 7.3). A kind is
+   * free text because the set is extensible; the supervisor refuses one its
+   * deployment has not configured rather than falling back silently.
+   */
+  computerProvider: z.string().nullable(),
+  /**
    * The model connection this bot selected, or null to use the space's
    * default (slice 9.2). The connection's URL and credential *name* live on
    * the connection; a bot body never carries a secret.
@@ -127,6 +134,8 @@ export const botsCreateContract = authenticatedProcedure
       position: z.number().int().min(0).optional(),
       sectionId: z.uuid().nullable().optional(),
       computerId: z.uuid().nullable().optional(),
+      /** A configured provider kind; one the deployment has not configured fails at the first call. */
+      computerProvider: z.string().min(1).max(64).nullable().optional(),
       /** A connection in the actor's space; one outside it is not found. */
       modelConnectionId: z.uuid().nullable().optional(),
       model: z.string().min(1).max(200).nullable().optional(),
@@ -165,6 +174,8 @@ export const botsUpdateContract = authenticatedProcedure
       sectionId: z.uuid().nullable().optional(),
       /** `null` clears the assignment. */
       computerId: z.uuid().nullable().optional(),
+      /** `null` falls back to the deployment's default provider. */
+      computerProvider: z.string().min(1).max(64).nullable().optional(),
       /** `null` falls back to the space's default connection. */
       modelConnectionId: z.uuid().nullable().optional(),
       /** `null` falls back to the selected connection's default model. */

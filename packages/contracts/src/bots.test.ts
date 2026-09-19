@@ -29,6 +29,7 @@ describe("the bot schema", () => {
       sectionId: null,
       avatarKey: null,
       computerId: null,
+      computerProvider: null,
       modelConnectionId: null,
       model: null,
       archivedAt: null,

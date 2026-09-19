@@ -48,9 +48,9 @@ export const COMPUTER_HOME_SYNC: readonly ComputerHomeSyncStory[] = [
     throughStorage: true,
   },
   {
-    provider: "createCloudComputerProvider",
+    provider: "createDaytonaComputerProvider",
     story:
-      "The home lives on the remote instance and is unreachable except through the provider. The snapshot path is the sync: capture writes the archive through the storage seam, and a reclaimed instance is rebuilt by restoring that archive. A provider that cannot snapshot its home is documented as not backed up before it ships, and the computer lease is released rather than pretended durable.",
+      "The home lives on the remote sandbox and is unreachable except through the toolbox. The snapshot path is the sync: capture runs tar in the sandbox, streams the archive through the toolbox download into the provider's snapshot directory, and a reclaimed sandbox is rebuilt by restoring that archive. A deployment that never runs the snapshot job has no home backup, and stop keeps the filesystem only for the sandbox's own lifetime.",
     throughStorage: true,
   },
 ];

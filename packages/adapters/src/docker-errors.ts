@@ -1,5 +1,6 @@
 import { isProviderFailure } from "@porkbot/adapter-kit";
-import type { ProviderFailureKind } from "@porkbot/adapter-kit";
+import { computerFailureKind } from "./computer-failure.ts";
+import type { ComputerFailureRule, ComputerFailureSubject } from "./computer-failure.ts";
 import { ComputerProviderError } from "./computer-errors.ts";
 import { DockerEngineError } from "./docker-engine.ts";
 
@@ -15,6 +16,12 @@ import { DockerEngineError } from "./docker-engine.ts";
  * `docker-computer.ts` calls `classifyDockerFailure` and never inspects a
  * status or a message itself. `docker-failure.call-sites.test.ts` scans the
  * shipped sources and fails when that rule is broken.
+ *
+ * The decision itself — which status or phrase means which kind, and that a
+ * 404 on the machine is `gone` while a 404 on a named thing is `not_found` —
+ * is shared with the cloud classifier in `computer-failure.ts`, so "the
+ * computer is gone" has one implementation across providers. What stays here
+ * is Docker's own vocabulary and Docker's own error classes.
  *
  * What each Docker state becomes:
  *
@@ -77,7 +84,7 @@ export class DockerProtocolError extends Error {
  * errors (a pull stream has no status at all, a `500` carries everything from a
  * missing image to a registry quota).
  */
-const messageRules: readonly { readonly pattern: RegExp; readonly kind: ProviderFailureKind }[] = [
+const messageRules: readonly ComputerFailureRule[] = [
   // A quota is a retry-later condition, and its wording ("toomanyrequests",
   // "rate limit exceeded") is the only signal the registry gives.
   { pattern: /toomanyrequests|rate ?limit/i, kind: "rate_limited" },
@@ -105,6 +112,16 @@ const originWord: Record<DockerFailureOrigin, string> = {
   transport: "the Docker daemon could not be reached",
   timeout: "the Docker daemon did not answer in time",
   protocol: "the Docker daemon answered with something unexpected",
+};
+
+/** Docker's subjects in the shared classifier's terms. */
+const sharedSubject: Record<DockerFailureSubject, ComputerFailureSubject> = {
+  container: "machine",
+  exec: "exec",
+  image: "named",
+  network: "named",
+  archive: "named",
+  daemon: "named",
 };
 
 function classified(subject: DockerFailureSubject, why: string): string {
@@ -142,76 +159,23 @@ export function classifyDockerFailure(
   }
 
   const origin = error.origin;
-
-  if (origin === "timeout") {
-    return new ComputerProviderError(
-      "timed_out",
-      classified(subject, originWord.timeout),
-      undefined,
-      {
-        cause: error,
-      },
-    );
-  }
-
-  if (origin === "transport") {
-    // An unreachable daemon is not a retryable provider state: the shared
-    // vocabulary has no "unreachable", and `timed_out` is the word that makes
-    // the caller re-read the machine's state before reuse.
-    return new ComputerProviderError(
-      "timed_out",
-      classified(subject, originWord.transport),
-      undefined,
-      {
-        cause: error,
-      },
-    );
-  }
-
   const message = error.daemonMessage ?? "";
+  const verdict = computerFailureKind({
+    origin,
+    status: error.status,
+    message,
+    subject: sharedSubject[subject],
+    rules: messageRules,
+  });
 
-  for (const rule of messageRules) {
-    if (rule.pattern.test(message)) {
-      return new ComputerProviderError(
-        rule.kind,
-        classified(subject, originWord[origin]),
-        error.status,
-        {
-          cause: error,
-        },
-      );
-    }
-  }
-
-  if (error.status === 401 || error.status === 403) {
-    return new ComputerProviderError(
-      "auth_failed",
-      classified(subject, originWord[origin]),
-      error.status,
+  if (verdict === undefined) {
+    return new DockerProtocolError(
+      `${originWord[origin]} with status ${String(error.status ?? "none")} and no known classification (${subject}): ${message}`,
       { cause: error },
     );
   }
 
-  if (error.status === 429) {
-    return new ComputerProviderError(
-      "rate_limited",
-      classified(subject, originWord[origin]),
-      error.status,
-      { cause: error },
-    );
-  }
+  const detail = classified(subject, originWord[origin]);
 
-  if (error.status === 404) {
-    const kind: ProviderFailureKind =
-      subject === "container" || subject === "exec" ? "gone" : "not_found";
-
-    return new ComputerProviderError(kind, classified(subject, originWord[origin]), error.status, {
-      cause: error,
-    });
-  }
-
-  return new DockerProtocolError(
-    `${originWord[origin]} with status ${String(error.status ?? "none")} and no known classification (${subject}): ${message}`,
-    { cause: error },
-  );
+  return new ComputerProviderError(verdict.kind, detail, verdict.status, { cause: error });
 }

@@ -193,7 +193,21 @@ describe("the run execution harness", () => {
               arguments: {},
             });
           });
-          yield* Effect.sleep("20 millis");
+
+          // Wait for the beat that stamps the note and one idle beat after it
+          // instead of sleeping a fixed span: the assertion below is about the
+          // beat *after* the one that saw the note, and a fixed sleep raced a
+          // stalled heartbeat under load.
+          yield* Effect.gen(function* () {
+            const stamped = (): boolean =>
+              runner.heartbeats.some((beat) => beat.progress.progressed);
+            const idleAgain = (): boolean =>
+              runner.heartbeats.at(-1)?.progress.progressed === false;
+
+            while (!stamped() || !idleAgain()) {
+              yield* Effect.sleep("5 millis");
+            }
+          });
 
           return { status: "completed" } as const;
         }),

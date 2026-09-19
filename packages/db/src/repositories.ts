@@ -134,6 +134,14 @@ export interface NewBot {
    * documented rather than implied.
    */
   readonly computerId?: string | null | undefined;
+  /**
+   * The computer provider this bot selects (`offline`, `docker`, a cloud
+   * kind), or null for the deployment's default (slice 7.3). The column is
+   * free text; the supervisor refuses a kind its deployment has not
+   * configured, so a typo fails the first lifecycle call rather than booting
+   * a machine somewhere unexpected.
+   */
+  readonly computerProvider?: string | null | undefined;
   /** A connection in the actor's space; one outside it is a `NotFoundError`. */
   readonly modelConnectionId?: string | null | undefined;
   /** The model this bot selects, overriding its connection's default. */
@@ -153,6 +161,8 @@ export interface BotPatch {
   readonly sectionId?: string | null | undefined;
   /** `null` clears the assignment; E7 adds the reference that validates it. */
   readonly computerId?: string | null | undefined;
+  /** `null` falls back to the deployment's default computer provider. */
+  readonly computerProvider?: string | null | undefined;
   /** `null` falls back to the space's default connection. */
   readonly modelConnectionId?: string | null | undefined;
   /** `null` falls back to the selected connection's default model. */
@@ -865,13 +875,14 @@ async function createBot(actor: UserActor, database: Queryable, input: NewBot): 
   const modelConnectionId = input.modelConnectionId ?? null;
   const { rows } = await database.query<BotRecord>(
     "insert into bot (space_id, user_id, name, title, description, instructions, color, " +
-      "pinned, position, section_id, computer_id, model_connection_id, model, spawn_key) " +
-      "select $1, $2, $3, $4, $5, $6, $7, $8, $9, s.id, $10, c.id, $11, $12 " +
+      "pinned, position, section_id, computer_id, computer_provider, model_connection_id, " +
+      "model, spawn_key) " +
+      "select $1, $2, $3, $4, $5, $6, $7, $8, $9, s.id, $10, $11, c.id, $12, $13 " +
       "from (values (1)) as anchor(n) " +
-      "left join bot_section s on s.id = $13::uuid and s.space_id = $1 and s.user_id = $2 " +
-      "left join model_connection c on c.id = $14::uuid and c.space_id = $1 " +
-      "where ($13::uuid is null or s.id is not null) " +
-      "and ($14::uuid is null or c.id is not null) " +
+      "left join bot_section s on s.id = $14::uuid and s.space_id = $1 and s.user_id = $2 " +
+      "left join model_connection c on c.id = $15::uuid and c.space_id = $1 " +
+      "where ($14::uuid is null or s.id is not null) " +
+      "and ($15::uuid is null or c.id is not null) " +
       "on conflict (space_id, spawn_key) do update set spawn_key = excluded.spawn_key " +
       `returning ${botColumns}`,
     [
@@ -885,6 +896,7 @@ async function createBot(actor: UserActor, database: Queryable, input: NewBot): 
       input.pinned ?? false,
       input.position ?? 0,
       input.computerId ?? null,
+      input.computerProvider ?? null,
       input.model ?? null,
       input.spawnKey,
       sectionId,
@@ -977,6 +989,11 @@ async function updateBot(
   if (patch.computerId !== undefined) {
     values.push(patch.computerId);
     assignments.push(`computer_id = $${values.length}`);
+  }
+
+  if (patch.computerProvider !== undefined) {
+    values.push(patch.computerProvider);
+    assignments.push(`computer_provider = $${values.length}`);
   }
 
   let modelConnectionParameter: number | undefined;

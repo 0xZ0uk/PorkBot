@@ -116,11 +116,16 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   to local placeholders. The screen-capability signing key is
   `PORKBOT_SCREEN_TOKEN_SECRET`; a deployment that leaves it unset refuses
   screen access entirely.
-- **A computer is offline or Docker.** `supervisor` owns the provider choice
-  and the generic computer settings: `PORKBOT_COMPUTER_PROVIDER` is `offline`
-  by default and `docker` for real machines, `PORKBOT_COMPUTER_IMAGE` names the
-  image a Docker computer boots (required by that selection),
-  `PORKBOT_COMPUTER_SOCKET` is its daemon socket, and
+- **A computer is offline, Docker or a cloud sandbox.** `supervisor` owns the
+  provider choice and the generic computer settings: `PORKBOT_COMPUTER_PROVIDER`
+  is `offline` by default, `docker` for real machines or `daytona` for the
+  cloud; a bot may select any configured kind through its own
+  `computerProvider` setting, and a kind this deployment did not configure is
+  refused rather than silently replaced. `PORKBOT_COMPUTER_IMAGE` names the
+  image a machine boots (required by either real provider),
+  `PORKBOT_COMPUTER_SOCKET` is Docker's daemon socket,
+  `PORKBOT_COMPUTER_ENDPOINT` / `PORKBOT_COMPUTER_TOKEN` (and optionally
+  `PORKBOT_COMPUTER_TOOLBOX_URL`) are the cloud connection, and
   `PORKBOT_COMPUTER_CPUS` / `PORKBOT_COMPUTER_MEMORY_MB` /
   `PORKBOT_COMPUTER_DISK_MB` are one bot's share of the host floor under "A
   bot's computer". `PORKBOT_COMPUTER_IDLE_MS` (default fifteen minutes, zero
@@ -288,7 +293,8 @@ shows. `packages/adapters/src/computer-conformance.ts` is the suite every
 provider is held to — idempotent `ensure`, idempotent `stop`, `list`,
 `gone` answers, timeout classification, persistence across commands, isolation
 between computers, snapshot and restore, the reserved path and the browser
-protocol — and the Docker provider registers it against a real container.
+protocol — and the Docker provider registers it against a real container while
+the cloud provider registers the same suite against its offline API emulator.
 
 The supervisor owns lifecycle (slice 7.1). `apps/supervisor` is the only
 process that will hold the Docker socket and the only one that constructs a
@@ -331,6 +337,38 @@ suite drives the provider through a fake Engine API on a unix socket, and the
 supervisor's integration tier runs the shared conformance suite against a real
 container, asserts the ceilings on the daemon's own inspect output, and shows
 that an idle stop and a reset both keep the home.
+
+The second real machine is `createDaytonaComputerProvider` (slice 7.3), the
+cloud implementation of the same seam. It is chosen over E2B and Box because
+Daytona's control plane and sandbox toolbox are plain REST + JSON with a
+published OpenAPI document, so the adapter and its offline emulator speak the
+real wire without a generated Connect/gRPC client and a self-hoster can run the
+same API. One sandbox per bot, labelled `porkbot.*`, created from the
+deployment's image with the per-bot CPU, memory and disk ceilings; `stop` parks
+it (Daytona keeps a stopped sandbox's filesystem), `start` resumes it,
+`recover` brings an errored sandbox back, and `remove` deletes it, so the
+home's durability is the snapshot path — `tar` in the sandbox and the archive
+through the toolbox download/upload into `PORKBOT_COMPUTER_SNAPSHOT_DIR`,
+restored before the machine runs again. `daytona-errors.ts` is the one module
+allowed to read a Daytona status or message, and the decision it shares with
+Docker — is the machine gone, is a named thing missing — lives once in
+`computer-failure.ts`.
+
+The two real providers are two runtimes under one lifecycle. `ensure`, `stop`,
+bounded readiness, `gone` answers, scoped snapshot keys and idempotent destroy
+are composed once in `computer-runtime.ts` over the primitives only a provider
+can answer (find, list, create, start, stop, remove, ready, exec, readHome,
+writeHome); the Docker and Daytona modules supply those primitives and their
+classifiers, and the shared conformance suite runs the same cases against both
+— the Docker provider against a real container in the integration tier, the
+Daytona provider against its offline API emulator in the unit tier, and both
+through the supervisor's transport. The supervisor holds a registry of the
+kinds its deployment configured; each per-bot `computerProvider` setting routes
+that bot's calls, `list` re-tags every machine with the provider that holds it,
+and an unconfigured kind is refused with the shared `not_found`. The reserved
+`frames()`/`input()` path stays in the interface: neither v1.0 real provider
+implements it, and the offline emulator exercises the path so the v1.1 surface
+stays alive.
 
 The model reaches that machine through `createComputerTools` in
 `packages/effect`: `shell`, `file_read`, `file_write`, `file_list` and
@@ -1611,6 +1649,19 @@ machine nor a host service, asserts the ceilings on the daemon's own inspect
 output, and inspects the running stack to prove the API container has no socket.
 The reserved screen paths are already gated by a short-lived capability token
 scoped to one computer and one actor; the stream behind them is v1.1 work.
+
+The second computer provider lands with slice 7.3. `createDaytonaComputerProvider`
+is the cloud runtime over the same lifecycle: REST + JSON to the control plane
+and the sandbox toolbox, `start`/`stop`/`recover` over the sandbox states,
+`tar` through the toolbox for snapshot and restore, every refusal classified by
+`daytona-errors.ts` through the shared decision in `computer-failure.ts`, and
+no `frames()`/`input()` implementation. The supervisor's provider configuration
+becomes a registry of the kinds the deployment configured (offline always,
+Docker when an image is named, the cloud when endpoint, key and image are), and
+each bot's `computerProvider` setting selects one; a bot with no selection runs
+on the deployment's default. `@porkbot/adapters`' `daytona-engine-emulator.ts`
+serves the real wire on loopback, so the unit tier runs the shared conformance
+suite against the cloud provider with no network and no key.
 
 The model runtime adapter lands with slice 9.2. `createOpenAiCompatibleModelRuntime`
 in `@porkbot/adapters` is the real OpenAI-compatible provider — a hosted

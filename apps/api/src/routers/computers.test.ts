@@ -26,6 +26,8 @@ const owner: UserActor = { kind: "user", spaceId: "space-1", userId: "user-1", r
 const assignedBotId = "bot-assigned";
 const unassignedBotId = "bot-unassigned";
 const computerId = "computer-1";
+/** The per-bot provider selection the fixture row reports; null is the default. */
+let assignedProvider: string | null = null;
 
 let sessionActor: UserActor | null = owner;
 const recorded: { readonly path: string; readonly body: unknown }[] = [];
@@ -49,6 +51,7 @@ function botWith(computer: string | null): BotRecord {
     spawnKey: "00000000-0000-4000-8000-000000000000",
     avatarKey: null,
     computerId: computer,
+    computerProvider: assignedProvider,
     modelConnectionId: null,
     model: null,
     createdAt: new Date(0),
@@ -266,6 +269,25 @@ describe("the computer lifecycle surface", () => {
       {
         path: "/v1/computers/status",
         body: { computer: { computerId, botId: assignedBotId } },
+      },
+    ]);
+  });
+
+  it("carries the bot's provider selection to the supervisor", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+    assignedProvider = "daytona";
+
+    try {
+      await client().computers.status({ botId: assignedBotId });
+    } finally {
+      assignedProvider = null;
+    }
+
+    expect(recorded).toEqual([
+      {
+        path: "/v1/computers/status",
+        body: { computer: { computerId, botId: assignedBotId, provider: "daytona" } },
       },
     ]);
   });

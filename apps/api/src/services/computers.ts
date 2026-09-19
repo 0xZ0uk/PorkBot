@@ -113,7 +113,16 @@ export function createComputerService(provider: ComputerLifecycleProvider): Comp
   ): Promise<ComputerRef | undefined> {
     const bot = await repositories.bots.findById(botId);
 
-    return bot.computerId === null ? undefined : { computerId: bot.computerId, botId: bot.id };
+    if (bot.computerId === null) {
+      return undefined;
+    }
+
+    // The per-bot provider selection travels with the reference so the
+    // supervisor routes the call to the provider the operator chose, while a
+    // bot that selected none keeps running on the deployment's default.
+    return bot.computerProvider === null
+      ? { computerId: bot.computerId, botId: bot.id }
+      : { computerId: bot.computerId, botId: bot.id, provider: bot.computerProvider };
   }
 
   async function call(operation: () => Promise<ComputerStatus>): Promise<ComputerView> {
