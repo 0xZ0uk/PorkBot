@@ -47,6 +47,14 @@ class RecordingProvider implements ComputerProvider {
     return { computer, state: "running" };
   }
 
+  async stop(computer: ComputerRef): Promise<ComputerStatus> {
+    return { computer, state: "stopped" };
+  }
+
+  async list(): Promise<readonly ComputerStatus[]> {
+    return [];
+  }
+
   async exec(request: ComputerExecRequest): Promise<ComputerExecResult> {
     this.requests.push(request);
     const result = this.results[this.#next] ?? { exitCode: 0, stdout: "", stderr: "" };

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   ApprovalStoreError,
   BlockedUrlError,
+  ComputerUnavailableError,
   CredentialMissingError,
   CredentialStoreError,
   CursorRejectedError,
@@ -121,6 +122,11 @@ const samples = {
   },
   McpServerUnavailableError: {
     error: new McpServerUnavailableError("timed_out", "the server did not answer"),
+    code: "SERVICE_UNAVAILABLE",
+    status: 503,
+  },
+  ComputerUnavailableError: {
+    error: new ComputerUnavailableError("timed_out", "the supervisor did not answer"),
     code: "SERVICE_UNAVAILABLE",
     status: 503,
   },

@@ -302,7 +302,7 @@ function provider() {
   });
 }
 
-mcpServerConformance("the HTTP provider", async () => ({
+await mcpServerConformance("the HTTP provider", async () => ({
   provider: provider(),
   serverUrl: `${wire.origin}/mcp`,
   missingUrl: `${wire.origin}/missing`,

@@ -34,17 +34,36 @@ const skippedDirectories = new Set(["dist", "node_modules", "coverage", ".turbo"
 const urlSafetyModule = "packages/effect/src/url-safety.ts";
 
 /**
- * The sanctioned same-origin transports: files whose only egress goes to the
- * deployment's own origin, never to a URL from user content. `safeFetch`
- * guards third-party destinations and lives in this package, which these
- * clients' module-map entries do not grant them; the exemption is registered
- * here with its reason rather than left to the scanner's shape heuristics, and
- * the "narrow, needed and same-origin" test below turns a stale entry red.
+ * The sanctioned same-origin transports: files whose only egress goes to an
+ * address the deployment configured, never to a URL from user content.
+ * `safeFetch` guards third-party destinations and lives in this package,
+ * which these clients' module-map entries do not grant them; the exemption is
+ * registered here with its reason and the shape that proves it dials
+ * configuration rather than a URL of its own, and the "narrow, needed and
+ * same-origin" test below turns a stale entry red.
  */
-const sameOriginTransports: ReadonlyMap<string, string> = new Map([
+interface SameOriginTransport {
+  readonly reason: string;
+  /** The configured origin the file must dial, as it appears in the source. */
+  readonly mustDial: string;
+}
+
+const sameOriginTransports: ReadonlyMap<string, SameOriginTransport> = new Map([
   [
     "apps/web/src/transport.ts",
-    "the web shell posts the credential exchange to the deployment's own origin: the origin is configuration and the auth paths are constants, and the console's RPC client dials that same origin through the contract",
+    {
+      reason:
+        "the web shell posts the credential exchange to the deployment's own origin: the origin is configuration and the auth paths are constants, and the console's RPC client dials that same origin through the contract",
+      mustDial: 'options.origin ?? ""',
+    },
+  ],
+  [
+    "packages/adapters/src/supervisor-computer.ts",
+    {
+      reason:
+        "the supervisor client dials the deployment's own supervisor, an internal service on the compose network: the origin is configuration and every path is a constant this package also gives the server, so there is no user-supplied URL and no third-party destination; the process credential is sent there and nowhere else",
+      mustDial: "options.baseUrl",
+    },
   ],
 ]);
 
@@ -200,15 +219,15 @@ describe("the URL-safety call sites", () => {
   });
 
   it("keeps every same-origin exemption narrow, needed and same-origin", () => {
-    for (const [file, reason] of sameOriginTransports) {
+    for (const [file, exemption] of sameOriginTransports) {
       const source = readFileSync(path.join(repoRoot, file), "utf8");
 
       expect(
         egressNotes(source).length,
-        `${file} no longer fetches directly, so its exemption (${reason}) should be deleted`,
+        `${file} no longer fetches directly, so its exemption (${exemption.reason}) should be deleted`,
       ).toBeGreaterThan(0);
-      expect(source, `${file} must dial the configured origin, not a URL of its own`).toContain(
-        'options.origin ?? ""',
+      expect(source, `${file} must dial the configured origin ("${exemption.mustDial}")`).toContain(
+        exemption.mustDial,
       );
       expect(source, `${file} must not carry a host literal`).not.toMatch(/https?:\/\//);
     }

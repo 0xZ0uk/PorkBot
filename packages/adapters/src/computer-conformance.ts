@@ -5,17 +5,23 @@ import type {
   ComputerRef,
   ProviderFailure,
 } from "@porkbot/adapter-kit";
-import { describe, expect, it } from "vitest";
 
 /**
- * The computer conformance suite (slice 6.9, used by slice 7.3): one set of
- * behaviors every `ComputerProvider` implementation must show. It runs today
- * against the offline emulator and, when the Docker provider lands, against a
- * real container over the same suite, so a provider that drifts from the seam
- * — a non-idempotent `ensure`, a `destroy` that leaves a handle alive, a
- * command that outlives its budget without classifying as `timed_out`, a file
- * that does not survive across execs, a snapshot that cannot be restored into
- * a destroyed machine — fails here rather than in the run that depends on it.
+ * The computer conformance suite (slice 6.9, used by slices 7.1 and 7.3): one
+ * set of behaviors every `ComputerProvider` implementation must show. It runs
+ * against the offline emulator, through the supervisor's transport and, when
+ * the Docker provider lands, against a real container over the same suite, so
+ * a provider that drifts from the seam — a non-idempotent `ensure`, a
+ * `destroy` that leaves a handle alive, a command that outlives its budget
+ * without classifying as `timed_out`, a file that does not survive across
+ * execs, a snapshot that cannot be restored into a destroyed machine — fails
+ * here rather than in the run that depends on it.
+ *
+ * The test runner is imported inside the function, not at module scope: this
+ * file is reachable from `@porkbot/adapters`' entry point, which the supervisor
+ * and the API deploy, and a static `vitest` import would make a production
+ * image require the test toolchain. `computerConformance` is therefore async;
+ * a test file calls it with top-level `await`.
  *
  * The suite speaks the seam and a small POSIX subset every provider's image is
  * expected to carry (`mkdir -p`, `printf`, redirection, `cat`, `false`,
@@ -24,7 +30,9 @@ import { describe, expect, it } from "vitest";
  * browser helper is expected to speak it.
  *
  * The harness owns creation. Each test builds a fresh provider and fresh
- * computer references, so no assertion depends on another test's state.
+ * computer references, so no assertion depends on another test's state. A
+ * shared provider — the supervisor's transport against one long-lived
+ * emulator, say — is handled by containment assertions rather than equality.
  */
 
 export const CONFORMANCE_HOME = "/home/agent";
@@ -130,40 +138,51 @@ async function failureFrom(call: Promise<unknown>): Promise<ProviderFailure> {
   throw new Error("expected the call to fail");
 }
 
-function expectSuccess(result: ComputerExecResult): ComputerExecResult {
-  expect(result.exitCode).toBe(0);
-  return result;
-}
-
-async function writeFile(
-  provider: ComputerProvider,
-  computer: ComputerRef,
-  path: string,
-  content: string,
-  timeoutMs: number,
+/**
+ * Registers the suite with the test runner. The runner is imported here rather
+ * than at module scope so that loading this module — which the adapters entry
+ * point re-exports — never requires `vitest` outside a test run.
+ */
+export async function computerConformance(
+  name: string,
+  create: ComputerConformanceFactory,
 ): Promise<void> {
-  const parent = path.slice(0, path.lastIndexOf("/"));
+  const { describe, expect, it } = await import("vitest");
 
-  await expectSuccess(
-    await provider.exec({
-      computer,
-      command: `mkdir -p ${quote(parent)} && printf '%s' ${quote(content)} > ${quote(path)}`,
-      timeoutMs,
-    }),
-  );
-}
+  function expectSuccess(result: ComputerExecResult): ComputerExecResult {
+    expect(result.exitCode).toBe(0);
+    return result;
+  }
 
-async function readFile(
-  provider: ComputerProvider,
-  computer: ComputerRef,
-  path: string,
-  timeoutMs: number,
-): Promise<string> {
-  return expectSuccess(await provider.exec({ computer, command: `cat ${quote(path)}`, timeoutMs }))
-    .stdout;
-}
+  async function writeFile(
+    provider: ComputerProvider,
+    computer: ComputerRef,
+    path: string,
+    content: string,
+    timeoutMs: number,
+  ): Promise<void> {
+    const parent = path.slice(0, path.lastIndexOf("/"));
 
-export function computerConformance(name: string, create: ComputerConformanceFactory): void {
+    await expectSuccess(
+      await provider.exec({
+        computer,
+        command: `mkdir -p ${quote(parent)} && printf '%s' ${quote(content)} > ${quote(path)}`,
+        timeoutMs,
+      }),
+    );
+  }
+
+  async function readFile(
+    provider: ComputerProvider,
+    computer: ComputerRef,
+    path: string,
+    timeoutMs: number,
+  ): Promise<string> {
+    return expectSuccess(
+      await provider.exec({ computer, command: `cat ${quote(path)}`, timeoutMs }),
+    ).stdout;
+  }
+
   describe(`${name} computer conformance`, () => {
     it("brings a computer up idempotently and reports it running", async () => {
       const harness = await create();
@@ -184,6 +203,79 @@ export function computerConformance(name: string, create: ComputerConformanceFac
       await expect(
         harness.provider.status({ computerId: "never-provisioned", botId: "bot-1" }),
       ).resolves.toMatchObject({ state: "gone" });
+    });
+
+    it("parks a computer with stop and brings it back with ensure, home intact", async () => {
+      const harness = await create();
+      await harness.provider.ensure(harness.computer);
+      const path = `${harness.home}/parked.txt`;
+      await writeFile(
+        harness.provider,
+        harness.computer,
+        path,
+        "survives a stop\n",
+        harness.timeoutMs * 100,
+      );
+
+      const stopped = await harness.provider.stop(harness.computer);
+      expect(stopped).toMatchObject({ state: "stopped", computer: harness.computer });
+      await expect(harness.provider.status(harness.computer)).resolves.toMatchObject({
+        state: "stopped",
+      });
+
+      // A stopped machine has no live instance to command.
+      const failure = await failureFrom(
+        harness.provider.exec({
+          computer: harness.computer,
+          command: "printf 'hello'",
+          timeoutMs: harness.timeoutMs * 100,
+        }),
+      );
+      expect(failure.kind).toBe("gone");
+
+      await expect(harness.provider.ensure(harness.computer)).resolves.toMatchObject({
+        state: "running",
+      });
+      await expect(
+        readFile(harness.provider, harness.computer, path, harness.timeoutMs * 100),
+      ).resolves.toBe("survives a stop\n");
+
+      // Stopping a machine that is not running is a status report, not an error.
+      await expect(
+        harness.provider.stop({ computerId: "never-provisioned", botId: "bot-1" }),
+      ).resolves.toMatchObject({ state: "gone" });
+    });
+
+    it("lists every computer it holds and forgets the ones it destroyed", async () => {
+      const harness = await create();
+
+      await harness.provider.ensure(harness.computer);
+      await harness.provider.ensure(harness.otherComputer);
+      await harness.provider.stop(harness.otherComputer);
+
+      const listed = await harness.provider.list();
+
+      // Reconciliation reads this after a crash, so every live instance is
+      // present with the full reference and its state, running or stopped. A
+      // shared provider may hold machines from other tests, so the assertion
+      // is containment, not equality.
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ computer: harness.computer, state: "running" }),
+          expect.objectContaining({ computer: harness.otherComputer, state: "stopped" }),
+        ]),
+      );
+
+      await harness.provider.destroy(harness.computer);
+
+      const remaining = await harness.provider.list();
+
+      expect(remaining).toEqual(
+        expect.arrayContaining([expect.objectContaining({ computer: harness.otherComputer })]),
+      );
+      expect(
+        remaining.some((status) => status.computer.computerId === harness.computer.computerId),
+      ).toBe(false);
     });
 
     it("runs a command and reports its stdout and exit code", async () => {

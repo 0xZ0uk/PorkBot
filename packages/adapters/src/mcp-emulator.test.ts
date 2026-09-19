@@ -38,7 +38,7 @@ function scripted(): McpServerEmulator {
     .answerTool("explode", { content: "boom", isError: true });
 }
 
-mcpServerConformance("the emulator", async () => ({
+await mcpServerConformance("the emulator", async () => ({
   provider: scripted(),
   serverUrl: "https://mcp.example.invalid/mcp",
   missingUrl: "https://missing.example.invalid/mcp",

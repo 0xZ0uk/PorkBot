@@ -56,7 +56,7 @@ build the workspace dependencies they need first, so a clean checkout only needs
 apps/
   api/         HTTP and streaming surface over the domain
   worker/      always-on background worker, durable jobs
-  supervisor/  Docker socket owner: placeholder until slice 7.1
+  supervisor/  Docker socket owner and the only owner of computer lifecycle
   web/         static SPA surface
   desktop/     Electron client of the same API
   www/         public landing and documentation site
@@ -110,6 +110,12 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   `PORKBOT_STACK_WAIT_SECONDS`. The two database-role passwords default to local
   placeholders and are overridable with `PORKBOT_API_DB_PASSWORD` and
   `PORKBOT_WORKER_DB_PASSWORD`.
+- **One socket, one owner.** The Docker socket is mounted into `supervisor`
+  and nowhere else; `api` and `worker` reach computers through the supervisor
+  with `PORKBOT_SUPERVISOR_URL` and `PORKBOT_SUPERVISOR_TOKEN`, both defaulting
+  to local placeholders. The screen-capability signing key is
+  `PORKBOT_SCREEN_TOKEN_SECRET`; a deployment that leaves it unset refuses
+  screen access entirely.
 - **CI runs the same command.** The integration tier starts the stack with
   `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
   of booting its own container, runs the integration suites against it, and
@@ -119,9 +125,9 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   the committed journal, creates the two service roles and sets their passwords;
   `api` and `worker` wait on `service_completed_successfully` and then connect as
   their own roles. The five processes are the point — the api serves the
-  contract's procedures, the worker runs the queue, the supervisor is idle — and
-  story 44 is one command that starts the real topology: a later slice replaces a
-  process's body, never its place in the stack.
+  contract's procedures, the worker runs the queue, the supervisor owns computer
+  lifecycle — and story 44 is one command that starts the real topology: a later
+  slice replaces a process's body, never its place in the stack.
 
 Each service image builds from the root `Dockerfile`; the shared build stage
 installs and builds the workspace once and `pnpm deploy`s each app into its own
@@ -260,9 +266,9 @@ resolves the artifact to the full result.
 ## A bot's computer
 
 A run's machine is one interface away from any provider: `ComputerProvider` in
-`packages/adapter-kit` declares `ensure`, `status`, `exec`, `snapshot`,
-`restore` and `destroy`, with the v1.1 screen path reserved as the optional
-`frames()` and `input()`. `ComputerEmulator` (slice 6.9) is the offline
+`packages/adapter-kit` declares `ensure`, `status`, `stop`, `list`, `exec`,
+`snapshot`, `restore` and `destroy`, with the v1.1 screen path reserved as the
+optional `frames()` and `input()`. `ComputerEmulator` (slice 6.9) is the offline
 implementation: every computer is an in-process machine with its own
 filesystem, a bounded POSIX-shaped shell and a scripted browser, reached only
 through `exec` exactly as a container is. State persists across commands and is
@@ -270,10 +276,25 @@ isolated per `computerId`; nothing touches the host's filesystem; a snapshot is
 a deep copy that restores into a destroyed machine; `frames()` renders the
 current screen as deterministic SVG and `input()` changes what the next frame
 shows. `packages/adapters/src/computer-conformance.ts` is the suite every
-provider is held to — idempotent `ensure`, `gone` answers, timeout
-classification, persistence across commands, isolation between computers,
-snapshot and restore, the reserved path and the browser protocol — and the
-Docker provider registers it when it lands.
+provider is held to — idempotent `ensure`, idempotent `stop`, `list`,
+`gone` answers, timeout classification, persistence across commands, isolation
+between computers, snapshot and restore, the reserved path and the browser
+protocol — and the Docker provider registers it when it lands.
+
+The supervisor owns lifecycle (slice 7.1). `apps/supervisor` is the only
+process that will hold the Docker socket and the only one that constructs a
+computer provider; the API holds `createSupervisorComputerProvider` today (the
+worker's provider wiring lands with the Docker provider),
+from `packages/adapters`, an authenticated client for the supervisor's internal
+surface (`server.ts`). Boot, stop, reset and recover are compositions inside the
+supervisor, reconciliation on boot adopts whatever a crashed process left
+behind, and every machine gets its own internal Docker network with an isolated
+gateway (`planComputerNetwork` in `packages/core`), so a computer reaches
+neither another bot's machine nor a service on the host. Screen access is gated
+by a short-lived capability token bound to one computer and one actor even
+though the stream behind it is v1.1 work. The operator's reach is
+`computers.status`, `boot`, `stop`, `reset` and `recover` in the contract,
+scoped by bot id.
 
 The model reaches that machine through `createComputerTools` in
 `packages/effect`: `shell`, `file_read`, `file_write`, `file_list` and
@@ -1451,8 +1472,8 @@ slices replace with the real clients; `apps/api` serves `/healthz`
 and the contract's procedures behind the auth gate, `apps/worker` boots Graphile
 Worker over the job registry, re-reads each run through the job's `SystemActor`
 and checks its fence under the worker's own database role (slice 6.1), and
-`apps/supervisor` is a placeholder for the Docker socket owner, replaced by
-slice 7.1.
+`apps/supervisor` owns the Docker socket and computer lifecycle behind its
+authenticated internal surface (slice 7.1).
 
 The computer emulator and the first run whose tools execute land with slice
 6.9. `ComputerEmulator` implements the whole `ComputerProvider` seam —
@@ -1464,6 +1485,20 @@ labelled at the ingestion boundary; and the offline runtime executes tool steps
 through the dispatcher, so a full run does real work with no key, network or
 daemon. The live model launch that fills the worker's work seam waits on the
 stream bridge from Pi's agent loop to the model runtime.
+
+The supervisor boundary lands with slice 7.1. `apps/supervisor` is the only
+compose service the Docker socket is mounted into, and it is the only process
+that constructs a computer provider: boot, stop, reset and recover are
+compositions inside its lifecycle service, reconciliation on boot adopts what a
+crashed process left behind, and its internal HTTP surface is authenticated
+with a process credential the API presents through
+`createSupervisorComputerProvider`. Every computer is planned onto its own
+internal Docker network with an isolated gateway, and the integration tier
+builds those networks and drives real containers to show that one bot's
+machine reaches neither another bot's machine nor a host service, while the
+running stack is inspected to prove the API container has no socket. The
+reserved screen paths are already gated by a short-lived capability token
+scoped to one computer and one actor; the stream behind them is v1.1 work.
 
 The model runtime adapter lands with slice 9.2. `createOpenAiCompatibleModelRuntime`
 in `@porkbot/adapters` is the real OpenAI-compatible provider — a hosted

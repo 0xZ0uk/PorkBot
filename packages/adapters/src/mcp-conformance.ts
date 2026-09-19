@@ -1,6 +1,5 @@
 import type { McpServerProvider, McpToolDescriptor, ProviderFailure } from "@porkbot/adapter-kit";
 import { isProviderFailure } from "@porkbot/adapter-kit";
-import { describe, expect, it } from "vitest";
 
 /**
  * The MCP server conformance suite (slice 9.5): one set of behaviors every
@@ -11,6 +10,12 @@ import { describe, expect, it } from "vitest";
  * tool that throws instead of answering `not_found`, a token exchange that
  * returns no token — fails here rather than in the install path that persists
  * the description.
+ *
+ * The test runner is imported inside the function, not at module scope: this
+ * file is reachable from `@porkbot/adapters`' entry point, which the API and
+ * the supervisor deploy, and a static `vitest` import would make a production
+ * image require the test toolchain. `mcpServerConformance` is therefore async;
+ * a test file calls it with top-level `await`.
  *
  * The suite calls no network and holds no real key: the HTTP side dials an
  * in-process server on loopback, which is why the same file can run both. A
@@ -63,7 +68,13 @@ async function failureFrom(call: Promise<unknown>): Promise<ProviderFailure> {
   throw new Error("expected the call to fail");
 }
 
-export function mcpServerConformance(name: string, create: McpServerConformanceFactory): void {
+/** Registers the suite with the test runner, which is imported lazily so no production image loads it. */
+export async function mcpServerConformance(
+  name: string,
+  create: McpServerConformanceFactory,
+): Promise<void> {
+  const { describe, expect, it } = await import("vitest");
+
   describe(`${name} MCP server conformance`, () => {
     it("discovers the server's identity and tool schemas unchanged", async () => {
       const harness = await create();

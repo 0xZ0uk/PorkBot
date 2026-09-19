@@ -1,4 +1,11 @@
 import { accountMeContract } from "./account.ts";
+import {
+  computersBootContract,
+  computersRecoverContract,
+  computersResetContract,
+  computersStatusContract,
+  computersStopContract,
+} from "./computers.ts";
 import { credentialsListContract, credentialsStoreContract } from "./credentials.ts";
 import {
   modelConnectionsCreateContract,
@@ -90,6 +97,13 @@ export const appContract = {
     setAvatar: botsSetAvatarContract,
     avatar: botsAvatarContract,
     clearAvatar: botsClearAvatarContract,
+  },
+  computers: {
+    status: computersStatusContract,
+    boot: computersBootContract,
+    stop: computersStopContract,
+    reset: computersResetContract,
+    recover: computersRecoverContract,
   },
   sections: {
     list: sectionsListContract,

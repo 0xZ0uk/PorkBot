@@ -117,6 +117,18 @@ importers:
 
   apps/supervisor:
     dependencies:
+      '@porkbot/adapter-kit':
+        specifier: workspace:*
+        version: link:../../packages/adapter-kit
+      '@porkbot/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@porkbot/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@porkbot/effect':
+        specifier: workspace:*
+        version: link:../../packages/effect
       '@porkbot/health':
         specifier: workspace:*
         version: link:../../packages/health
