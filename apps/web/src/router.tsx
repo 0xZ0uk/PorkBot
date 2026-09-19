@@ -5,21 +5,22 @@ import { BootstrappingScreen } from "./screens/bootstrapping.tsx";
 import { createSessionController } from "./session.ts";
 import {
   createHttpAuthTransport,
+  createHttpConnectionsTransport,
   createHttpConsoleTransport,
   createHttpMemoryTransport,
   createHttpUsageTransport,
 } from "./transport.ts";
+import type { ConnectionsTransport } from "./connections.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type { AuthTransport, SessionController } from "./session.ts";
 import type { ConsoleTransport, UsageTransport } from "./transport.ts";
 
 /**
  * The router and the things every route may read from its context: the
- * session controller, the auth transport, the console transport and the memory
- * transport. `getRouter` is the export TanStack Start looks for in this file,
- * and it is also what a test can call with fakes and a memory history, so the
- * guards, the console and the memory screen are exercised without a browser or
- * a network.
+ * session controller and the transports each screen reads through. `getRouter`
+ * is the export TanStack Start looks for in this file, and it is also what a
+ * test can call with fakes and a memory history, so the guards, the console
+ * and the settings screens are exercised without a browser or a network.
  */
 export interface RouterContext {
   readonly session: SessionController;
@@ -30,6 +31,8 @@ export interface RouterContext {
   readonly memory: MemoryTransport;
   /** The usage screen's data surface: one bot's totals and daily buckets. */
   readonly usage: UsageTransport;
+  /** The connections screen's data surface: connections, keys, bots and the probe. */
+  readonly connections: ConnectionsTransport;
 }
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
@@ -55,5 +58,6 @@ export function getRouter() {
     threads: createHttpConsoleTransport(),
     memory: createHttpMemoryTransport(),
     usage: createHttpUsageTransport(),
+    connections: createHttpConnectionsTransport(),
   });
 }

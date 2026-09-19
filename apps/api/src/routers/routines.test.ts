@@ -199,6 +199,7 @@ function stubRepositories(): UserRepositories {
       update: notExercised,
       setDefault: notExercised,
       delete: notExercised,
+      markUsed: notExercised,
     },
     memory: {
       list: notExercised,

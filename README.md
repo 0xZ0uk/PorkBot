@@ -1283,9 +1283,11 @@ with the static host and asserts the shell's asset references exist, the
 bootstrapping state is in the prerendered HTML, and an unknown route is
 rewritten rather than 404ed (`static-build.e2e.test.ts`), mounts the thread
 console over a real HTTP connection to a scripted oRPC/SSE server to prove the
-resume path (`thread-console.e2e.test.ts`), and mounts the memory screen over a
+resume path (`thread-console.e2e.test.ts`), mounts the memory screen over a
 scripted memory API to prove a correction survives a reload
-(`memory.e2e.test.ts`).
+(`memory.e2e.test.ts`), and mounts the connections screen over a scripted
+connections API to prove a create, a revoke and a probe through the real wire
+(`connections.e2e.test.ts`).
 
 ## Thread console
 
@@ -1797,6 +1799,19 @@ stored per space in `model_connection` (label, base URL, credential name,
 default model, one default per space), a bot selects its own connection and
 model, `resolveForBot` applies bot-over-space-default, and `credentials.store`
 is the write half of the encrypted store whose list can only answer masks.
+
+The connections settings surface lands with slice 9.3. `credentials.remove`
+revokes a stored credential by name, and a probe stamps the connection's
+`lastUsedAt`, so the list can say when a request last left for an endpoint
+instead of implying a stored hope. The web surface at `/settings/connections`
+reads each connection as its label, endpoint host, credential name and derived
+mask, last use and the probe's own answer, including "streaming unsupported"; it
+creates one by storing the key through `credentials.store` and naming it with
+`modelConnections.create`, revokes a key behind a confirmation that names the
+connections and bots it breaks, and distinguishes the server's one space
+default from a bot's own connection. The e2e tier drives create, revoke, probe
+and the default swap against a scripted API over a real socket, and the screen
+is captured under `docs/screenshots/`.
 
 The thread console lands with slice 6.6: `threads.events` streams into the
 console controller, which folds each frame through the core reducer and renders

@@ -17,6 +17,7 @@ import {
   fakeThread,
   runCompleted,
   runStarted,
+  scriptedConnectionsTransport,
   scriptedMemoryTransport,
   scriptedUsageTransport,
   scriptedThreadTransport,
@@ -85,6 +86,7 @@ function appWith(
       threads: transport,
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),
+      connections: scriptedConnectionsTransport(),
     },
     createMemoryHistory({ initialEntries: ["/"] }),
   );
@@ -146,6 +148,7 @@ describe("the shell's route guards", () => {
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({ initialEntries: ["/sign-in"] }),
     );
@@ -228,6 +231,7 @@ describe("the shell's route guards", () => {
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({ initialEntries: ["/"] }),
     );
@@ -299,6 +303,7 @@ describe("the console routes", () => {
         threads: transport,
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
     );
@@ -338,6 +343,7 @@ describe("the console routes", () => {
         threads: transport,
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-1"],
@@ -367,6 +373,7 @@ describe("the console routes", () => {
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-missing"],
@@ -394,6 +401,7 @@ describe("the memory route", () => {
         threads: scriptedThreadTransport(),
         memory,
         usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({ initialEntries: ["/bots/bot-1/memory"] }),
     );
@@ -636,6 +644,7 @@ describe("the usage route", () => {
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage,
+        connections: scriptedConnectionsTransport(),
       },
       createMemoryHistory({ initialEntries: ["/bots/bot-1/usage"] }),
     );

@@ -116,6 +116,7 @@ const requestBodies: Record<string, string> = {
     json: { botId: "bot-1", snapshotId: "00000000-0000-4000-8000-000000000000" },
   }),
   "credentials.store": JSON.stringify({ json: { name: "model-key", value: "sk-test" } }),
+  "credentials.remove": JSON.stringify({ json: { name: "model-key" } }),
   "modelConnections.list": JSON.stringify({ json: {} }),
   "modelConnections.create": JSON.stringify({
     json: {
@@ -247,6 +248,7 @@ describe("every contract procedure", () => {
       "computers.status",
       "computers.stop",
       "credentials.list",
+      "credentials.remove",
       "credentials.store",
       "deployment.status",
       "mcpServers.create",
@@ -403,6 +405,7 @@ describe("the typed answer", () => {
         update: notExercised,
         setDefault: notExercised,
         delete: notExercised,
+        markUsed: notExercised,
       },
       memory: {
         list: notExercised,

@@ -14,6 +14,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
+import { Route as AppSettingsConnectionsRouteImport } from './routes/_app/settings.connections'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
 import { Route as AppBotsBotIdMemoryRouteImport } from './routes/_app/bots.$botId.memory'
 import { Route as AppBotsBotIdUsageRouteImport } from './routes/_app/bots.$botId.usage'
@@ -42,6 +43,11 @@ const AuthSignUpRoute = AuthSignUpRouteImport.update({
   path: '/sign-up',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppSettingsConnectionsRoute = AppSettingsConnectionsRouteImport.update({
+  id: '/settings/connections',
+  path: '/settings/connections',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
   id: '/threads/$threadId',
   path: '/threads/$threadId',
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
+  '/settings/connections': typeof AppSettingsConnectionsRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
+  '/settings/connections': typeof AppSettingsConnectionsRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/sign-up': typeof AuthSignUpRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/settings/connections': typeof AppSettingsConnectionsRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/_app/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/'
     | '/sign-in'
     | '/sign-up'
+    | '/settings/connections'
     | '/threads/$threadId'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
@@ -109,6 +119,7 @@ export interface FileRouteTypes {
     | '/'
     | '/sign-in'
     | '/sign-up'
+    | '/settings/connections'
     | '/threads/$threadId'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/_auth/sign-in'
     | '/_auth/sign-up'
     | '/_app/'
+    | '/_app/settings/connections'
     | '/_app/threads/$threadId'
     | '/_app/bots/$botId/memory'
     | '/_app/bots/$botId/usage'
@@ -168,6 +180,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignUpRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/settings/connections': {
+      id: '/_app/settings/connections'
+      path: '/settings/connections'
+      fullPath: '/settings/connections'
+      preLoaderRoute: typeof AppSettingsConnectionsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/threads/$threadId': {
       id: '/_app/threads/$threadId'
       path: '/threads/$threadId'
@@ -201,6 +220,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppSettingsConnectionsRoute: typeof AppSettingsConnectionsRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
   AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
   AppBotsBotIdUsageRoute: typeof AppBotsBotIdUsageRoute
@@ -209,6 +229,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppSettingsConnectionsRoute: AppSettingsConnectionsRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
   AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,
   AppBotsBotIdUsageRoute: AppBotsBotIdUsageRoute,

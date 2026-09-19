@@ -96,11 +96,32 @@ export function createModelConnectionsService(
       const connection = await repositories.modelConnections.findById(id);
       const runtime = options.runtime(repositories.credentials);
 
+      // A probe is a use: an authenticated request leaves for the endpoint, so
+      // the connection's `lastUsedAt` is stamped for every answer the provider
+      // produced — including a classified refusal, because the request still
+      // happened. A defect (a missing credential, a bug) is not a use and
+      // travels to the gate without stamping.
+      //
+      // The stamp is best-effort on purpose: it is display state beside the
+      // answer, and a store that cannot take it must not replace the answer
+      // the operator asked for with a defect. `markUsed` is silent for a row a
+      // concurrent disconnect removed, so the stamp never turns a completed
+      // probe into a not-found either.
+      const stamp = async (): Promise<void> => {
+        try {
+          await repositories.modelConnections.markUsed(connection.id);
+        } catch {
+          // The probe answered; the timestamp stays where it was.
+        }
+      };
+
       try {
         const result = await runtime.probe({
           baseUrl: connection.baseUrl,
           credentialName: connection.credentialName,
         });
+
+        await stamp();
 
         return {
           connectionId: connection.id,
@@ -121,6 +142,8 @@ export function createModelConnectionsService(
         // else — a missing credential, an unreadable store, a bug — travels to
         // the gate's mapping, the one place that decides a status.
         if (isProviderFailure(error)) {
+          await stamp();
+
           return {
             connectionId: connection.id,
             probe: { reachable: false, models: [], streaming: false, failure: error.kind },
@@ -149,6 +172,7 @@ function view(
     credentialMaskedValue,
     defaultModel: record.defaultModel,
     isDefault: record.isDefault,
+    lastUsedAt: record.lastUsedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
