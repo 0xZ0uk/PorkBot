@@ -211,6 +211,57 @@ describe("the tool-call timeline", () => {
     expect(container.querySelector(".tool-call-duration")?.textContent).toBe("2.5 s");
   });
 
+  it("offers a produced file by name when the result carries a download pointer", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({
+            callId: "call-file",
+            tool: "file_write",
+            status: "completed",
+            result: {
+              ok: true,
+              path: "reports/summary.md",
+              bytes: 2_048,
+              artifact: {
+                id: "artifact-1",
+                filename: "summary.md",
+                contentType: "text/markdown",
+                sizeBytes: 2_048,
+                downloadPath: "/files/artifact-1",
+              },
+            },
+          }),
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const link = container.querySelector("a.tool-call-download");
+
+    expect(link?.getAttribute("href")).toBe("/files/artifact-1");
+    expect(link?.textContent).toBe("Download summary.md (2.0 KiB)");
+  });
+
+  it("renders no download link for a result whose artifact shape is broken", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={withCall(
+          call({
+            status: "completed",
+            result: {
+              ok: true,
+              artifact: { filename: "summary.md", downloadPath: "javascript:x" },
+            },
+          }),
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("a.tool-call-download")).toBeNull();
+  });
+
   it("marks a failure in the danger token and shows the typed reason", async () => {
     await render(
       <ThreadConsoleScreen

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "./files.ts";
 import {
   ClientNonceReused,
   ClientNonceTooLong,
@@ -9,6 +10,7 @@ import {
   MessageRuleError,
   MessageTooLong,
   MissingClientNonce,
+  TooManyAttachments,
 } from "./messaging-policy.ts";
 import type {
   ActiveRun,
@@ -212,6 +214,51 @@ describe("decideMessageSend duplicate sends", () => {
     expect(error).toBeInstanceOf(ClientNonceReused);
     if (error instanceof ClientNonceReused) {
       expect(error.messageId).toBe("msg-1");
+      expect(error.reason).toBe("different_text");
+    }
+  });
+
+  it("replays a send whose attachment set is unchanged", () => {
+    const withFile = { ...request, attachmentIds: ["attachment-1"] };
+    const decision = decideMessageSend(withFile, {
+      existingSend: { messageId: "msg-1", runId: "run-1", request: withFile },
+    });
+
+    expect(decision).toEqual({
+      ok: true,
+      action: { action: "replay", messageId: "msg-1", runId: "run-1" },
+    });
+  });
+
+  it("refuses a nonce reused with a different attachment set", () => {
+    const error = failure(
+      { ...request, attachmentIds: ["attachment-2"] },
+      {
+        existingSend: {
+          messageId: "msg-1",
+          runId: "run-1",
+          request: { ...request, attachmentIds: ["attachment-1"] },
+        },
+      },
+    );
+
+    expect(error).toBeInstanceOf(ClientNonceReused);
+    if (error instanceof ClientNonceReused) {
+      expect(error.reason).toBe("different_attachments");
+    }
+  });
+
+  it("refuses more attachments than one message may carry", () => {
+    const attachmentIds = Array.from(
+      { length: MAX_ATTACHMENTS_PER_MESSAGE + 1 },
+      (_value, index) => `attachment-${String(index)}`,
+    );
+    const error = failure({ ...request, attachmentIds });
+
+    expect(error).toBeInstanceOf(TooManyAttachments);
+    if (error instanceof TooManyAttachments) {
+      expect(error.count).toBe(MAX_ATTACHMENTS_PER_MESSAGE + 1);
+      expect(error.maxCount).toBe(MAX_ATTACHMENTS_PER_MESSAGE);
     }
   });
 
@@ -235,6 +282,7 @@ describe("message rule errors", () => {
       new MissingClientNonce(),
       new ClientNonceTooLong(MAX_CLIENT_NONCE_LENGTH + 1),
       new ClientNonceReused("msg-1"),
+      new TooManyAttachments(MAX_ATTACHMENTS_PER_MESSAGE + 1),
     ];
 
     for (const error of errors) {

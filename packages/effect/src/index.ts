@@ -155,6 +155,30 @@ export {
 } from "./computer-tools.ts";
 export type { ComputerToolOptions } from "./computer-tools.ts";
 
+// The artifact seam (slice 7.6, story 33). A tool that produces a file hands
+// the bytes through one door, and the implementation — storage plus the run's
+// file store — answers the pointer a tool result and a download link carry.
+// The tool layer never learns a storage key or a space; the path every stored
+// file is downloaded from is derived from its id, never from its location.
+export { fileDownloadPath } from "./artifact-recorder.ts";
+export type {
+  ArtifactRecorder,
+  ArtifactRecordRequest,
+  RecordedArtifact,
+} from "./artifact-recorder.ts";
+
+// The chunked file writer (slice 7.6, story 32). The provider seam serves
+// files through `exec` alone, so this writer streams an async body into a
+// machine as a sequence of fenced part writes and one assembly, bounded by the
+// part size rather than by the file. The worker's materialization uses it to
+// place a message's attachments; the tools keep their own write path.
+export { COMPUTER_FILE_CHUNK_BYTES, createComputerFileWriter } from "./computer-file-transfer.ts";
+export type {
+  ComputerFileWriteRequest,
+  ComputerFileWriter,
+  ComputerFileWriterOptions,
+} from "./computer-file-transfer.ts";
+
 // The fenced computer command runner (slice 7.4, PRD decision 26). The
 // provider seam carries no fence, so this layer holds the run's own
 // `(runId, owner, fence)` on a durable computer lease around every command:

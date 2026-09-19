@@ -25,8 +25,10 @@ import type {
 import type { RunEvent } from "@porkbot/core";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
+import { MemoryStorage } from "../test/memory-storage.ts";
 import { createRunExecutor } from "./run-execution.ts";
 import type { RunExecution } from "./jobs/run-execute.ts";
+import { materializeRunAttachments } from "./run-attachments.ts";
 
 /**
  * The first full run whose tools actually execute (slice 6.9).
@@ -48,6 +50,10 @@ import type { RunExecution } from "./jobs/run-execute.ts";
 
 const computer = { computerId: "computer-1", botId: "bot-1" };
 const pageUrl = "https://docs.example.invalid/start";
+const attachment = {
+  id: "41a2f8a2-4a5a-4a6e-8f3a-2f5c9d1b7e4c",
+  storageKey: "files/space-1/object/report.txt",
+};
 
 function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
   return {
@@ -73,7 +79,7 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     notifiedAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
-    sourceMessageId: null,
+    sourceMessageId: "message-1",
     startedAt: new Date(0),
     completedAt: null,
     createdAt: new Date(0),
@@ -154,6 +160,44 @@ function fakeRepositories(leases: ComputerLeaseStore): FakeRunner {
   repositories.computerLeases.hold = (holder, ttlSeconds) => leases.hold(holder, ttlSeconds);
   repositories.computerLeases.release = (holder) => leases.release(holder);
 
+  // The source message and its attachment row, as the run's materialization
+  // reads them (slice 7.6): the message block references the stored file, and
+  // the run's space scopes both reads.
+  repositories.messages.findSourceForRun = async () => ({
+    id: "message-1",
+    threadId: "thread-1",
+    seq: 0,
+    role: "user",
+    blocks: [
+      { type: "text", text: "read the attached brief" },
+      {
+        type: "file",
+        attachmentId: attachment.id,
+        filename: "brief.txt",
+        contentType: "text/plain",
+        sizeBytes: 20,
+      },
+    ],
+    runId: "run-1",
+    clientNonce: "nonce-1",
+    createdAt: new Date(0),
+  });
+  repositories.files.findAttachments = async () => [
+    {
+      id: attachment.id,
+      spaceId: "space-1",
+      threadId: "thread-1",
+      botId: computer.botId,
+      userId: "user-1",
+      filename: "brief.txt",
+      contentType: "text/plain",
+      sizeBytes: 20,
+      storageKey: attachment.storageKey,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    },
+  ];
+
   return { repositories, updates };
 }
 
@@ -206,6 +250,8 @@ interface OfflineRun {
 async function runOffline(): Promise<OfflineRun> {
   const leases = new MemoryComputerLeases();
   const runner = fakeRepositories(leases);
+  const storage = new MemoryStorage();
+  storage.putFrom(attachment.storageKey, "the attached brief", "text/plain");
   const emulator = new ComputerEmulator();
   emulator
     .servePage({ url: pageUrl, title: "Start here", text: "The report is due today." })
@@ -215,6 +261,12 @@ async function runOffline(): Promise<OfflineRun> {
   const recorded: RunEvent[] = [];
   const script: readonly EmulatorStep[] = [
     { kind: "token.delta", messageId: "assistant-1", delta: "On it. " },
+    {
+      kind: "tool.immediate",
+      callId: "call-attachment",
+      tool: "file_read",
+      arguments: { path: `attachments/${attachment.id}/brief.txt` },
+    },
     {
       kind: "tool.immediate",
       callId: "call-shell",
@@ -238,47 +290,58 @@ async function runOffline(): Promise<OfflineRun> {
 
   const execute = createRunExecutor({
     heartbeatIntervalMs: 5,
-    work: (execution) => {
-      const ledger = memoryLedger();
-      const owner = execution.run.leaseOwner ?? "job-1";
-      const commands = createFencedComputerCommands({
-        provider: emulator,
-        ledger,
-        leases,
-        lease: {
-          botId: execution.run.botId,
-          runId: execution.run.id,
-          owner,
-          fence: execution.run.leaseFence,
-        },
-        runLeaseTtlSeconds: 120,
-        computerLeaseTtlSeconds: 120,
-      });
-      const tools = createToolDispatcher({
-        registrations: createComputerTools({
-          commands,
+    work: (execution) =>
+      Effect.gen(function* () {
+        const ledger = memoryLedger();
+        const owner = execution.run.leaseOwner ?? "job-1";
+        const commands = createFencedComputerCommands({
+          provider: emulator,
+          ledger,
+          leases,
+          lease: {
+            botId: execution.run.botId,
+            runId: execution.run.id,
+            owner,
+            fence: execution.run.leaseFence,
+          },
+          runLeaseTtlSeconds: 120,
+          computerLeaseTtlSeconds: 120,
+        });
+
+        // The message's attachment is placed in the home before the session
+        // starts, through the same fenced runner the tools use.
+        yield* materializeRunAttachments(execution.run, {
           computer,
-          maxDurationMs: 30_000,
-        }),
-        ledger,
-        leaseTtlMs: 120_000,
-        heartbeat: Effect.void,
-      });
+          commands,
+          repositories: execution.repositories,
+          storage,
+        });
 
-      return withLiveRun(
-        execution.run.id,
-        emulatorAgentRuntimeLayer(startRequest(execution.run.id), script, { tools }),
-        (session) => {
-          const recorder = createRunEventRecorder();
+        const tools = createToolDispatcher({
+          registrations: createComputerTools({
+            commands,
+            computer,
+            maxDurationMs: 30_000,
+          }),
+          ledger,
+          leaseTtlMs: 120_000,
+          heartbeat: Effect.void,
+        });
 
-          return consumeRunSession(session, (event) =>
-            Effect.sync(() => {
-              recorded.push(recorder.record(event));
-            }),
-          );
-        },
-      ).pipe(Effect.provide(liveRunsLayer));
-    },
+        return yield* withLiveRun(
+          execution.run.id,
+          emulatorAgentRuntimeLayer(startRequest(execution.run.id), script, { tools }),
+          (session) => {
+            const recorder = createRunEventRecorder();
+
+            return consumeRunSession(session, (event) =>
+              Effect.sync(() => {
+                recorded.push(recorder.record(event));
+              }),
+            );
+          },
+        ).pipe(Effect.provide(liveRunsLayer));
+      }),
   });
 
   await execute(executionFor(runner));
@@ -301,6 +364,8 @@ describe("the first full offline run", () => {
     expect(recorded.map((event) => event.type)).toEqual([
       "run.started",
       "token.delta",
+      "tool.requested",
+      "tool.completed",
       "tool.requested",
       "tool.completed",
       "tool.requested",
@@ -333,8 +398,25 @@ describe("the first full offline run", () => {
     expect(read.path).toBe("report.txt");
     expect(read.content.label).toBe("untrusted");
     expect(read.content.path).toBe("file_read");
-    expect(read.content.origin).toBe("home:report.txt");
+    expect(read.content.origin).toBe("home:/report.txt");
     expect(read.content.content).toBe("the report is ready");
+  });
+
+  it("reads the bytes an uploaded attachment was materialized from", async () => {
+    const { recorded } = await runOffline();
+
+    const read = toolResult(recorded, "call-attachment") as {
+      ok: boolean;
+      bytes: number;
+      content: { label: string; path: string; origin: string; content: string };
+    };
+
+    expect(read.ok).toBe(true);
+    expect(read.bytes).toBe(18);
+    expect(read.content.label).toBe("untrusted");
+    expect(read.content.path).toBe("file_read");
+    expect(read.content.origin).toBe(`home:/attachments/${attachment.id}/brief.txt`);
+    expect(read.content.content).toBe("the attached brief");
   });
 
   it("returns browser page text labelled with the page it came from", async () => {

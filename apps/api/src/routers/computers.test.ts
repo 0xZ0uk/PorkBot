@@ -166,6 +166,11 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       restore: notExercised,
     },
     usage: { forBot: notExercised },
+    files: {
+      createAttachment: notExercised,
+      findAttachments: notExercised,
+      findStoredFile: notExercised,
+    },
     computerSnapshots: {
       create: async (input) => {
         if (input.botId !== assignedBotId) {

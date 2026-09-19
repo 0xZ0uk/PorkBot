@@ -75,6 +75,35 @@ export interface AssistantMessageWriter {
   append(input: NewAssistantMessage): Promise<MessageRecord>;
 }
 
+/**
+ * The worker's read of a run's input (slice 7.6): the message a
+ * message-triggered run was created from, so the attachments it carries can be
+ * materialized into the computer before the run starts. The read joins through
+ * the run, so the job's space scopes it and a routine run — which has no
+ * source message — answers `undefined` rather than a not-found.
+ */
+export interface RunMessageReader {
+  findSourceForRun(runId: string): Promise<MessageRecord | undefined>;
+}
+
+export function createRunMessageReader(actor: SystemActor, database: Queryable): RunMessageReader {
+  return {
+    async findSourceForRun(runId): Promise<MessageRecord | undefined> {
+      // A subquery rather than a join: the shared projection is unqualified, and
+      // the run row shares column names with the message row. A run outside the
+      // job's space has no row to select from, so the message id is null and the
+      // read answers nothing, exactly like a missing run.
+      const { rows } = await database.query<MessageRecord>(
+        `select ${messageColumns} from message where id = (` +
+          "select r.source_message_id from run r where r.id = $1 and r.space_id = $2)",
+        [runId, actor.spaceId],
+      );
+
+      return rows[0];
+    },
+  };
+}
+
 /** The operator's half: a message sent into the thread's live run. */
 export interface SteeringMessageWriter {
   steer(input: NewSteeringMessage): Promise<MessageRecord>;
