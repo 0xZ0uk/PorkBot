@@ -79,12 +79,16 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
 
       if (Exit.isSuccess(outcome)) {
         const settled = yield* settle(repositories, run, lease, settlement(outcome.value));
+        yield* releaseComputer(repositories, run, lease);
         yield* notify(settled, execution, options.notificationTarget);
         return;
       }
 
       // An interrupt or a lost-lease failure means this process no longer owns
-      // the run: it must not write a terminal state another owner may hold.
+      // the run: it must not write a terminal state another owner may hold, and
+      // it must not release a computer lease a live command may still be using.
+      // The lease's TTL is the bound on that window, and the watchdog sweeps
+      // what it leaves behind.
       if (
         Cause.isInterrupted(outcome.cause) ||
         firstFailure(outcome.cause) instanceof LeaseLostError
@@ -99,6 +103,7 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
         completed: true,
         release: true,
       });
+      yield* releaseComputer(repositories, run, lease);
       yield* notify(settled, execution, options.notificationTarget);
     });
 
@@ -218,6 +223,31 @@ function settle(
     try: async () => repositories.runs.update(run.id, lease, patch),
     catch: (error) => (error instanceof LeaseLostError ? error : new LeaseLostError(run.id)),
   });
+}
+
+/**
+ * The computer lease a settled run no longer needs (slice 7.4). A terminal run
+ * has no in-flight command — the work that owned the machine finished — so the
+ * row is cleared immediately rather than left for the TTL and the watchdog.
+ * The owner and fence are this execution's own, so the release can only clear
+ * the binding this fence wrote; a lease the reclaim already moved is untouched.
+ *
+ * It never fails the settlement: the run's outcome is durable, and a release
+ * that cannot be made is a row the watchdog sweeps once it expires.
+ */
+function releaseComputer(
+  repositories: SystemRepositories,
+  run: RunRecord,
+  lease: { readonly owner: string; readonly fence: number },
+): Effect.Effect<void> {
+  return Effect.tryPromise(() =>
+    repositories.computerLeases.release({
+      botId: run.botId,
+      runId: run.id,
+      owner: lease.owner,
+      fence: lease.fence,
+    }),
+  ).pipe(Effect.catchAllCause(() => Effect.void));
 }
 
 /**

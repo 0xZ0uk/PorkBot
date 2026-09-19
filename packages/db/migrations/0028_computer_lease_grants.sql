@@ -1,0 +1,15 @@
+-- hand-edited: role privileges are not modelled by drizzle-kit (the same
+-- reason migrations/0004_database_roles.sql, migrations/0006_run_leases.sql,
+-- migrations/0008_approval_grants.sql, migrations/0009_watchdog_grants.sql,
+-- migrations/0012_routine_grants.sql, migrations/0015_notification_grants.sql,
+-- migrations/0017_credentials_grants.sql, migrations/0019_mcp_grants.sql,
+-- migrations/0021_model_connection_grants.sql and
+-- migrations/0024_liveness_grants.sql are hand-written). Slice 7.4 makes the
+-- computer lease the worker's row: the executing job acquires it before a
+-- command, renews it as the fenced commit gate, releases it when the run
+-- settles, and the lease watchdog scans and deletes expired rows. The worker
+-- needs SELECT for the fenced reads and the classification read after a lost
+-- CAS, INSERT and UPDATE for the upsert that acquires and renews, and DELETE
+-- for release and for the watchdog's sweep. The API holds no computer lease
+-- and is granted nothing here; a lease is run state, not an operator surface.
+grant select, insert, update, delete on "computer_lease" to porkbot_worker;

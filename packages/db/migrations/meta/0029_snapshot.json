@@ -1,6 +1,6 @@
 {
-  "id": "a10a7dfd-1213-4521-a6a9-1eb9a8fb062e",
-  "prevId": "2e091597-f67d-433a-8404-6537050f5b66",
+  "id": "6aab6ec3-33c5-46fc-a3a5-1c647c8da45a",
+  "prevId": "58a88fac-21e8-41f3-90cc-ffa47de318e9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4336,6 +4336,172 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usage_record": {
+      "name": "usage_record",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuidv7()"
+        },
+        "space_id": {
+          "name": "space_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bot_id": {
+          "name": "bot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "usage_record_bot_created_idx": {
+          "name": "usage_record_bot_created_idx",
+          "columns": [
+            {
+              "expression": "bot_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "usage_record_run_id_idx": {
+          "name": "usage_record_run_id_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "usage_record_space_id_idx": {
+          "name": "usage_record_space_id_idx",
+          "columns": [
+            {
+              "expression": "space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "usage_record_space_id_space_id_fk": {
+          "name": "usage_record_space_id_space_id_fk",
+          "tableFrom": "usage_record",
+          "tableTo": "space",
+          "columnsFrom": ["space_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "usage_record_bot_id_bot_id_fk": {
+          "name": "usage_record_bot_id_bot_id_fk",
+          "tableFrom": "usage_record",
+          "tableTo": "bot",
+          "columnsFrom": ["bot_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "usage_record_run_id_run_id_fk": {
+          "name": "usage_record_run_id_run_id_fk",
+          "tableFrom": "usage_record",
+          "tableTo": "run",
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "usage_record_provider_check": {
+          "name": "usage_record_provider_check",
+          "value": "\"usage_record\".\"provider\" is null or length(btrim(\"usage_record\".\"provider\")) > 0"
+        },
+        "usage_record_model_check": {
+          "name": "usage_record_model_check",
+          "value": "\"usage_record\".\"model\" is null or length(btrim(\"usage_record\".\"model\")) > 0"
+        },
+        "usage_record_input_tokens_check": {
+          "name": "usage_record_input_tokens_check",
+          "value": "\"usage_record\".\"input_tokens\" is null or \"usage_record\".\"input_tokens\" >= 0"
+        },
+        "usage_record_output_tokens_check": {
+          "name": "usage_record_output_tokens_check",
+          "value": "\"usage_record\".\"output_tokens\" is null or \"usage_record\".\"output_tokens\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.user": {

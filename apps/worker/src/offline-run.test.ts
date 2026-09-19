@@ -6,12 +6,17 @@ import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@p
 import {
   consumeRunSession,
   createComputerTools,
+  createFencedComputerCommands,
   createRunEventRecorder,
   createToolDispatcher,
   liveRunsLayer,
   withLiveRun,
 } from "@porkbot/effect";
 import type {
+  ComputerLease,
+  ComputerLeaseAcquisition,
+  ComputerLeaseHolder,
+  ComputerLeaseStore,
   RunStartRequest,
   ToolCallAdmission,
   ToolCallLedger,
@@ -77,12 +82,61 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
   };
 }
 
+/**
+ * The in-memory computer lease for the offline path. It mirrors the stored
+ * one's observable rules — a live foreign holder is `busy`, an expired or own
+ * binding is replaced, a release only clears the exact binding — without a
+ * database, so this suite proves the run's commands really travel through the
+ * fence and that the settlement releases the machine.
+ */
+class MemoryComputerLeases implements ComputerLeaseStore {
+  readonly leases = new Map<string, ComputerLease>();
+  readonly releases: ComputerLeaseHolder[] = [];
+
+  async hold(holder: ComputerLeaseHolder, ttlSeconds: number): Promise<ComputerLeaseAcquisition> {
+    const existing = this.leases.get(holder.botId);
+    const now = Date.now();
+    const ours =
+      existing !== undefined &&
+      existing.runId === holder.runId &&
+      existing.owner === holder.owner &&
+      existing.fence === holder.fence;
+
+    if (existing !== undefined && existing.expiresAt.getTime() > now && !ours) {
+      return { status: "busy", expiresAt: existing.expiresAt };
+    }
+
+    const lease: ComputerLease = { ...holder, expiresAt: new Date(now + ttlSeconds * 1000) };
+    this.leases.set(holder.botId, lease);
+
+    return { status: "held", lease };
+  }
+
+  async release(holder: ComputerLeaseHolder): Promise<boolean> {
+    this.releases.push(holder);
+    const existing = this.leases.get(holder.botId);
+
+    if (
+      existing === undefined ||
+      existing.runId !== holder.runId ||
+      existing.owner !== holder.owner ||
+      existing.fence !== holder.fence
+    ) {
+      return false;
+    }
+
+    this.leases.delete(holder.botId);
+
+    return true;
+  }
+}
+
 interface FakeRunner {
   readonly repositories: SystemRepositories;
   readonly updates: Array<{ readonly lease: RunLease; readonly patch: FencedRunPatch }>;
 }
 
-function fakeRepositories(): FakeRunner {
+function fakeRepositories(leases: ComputerLeaseStore): FakeRunner {
   const updates: Array<{ lease: RunLease; patch: FencedRunPatch }> = [];
   const actor = { kind: "system" as const, spaceId: "space-1", jobId: "job-1" };
   const repositories = createRepositories(actor, {
@@ -97,6 +151,8 @@ function fakeRepositories(): FakeRunner {
 
     return runRecord();
   };
+  repositories.computerLeases.hold = (holder, ttlSeconds) => leases.hold(holder, ttlSeconds);
+  repositories.computerLeases.release = (holder) => leases.release(holder);
 
   return { repositories, updates };
 }
@@ -144,10 +200,12 @@ function startRequest(runId: string): RunStartRequest {
 interface OfflineRun {
   readonly recorded: readonly RunEvent[];
   readonly updates: FakeRunner["updates"];
+  readonly leases: MemoryComputerLeases;
 }
 
 async function runOffline(): Promise<OfflineRun> {
-  const runner = fakeRepositories();
+  const leases = new MemoryComputerLeases();
+  const runner = fakeRepositories(leases);
   const emulator = new ComputerEmulator();
   emulator
     .servePage({ url: pageUrl, title: "Start here", text: "The report is due today." })
@@ -181,13 +239,28 @@ async function runOffline(): Promise<OfflineRun> {
   const execute = createRunExecutor({
     heartbeatIntervalMs: 5,
     work: (execution) => {
+      const ledger = memoryLedger();
+      const owner = execution.run.leaseOwner ?? "job-1";
+      const commands = createFencedComputerCommands({
+        provider: emulator,
+        ledger,
+        leases,
+        lease: {
+          botId: execution.run.botId,
+          runId: execution.run.id,
+          owner,
+          fence: execution.run.leaseFence,
+        },
+        runLeaseTtlSeconds: 120,
+        computerLeaseTtlSeconds: 120,
+      });
       const tools = createToolDispatcher({
         registrations: createComputerTools({
-          provider: emulator,
+          commands,
           computer,
           maxDurationMs: 30_000,
         }),
-        ledger: memoryLedger(),
+        ledger,
         leaseTtlMs: 120_000,
         heartbeat: Effect.void,
       });
@@ -210,7 +283,7 @@ async function runOffline(): Promise<OfflineRun> {
 
   await execute(executionFor(runner));
 
-  return { recorded: recorded as readonly RunEvent[], updates: runner.updates };
+  return { recorded: recorded as readonly RunEvent[], updates: runner.updates, leases };
 }
 
 function toolResult(recorded: readonly RunEvent[], callId: string): unknown {

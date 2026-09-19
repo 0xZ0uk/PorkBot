@@ -28,6 +28,7 @@ export {
   taskStatus,
 } from "./enums.ts";
 export { approval } from "./approvals.ts";
+export { computerLease } from "./computers.ts";
 export { encryptedCredential } from "./encrypted-credential.ts";
 export { modelConnection } from "./model-connections.ts";
 export { event } from "./events.ts";
