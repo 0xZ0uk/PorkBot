@@ -4,12 +4,15 @@ import type { ApprovalDecision, RunEvent, ToolResultArtifact } from "@porkbot/co
 import { colors } from "@porkbot/tokens";
 import type {
   Bot,
+  MemoryDocumentView,
+  MemoryRevisionView,
   Message,
   RunGet,
   Thread,
   ThreadEventsCallOptions,
   ThreadEventsProcedure,
 } from "@porkbot/contracts";
+import type { MemoryTransport } from "../src/memory.ts";
 import type { ConsoleTransport } from "../src/transport.ts";
 
 /**
@@ -225,6 +228,189 @@ export function fakeThread(id: string, botId: string): Thread {
     botId,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+export function fakeMemoryDocument(
+  overrides: Partial<MemoryDocumentView> = {},
+): MemoryDocumentView {
+  return {
+    documentId: "doc-1",
+    kind: "fact",
+    title: "Preferred editor",
+    content: "The operator prefers keyboard-driven editing.",
+    revision: 1,
+    deletedAt: null,
+    ...overrides,
+  };
+}
+
+export function fakeMemoryRevision(
+  overrides: Partial<MemoryRevisionView> = {},
+): MemoryRevisionView {
+  return {
+    documentId: "doc-1",
+    revision: 1,
+    origin: "deliberate",
+    author: "user-1",
+    reason: "operator correction",
+    kind: "fact",
+    title: "Preferred editor",
+    content: "The operator prefers keyboard-driven editing.",
+    deleted: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export interface ScriptedMemoryTransportOptions {
+  readonly documents?: readonly MemoryDocumentView[];
+  readonly revisions?: Readonly<Record<string, readonly MemoryRevisionView[]>>;
+}
+
+/**
+ * An in-memory memory store for the screen's unit tests: the same decisions
+ * the durable store makes, minus Postgres. It is deliberately not the e2e
+ * path — that suite crosses a real HTTP server — but it lets a route test
+ * drive an edit, a removal and a restore and see the list reload the way the
+ * server would have made it.
+ */
+export function scriptedMemoryTransport(
+  options: ScriptedMemoryTransportOptions = {},
+): MemoryTransport {
+  const documents: MemoryDocumentView[] = [...(options.documents ?? [])];
+  const history = new Map<string, MemoryRevisionView[]>(
+    Object.entries(options.revisions ?? {}).map(([documentId, revisions]) => [
+      documentId,
+      [...revisions],
+    ]),
+  );
+  const at = "2026-01-02T00:00:00.000Z";
+
+  function revisionsFor(documentId: string): MemoryRevisionView[] {
+    const existing = history.get(documentId);
+
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const created: MemoryRevisionView[] = [];
+    history.set(documentId, created);
+    return created;
+  }
+
+  function refusal(documentId: string) {
+    return {
+      ok: false as const,
+      rule: "UnknownMemoryDocument",
+      message: `Memory document "${documentId}" does not exist`,
+    };
+  }
+
+  return {
+    list: async (_botId, scope) =>
+      documents.filter((document) => (scope === "deleted") === (document.deletedAt !== null)),
+
+    revisions: async (_botId, documentId) => revisionsFor(documentId),
+
+    update: async ({ documentId, title, content, reason }) => {
+      const index = documents.findIndex(
+        (document) => document.documentId === documentId && document.deletedAt === null,
+      );
+      const current = documents[index];
+
+      if (index === -1 || current === undefined) {
+        return refusal(documentId);
+      }
+
+      if (current.title === title && current.content === content) {
+        return { ok: true, action: "no_change" };
+      }
+
+      const revision = fakeMemoryRevision({
+        documentId,
+        revision: current.revision + 1,
+        reason,
+        title,
+        content,
+        createdAt: at,
+      });
+
+      documents[index] = { ...current, title, content, revision: revision.revision };
+      revisionsFor(documentId).push(revision);
+
+      return { ok: true, action: "update", revision };
+    },
+
+    remove: async ({ documentId, reason }) => {
+      const index = documents.findIndex(
+        (document) => document.documentId === documentId && document.deletedAt === null,
+      );
+      const current = documents[index];
+
+      if (index === -1 || current === undefined) {
+        return refusal(documentId);
+      }
+
+      const revision = fakeMemoryRevision({
+        documentId,
+        revision: current.revision + 1,
+        reason,
+        title: current.title,
+        content: current.content,
+        deleted: true,
+        createdAt: at,
+      });
+
+      documents[index] = { ...current, revision: revision.revision, deletedAt: at };
+      revisionsFor(documentId).push(revision);
+
+      return { ok: true, action: "delete", revision };
+    },
+
+    restore: async ({ documentId, revision: number, reason }) => {
+      const index = documents.findIndex((document) => document.documentId === documentId);
+      const current = documents[index];
+      const target = revisionsFor(documentId).find((candidate) => candidate.revision === number);
+
+      if (index === -1 || current === undefined || target === undefined) {
+        return {
+          ok: false as const,
+          rule: "UnknownMemoryRevision",
+          message: `Memory document "${documentId}" has no revision ${String(number)}`,
+        };
+      }
+
+      if (
+        current.deletedAt === null &&
+        current.title === target.title &&
+        current.content === target.content
+      ) {
+        return { ok: true, action: "no_change" };
+      }
+
+      const revision = fakeMemoryRevision({
+        documentId,
+        revision: current.revision + 1,
+        reason,
+        kind: target.kind,
+        title: target.title,
+        content: target.content,
+        createdAt: at,
+      });
+
+      documents[index] = {
+        ...current,
+        kind: target.kind,
+        title: target.title,
+        content: target.content,
+        revision: revision.revision,
+        deletedAt: null,
+      };
+      revisionsFor(documentId).push(revision);
+
+      return { ok: true, action: "restore", revision };
+    },
   };
 }
 

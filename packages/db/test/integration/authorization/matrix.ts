@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { RUN_EVENT_SCHEMA_VERSION, UnknownMemoryDocument } from "@porkbot/core";
-import type { MemoryWriteDecision, RunEvent } from "@porkbot/core";
+import type { RunEvent } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
 import type {
   ApprovalDecisions,
@@ -11,6 +11,7 @@ import type {
   McpServers,
   MemoryDocuments,
   MemoryProposals,
+  MemoryWriteOutcome,
   RunEventSink,
   ToolCallLedger,
 } from "@porkbot/effect";
@@ -267,13 +268,13 @@ function refusedVisibility(error: unknown): Visibility {
 }
 
 /**
- * A memory write answers with a decision instead of throwing. A cross-space
- * write lands as `UnknownMemoryDocument`, because the scoped pre-read saw no
- * live document to update; any other decision error is a fixture defect rather
- * than a refusal, so the probe fails loudly instead of counting it as
- * enforcement.
+ * A memory write or restore answers with a decision instead of throwing. A
+ * cross-space attempt lands as `UnknownMemoryDocument`, because the scoped
+ * pre-read saw no document to update or restore; any other decision error is a
+ * fixture defect rather than a refusal, so the probe fails loudly instead of
+ * counting it as enforcement.
  */
-function memoryChange(decision: MemoryWriteDecision): Change {
+function memoryChange(decision: MemoryWriteOutcome): Change {
   if (decision.ok) {
     return "applied";
   }
@@ -589,12 +590,17 @@ export const resources: readonly Resource<unknown>[] = [
     },
   }),
 
-  resource<{ readonly botId: string; readonly documentId: string }>({
+  resource<{
+    readonly botId: string;
+    readonly documentId: string;
+    readonly removedId: string;
+  }>({
     entity: "memory",
     tables: ["memory_document", "memory_revision"],
     seed: async (space) => {
       const bot = await createBot(space, "Memory host");
       const documentId = randomUUID();
+      const removedId = randomUUID();
 
       await space.memory.write(bot.id, {
         write: {
@@ -606,8 +612,24 @@ export const resources: readonly Resource<unknown>[] = [
         },
         reason: "matrix fixture",
       });
+      // A tombstone gives the deleted-list read a row to find in the actor's
+      // space and to withhold from the other one.
+      await space.memory.write(bot.id, {
+        write: {
+          action: "create",
+          documentId: removedId,
+          kind: "preference",
+          title: "Matrix removed",
+          content: "the removed matrix",
+        },
+        reason: "matrix fixture",
+      });
+      await space.memory.write(bot.id, {
+        write: { action: "delete", documentId: removedId },
+        reason: "matrix fixture",
+      });
 
-      return { botId: bot.id, documentId };
+      return { botId: bot.id, documentId, removedId };
     },
     state: async (space, seed) =>
       json(
@@ -620,11 +642,24 @@ export const resources: readonly Resource<unknown>[] = [
     user: {
       read: (subject, seed) =>
         visibleOn(async () => {
+          // The deleted-list read is checked first and eagerly: a foreign
+          // space's tombstone is simply not there, which is the refusal the
+          // seam expresses as an empty answer.
+          const removed = await subject.memory.listDeleted(seed.botId);
+
+          if (!removed.some((document) => document.documentId === seed.removedId)) {
+            throw new NotFoundError("memory document", seed.removedId);
+          }
+
           await subject.memory.find(seed.botId, seed.documentId);
           await subject.memory.revisions(seed.botId, seed.documentId);
         }),
       write: async (subject, seed) => {
-        const decision = await subject.memory.write(seed.botId, {
+        // Two operator seams, both checked: a deliberate rewrite and a restore
+        // of the document's first revision. The restore is what proves history
+        // is reached through the store's own statement rather than a read the
+        // probe composes, and the cross-space attempt refuses both.
+        const rewritten = await subject.memory.write(seed.botId, {
           write: {
             action: "update",
             documentId: seed.documentId,
@@ -633,8 +668,16 @@ export const resources: readonly Resource<unknown>[] = [
           },
           reason: "matrix write",
         });
+        const restored = await subject.memory.restore(
+          seed.botId,
+          seed.documentId,
+          1,
+          "matrix restore",
+        );
 
-        return memoryChange(decision);
+        return memoryChange(rewritten) === "applied" && memoryChange(restored) === "applied"
+          ? "applied"
+          : "refused";
       },
     },
     system: {

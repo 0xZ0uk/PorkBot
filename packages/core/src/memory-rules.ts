@@ -16,6 +16,14 @@
  * makes an agent's change to memory visible instead of silent; a write that
  * changes nothing yields no revision.
  *
+ * Restoring is the operator's other act over history. `decideMemoryRestore`
+ * reapplies one recorded revision — an earlier rewrite or the tombstone a
+ * deletion left — as the document's next revision, so a wrong edit and a wrong
+ * deletion are both correctable without restarting the document's identity.
+ * Restore is deliberately operator-only: an agent with a revision number could
+ * silently discard newer facts, so the seam that exposes it is the operator's
+ * half of the store and this rule refuses the proposal path outright.
+ *
  * Limits live here so every caller shares one answer and gets a typed error
  * rather than a database constraint message. The rules are pure — the caller
  * mints the document id, looks up the existing document and the count, and the
@@ -128,6 +136,55 @@ export type MemoryWriteDecision =
       readonly action: "create" | "update" | "delete";
       readonly revision: MemoryRevision;
     }
+  | { readonly ok: true; readonly action: "no_change" }
+  | { readonly ok: false; readonly error: MemoryRuleError };
+
+/**
+ * The document a restore targets, as the store reads it: the live row or a
+ * tombstone, because reversing a deletion is one of the two things a restore
+ * is for. Absent means no document holds the id at all.
+ */
+export interface MemoryRestoreTarget {
+  readonly documentId: string;
+  readonly kind: MemoryKind;
+  readonly title: string;
+  readonly content: string;
+  readonly revision: number;
+  readonly deleted: boolean;
+}
+
+/** One restore as the caller can express it: which revision, and why. */
+export interface MemoryRestoreRequest {
+  readonly origin: MemoryWriteOrigin;
+  readonly author: string;
+  readonly reason: string;
+  readonly documentId: string;
+  /** The revision number to reapply, as the document's history holds it. */
+  readonly revision: number;
+}
+
+export interface MemoryRestoreContext {
+  /**
+   * The current document, tombstone included; absent means no document holds
+   * the id. A restore may target a deleted document — that is how a deletion
+   * is undone — so unlike {@link MemoryWriteContext} this is not limited to
+   * live rows.
+   */
+  readonly document?: MemoryRestoreTarget | undefined;
+  /**
+   * The revision the restore names, loaded from the document's history. Absent
+   * or belonging to another document or revision number refuses the write.
+   */
+  readonly revision?: MemoryRevision | undefined;
+}
+
+/**
+ * What the caller must do with a restore. `restore` carries the one revision
+ * to persist — the target's state as the document's next revision; `no_change`
+ * persists nothing because the target already is the document's live state.
+ */
+export type MemoryRestoreDecision =
+  | { readonly ok: true; readonly action: "restore"; readonly revision: MemoryRevision }
   | { readonly ok: true; readonly action: "no_change" }
   | { readonly ok: false; readonly error: MemoryRuleError };
 
@@ -285,6 +342,30 @@ export class AgentCannotDeleteMemory extends MemoryRuleError {
   }
 }
 
+export class UnknownMemoryRevision extends MemoryRuleError {
+  readonly documentId: string;
+  readonly revision: number;
+
+  constructor(documentId: string, revision: number) {
+    super(`Memory document "${documentId}" has no revision ${String(revision)}`);
+    this.name = "UnknownMemoryRevision";
+    this.documentId = documentId;
+    this.revision = revision;
+  }
+}
+
+export class AgentCannotRestoreMemory extends MemoryRuleError {
+  readonly documentId: string;
+
+  constructor(documentId: string) {
+    super(
+      `Agent-proposed writes cannot restore memory document "${documentId}"; history is an operator act`,
+    );
+    this.name = "AgentCannotRestoreMemory";
+    this.documentId = documentId;
+  }
+}
+
 export class MemoryDocumentLimitReached extends MemoryRuleError {
   readonly count: number;
   readonly limit: number;
@@ -307,7 +388,11 @@ export function isMemoryWriteOrigin(value: unknown): value is MemoryWriteOrigin 
   return typeof value === "string" && (MEMORY_WRITE_ORIGINS as readonly string[]).includes(value);
 }
 
-function validateCommon(request: MemoryWriteRequest): MemoryRuleError | undefined {
+function validateCommon(request: {
+  readonly origin: MemoryWriteOrigin;
+  readonly author: string;
+  readonly reason: string;
+}): MemoryRuleError | undefined {
   if (!isMemoryWriteOrigin(request.origin)) {
     return new UnknownMemoryOrigin(request.origin);
   }
@@ -378,16 +463,16 @@ function validateWrite(write: MemoryWrite): MemoryRuleError | undefined {
 }
 
 function buildRevision(
-  write: MemoryWrite,
+  documentId: string,
   revision: number,
-  request: MemoryWriteRequest,
+  request: { readonly origin: MemoryWriteOrigin; readonly author: string; readonly reason: string },
   kind: MemoryKind,
   title: string,
   content: string,
   deleted: boolean,
 ): MemoryRevision {
   return {
-    documentId: write.documentId,
+    documentId,
     revision,
     origin: request.origin,
     author: request.author,
@@ -436,7 +521,15 @@ export function decideMemoryWrite(
     return {
       ok: true,
       action: "create",
-      revision: buildRevision(write, 1, request, write.kind, write.title, write.content, false),
+      revision: buildRevision(
+        write.documentId,
+        1,
+        request,
+        write.kind,
+        write.title,
+        write.content,
+        false,
+      ),
     };
   }
 
@@ -454,7 +547,7 @@ export function decideMemoryWrite(
       ok: true,
       action: "delete",
       revision: buildRevision(
-        write,
+        write.documentId,
         existing.revision + 1,
         request,
         existing.kind,
@@ -473,12 +566,89 @@ export function decideMemoryWrite(
     ok: true,
     action: "update",
     revision: buildRevision(
-      write,
+      write.documentId,
       existing.revision + 1,
       request,
       existing.kind,
       write.title,
       write.content,
+      false,
+    ),
+  };
+}
+
+function validateRestore(request: MemoryRestoreRequest): MemoryRuleError | undefined {
+  const invalid = validateCommon(request) ?? validateDocumentId(request.documentId);
+
+  if (invalid !== undefined) {
+    return invalid;
+  }
+
+  if (request.origin === "agent_proposed") {
+    return new AgentCannotRestoreMemory(request.documentId);
+  }
+
+  if (!Number.isSafeInteger(request.revision) || request.revision < 1) {
+    return new UnknownMemoryRevision(request.documentId, request.revision);
+  }
+
+  return undefined;
+}
+
+/**
+ * Decides one restore: reapply the named revision as the document's next
+ * revision. The path is checked before the target — an agent-proposed restore
+ * is refused as a rule, not as a lookup miss — and validation comes first so a
+ * malformed request is refused before the document or the history matters. A
+ * restore that names the document's own live state is `no_change`, so asking
+ * for the current revision twice does not grow history; a restore of the
+ * tombstone a deletion left is how a deletion is reversed.
+ */
+export function decideMemoryRestore(
+  request: MemoryRestoreRequest,
+  context: MemoryRestoreContext,
+): MemoryRestoreDecision {
+  const invalid = validateRestore(request);
+
+  if (invalid !== undefined) {
+    return { ok: false, error: invalid };
+  }
+
+  const document = context.document;
+
+  if (document === undefined) {
+    return { ok: false, error: new UnknownMemoryDocument(request.documentId) };
+  }
+
+  const revision = context.revision;
+
+  if (
+    revision === undefined ||
+    revision.documentId !== request.documentId ||
+    revision.revision !== request.revision
+  ) {
+    return { ok: false, error: new UnknownMemoryRevision(request.documentId, request.revision) };
+  }
+
+  if (
+    !document.deleted &&
+    document.kind === revision.kind &&
+    document.title === revision.title &&
+    document.content === revision.content
+  ) {
+    return { ok: true, action: "no_change" };
+  }
+
+  return {
+    ok: true,
+    action: "restore",
+    revision: buildRevision(
+      request.documentId,
+      document.revision + 1,
+      request,
+      revision.kind,
+      revision.title,
+      revision.content,
       false,
     ),
   };

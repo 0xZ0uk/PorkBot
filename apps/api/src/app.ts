@@ -33,6 +33,7 @@ import { createComputersRouter } from "./routers/computers.ts";
 import { createCredentialsRouter } from "./routers/credentials.ts";
 import { createDeploymentRouter } from "./routers/deployment.ts";
 import { createMcpRouter } from "./routers/mcp.ts";
+import { createMemoryRouter } from "./routers/memory.ts";
 import { createModelConnectionsRouter } from "./routers/model-connections.ts";
 import { createNotificationsRouter } from "./routers/notifications.ts";
 import { createRoutinesRouter } from "./routers/routines.ts";
@@ -201,6 +202,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     threads: createThreadsRouter(threadEvents, threads),
     runs: createRunsRouter(),
     routines: createRoutinesRouter(),
+    memory: createMemoryRouter(),
     credentials: createCredentialsRouter(),
     mcpServers: createMcpRouter(options.services.mcp),
     modelConnections: createModelConnectionsRouter(

@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
+import { Route as AppBotsBotIdMemoryRouteImport } from './routes/_app/bots.$botId.memory'
 import { Route as AppThreadsThreadIdToolResultsRunIdCallIdRouteImport } from './routes/_app/threads.$threadId_.tool-results.$runId.$callId'
 
 const AppRoute = AppRouteImport.update({
@@ -45,6 +46,11 @@ const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
   path: '/threads/$threadId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBotsBotIdMemoryRoute = AppBotsBotIdMemoryRouteImport.update({
+  id: '/bots/$botId/memory',
+  path: '/bots/$botId/memory',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppThreadsThreadIdToolResultsRunIdCallIdRoute =
   AppThreadsThreadIdToolResultsRunIdCallIdRouteImport.update({
     id: '/threads/$threadId_/tool-results/$runId/$callId',
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesByTo {
@@ -64,6 +71,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesById {
@@ -74,6 +82,7 @@ export interface FileRoutesById {
   '/_auth/sign-up': typeof AuthSignUpRoute
   '/_app/': typeof AppIndexRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/_app/threads/$threadId_/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRouteTypes {
@@ -83,6 +92,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/threads/$threadId'
+    | '/bots/$botId/memory'
     | '/threads/$threadId/tool-results/$runId/$callId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -90,6 +100,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/threads/$threadId'
+    | '/bots/$botId/memory'
     | '/threads/$threadId/tool-results/$runId/$callId'
   id:
     | '__root__'
@@ -99,6 +110,7 @@ export interface FileRouteTypes {
     | '/_auth/sign-up'
     | '/_app/'
     | '/_app/threads/$threadId'
+    | '/_app/bots/$botId/memory'
     | '/_app/threads/$threadId_/tool-results/$runId/$callId'
   fileRoutesById: FileRoutesById
 }
@@ -151,6 +163,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppThreadsThreadIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bots/$botId/memory': {
+      id: '/_app/bots/$botId/memory'
+      path: '/bots/$botId/memory'
+      fullPath: '/bots/$botId/memory'
+      preLoaderRoute: typeof AppBotsBotIdMemoryRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/threads/$threadId_/tool-results/$runId/$callId': {
       id: '/_app/threads/$threadId_/tool-results/$runId/$callId'
       path: '/threads/$threadId/tool-results/$runId/$callId'
@@ -164,12 +183,14 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
+  AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
   AppThreadsThreadIdToolResultsRunIdCallIdRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
+  AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,
   AppThreadsThreadIdToolResultsRunIdCallIdRoute:
     AppThreadsThreadIdToolResultsRunIdCallIdRoute,
 }

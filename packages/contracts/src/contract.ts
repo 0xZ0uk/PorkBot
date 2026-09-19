@@ -29,6 +29,13 @@ import {
 } from "./bots.ts";
 import { deploymentStatusContract } from "./deployment.ts";
 import {
+  memoryListContract,
+  memoryRemoveContract,
+  memoryRestoreContract,
+  memoryRevisionsContract,
+  memoryUpdateContract,
+} from "./memory.ts";
+import {
   mcpServersCreateContract,
   mcpServersGetContract,
   mcpServersGrantContract,
@@ -132,6 +139,13 @@ export const appContract = {
     preview: routinesPreviewContract,
     testRun: routinesTestRunContract,
     outcomes: routinesOutcomesContract,
+  },
+  memory: {
+    list: memoryListContract,
+    revisions: memoryRevisionsContract,
+    update: memoryUpdateContract,
+    remove: memoryRemoveContract,
+    restore: memoryRestoreContract,
   },
   credentials: {
     list: credentialsListContract,

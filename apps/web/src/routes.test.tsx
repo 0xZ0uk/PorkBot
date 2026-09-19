@@ -12,13 +12,17 @@ import type { ConsoleTransport } from "./transport.ts";
 import {
   createScriptedEvents,
   fakeBot,
+  fakeMemoryDocument,
+  fakeMemoryRevision,
   fakeThread,
   runCompleted,
   runStarted,
+  scriptedMemoryTransport,
   scriptedThreadTransport,
   textMessage,
   tokenDelta,
 } from "../test/fakes.ts";
+import type { MemoryTransport } from "./memory.ts";
 
 /**
  * The route guards, in a real DOM: the shell's three states are reachable from
@@ -74,7 +78,7 @@ function appWith(
   const session = createSessionController({ transport: auth });
 
   return createAppRouter(
-    { auth, session, threads: transport },
+    { auth, session, threads: transport, memory: scriptedMemoryTransport() },
     createMemoryHistory({ initialEntries: ["/"] }),
   );
 }
@@ -129,7 +133,7 @@ describe("the shell's route guards", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: scriptedThreadTransport() },
+      { auth, session, threads: scriptedThreadTransport(), memory: scriptedMemoryTransport() },
       createMemoryHistory({ initialEntries: ["/sign-in"] }),
     );
 
@@ -205,7 +209,7 @@ describe("the shell's route guards", () => {
     });
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: scriptedThreadTransport() },
+      { auth, session, threads: scriptedThreadTransport(), memory: scriptedMemoryTransport() },
       createMemoryHistory({ initialEntries: ["/"] }),
     );
 
@@ -249,6 +253,10 @@ describe("the console routes", () => {
     const link = container.querySelector("a[href='/threads/thread-1']");
 
     expect(link).not.toBeNull();
+
+    const memoryLink = container.querySelector("a[href='/bots/bot-1/memory']");
+
+    expect(memoryLink?.textContent).toBe("Memory");
   });
 
   it("renders a thread's streamed text on the console route", async () => {
@@ -262,7 +270,7 @@ describe("the console routes", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: transport },
+      { auth, session, threads: transport, memory: scriptedMemoryTransport() },
       createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
     );
 
@@ -295,7 +303,7 @@ describe("the console routes", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: transport },
+      { auth, session, threads: transport, memory: scriptedMemoryTransport() },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-1"],
       }),
@@ -318,7 +326,7 @@ describe("the console routes", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session, threads: scriptedThreadTransport() },
+      { auth, session, threads: scriptedThreadTransport(), memory: scriptedMemoryTransport() },
       createMemoryHistory({
         initialEntries: ["/threads/thread-1/tool-results/run-1/call-missing"],
       }),
@@ -330,5 +338,206 @@ describe("the console routes", () => {
     await render(<RouterProvider router={router} />);
 
     expect(container.textContent).toContain("The tool result could not be loaded.");
+  });
+});
+
+describe("the memory route", () => {
+  function memoryRouter(memory: MemoryTransport): ReturnType<typeof createAppRouter> {
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+
+    return createAppRouter(
+      { auth, session, threads: scriptedThreadTransport(), memory },
+      createMemoryHistory({ initialEntries: ["/bots/bot-1/memory"] }),
+    );
+  }
+
+  async function mountMemory(memory: MemoryTransport): Promise<void> {
+    const router = memoryRouter(memory);
+
+    await act(async () => {
+      await router.load();
+    });
+    await render(<RouterProvider router={router} />);
+  }
+
+  function buttonByText(text: string): HTMLButtonElement {
+    const found = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === text,
+    );
+
+    if (found === undefined) {
+      throw new Error(`no button labelled "${text}"`);
+    }
+
+    return found as HTMLButtonElement;
+  }
+
+  /** React's value tracker ignores a plain `element.value =`, so set natively. */
+  function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+    const prototype =
+      element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+
+    setter?.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  async function submit(form: HTMLFormElement): Promise<void> {
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+  }
+
+  it("lists what the bot remembers and folds long content", async () => {
+    const long = "x".repeat(600);
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [fakeMemoryDocument({ content: long })],
+        revisions: { "doc-1": [fakeMemoryRevision()] },
+      }),
+    );
+
+    expect(container.textContent).toContain("Preferred editor");
+    expect(container.textContent).toContain("Fact");
+    expect(container.textContent).toContain("v1");
+
+    const details = container.querySelector("details.memory-text-details");
+
+    expect(details).not.toBeNull();
+    expect(details?.querySelector("summary")?.textContent?.length).toBeLessThan(long.length);
+    expect(details?.querySelector("p.memory-content")?.textContent).toBe(long);
+  });
+
+  it("shows an empty state instead of a blank list", async () => {
+    await mountMemory(scriptedMemoryTransport());
+
+    expect(container.textContent).toContain("Nothing remembered yet.");
+    expect(container.querySelector(".memory-list")).toBeNull();
+  });
+
+  it("edits a document in place and the reload shows the correction", async () => {
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [fakeMemoryDocument()],
+        revisions: { "doc-1": [fakeMemoryRevision()] },
+      }),
+    );
+
+    await act(async () => {
+      buttonByText("Edit").click();
+    });
+
+    const form = container.querySelector("form.memory-form");
+
+    expect(form).not.toBeNull();
+
+    const [title, reason] = [...(form?.querySelectorAll("input") ?? [])];
+    const content = form?.querySelector("textarea");
+
+    setValue(title as HTMLInputElement, "Preferred editor");
+    setValue(content as HTMLTextAreaElement, "The operator prefers Neovim.");
+    setValue(reason as HTMLInputElement, "operator correction");
+    await submit(form as HTMLFormElement);
+
+    await until(
+      () =>
+        container.textContent?.includes("v2") === true &&
+        container.querySelector("form.memory-form") === null,
+      "the persisted correction",
+    );
+
+    expect(container.textContent).toContain("The operator prefers Neovim.");
+    expect(container.querySelector("form.memory-form")).toBeNull();
+  });
+
+  it("shows the history with who made each change and when", async () => {
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [fakeMemoryDocument({ revision: 2 })],
+        revisions: {
+          "doc-1": [
+            fakeMemoryRevision(),
+            fakeMemoryRevision({
+              revision: 2,
+              origin: "agent_proposed",
+              author: "bot-1",
+              reason: "learned in a run",
+              createdAt: "2026-01-02T00:00:00.000Z",
+            }),
+          ],
+        },
+      }),
+    );
+
+    await act(async () => {
+      buttonByText("History").click();
+    });
+
+    await until(() => container.querySelectorAll(".revision").length === 2, "the revision history");
+
+    const revisions = [...container.querySelectorAll(".revision")];
+
+    expect(revisions[0]?.textContent).toContain("You");
+    expect(revisions[1]?.textContent).toContain("Bot");
+    expect(revisions[1]?.textContent).toContain("learned in a run");
+    expect(revisions[1]?.querySelector("time")?.getAttribute("datetime")).toBe(
+      "2026-01-02T00:00:00.000Z",
+    );
+  });
+
+  it("removes a document and restores it from the removed scope", async () => {
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [fakeMemoryDocument()],
+        revisions: { "doc-1": [fakeMemoryRevision()] },
+      }),
+    );
+
+    await act(async () => {
+      buttonByText("Delete").click();
+    });
+
+    const removeForm = container.querySelector("form.memory-form");
+
+    expect(removeForm).not.toBeNull();
+    setValue(removeForm?.querySelector("input") as HTMLInputElement, "no longer relevant");
+    await submit(removeForm as HTMLFormElement);
+
+    await until(
+      () => container.textContent?.includes("Nothing remembered yet.") === true,
+      "the removed document to leave the live list",
+    );
+
+    await act(async () => {
+      buttonByText("Removed").click();
+    });
+
+    await until(
+      () => container.textContent?.includes("Preferred editor") === true,
+      "the tombstone in the removed scope",
+    );
+
+    await act(async () => {
+      buttonByText("Restore").click();
+    });
+
+    await until(
+      () => container.textContent?.includes("Nothing removed.") === true,
+      "the restored document to leave the removed scope",
+    );
+
+    await act(async () => {
+      buttonByText("Current").click();
+    });
+
+    await until(
+      () => container.textContent?.includes("Preferred editor") === true,
+      "the restored document in the live list",
+    );
+
+    expect(container.textContent).toContain("v3");
   });
 });

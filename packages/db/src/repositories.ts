@@ -5,6 +5,7 @@ import type {
   Credentials,
   McpRunServers,
   McpServers,
+  MemoryDocuments,
   NotificationPreferences,
   NotificationRecipients,
   RunCommandSource,
@@ -22,6 +23,7 @@ import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 import { createMcpStore } from "./mcp-store.ts";
+import { createMemoryStore } from "./memory-store.ts";
 import { createNotificationStore } from "./notification-store.ts";
 import {
   botColumns,
@@ -499,6 +501,14 @@ export interface UserRepositories {
   readonly mcp: McpServers;
   /** The operator's model connections (slice 9.2): endpoints by URL and credential name. */
   readonly modelConnections: ModelConnectionReader & ModelConnectionWriter;
+  /**
+   * The operator's durable memory (slices 8.1-8.3, PRD decision 21; stories 23
+   * and 24): live and deleted documents, revision history, deliberate writes
+   * and restoring a recorded revision. The run's half stays the separate
+   * `MemoryProposals` created for the worker, so the UI cannot propose and the
+   * agent cannot delete or restore.
+   */
+  readonly memory: MemoryDocuments;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -606,6 +616,7 @@ export function createRepositories(
       setDefault: (id) => setDefaultModelConnection(actor, database, id),
       delete: (id) => deleteModelConnection(actor, database, id),
     },
+    memory: createMemoryStore(actor, database),
   };
 }
 

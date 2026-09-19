@@ -5,6 +5,7 @@ import {
   MemoryDocumentLimitReached,
   MissingMemoryReason,
   UnknownMemoryDocument,
+  UnknownMemoryRevision,
 } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
@@ -64,6 +65,14 @@ function documentRow(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
+function documentRecordRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...documentRow(),
+    deletedAt: new Date("2026-01-02T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 function revisionRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     ...documentRow(),
@@ -71,6 +80,7 @@ function revisionRow(overrides: Record<string, unknown> = {}): Record<string, un
     author: "user-1",
     reason: "operator correction",
     deleted: false,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,
   };
 }
@@ -82,6 +92,7 @@ const isRevisionRead = (text: string): boolean => text.includes("from memory_rev
 const isCreate = (text: string): boolean => text.startsWith("with inserted as");
 const isUpdate = (text: string): boolean => text.startsWith("with updated as");
 const isDelete = (text: string): boolean => text.startsWith("with removed as");
+const isRestore = (text: string): boolean => text.startsWith("with target as");
 const isBotRead = (text: string): boolean => text.startsWith("select id from bot");
 
 const callsMatching = (
@@ -90,7 +101,7 @@ const callsMatching = (
 ): readonly QueryCall[] => calls.filter(({ text }) => predicate(text));
 
 const writes = (calls: readonly QueryCall[]): readonly QueryCall[] =>
-  calls.filter(({ text }) => isCreate(text) || isUpdate(text) || isDelete(text));
+  calls.filter(({ text }) => isCreate(text) || isUpdate(text) || isDelete(text) || isRestore(text));
 
 const createInput = {
   write: {
@@ -353,6 +364,154 @@ describe("deleting a document", () => {
   });
 });
 
+describe("restoring a revision", () => {
+  const reason = "put it back";
+
+  it("reapplies the named revision and clears the tombstone in one statement", async () => {
+    const database = fakeDatabase(({ text }) => {
+      if (isRestore(text)) {
+        return [revisionRow({ revision: 4, title: "Earlier", content: "The earlier state" })];
+      }
+
+      if (isRevisionRead(text)) {
+        return [revisionRow({ title: "Earlier", content: "The earlier state" })];
+      }
+
+      if (isDocumentRead(text)) {
+        return [documentRecordRow({ revision: 3, deletedAt: null })];
+      }
+
+      return [];
+    });
+
+    const decision = await createMemoryStore(operator, database).restore(
+      "bot-1",
+      "doc-1",
+      1,
+      reason,
+    );
+
+    expect(decision).toMatchObject({
+      ok: true,
+      action: "restore",
+      revision: {
+        revision: 4,
+        title: "Earlier",
+        content: "The earlier state",
+        deleted: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+
+    const [restore] = callsMatching(database.calls, isRestore);
+    expect(restore?.text).toContain("kind = t.kind");
+    expect(restore?.text).toContain("deleted_at = null");
+    expect(restore?.text).toContain("from memory_revision");
+    expect(restore?.values).toEqual([
+      "space-1",
+      "bot-1",
+      "doc-1",
+      1,
+      "deliberate",
+      "user-1",
+      reason,
+    ]);
+    expect(writes(database.calls)).toHaveLength(1);
+  });
+
+  it("reverses a deletion by restoring the tombstone revision", async () => {
+    const database = fakeDatabase(({ text }) => {
+      if (isRestore(text)) {
+        return [revisionRow({ revision: 2, deleted: false })];
+      }
+
+      if (isRevisionRead(text)) {
+        return [revisionRow({ deleted: true, reason: "operator removed it" })];
+      }
+
+      if (isDocumentRead(text)) {
+        return [documentRecordRow({ revision: 2 })];
+      }
+
+      return [];
+    });
+
+    const decision = await createMemoryStore(operator, database).restore(
+      "bot-1",
+      "doc-1",
+      1,
+      reason,
+    );
+
+    expect(decision).toMatchObject({ ok: true, action: "restore", revision: { revision: 2 } });
+  });
+
+  it("persists nothing when the target already is the live state", async () => {
+    const database = fakeDatabase(({ text }) => {
+      if (isRevisionRead(text)) {
+        return [revisionRow()];
+      }
+
+      return isDocumentRead(text) ? [documentRecordRow({ deletedAt: null })] : [];
+    });
+
+    const decision = await createMemoryStore(operator, database).restore(
+      "bot-1",
+      "doc-1",
+      1,
+      reason,
+    );
+
+    expect(decision).toEqual({ ok: true, action: "no_change" });
+    expect(writes(database.calls)).toHaveLength(0);
+  });
+
+  it("refuses a revision history does not hold without issuing a write", async () => {
+    const database = fakeDatabase(({ text }) =>
+      isDocumentRead(text) ? [documentRecordRow({ deletedAt: null })] : [],
+    );
+
+    const decision = await createMemoryStore(operator, database).restore(
+      "bot-1",
+      "doc-1",
+      9,
+      reason,
+    );
+
+    expect(decision.ok).toBe(false);
+    if (!decision.ok) {
+      expect(decision.error).toBeInstanceOf(UnknownMemoryRevision);
+    }
+    expect(writes(database.calls)).toHaveLength(0);
+  });
+
+  it("answers unknown-document when no row holds the id", async () => {
+    const database = fakeDatabase(() => []);
+
+    const decision = await createMemoryStore(operator, database).restore(
+      "bot-1",
+      "doc-1",
+      1,
+      reason,
+    );
+
+    expect(decision.ok).toBe(false);
+    if (!decision.ok) {
+      expect(decision.error).toBeInstanceOf(UnknownMemoryDocument);
+    }
+    expect(writes(database.calls)).toHaveLength(0);
+  });
+
+  it("gives the job no restore path", () => {
+    const system = createMemoryStore(worker, fakeDatabase());
+
+    // @ts-expect-error -- restoring history is the operator's act, not a job's.
+    expect(system.restore).toBeUndefined();
+    // @ts-expect-error -- the deleted list is the operator's view.
+    expect(system.listDeleted).toBeUndefined();
+  });
+});
+
 describe("validation before storage", () => {
   it("refuses a blank reason without issuing a write", async () => {
     const database = fakeDatabase(({ text }) =>
@@ -432,9 +591,24 @@ describe("the scoped reads", () => {
     const history = await store.revisions("bot-1", "doc-1");
 
     expect(history.map((revision) => revision.revision)).toEqual([1, 2]);
+    expect(history[0]?.createdAt).toBe("2026-01-01T00:00:00.000Z");
     expect(history[1]?.deleted).toBe(true);
     expect(database.calls[0]?.text).toContain("order by revision asc");
     expect(database.calls[0]?.values).toEqual(["space-1", "bot-1", "doc-1"]);
+  });
+
+  it("lists deleted documents newest first, with the tombstone instant", async () => {
+    const database = fakeDatabase(({ text }) =>
+      isDocumentRead(text) && !isRevisionRead(text) ? [documentRecordRow()] : [],
+    );
+    const store = createMemoryStore(operator, database);
+
+    const deleted = await store.listDeleted("bot-1");
+
+    expect(deleted).toEqual([{ ...documentRow(), deletedAt: "2026-01-02T00:00:00.000Z" }]);
+    expect(database.calls[0]?.text).toContain("deleted_at is not null");
+    expect(database.calls[0]?.text).toContain("order by deleted_at desc, id desc");
+    expect(database.calls[0]?.values).toEqual(["space-1", "bot-1"]);
   });
 });
 

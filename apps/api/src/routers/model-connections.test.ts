@@ -241,6 +241,14 @@ function repositoriesFor(actor: UserActor): UserRepositories {
     notifications: { read: notExercised, set: notExercised },
     credentials: credentialsFor(actor),
     modelConnections: modelConnectionRepository(actor),
+    memory: {
+      list: notExercised,
+      find: notExercised,
+      listDeleted: notExercised,
+      revisions: notExercised,
+      write: notExercised,
+      restore: notExercised,
+    },
     mcp: {
       list: notExercised,
       findById: notExercised,

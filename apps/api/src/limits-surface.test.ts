@@ -170,6 +170,17 @@ const requestBodies: Record<string, string> = {
   "mcpServers.revoke": JSON.stringify({
     json: { id: "server-1", botId: "00000000-0000-4000-8000-000000000000" },
   }),
+  "memory.list": JSON.stringify({ json: { botId: "bot-1" } }),
+  "memory.revisions": JSON.stringify({ json: { botId: "bot-1", documentId: "doc-1" } }),
+  "memory.update": JSON.stringify({
+    json: { botId: "bot-1", documentId: "doc-1", title: "Editor", content: "Vim.", reason: "why" },
+  }),
+  "memory.remove": JSON.stringify({
+    json: { botId: "bot-1", documentId: "doc-1", reason: "why" },
+  }),
+  "memory.restore": JSON.stringify({
+    json: { botId: "bot-1", documentId: "doc-1", revision: 1, reason: "why" },
+  }),
 };
 
 describe("the route list", () => {
@@ -234,6 +245,11 @@ describe("every contract procedure", () => {
       "mcpServers.list",
       "mcpServers.remove",
       "mcpServers.revoke",
+      "memory.list",
+      "memory.remove",
+      "memory.restore",
+      "memory.revisions",
+      "memory.update",
       "modelConnections.create",
       "modelConnections.list",
       "modelConnections.probe",
@@ -369,6 +385,14 @@ describe("the typed answer", () => {
         update: notExercised,
         setDefault: notExercised,
         delete: notExercised,
+      },
+      memory: {
+        list: notExercised,
+        find: notExercised,
+        listDeleted: notExercised,
+        revisions: notExercised,
+        write: notExercised,
+        restore: notExercised,
       },
       routines: {
         findById: notExercised,
