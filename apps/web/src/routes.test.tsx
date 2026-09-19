@@ -418,6 +418,41 @@ describe("the memory route", () => {
     expect(container.querySelector(".memory-list")).toBeNull();
   });
 
+  it("shows a refusal and offers the retry that reads again", async () => {
+    let failing = true;
+    const transport: MemoryTransport = {
+      ...scriptedMemoryTransport({
+        documents: [fakeMemoryDocument()],
+        revisions: { "doc-1": [fakeMemoryRevision()] },
+      }),
+      list: async () => {
+        if (failing) {
+          throw new Error("unreachable");
+        }
+
+        return [fakeMemoryDocument()];
+      },
+    };
+
+    await mountMemory(transport);
+
+    await until(
+      () => container.textContent?.includes("Memory could not be loaded.") === true,
+      "the refusal",
+    );
+
+    failing = false;
+
+    await act(async () => {
+      buttonByText("Try again").click();
+    });
+
+    await until(
+      () => container.textContent?.includes("Preferred editor") === true,
+      "the retry's document",
+    );
+  });
+
   it("edits a document in place and the reload shows the correction", async () => {
     await mountMemory(
       scriptedMemoryTransport({
