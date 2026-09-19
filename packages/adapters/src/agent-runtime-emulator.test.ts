@@ -16,10 +16,12 @@ import type {
   LiveRunsTag,
   RunSession,
   RunStartRequest,
+  RunUsage,
   ToolCall,
   ToolCallAdmission,
   ToolCallLedger,
   ToolOutcome,
+  UsageRecorder,
 } from "@porkbot/effect";
 import { LeaseLostError, RunGoneError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
@@ -630,6 +632,87 @@ describe("the offline runtime executing tools", () => {
     expect(events[2]).toMatchObject({
       error: 'the tool "missing" is not registered for this run',
     });
+  });
+
+  it("reports a scripted turn's usage through the supplied recorder", async () => {
+    const usage: RunUsage[] = [];
+    const recorder: UsageRecorder = {
+      record: async (record) => {
+        usage.push(record);
+      },
+    };
+
+    const events = await Effect.runPromise(
+      driveRun(
+        "run-usage",
+        [
+          {
+            kind: "usage",
+            provider: "openai",
+            model: "test-model",
+            inputTokens: 1200,
+            outputTokens: 340,
+          },
+          { kind: "run.completed" },
+        ],
+        undefined,
+        { usage: recorder },
+      ).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    expect(usage).toEqual([
+      {
+        runId: "run-usage",
+        provider: "openai",
+        model: "test-model",
+        inputTokens: 1200,
+        outputTokens: 340,
+      },
+    ]);
+    expect(eventTypes(events)).toEqual(["run.started", "run.completed"]);
+  });
+
+  it("records an omitted field as not reported, never a zero", async () => {
+    const usage: RunUsage[] = [];
+    const recorder: UsageRecorder = {
+      record: async (record) => {
+        usage.push(record);
+      },
+    };
+
+    await Effect.runPromise(
+      driveRun("run-usage", [{ kind: "usage" }, { kind: "run.completed" }], undefined, {
+        usage: recorder,
+      }).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    expect(usage).toEqual([
+      { runId: "run-usage", provider: null, model: null, inputTokens: null, outputTokens: null },
+    ]);
+  });
+
+  it("keeps running when the recorder refuses a write", async () => {
+    const recorder: UsageRecorder = {
+      record: async () => {
+        throw new Error("the ledger is down");
+      },
+    };
+
+    const events = await Effect.runPromise(
+      driveRun(
+        "run-usage",
+        [
+          { kind: "usage", inputTokens: 1, outputTokens: 1 },
+          { kind: "run.failed", error: "the model failed after one turn" },
+        ],
+        undefined,
+        { usage: recorder },
+      ).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
+    );
+
+    // The failed run still reports its one turn's record attempt and its own
+    // terminal event; the usage write is never allowed to change the outcome.
+    expect(eventTypes(events)).toEqual(["run.started", "run.failed"]);
   });
 
   it("refuses a tool step with no result when the runtime holds no dispatcher", async () => {

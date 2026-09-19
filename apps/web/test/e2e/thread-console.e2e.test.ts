@@ -12,6 +12,7 @@ import {
   runCompleted,
   runStarted,
   scriptedMemoryTransport,
+  scriptedUsageTransport,
   textMessage,
   tokenDelta,
   toolCompleted,
@@ -102,7 +103,13 @@ async function mountConsole(
   const session = createSessionController({ transport: auth });
   const transport = createHttpConsoleTransport({ origin: api.url });
   const router = createAppRouter(
-    { auth, session, threads: transport, memory: scriptedMemoryTransport() },
+    {
+      auth,
+      session,
+      threads: transport,
+      memory: scriptedMemoryTransport(),
+      usage: scriptedUsageTransport(),
+    },
     createMemoryHistory({ initialEntries: [path] }),
   );
   const container = document.createElement("div");

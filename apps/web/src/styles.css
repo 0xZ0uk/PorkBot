@@ -444,3 +444,45 @@
   font-size: 0.875rem;
   overflow-wrap: anywhere;
 }
+
+/*
+ * The usage screen (slice 8.8): one totals block per period, in the memory
+ * screen's card vocabulary rather than a table, because the periods are a
+ * short list and not a data grid.
+ */
+
+.usage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-md);
+}
+
+.usage-period {
+  padding: var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-md);
+}
+
+.usage-totals h3 {
+  margin: 0 0 var(--pb-space-sm);
+  font-size: 1rem;
+}
+
+.usage-totals dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--pb-space-xs) var(--pb-space-sm);
+  margin: 0;
+}
+
+.usage-totals dt {
+  color: var(--pb-color-muted);
+}
+
+.usage-totals dd {
+  margin: 0;
+}

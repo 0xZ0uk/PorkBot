@@ -8,7 +8,14 @@ import {
   processSingleton,
   withLiveRun,
 } from "@porkbot/effect";
-import type { AgentRuntimeLayer, RunCommand, RunGoneError, RunStartRequest } from "@porkbot/effect";
+import type {
+  AgentRuntimeLayer,
+  RunCommand,
+  RunGoneError,
+  RunStartRequest,
+  RunUsage,
+  UsageRecorder,
+} from "@porkbot/effect";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { piAgentRuntimeLayer, PiRunSourceEnded, recordedPiRunSource } from "./pi-run-source.ts";
 import type { PiApprovalDecision, PiRunSource } from "./pi-run-source.ts";
@@ -131,6 +138,54 @@ async function collectExit(events: readonly unknown[]) {
   return Effect.runPromise(Effect.scoped(program));
 }
 
+/** A recorder the test reads: every reported turn, in order. */
+function recordingUsage(): { readonly recorder: UsageRecorder; readonly usage: RunUsage[] } {
+  const usage: RunUsage[] = [];
+
+  return {
+    usage,
+    recorder: {
+      record: async (record) => {
+        usage.push(record);
+      },
+    },
+  };
+}
+
+/** One `message_end` for the corpus model, with whatever usage the test names. */
+function assistantMessageEnd(usage: unknown): unknown {
+  return {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [],
+      api: "openai-completions",
+      provider: "openai",
+      model: "corpus-model",
+      usage,
+      stopReason: "stop",
+      timestamp: 0,
+    },
+  };
+}
+
+/** Drives one recorded run through the shipped layer with a usage recorder. */
+async function collectWithUsage(
+  events: readonly unknown[],
+  recorder: UsageRecorder,
+): Promise<readonly RunEvent[]> {
+  const program = Effect.gen(function* () {
+    const { session } = yield* AgentRuntime;
+    return yield* Stream.runCollect(session.events);
+  }).pipe(
+    Effect.provide(
+      piAgentRuntimeLayer(startRequest(), recordedPiRunSource(events), { usage: recorder }),
+    ),
+  );
+
+  return Array.from(await Effect.runPromise(Effect.scoped(program)));
+}
+
 describe("the Pi runtime seam", () => {
   it("returns the shipped run layer and names no Pi type in doing so", () => {
     expectTypeOf(piAgentRuntimeLayer).returns.toEqualTypeOf<AgentRuntimeLayer>();
@@ -218,6 +273,152 @@ describe("the Pi runtime seam", () => {
         expect(defect.value).toBeInstanceOf(PiRunSourceEnded);
       }
     }
+  });
+
+  it("records a completed assistant turn's usage with its model and provider", async () => {
+    const recorded = recordingUsage();
+
+    const events = await collectWithUsage(
+      [
+        { type: "agent_start" },
+        assistantMessageEnd({
+          input: 1200,
+          output: 340,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 1540,
+        }),
+        { type: "agent_end", messages: [] },
+      ],
+      recorded.recorder,
+    );
+
+    expect(recorded.usage).toEqual([
+      {
+        runId: "run-pi",
+        provider: "openai",
+        model: "corpus-model",
+        inputTokens: 1200,
+        outputTokens: 340,
+      },
+    ]);
+    // Usage is not transcript: the wire event sequence is unchanged.
+    expect(events.map((event) => event.type)).toEqual(["run.started", "run.completed"]);
+  });
+
+  it("degrades an all-zero Pi report to not reported rather than a fake zero", async () => {
+    const recorded = recordingUsage();
+
+    await collectWithUsage(
+      [
+        { type: "agent_start" },
+        assistantMessageEnd({
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+        }),
+        { type: "agent_end", messages: [] },
+      ],
+      recorded.recorder,
+    );
+
+    expect(recorded.usage).toEqual([
+      {
+        runId: "run-pi",
+        provider: "openai",
+        model: "corpus-model",
+        inputTokens: null,
+        outputTokens: null,
+      },
+    ]);
+  });
+
+  it("records a cache-only report as reported zeros rather than not reported", async () => {
+    const recorded = recordingUsage();
+
+    await collectWithUsage(
+      [
+        { type: "agent_start" },
+        assistantMessageEnd({
+          input: 0,
+          output: 0,
+          cacheRead: 900,
+          cacheWrite: 0,
+          totalTokens: 900,
+        }),
+        { type: "agent_end", messages: [] },
+      ],
+      recorded.recorder,
+    );
+
+    expect(recorded.usage).toEqual([
+      {
+        runId: "run-pi",
+        provider: "openai",
+        model: "corpus-model",
+        inputTokens: 0,
+        outputTokens: 0,
+      },
+    ]);
+  });
+
+  it("records a message with no usage object at all as not reported", async () => {
+    const recorded = recordingUsage();
+
+    await collectWithUsage(
+      [
+        { type: "agent_start" },
+        assistantMessageEnd(undefined),
+        { type: "agent_end", messages: [] },
+      ],
+      recorded.recorder,
+    );
+
+    expect(recorded.usage).toEqual([
+      {
+        runId: "run-pi",
+        provider: "openai",
+        model: "corpus-model",
+        inputTokens: null,
+        outputTokens: null,
+      },
+    ]);
+  });
+
+  it("never fails the run when the recorder refuses the write", async () => {
+    const recorder: UsageRecorder = {
+      record: async () => {
+        throw new Error("the ledger is down");
+      },
+    };
+
+    const events = await collectWithUsage(
+      [
+        { type: "agent_start" },
+        assistantMessageEnd({ input: 5, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 7 }),
+        { type: "agent_end", messages: [] },
+      ],
+      recorder,
+    );
+
+    expect(events.map((event) => event.type)).toEqual(["run.started", "run.completed"]);
+  });
+
+  it("reports nothing for a user message's end", async () => {
+    const recorded = recordingUsage();
+
+    await collectWithUsage(
+      [
+        { type: "agent_start" },
+        { type: "message_end", message: { role: "user", content: [] } },
+        { type: "agent_end", messages: [] },
+      ],
+      recorded.recorder,
+    );
+
+    expect(recorded.usage).toEqual([]);
   });
 
   it("refuses to bless a Pi run layer as a process singleton", () => {

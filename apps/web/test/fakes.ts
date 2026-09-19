@@ -11,9 +11,11 @@ import type {
   Thread,
   ThreadEventsCallOptions,
   ThreadEventsProcedure,
+  UsageBot,
+  UsageTotalsView,
 } from "@porkbot/contracts";
 import type { MemoryTransport } from "../src/memory.ts";
-import type { ConsoleTransport } from "../src/transport.ts";
+import type { ConsoleTransport, UsageTransport } from "../src/transport.ts";
 
 /**
  * Test doubles for the thread console, shared by the unit and e2e tiers. The
@@ -568,5 +570,41 @@ export function toolFailed(
     callId,
     error,
     ...(durationMs === undefined ? {} : { durationMs }),
+  };
+}
+
+/** One usage total with plausible defaults; override the figures under test. */
+export function fakeUsageTotals(overrides: Partial<UsageTotalsView> = {}): UsageTotalsView {
+  return { inputTokens: 1200, outputTokens: 340, reported: 3, unreported: 0, ...overrides };
+}
+
+/** One bot's usage as the contract answers it: an all-time total and one day. */
+export function fakeUsage(overrides: Partial<UsageBot> = {}): UsageBot {
+  return {
+    botId: "bot-1",
+    total: fakeUsageTotals(),
+    periods: [{ startsAt: "2026-01-02T00:00:00.000Z", ...fakeUsageTotals() }],
+    ...overrides,
+  };
+}
+
+export interface ScriptedUsageTransportOptions {
+  readonly usage?: UsageBot;
+  /** Throws from `forBot`, for the refusal path. */
+  readonly failure?: unknown;
+}
+
+/** The usage screen's transport fake: one bot's answer, or a thrown refusal. */
+export function scriptedUsageTransport(
+  options: ScriptedUsageTransportOptions = {},
+): UsageTransport {
+  return {
+    forBot: async (botId) => {
+      if (options.failure !== undefined) {
+        throw options.failure;
+      }
+
+      return options.usage ?? fakeUsage({ botId });
+    },
   };
 }

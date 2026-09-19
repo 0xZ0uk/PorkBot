@@ -129,6 +129,7 @@ function fakeRepositories(calls: Calls): UserRepositories {
       write: notExercised,
       restore: notExercised,
     },
+    usage: { forBot: notExercised },
     mcp: {
       list: vi.fn(async () => [view()]),
       findById: vi.fn(async (id: string) => {
