@@ -13,6 +13,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
+    "@porkbot/adapters": "workspace:*",
     "@porkbot/core": "workspace:*",
     "@porkbot/db": "workspace:*",
     "@porkbot/effect": "workspace:*",
@@ -22,8 +24,6 @@
     "graphile-worker": "0.18.0"
   },
   "devDependencies": {
-    "@porkbot/adapter-kit": "workspace:*",
-    "@porkbot/adapters": "workspace:*",
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
