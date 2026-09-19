@@ -10,11 +10,13 @@ import type {
   ComputerCeilings,
   DaytonaComputerCeilings,
   DockerComputerProviderOptions,
+  DockerProxyOptions,
 } from "@porkbot/adapters";
 import type {
   ComputerProvider,
   ComputerRef,
   ComputerStatus,
+  CredentialProxyAdmin,
   StorageProvider,
 } from "@porkbot/adapter-kit";
 
@@ -148,6 +150,37 @@ function createProviderRegistry(
     return provider;
   }
 
+  /**
+   * The registry's proxy door (slice 7.8). It is present when any configured
+   * kind runs a proxy; a machine whose kind has none is refused with the
+   * shared `not_found` on `grant` and answers absent on `endpoint`, so the
+   * mixed-fleet case is honest instead of pretending every provider is alike.
+   */
+  const proxy: CredentialProxyAdmin | undefined = Object.values(providers).some(
+    (provider) => provider.proxy !== undefined,
+  )
+    ? {
+        async grant(computer, grant) {
+          const admin = resolve(computer).proxy;
+
+          if (admin === undefined) {
+            throw new ComputerProviderError(
+              "not_found",
+              `the "${computer.provider ?? defaultKind}" computer provider runs no credential proxy`,
+            );
+          }
+
+          return await admin.grant(computer, grant);
+        },
+        async revoke(computer, runId) {
+          await resolve(computer).proxy?.revoke(computer, runId);
+        },
+        async endpoint(computer) {
+          return await resolve(computer).proxy?.endpoint(computer);
+        },
+      }
+    : undefined;
+
   return {
     async ensure(computer) {
       return await resolve(computer).ensure(computer);
@@ -184,6 +217,7 @@ function createProviderRegistry(
     async destroy(computer) {
       await resolve(computer).destroy(computer);
     },
+    ...(proxy === undefined ? {} : { proxy }),
   };
 }
 
@@ -213,6 +247,37 @@ export function createComputerProviderSelection(
   const image = setting(env, "PORKBOT_COMPUTER_IMAGE");
   const endpoint = setting(env, "PORKBOT_COMPUTER_ENDPOINT");
   const token = setting(env, "PORKBOT_COMPUTER_TOKEN");
+  // The credential-proxy sidecar (slice 7.8): three settings that only make
+  // sense together. All present, every Docker computer gets a proxy and the
+  // deployment can grant run-scoped upstream access; all absent, the provider
+  // offers no proxy seam, which is the honest offline default. A partial
+  // configuration is refused at boot rather than half-running a proxy.
+  const proxyImage = setting(env, "PORKBOT_COMPUTER_PROXY_IMAGE");
+  const proxyTokenSecret = setting(env, "PORKBOT_PROXY_TOKEN_SECRET");
+  const proxyEgressNetwork = setting(env, "PORKBOT_COMPUTER_EGRESS_NETWORK");
+  let proxyOptions: DockerProxyOptions | undefined;
+
+  if (
+    proxyImage !== undefined ||
+    proxyTokenSecret !== undefined ||
+    proxyEgressNetwork !== undefined
+  ) {
+    if (
+      proxyImage === undefined ||
+      proxyTokenSecret === undefined ||
+      proxyEgressNetwork === undefined
+    ) {
+      throw new Error(
+        "the credential proxy needs PORKBOT_COMPUTER_PROXY_IMAGE, PORKBOT_PROXY_TOKEN_SECRET and PORKBOT_COMPUTER_EGRESS_NETWORK together",
+      );
+    }
+
+    proxyOptions = {
+      image: proxyImage,
+      tokenSecret: proxyTokenSecret,
+      egressNetwork: proxyEgressNetwork,
+    };
+  }
   const scratchDirectory =
     setting(env, "PORKBOT_COMPUTER_ARCHIVE_DIR") ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY;
   const defaultKind = choice(
@@ -269,6 +334,7 @@ export function createComputerProviderSelection(
       pullPolicy,
       diskQuota,
       ceilings,
+      ...(proxyOptions === undefined ? {} : { proxy: proxyOptions }),
     };
 
     providers["docker"] = createDockerComputerProvider(options);

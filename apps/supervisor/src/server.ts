@@ -1,8 +1,17 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isProviderFailure, snapshotChecksumPattern } from "@porkbot/adapter-kit";
-import type { ComputerExecRequest, ComputerRef, ComputerSnapshot } from "@porkbot/adapter-kit";
+import type {
+  ComputerExecRequest,
+  ComputerProxyGrant,
+  ComputerRef,
+  ComputerSnapshot,
+  CredentialProxyAdmin,
+  ProxyUpstreamGrant,
+} from "@porkbot/adapter-kit";
 import {
+  ComputerProviderError,
+  FORBIDDEN_GRANT_HEADERS,
   supervisorAuthorizationHeader,
   supervisorComputerRoutes,
   supervisorMaxBodyBytes as wireMaxBodyBytes,
@@ -152,10 +161,204 @@ function computerOf(body: unknown): ComputerRef {
   return requireComputer(requireRecord(body, "the request")["computer"]);
 }
 
+/** The largest one command's environment may be: a capability, by construction. */
+export const supervisorMaxEnvironmentEntries = 32;
+const maxEnvironmentNameLength = 128;
+const maxEnvironmentValueLength = 8_192;
+
+/** The grant shape's bounds; a credential header is bytes, not a document. */
+const maxProxyUpstreams = 32;
+const maxProxyUpstreamNameLength = 64;
+const maxProxyHeaders = 32;
+const maxProxyHeaderNameLength = 128;
+const maxProxyHeaderValueLength = 8_192;
+
+/**
+ * The per-command environment, bounded and string-only. It is how a run hands
+ * its sandbox the proxy endpoint and its short-lived capability — never a
+ * credential — so the shape stays small and the refusal names the rule rather
+ * than echoing a value.
+ */
+function environmentOf(
+  record: Record<string, unknown>,
+): Readonly<Record<string, string>> | undefined {
+  const value = record["environment"];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      "environment must be an object of string values",
+    );
+  }
+
+  const entries = Object.entries(value);
+
+  if (entries.length > supervisorMaxEnvironmentEntries) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      `environment carries more than ${supervisorMaxEnvironmentEntries} entries`,
+    );
+  }
+
+  const environment: Record<string, string> = {};
+
+  for (const [name, entry] of entries) {
+    if (
+      name === "" ||
+      name.length > maxEnvironmentNameLength ||
+      typeof entry !== "string" ||
+      entry.length > maxEnvironmentValueLength
+    ) {
+      throw new SupervisorRequestError(
+        400,
+        "bad_request",
+        "environment names must be non-empty and values strings, within their bounds",
+      );
+    }
+
+    environment[name] = entry;
+  }
+
+  return environment;
+}
+
+/**
+ * One upstream a run's proxy grant names: a name, the origin it dials and the
+ * headers the proxy injects. The origin must already be a bare HTTPS origin —
+ * no path, no credentials, no plaintext — so a malformed grant is refused at
+ * the door rather than written into a proxy that would only refuse it later.
+ */
+function proxyUpstreamOf(value: unknown): ProxyUpstreamGrant {
+  const record = requireRecord(value, "a proxy upstream");
+  const name = requireString(record, "name", "a proxy upstream");
+  const origin = requireString(record, "origin", "a proxy upstream");
+
+  if (name.length > maxProxyUpstreamNameLength) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      `a proxy upstream name exceeds ${maxProxyUpstreamNameLength} characters`,
+    );
+  }
+
+  let parsed: URL;
+
+  try {
+    parsed = new URL(origin);
+  } catch {
+    throw new SupervisorRequestError(400, "bad_request", "a proxy upstream origin is not a URL");
+  }
+
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.origin !== origin
+  ) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      "a proxy upstream origin must be a bare https origin with no credentials",
+    );
+  }
+
+  const headers = record["headers"];
+
+  if (headers === undefined) {
+    return { name, origin };
+  }
+
+  if (typeof headers !== "object" || headers === null || Array.isArray(headers)) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      "proxy upstream headers must be an object",
+    );
+  }
+
+  const entries = Object.entries(headers);
+
+  if (entries.length > maxProxyHeaders) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      `a proxy upstream carries more than ${maxProxyHeaders} headers`,
+    );
+  }
+
+  const bounded: Record<string, string> = {};
+
+  for (const [header, headerValue] of entries) {
+    const lowered = header.toLowerCase();
+
+    if (
+      lowered === "" ||
+      lowered.length > maxProxyHeaderNameLength ||
+      typeof headerValue !== "string" ||
+      headerValue.length > maxProxyHeaderValueLength ||
+      /[\r\n]/.test(lowered) ||
+      /[\r\n]/.test(headerValue) ||
+      // The proxy's own allowlist decides what it may inject; a framing header
+      // in a grant is refused here so the two halves cannot drift.
+      (FORBIDDEN_GRANT_HEADERS as readonly string[]).includes(lowered)
+    ) {
+      throw new SupervisorRequestError(
+        400,
+        "bad_request",
+        "proxy upstream headers must be injectable single-line strings within their bounds",
+      );
+    }
+
+    bounded[lowered] = headerValue;
+  }
+
+  return { name, origin, headers: bounded };
+}
+
+function proxyGrantOf(value: unknown): ComputerProxyGrant {
+  const record = requireRecord(value, "the proxy grant");
+  const runId = requireString(record, "runId", "the proxy grant");
+  const expiresAtSeconds = record["expiresAtSeconds"];
+  const upstreams = record["upstreams"];
+
+  if (runId.length > 128) {
+    throw new SupervisorRequestError(400, "bad_request", "the proxy grant's run id is too long");
+  }
+
+  if (
+    typeof expiresAtSeconds !== "number" ||
+    !Number.isSafeInteger(expiresAtSeconds) ||
+    expiresAtSeconds <= 0
+  ) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      "the proxy grant needs a positive whole expiresAtSeconds",
+    );
+  }
+
+  if (!Array.isArray(upstreams) || upstreams.length > maxProxyUpstreams) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      `the proxy grant needs at most ${maxProxyUpstreams} upstreams`,
+    );
+  }
+
+  return { runId, expiresAtSeconds, upstreams: upstreams.map(proxyUpstreamOf) };
+}
+
 function execRequestOf(body: unknown, maxExecTimeoutMs: number): ComputerExecRequest {
   const record = requireRecord(body, "the exec request");
   const command = requireString(record, "command", "the exec request");
   const timeoutMs = record["timeoutMs"];
+  const environment = environmentOf(record);
 
   if (command.length > supervisorMaxCommandLength) {
     throw new SupervisorRequestError(
@@ -178,7 +381,12 @@ function execRequestOf(body: unknown, maxExecTimeoutMs: number): ComputerExecReq
     );
   }
 
-  return { computer: computerOf(body), command, timeoutMs };
+  return {
+    computer: computerOf(body),
+    command,
+    timeoutMs,
+    ...(environment === undefined ? {} : { environment }),
+  };
 }
 
 function snapshotOf(value: unknown): ComputerSnapshot {
@@ -322,6 +530,24 @@ export function createSupervisorServer(options: SupervisorServerOptions): Server
   }
 
   /**
+   * The proxy routes' door. A deployment that runs no proxy answers the shared
+   * vocabulary's `not_found` rather than a 500, so a caller learns there is no
+   * proxy instead of retrying a route that cannot work.
+   */
+  function requireProxyAdmin(): CredentialProxyAdmin {
+    const proxy = options.lifecycle.proxy;
+
+    if (proxy === undefined) {
+      throw new ComputerProviderError(
+        "not_found",
+        "this deployment runs no credential proxy for this computer",
+      );
+    }
+
+    return proxy;
+  }
+
+  /**
    * The reserved screen paths: capability token instead of the service token.
    *
    * The route tells this process which computer is being asked for, so that is
@@ -456,6 +682,40 @@ export function createSupervisorServer(options: SupervisorServerOptions): Server
     if (path === supervisorComputerRoutes.destroy) {
       await options.lifecycle.destroy(computerOf(body));
       sendJson(response, 200, { destroyed: true });
+      return;
+    }
+
+    if (path === supervisorComputerRoutes.proxyGrant) {
+      const proxy = requireProxyAdmin();
+      const record = requireRecord(body, "the proxy grant request");
+
+      sendJson(response, 200, {
+        endpoint: await proxy.grant(computerOf(body), proxyGrantOf(record["grant"])),
+      });
+      return;
+    }
+
+    if (path === supervisorComputerRoutes.proxyRevoke) {
+      const proxy = requireProxyAdmin();
+      const record = requireRecord(body, "the proxy revoke request");
+      const runId = requireString(record, "runId", "the proxy revoke request");
+
+      if (runId.length > 128) {
+        throw new SupervisorRequestError(400, "bad_request", "the run id is too long");
+      }
+
+      await proxy.revoke(computerOf(body), runId);
+      sendJson(response, 200, { revoked: true });
+      return;
+    }
+
+    if (path === supervisorComputerRoutes.proxyEndpoint) {
+      // A deployment with no proxy answers absent rather than refusing: the
+      // question "where is the proxy?" has an honest answer, and a caller that
+      // gets `undefined` knows not to hand its run a capability.
+      const endpoint = await options.lifecycle.proxy?.endpoint(computerOf(body));
+
+      sendJson(response, 200, { endpoint: endpoint ?? null });
       return;
     }
 

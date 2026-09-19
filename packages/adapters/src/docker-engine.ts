@@ -107,10 +107,33 @@ export interface DockerCreateContainerSpec {
   readonly labels: Readonly<Record<string, string>>;
   readonly network: string;
   readonly workingDirectory: string;
-  /** The host path or named volume mounted at the working directory. */
-  readonly homeVolume: string;
+  /** The host path or named volume mounted at the working directory; absent means no bind. */
+  readonly homeVolume?: string | undefined;
   readonly user?: string | undefined;
+  /** The container's command; `sleep infinity` when unset, which is what a sandbox runs. */
+  readonly command?: readonly string[] | undefined;
+  /** Container-level environment; a sidecar's configuration, never a sandbox's secrets. */
+  readonly environment?: Readonly<Record<string, string>> | undefined;
+  /** Where `resources.tmpfsBytes` mounts; `/tmp` by default, the grants directory for a proxy. */
+  readonly tmpfsPath?: string | undefined;
+  /**
+   * A container-level readiness probe. Absent, the daemon reports no health
+   * and `ready` accepts the container the moment it is running, which is what
+   * a sandbox wants. A sidecar whose server must be listening before a grant
+   * can land carries one, so `ready` means "the proxy answers", not merely
+   * "the process exists".
+   */
+  readonly healthcheck?: DockerHealthcheck | undefined;
   readonly resources: DockerContainerResources;
+}
+
+/** A Docker healthcheck, in the daemon's own shape. */
+export interface DockerHealthcheck {
+  readonly test: readonly string[];
+  readonly intervalMs: number;
+  readonly timeoutMs: number;
+  readonly retries: number;
+  readonly startPeriodMs: number;
 }
 
 export interface DockerExecRequest {
@@ -144,6 +167,17 @@ export interface DockerEngine {
   imageExists(image: string, budgetMs?: number): Promise<boolean>;
   pullImage(image: string, budgetMs?: number): Promise<void>;
   ensureNetwork(plan: ComputerNetworkPlan, budgetMs?: number): Promise<void>;
+  /**
+   * Attaches a running or created container to a second network, optionally
+   * under a DNS alias its peers resolve (slice 7.8: the proxy sidecar joins
+   * the egress network this way while keeping the computer's isolated one).
+   */
+  connectNetwork(
+    containerId: string,
+    network: string,
+    alias?: string,
+    budgetMs?: number,
+  ): Promise<void>;
   listContainers(
     labels: Readonly<Record<string, string>>,
     budgetMs?: number,
@@ -584,6 +618,23 @@ export function createDockerEngine(options: DockerEngineOptions = {}): DockerEng
       }
     },
 
+    async connectNetwork(containerId, network, alias, budgetMs = requestTimeoutMs) {
+      await send({
+        method: "POST",
+        path: `/networks/${encodeURIComponent(network)}/connect`,
+        body: JSON.stringify({
+          Container: containerId,
+          EndpointConfig: alias === undefined ? {} : { Aliases: [alias] },
+        }),
+        budgetMs,
+        // A 403 here is the daemon's "container is already connected": the
+        // attachment the caller wanted already exists, which is the
+        // idempotent answer. A 404 still fails — a missing network or
+        // container is not something to quietly skip.
+        accept: [403],
+      }).then(({ response }) => response.resume());
+    },
+
     async listContainers(labels, budgetMs = requestTimeoutMs) {
       const filters = JSON.stringify({
         label: Object.entries(labels).map(([key, value]) => `${key}=${value}`),
@@ -614,19 +665,40 @@ export function createDockerEngine(options: DockerEngineOptions = {}): DockerEng
       const tmpfs =
         spec.resources.tmpfsBytes === undefined
           ? undefined
-          : { "/tmp": `size=${spec.resources.tmpfsBytes}` };
+          : { [spec.tmpfsPath ?? "/tmp"]: `size=${spec.resources.tmpfsBytes}` };
       const created = await jsonCall<{ Id?: unknown }>(
         "POST",
         `/containers/create?${new URLSearchParams({ name: spec.name }).toString()}`,
         {
           Image: spec.image,
-          Cmd: ["sleep", "infinity"],
+          Cmd: spec.command === undefined ? ["sleep", "infinity"] : [...spec.command],
           WorkingDir: spec.workingDirectory,
           Labels: spec.labels,
-          Tmpfs: tmpfs,
+          ...(spec.healthcheck === undefined
+            ? {}
+            : {
+                Healthcheck: {
+                  Test: [...spec.healthcheck.test],
+                  Interval: spec.healthcheck.intervalMs * 1_000_000,
+                  Timeout: spec.healthcheck.timeoutMs * 1_000_000,
+                  Retries: spec.healthcheck.retries,
+                  StartPeriod: spec.healthcheck.startPeriodMs * 1_000_000,
+                },
+              }),
+          ...(spec.environment === undefined
+            ? {}
+            : {
+                Env: Object.entries(spec.environment).map(([key, value]) => `${key}=${value}`),
+              }),
           HostConfig: {
             NetworkMode: spec.network,
-            Binds: [`${spec.homeVolume}:${spec.workingDirectory}`],
+            ...(spec.homeVolume === undefined
+              ? {}
+              : { Binds: [`${spec.homeVolume}:${spec.workingDirectory}`] }),
+            // A tmpfs is a host-config mount: the daemon silently ignores the
+            // field anywhere else, which is how a "tmpfs" grant directory
+            // quietly becomes a disk one.
+            ...(tmpfs === undefined ? {} : { Tmpfs: tmpfs }),
             Memory: spec.resources.memoryBytes,
             // Equal to Memory on purpose: no swap headroom beyond the ceiling.
             MemorySwap: spec.resources.memoryBytes,
