@@ -154,6 +154,9 @@ importers:
       '@porkbot/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@porkbot/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@porkbot/health':
         specifier: workspace:*
         version: link:../../packages/health

@@ -1,5 +1,7 @@
-import { ORPCError, createApiClient } from "@porkbot/contracts";
+import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "@porkbot/contracts";
+import type { Bot, Message, Thread } from "@porkbot/contracts";
 import { AuthRefusal } from "./session.ts";
+import type { ThreadConsoleTransport } from "./console.ts";
 import type {
   AuthTransport,
   Credentials,
@@ -63,8 +65,27 @@ async function refusalMessage(response: Response): Promise<string> {
   return "The request was refused.";
 }
 
+/**
+ * The RPC endpoint as an absolute URL. The contract's client parses its `url`
+ * with `new URL`, so a relative `/rpc` throws before a request is made; the
+ * page's own origin is what "same-origin" means at run time, and a desktop
+ * wrapper passes the deployment's origin instead. The REST path below stays
+ * relative because `fetch` accepts one.
+ */
+function resolveRpcUrl(options: HttpAuthTransportOptions): string {
+  const path = options.rpcPath ?? rpcPath;
+  const base = options.origin ?? globalThis.location?.origin;
+
+  // The prerender that writes `_shell.html` runs this composition in Node,
+  // where there is no `location`: it gets the relative path, which the
+  // prerendered bootstrapping page never dials. A browser and the desktop
+  // wrapper always take the absolute branch, so the client — which parses its
+  // endpoint with `new URL` — never sees a relative one at run time.
+  return base === undefined ? path : new URL(path, base).href;
+}
+
 export function createHttpAuthTransport(options: HttpAuthTransportOptions = {}): AuthTransport {
-  const client = createApiClient({ url: `${options.origin ?? ""}${options.rpcPath ?? rpcPath}` });
+  const client = createApiClient({ url: resolveRpcUrl(options) });
   const base = `${options.origin ?? ""}${options.authBasePath ?? authBasePath}`;
   const perform = options.fetch ?? globalThis.fetch;
 
@@ -124,5 +145,68 @@ export function createHttpAuthTransport(options: HttpAuthTransportOptions = {}):
         return "unknown";
       }
     },
+  };
+}
+
+/**
+ * The console's API surface: the bots and threads a signed-in operator can
+ * open, and one thread's transcript and event stream. It is the same derived
+ * client the auth transport uses — the contract types every call — narrowed to
+ * the five methods the screens need, so a test can hand the router a fake and
+ * the screens never see a wire shape they invented.
+ */
+export interface ConsoleTransport extends ThreadConsoleTransport {
+  /** The actor's active bots, in the contract's order. */
+  listBots(): Promise<readonly Bot[]>;
+  /** One bot's most recently active threads, newest first. */
+  listThreads(botId: string): Promise<readonly Thread[]>;
+  createThread(botId: string): Promise<Thread>;
+}
+
+/**
+ * How many transcript pages one console start walks. The contract pages
+ * forward from the oldest row, and the console wants the turn that started the
+ * live run — the newest one — so it walks to the end; the cap keeps a thread
+ * with thousands of messages from turning one page load into an unbounded
+ * batch of requests. The stream itself is not paged, so the live run is
+ * complete either way.
+ */
+const maxTranscriptPages = 10;
+
+export function createHttpConsoleTransport(
+  options: HttpAuthTransportOptions = {},
+): ConsoleTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    listBots: async () => (await client.bots.list({ scope: "active" })).bots,
+    listThreads: async (botId) =>
+      (await client.threads.list({ botId, limit: defaultThreadPageSize })).threads,
+    createThread: (botId) => client.threads.create({ botId }),
+
+    transcript: async (threadId) => {
+      const messages: Message[] = [];
+      let afterSeq: number | undefined;
+
+      for (let page = 0; page < maxTranscriptPages; page += 1) {
+        const result = await client.threads.messages({
+          threadId,
+          limit: maxPageSize,
+          ...(afterSeq === undefined ? {} : { afterSeq }),
+        });
+
+        messages.push(...result.messages);
+
+        if (result.nextSeq === null) {
+          break;
+        }
+
+        afterSeq = result.nextSeq;
+      }
+
+      return messages;
+    },
+
+    events: client.threads.events,
   };
 }

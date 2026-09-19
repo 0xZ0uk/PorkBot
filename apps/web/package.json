@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@porkbot/contracts": "workspace:*",
+    "@porkbot/core": "workspace:*",
     "@porkbot/health": "workspace:*",
     "@porkbot/logging": "workspace:*",
     "@porkbot/tokens": "workspace:*",
