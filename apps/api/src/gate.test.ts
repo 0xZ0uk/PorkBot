@@ -142,6 +142,7 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       },
       steer: notExercised,
     },
+    computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
     toolResults: { read: notExercised },
     routines: {
       async findById(id: string): Promise<never> {

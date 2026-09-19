@@ -3,13 +3,20 @@ import {
   ComputerProviderError,
   createDaytonaComputerProvider,
   createDockerComputerProvider,
+  DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+  LocalStorageProvider,
 } from "@porkbot/adapters";
 import type {
   ComputerCeilings,
   DaytonaComputerCeilings,
   DockerComputerProviderOptions,
 } from "@porkbot/adapters";
-import type { ComputerProvider, ComputerRef, ComputerStatus } from "@porkbot/adapter-kit";
+import type {
+  ComputerProvider,
+  ComputerRef,
+  ComputerStatus,
+  StorageProvider,
+} from "@porkbot/adapter-kit";
 
 /**
  * The supervisor's computer-provider configuration (slices 7.2 and 7.3).
@@ -21,7 +28,11 @@ import type { ComputerProvider, ComputerRef, ComputerStatus } from "@porkbot/ada
  * select. The offline emulator is always available and the default, so the
  * local stack runs with no daemon and no keys until an operator opts into real
  * machines; a default that names an unconfigured kind fails closed here at
- * boot instead of at a bot's first run.
+ * boot instead of at a bot's first run. A real provider additionally needs the
+ * storage seam its snapshots are written through (slice 7.5): `PORKBOT_STORAGE_DIR`
+ * names the local storage root, and a deployment that configures a real
+ * provider without one fails closed here rather than capturing an archive it
+ * cannot keep.
  *
  * The registry is one `ComputerProvider` over the configured kinds. A call
  * whose reference names a kind this deployment configured goes to that
@@ -176,6 +187,24 @@ function createProviderRegistry(
   };
 }
 
+/**
+ * The storage seam a real provider's snapshots are written through. The local
+ * provider is the self-hosting default (slice 7.7), and the same seam accepts
+ * the S3-compatible provider — the store is tested over both — so a deployment
+ * with its own object storage substitutes one constructor and nothing else.
+ */
+function snapshotStorage(env: Environment): StorageProvider {
+  const root = setting(env, "PORKBOT_STORAGE_DIR");
+
+  if (root === undefined) {
+    throw new Error(
+      "PORKBOT_STORAGE_DIR is required when a real computer provider is configured: snapshots have no storage root otherwise",
+    );
+  }
+
+  return new LocalStorageProvider({ root });
+}
+
 /** Builds the providers and the registry this process will own, from the environment alone. */
 export function createComputerProviderSelection(
   env: Environment = process.env,
@@ -184,6 +213,8 @@ export function createComputerProviderSelection(
   const image = setting(env, "PORKBOT_COMPUTER_IMAGE");
   const endpoint = setting(env, "PORKBOT_COMPUTER_ENDPOINT");
   const token = setting(env, "PORKBOT_COMPUTER_TOKEN");
+  const scratchDirectory =
+    setting(env, "PORKBOT_COMPUTER_ARCHIVE_DIR") ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY;
   const defaultKind = choice(
     env,
     "PORKBOT_COMPUTER_PROVIDER",
@@ -201,6 +232,11 @@ export function createComputerProviderSelection(
   // reconciliation.
   const dockerConfigured =
     image !== undefined && (endpoint === undefined || defaultKind === "docker");
+  // One storage seam per process: both real providers write snapshots to the
+  // same place, and building it lazily keeps the offline deployment free of a
+  // storage root it never uses.
+  let storage: StorageProvider | undefined;
+  const snapshots = (): StorageProvider => (storage ??= snapshotStorage(env));
 
   if (dockerConfigured && image !== undefined) {
     const ceilings: Partial<ComputerCeilings> = {
@@ -210,24 +246,28 @@ export function createComputerProviderSelection(
       pids: integer(env, "PORKBOT_COMPUTER_PIDS", 512, 1),
       tmpfsMb: integer(env, "PORKBOT_COMPUTER_TMPFS_MB", 256, 1),
     };
+    // Every setting is validated before the storage seam is built, so a
+    // typo'd policy is reported as itself rather than as a missing root.
+    const pullPolicy = choice(
+      env,
+      "PORKBOT_COMPUTER_PULL",
+      ["missing", "always", "never"] as const,
+      "missing",
+    );
+    const diskQuota = choice(
+      env,
+      "PORKBOT_COMPUTER_DISK_QUOTA",
+      ["none", "storage-opt"] as const,
+      "none",
+    );
     const options: DockerComputerProviderOptions = {
       image,
       socketPath: setting(env, "PORKBOT_COMPUTER_SOCKET") ?? "/var/run/docker.sock",
       home: setting(env, "PORKBOT_COMPUTER_HOME") ?? "/home/agent",
-      snapshotDirectory:
-        setting(env, "PORKBOT_COMPUTER_SNAPSHOT_DIR") ?? "/var/lib/porkbot/computer-snapshots",
-      pullPolicy: choice(
-        env,
-        "PORKBOT_COMPUTER_PULL",
-        ["missing", "always", "never"] as const,
-        "missing",
-      ),
-      diskQuota: choice(
-        env,
-        "PORKBOT_COMPUTER_DISK_QUOTA",
-        ["none", "storage-opt"] as const,
-        "none",
-      ),
+      storage: snapshots(),
+      scratchDirectory,
+      pullPolicy,
+      diskQuota,
       ceilings,
     };
 
@@ -253,8 +293,8 @@ export function createComputerProviderSelection(
       token,
       image,
       home: setting(env, "PORKBOT_COMPUTER_HOME") ?? "/home/agent",
-      snapshotDirectory:
-        setting(env, "PORKBOT_COMPUTER_SNAPSHOT_DIR") ?? "/var/lib/porkbot/computer-snapshots",
+      storage: snapshots(),
+      scratchDirectory,
       ceilings,
     });
   }

@@ -81,14 +81,33 @@ export interface ComputerExecResult {
 }
 
 /**
- * A captured snapshot. The archive itself lives through the storage seam
- * (slice 7.7); the computer seam only names it, so a snapshot survives the
- * computer it came from and can be restored into a rebuilt one.
+ * A captured snapshot: the archive's address plus the two facts that prove the
+ * bytes are the ones that were captured.
+ *
+ * The archive itself lives through the storage seam (slice 7.7); the computer
+ * seam only names it, so a snapshot survives the computer it came from and can
+ * be restored into a rebuilt one. `size` is the archive's byte length and
+ * `checksum` is the lowercase hex SHA-256 of those bytes; a restore verifies
+ * both before it touches the machine, so a truncated or altered archive is a
+ * typed `not_found` instead of a half-booted computer.
+ *
+ * A snapshot captures the agent home — the files the agent wrote and keeps —
+ * and nothing else. Running processes, open sessions, network connections and
+ * anything held outside the home are not captured; a restore brings the files
+ * back into a fresh machine, not the processes that were writing them.
  */
 export interface ComputerSnapshot {
   readonly snapshotId: string;
+  /** The storage-seam key the archive lives under, scoped to one computer. */
   readonly key: string;
+  /** The archive's byte length, as captured. */
+  readonly size: number;
+  /** Lowercase hex SHA-256 of the archive's bytes, as captured. */
+  readonly checksum: string;
 }
+
+/** The one checksum shape a snapshot carries: lowercase hex SHA-256. */
+export const snapshotChecksumPattern = /^[0-9a-f]{64}$/;
 
 /** One frame of the reserved screen path (v1.1); `data` is encoded per `mediaType`. */
 export interface ComputerFrame {
@@ -140,7 +159,12 @@ export interface ComputerProvider {
   exec(request: ComputerExecRequest): Promise<ComputerExecResult>;
   /** Capture the agent home and declared state; processes and external sessions are not captured. */
   snapshot(computer: ComputerRef): Promise<ComputerSnapshot>;
-  /** Restore a snapshot into a computer, creating it if needed. */
+  /**
+   * Restore a snapshot into a computer, creating it if needed. The archive is
+   * fetched and verified against the snapshot's `size` and `checksum` before
+   * the existing machine is replaced, so a missing or altered archive is the
+   * typed `not_found` and the computer is left as it was.
+   */
   restore(computer: ComputerRef, snapshot: ComputerSnapshot): Promise<ComputerStatus>;
   /** Idempotent: destroying a computer that is already gone succeeds. */
   destroy(computer: ComputerRef): Promise<void>;

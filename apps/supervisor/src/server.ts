@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { isProviderFailure } from "@porkbot/adapter-kit";
+import { isProviderFailure, snapshotChecksumPattern } from "@porkbot/adapter-kit";
 import type { ComputerExecRequest, ComputerRef, ComputerSnapshot } from "@porkbot/adapter-kit";
 import {
   supervisorAuthorizationHeader,
@@ -183,10 +183,28 @@ function execRequestOf(body: unknown, maxExecTimeoutMs: number): ComputerExecReq
 
 function snapshotOf(value: unknown): ComputerSnapshot {
   const record = requireRecord(value, "snapshot");
+  const size = record["size"];
+  const checksum = record["checksum"];
+
+  if (
+    typeof size !== "number" ||
+    !Number.isSafeInteger(size) ||
+    size < 0 ||
+    typeof checksum !== "string" ||
+    !snapshotChecksumPattern.test(checksum)
+  ) {
+    throw new SupervisorRequestError(
+      400,
+      "bad_request",
+      "snapshot.size must be a whole number of bytes and snapshot.checksum a lowercase hex SHA-256",
+    );
+  }
 
   return {
     snapshotId: requireString(record, "snapshotId", "snapshot"),
     key: requireString(record, "key", "snapshot"),
+    size,
+    checksum,
   };
 }
 

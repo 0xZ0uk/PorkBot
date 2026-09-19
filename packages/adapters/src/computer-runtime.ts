@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, stat } from "node:fs/promises";
-import path from "node:path";
 import type {
   ComputerExecRequest,
   ComputerExecResult,
@@ -10,6 +8,7 @@ import type {
   ComputerStatus,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
+import type { ComputerSnapshotStore } from "./computer-snapshot-store.ts";
 
 /**
  * The provider-neutral computer lifecycle (slices 7.2 and 7.3, PRD decisions 19
@@ -18,8 +17,9 @@ import { ComputerProviderError } from "./computer-errors.ts";
  * `ComputerProvider` names eight operations, and the way they compose — adopt a
  * running machine, start a parked one, create a missing one, wait bounded for
  * readiness, park idempotently, keep ids stable through snapshots, refuse a
- * foreign snapshot key — is the same whichever wire a provider speaks. This
- * module owns that composition once. A provider supplies a `ComputerRuntime`:
+ * foreign snapshot key, verify an archive before replacing a machine — is the
+ * same whichever wire a provider speaks. This module owns that composition
+ * once. A provider supplies a `ComputerRuntime`:
  * the small set of primitives only its own API can answer (find, list, create,
  * start, stop, remove, ready, exec, readHome, writeHome), and the classifier
  * that turns its refusals into the shared vocabulary. The Docker provider and
@@ -97,24 +97,16 @@ export interface ComputerRuntime {
 
 export interface RuntimeComputerProviderOptions {
   readonly runtime: ComputerRuntime;
-  /** Where home archives land; slice 7.5 moves this onto the storage seam. */
-  readonly snapshotDirectory: string;
+  /** The storage seam a snapshot archive is written through and read back from (slice 7.5). */
+  readonly snapshots: ComputerSnapshotStore;
   /** How long `ensure` and `restore` wait for a machine to become ready, in milliseconds. */
   readonly bootTimeoutMs?: number | undefined;
 }
 
-/** The identity hash every provider scopes a snapshot by. */
+/** The identity hash a provider names its instances, volumes and networks by. */
 export function computerIdentityHash(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
 }
-
-/** The scope a computer's snapshots live under; it never names the ids directly. */
-export function snapshotScope(computer: ComputerRef): string {
-  return computerIdentityHash(`snapshot\u0000${computer.botId}\u0000${computer.computerId}`);
-}
-
-/** A snapshot's key as both providers name it: `<scope>/<snapshotId>.tar`. */
-export const computerSnapshotKeyPattern = /^([0-9a-f]{16})\/([0-9a-f-]{36})\.tar$/;
 
 function statusOf(computer: ComputerRef, machine: ComputerMachine): ComputerStatus {
   return { computer: { ...computer }, state: machine.state, instanceId: machine.instanceId };
@@ -124,28 +116,6 @@ const gone = (computer: ComputerRef): ComputerStatus => ({
   computer: { ...computer },
   state: "gone",
 });
-
-/** Resolves a snapshot key to a file inside the snapshot directory, or refuses. */
-function snapshotFile(
-  directory: string,
-  computer: ComputerRef,
-  snapshot: ComputerSnapshot,
-): string | undefined {
-  const match = computerSnapshotKeyPattern.exec(snapshot.key);
-
-  // The key is scope-checked against the computer before a path is built, so a
-  // hand-assembled key cannot point at another machine's archive or escape the
-  // snapshot directory.
-  if (
-    match === null ||
-    snapshot.key !== `${snapshotScope(computer)}/${snapshot.snapshotId}.tar` ||
-    snapshot.snapshotId.trim() === ""
-  ) {
-    return undefined;
-  }
-
-  return path.join(directory, match[1] ?? "", `${match[2] ?? ""}.tar`);
-}
 
 /**
  * Builds the `ComputerProvider` seam over one runtime. The returned provider is
@@ -157,7 +127,7 @@ export function createRuntimeComputerProvider(
   options: RuntimeComputerProviderOptions,
 ): ComputerProvider {
   const runtime = options.runtime;
-  const snapshotDirectory = options.snapshotDirectory;
+  const snapshots = options.snapshots;
   const bootTimeoutMs = options.bootTimeoutMs ?? 60_000;
 
   return {
@@ -235,61 +205,47 @@ export function createRuntimeComputerProvider(
         );
       }
 
-      const scope = snapshotScope(computer);
+      // The archive is produced and stored by the snapshot store, which owns
+      // the key scope and the checksum the restore will verify.
       const snapshotId = randomUUID();
-      const directory = path.join(snapshotDirectory, scope);
-      const file = path.join(directory, `${snapshotId}.tar`);
 
-      await mkdir(directory, { recursive: true });
-      await runtime.readHome(machine, computer, file);
-
-      return { snapshotId, key: `${scope}/${snapshotId}.tar` };
+      return snapshots.write(computer, snapshotId, (archive) =>
+        runtime.readHome(machine, computer, archive),
+      );
     },
 
     async restore(computer: ComputerRef, snapshot: ComputerSnapshot): Promise<ComputerStatus> {
-      const file = snapshotFile(snapshotDirectory, computer, snapshot);
+      // The archive is fetched and verified before the machine is touched, so
+      // a missing or altered snapshot cannot replace a working computer with a
+      // half-booted one.
+      return snapshots.read(computer, snapshot, async (archive) => {
+        await runtime.prepare(computer);
 
-      if (file === undefined) {
-        throw new ComputerProviderError(
-          "not_found",
-          `no snapshot is stored under "${snapshot.key}" for this computer`,
-        );
-      }
+        // Restore means the snapshot wins: the old machine is replaced, so
+        // nothing the snapshot does not carry can survive into the restored
+        // one, and then the archive is placed before the machine is asked to
+        // run.
+        const existing = await runtime.find(computer);
 
-      const archive = await stat(file).catch(() => undefined);
+        if (existing !== undefined) {
+          await runtime.remove(existing, computer);
+        }
 
-      if (archive === undefined || !archive.isFile()) {
-        throw new ComputerProviderError(
-          "not_found",
-          `no snapshot archive exists at "${snapshot.key}"`,
-        );
-      }
+        const machine = await runtime.create(computer);
 
-      await runtime.prepare(computer);
+        try {
+          await runtime.writeHome(machine, computer, archive, snapshot.size);
+          await runtime.start(machine, computer);
+        } catch (error) {
+          // A restore that failed after the old machine was replaced leaves no
+          // half-built machine behind: the fresh one is removed, so the next
+          // attempt starts from gone rather than from an empty home.
+          await runtime.remove(machine, computer).catch(() => undefined);
+          throw error;
+        }
 
-      // Restore means the snapshot wins: the old machine is replaced, so
-      // nothing the snapshot does not carry can survive into the restored one,
-      // and then the archive is placed before the machine is asked to run.
-      const existing = await runtime.find(computer);
-
-      if (existing !== undefined) {
-        await runtime.remove(existing, computer);
-      }
-
-      const machine = await runtime.create(computer);
-
-      try {
-        await runtime.writeHome(machine, computer, file, archive.size);
-        await runtime.start(machine, computer);
-      } catch (error) {
-        // A restore that failed after the old machine was replaced leaves no
-        // half-built machine behind: the fresh one is removed, so the next
-        // attempt starts from gone rather than from an empty home.
-        await runtime.remove(machine, computer).catch(() => undefined);
-        throw error;
-      }
-
-      return statusOf(computer, await runtime.ready(machine, computer, bootTimeoutMs));
+        return statusOf(computer, await runtime.ready(machine, computer, bootTimeoutMs));
+      });
     },
 
     async destroy(computer: ComputerRef): Promise<void> {

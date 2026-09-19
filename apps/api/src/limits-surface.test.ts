@@ -110,6 +110,11 @@ const requestBodies: Record<string, string> = {
   "computers.stop": JSON.stringify({ json: { botId: "bot-1" } }),
   "computers.reset": JSON.stringify({ json: { botId: "bot-1" } }),
   "computers.recover": JSON.stringify({ json: { botId: "bot-1" } }),
+  "computers.snapshot": JSON.stringify({ json: { botId: "bot-1" } }),
+  "computers.snapshots": JSON.stringify({ json: { botId: "bot-1" } }),
+  "computers.restore": JSON.stringify({
+    json: { botId: "bot-1", snapshotId: "00000000-0000-4000-8000-000000000000" },
+  }),
   "credentials.store": JSON.stringify({ json: { name: "model-key", value: "sk-test" } }),
   "modelConnections.list": JSON.stringify({ json: {} }),
   "modelConnections.create": JSON.stringify({
@@ -234,6 +239,9 @@ describe("every contract procedure", () => {
       "computers.boot",
       "computers.recover",
       "computers.reset",
+      "computers.restore",
+      "computers.snapshot",
+      "computers.snapshots",
       "computers.status",
       "computers.stop",
       "credentials.list",
@@ -360,6 +368,7 @@ describe("the typed answer", () => {
         findByNonce: notExercised,
         steer: notExercised,
       },
+      computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
       toolResults: { read: notExercised },
       notifications: { read: notExercised, set: notExercised },
       credentials: {

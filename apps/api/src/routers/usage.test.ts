@@ -80,6 +80,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
     },
     events: { listAfter: notExercised },
     toolResults: { read: notExercised },
+    computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
     messages: {
       listForThread: notExercised,
       findByNonce: notExercised,

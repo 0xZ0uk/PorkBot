@@ -529,6 +529,11 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       restore: notExercised,
     },
     usage: { forBot: notExercised },
+    computerSnapshots: {
+      create: notExercised,
+      findById: notExercised,
+      listForBot: notExercised,
+    },
   };
 }
 

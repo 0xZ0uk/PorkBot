@@ -1,9 +1,13 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { isProviderFailure } from "@porkbot/adapter-kit";
 import type { ComputerProvider, ComputerRef, ProviderFailure } from "@porkbot/adapter-kit";
 import { planComputerNetwork } from "@porkbot/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDockerComputerProvider, DEFAULT_COMPUTER_CEILINGS } from "./docker-computer.ts";
 import { DockerEngineEmulator } from "./docker-engine-emulator.ts";
+import { LocalStorageProvider } from "./local-storage.ts";
 
 /**
  * The Docker computer provider (slice 7.2). Every test drives the shipped
@@ -19,11 +23,19 @@ const computer: ComputerRef = { computerId: "computer-1", botId: "bot-1" };
 const otherComputer: ComputerRef = { computerId: "computer-2", botId: "bot-2" };
 
 const running: DockerEngineEmulator[] = [];
+const snapshotRoots: string[] = [];
 
 async function emulator(): Promise<DockerEngineEmulator> {
   const started = await DockerEngineEmulator.start();
   running.push(started);
   return started;
+}
+
+/** A real local directory for the storage root or the staging area, removed with each test. */
+function tempDirectory(prefix: string): string {
+  const directory = mkdtempSync(path.join(tmpdir(), prefix));
+  snapshotRoots.push(directory);
+  return directory;
 }
 
 /** The provider with its own endpoint wiring: the socket is the emulator's. */
@@ -34,13 +46,17 @@ function providerOver(
   return createDockerComputerProvider({
     image,
     socketPath: daemon.socketPath,
-    snapshotDirectory: `${daemon.socketPath}.snapshots`,
+    storage: new LocalStorageProvider({ root: tempDirectory("porkbot-docker-storage-") }),
+    scratchDirectory: tempDirectory("porkbot-docker-archives-"),
     ...overrides,
   });
 }
 
 afterEach(async () => {
   await Promise.all(running.splice(0).map(async (instance) => instance.stop()));
+  for (const directory of snapshotRoots.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 async function failureFrom(call: Promise<unknown>): Promise<ProviderFailure> {
@@ -254,7 +270,12 @@ describe("the Docker computer provider failure classification", () => {
     const provider = providerOver(daemon);
 
     const failure = await failureFrom(
-      provider.restore(computer, { snapshotId: "unknown", key: "0123456789abcdef/unknown.tar" }),
+      provider.restore(computer, {
+        snapshotId: "00000000-0000-4000-8000-000000000000",
+        key: "computer-snapshots/0123456789abcdef/00000000-0000-4000-8000-000000000000.tar",
+        size: 1,
+        checksum: "0".repeat(64),
+      }),
     );
 
     expect(failure.kind).toBe("not_found");
@@ -324,7 +345,7 @@ describe("the Docker computer provider snapshot and restore", () => {
     const snapshot = await provider.snapshot(computer);
 
     expect(snapshot.snapshotId.trim()).not.toBe("");
-    expect(snapshot.key).toMatch(/^[0-9a-f]{16}\/[0-9a-f-]{36}\.tar$/);
+    expect(snapshot.key).toMatch(/^computer-snapshots\/[0-9a-f]{16}\/[0-9a-f-]{36}\.tar$/);
 
     // The volume moves on after the snapshot; the restore must bring back the
     // snapshot's bytes, not whatever the surviving volume holds.
@@ -345,7 +366,10 @@ describe("the Docker computer provider snapshot and restore", () => {
     await provider.ensure(computer);
     const snapshot = await provider.snapshot(computer);
 
-    const foreign = snapshot.key.replace(/^[0-9a-f]{16}/, "ffffffffffffffff");
+    const foreign = snapshot.key.replace(
+      /^computer-snapshots\/[0-9a-f]{16}\//,
+      "computer-snapshots/ffffffffffffffff/",
+    );
     const failure = await failureFrom(provider.restore(computer, { ...snapshot, key: foreign }));
 
     expect(failure.kind).toBe("not_found");

@@ -8,6 +8,7 @@ import {
   computerConformance,
   CONFORMANCE_HOME,
   createDockerComputerProvider,
+  LocalStorageProvider,
 } from "@porkbot/adapters";
 import type { ComputerConformanceHarness } from "@porkbot/adapters";
 import { planComputerNetwork } from "@porkbot/core";
@@ -63,11 +64,12 @@ function endpoint():
   return { host: url.hostname, port: Number.isFinite(port) ? port : 2375 };
 }
 
-let snapshotDirectory: string | undefined;
+let storageRoot: string | undefined;
+let scratchDirectory: string | undefined;
 let provider: ComputerProvider | undefined;
 const temporaryDirectories: string[] = [];
 
-async function makeSnapshotDirectory(prefix: string): Promise<string> {
+async function makeTemporaryDirectory(prefix: string): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
 
   temporaryDirectories.push(directory);
@@ -79,11 +81,13 @@ async function providerUnderTest(): Promise<ComputerProvider> {
     return provider;
   }
 
-  snapshotDirectory ??= await makeSnapshotDirectory("porkbot-docker-suite-");
+  storageRoot ??= await makeTemporaryDirectory("porkbot-docker-storage-");
+  scratchDirectory ??= await makeTemporaryDirectory("porkbot-docker-archives-");
   provider = createDockerComputerProvider({
     image: nodeImage,
     ...endpoint(),
-    snapshotDirectory,
+    storage: new LocalStorageProvider({ root: storageRoot }),
+    scratchDirectory,
     bootTimeoutMs: 30_000,
     archiveTimeoutMs: 60_000,
   });
@@ -164,10 +168,6 @@ afterAll(async () => {
     dockerQuietly(["network", "rm", planComputerNetwork(computer).name]);
   }
 
-  if (snapshotDirectory !== undefined) {
-    temporaryDirectories.push(snapshotDirectory);
-  }
-
   await Promise.all(
     temporaryDirectories.map(async (directory) => rm(directory, { recursive: true, force: true })),
   );
@@ -178,7 +178,10 @@ describe("the Docker provider against the real daemon", () => {
     const daemonProvider = createDockerComputerProvider({
       image: nodeImage,
       ...endpoint(),
-      snapshotDirectory: await makeSnapshotDirectory("porkbot-docker-ceilings-"),
+      storage: new LocalStorageProvider({
+        root: await makeTemporaryDirectory("porkbot-docker-ceilings-storage-"),
+      }),
+      scratchDirectory: await makeTemporaryDirectory("porkbot-docker-ceilings-archives-"),
       ceilings: { cpus: 0.5, memoryMb: 256, pids: 32 },
     });
     const computer = {
