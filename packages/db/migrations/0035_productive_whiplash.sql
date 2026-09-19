@@ -1,0 +1,1 @@
+ALTER TABLE "approval" ADD COLUMN "arguments" jsonb DEFAULT '{}'::jsonb NOT NULL;

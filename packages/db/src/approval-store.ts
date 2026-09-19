@@ -36,9 +36,9 @@ import type { Queryable } from "./queryable.ts";
  * deadline is a property of the row and not of who asked last.
  */
 export const approvalColumns =
-  'id, run_id as "runId", call_id as "callId", tool, status::text as "status", ' +
-  'expires_at as "expiresAt", decided_by_user_id as "decidedBy", ' +
-  'decided_at as "decidedAt", reason';
+  'id, run_id as "runId", call_id as "callId", tool, arguments, ' +
+  'status::text as "status", expires_at as "expiresAt", ' +
+  'decided_by_user_id as "decidedBy", decided_at as "decidedAt", reason';
 
 export function createApprovalStore(actor: SystemActor, database: Queryable): ApprovalStore;
 export function createApprovalStore(actor: UserActor, database: Queryable): ApprovalDecisions;
@@ -59,8 +59,8 @@ function systemApprovalStore(actor: SystemActor, database: Queryable): ApprovalS
   return {
     async open(request): Promise<ApprovalRecord> {
       const { rows } = await database.query<ApprovalRecord>(
-        "insert into approval (space_id, run_id, call_id, tool, status, expires_at) " +
-          "select $1, r.id, $3, $4, 'pending'::approval_status, $5::timestamptz " +
+        "insert into approval (space_id, run_id, call_id, tool, arguments, status, expires_at) " +
+          "select $1, r.id, $3, $4, $5::jsonb, 'pending'::approval_status, $6::timestamptz " +
           "from run r where r.id = $2 and r.space_id = $1 " +
           "on conflict (run_id, call_id) do nothing " +
           `returning ${approvalColumns}`,
@@ -69,6 +69,9 @@ function systemApprovalStore(actor: SystemActor, database: Queryable): ApprovalS
           request.runId,
           request.callId,
           request.tool,
+          // The gate redacts before it gets here; the store keeps the value
+          // JSON-safe, and a caller with no arguments records the empty object.
+          JSON.stringify(request.arguments ?? {}),
           request.expiresAt.toISOString(),
         ],
       );

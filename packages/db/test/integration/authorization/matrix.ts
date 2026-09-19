@@ -710,6 +710,7 @@ export const resources: readonly Resource<unknown>[] = [
         runId: seed.runId,
         callId,
         tool: "matrix.tool",
+        arguments: {},
         expiresAt: new Date(Date.now() + 3_600_000),
       });
 
@@ -747,6 +748,7 @@ export const resources: readonly Resource<unknown>[] = [
             runId: seed.runId,
             callId: seed.callId,
             tool: "matrix.tool",
+            arguments: {},
             expiresAt: new Date(Date.now() + 3_600_000),
           }),
         ),

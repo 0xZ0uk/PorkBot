@@ -8,10 +8,13 @@ import type {
   ComputerSnapshot,
   ComputerStatus,
 } from "@porkbot/adapter-kit";
+import { DEFAULT_APPROVAL_TIMEOUT_MS, parseEgressAllowlist } from "@porkbot/core";
 import { describe, expect, it } from "vitest";
+import type { ApprovalRecord, ApprovalStore } from "./approval-gate.ts";
 import type { ArtifactRecorder } from "./artifact-recorder.ts";
 import type { ComputerCommandRunner } from "./computer-commands.ts";
 import { createComputerTools, MAX_COMPUTER_OUTPUT_BYTES } from "./computer-tools.ts";
+import { NotFoundError } from "./errors.ts";
 import { createToolDispatcher } from "./tool-dispatcher.ts";
 import type {
   ToolCall,
@@ -108,15 +111,23 @@ interface ToolOptions {
   readonly maxDurationMs?: number;
   readonly home?: string;
   readonly artifacts?: ArtifactRecorder;
+  readonly approvals?: ApprovalStore;
+  readonly allowlist?: readonly string[];
 }
 
 function toolsFor(provider: ComputerProvider, options: ToolOptions = {}) {
   const registrations = createComputerTools({
     commands: providerCommands(provider),
     computer,
-    maxDurationMs: options.maxDurationMs ?? 30_000,
+    maxDurationMs:
+      options.maxDurationMs ??
+      (options.approvals === undefined ? 30_000 : DEFAULT_APPROVAL_TIMEOUT_MS + 30_000),
     ...(options.home === undefined ? {} : { home: options.home }),
     ...(options.artifacts === undefined ? {} : { artifacts: options.artifacts }),
+    ...(options.approvals === undefined ? {} : { approvals: options.approvals }),
+    ...(options.allowlist === undefined
+      ? {}
+      : { allowlist: parseEgressAllowlist(options.allowlist) }),
   });
   const byName = new Map(registrations.map((registration) => [registration.name, registration]));
 
@@ -135,6 +146,83 @@ function toolsFor(provider: ComputerProvider, options: ToolOptions = {}) {
       return Effect.runPromise(registration.execute(call));
     },
   };
+}
+
+/**
+ * The run's durable gate in memory, enough for the tools' wiring: an opened
+ * row carries the call and its arguments, and a seeded row is what an
+ * operator's vote left behind. Tests seed a decision instead of waiting one
+ * out, so no test needs a clock.
+ */
+function memoryApprovals() {
+  const rows = new Map<string, ApprovalRecord>();
+
+  const store: ApprovalStore = {
+    async open(request) {
+      const existing = rows.get(request.callId);
+
+      if (existing !== undefined) {
+        return existing;
+      }
+
+      const record: ApprovalRecord = {
+        id: `approval-${rows.size + 1}`,
+        runId: request.runId,
+        callId: request.callId,
+        tool: request.tool,
+        arguments: request.arguments,
+        status: "pending",
+        expiresAt: request.expiresAt,
+        decidedBy: null,
+        decidedAt: null,
+        reason: null,
+      };
+      rows.set(request.callId, record);
+      return record;
+    },
+
+    async find(_runId, callId) {
+      return rows.get(callId);
+    },
+
+    async resolveTimeout(_runId, callId) {
+      const existing = rows.get(callId);
+
+      if (existing === undefined) {
+        throw new NotFoundError("approval", callId);
+      }
+
+      const timedOut: ApprovalRecord = {
+        ...existing,
+        status: "timed_out",
+        decidedAt: new Date(0),
+      };
+      rows.set(callId, timedOut);
+      return timedOut;
+    },
+  };
+
+  return { store, rows };
+}
+
+/** Seeds the decision a call's gate will find, keyed by the call the tools use. */
+function seedDecision(
+  approvals: ReturnType<typeof memoryApprovals>,
+  status: "approved" | "denied",
+  reason: string | null = null,
+): void {
+  approvals.rows.set("call-1", {
+    id: "approval-seeded",
+    runId: "run-1",
+    callId: "call-1",
+    tool: "seeded",
+    arguments: {},
+    status,
+    expiresAt: new Date(60_000),
+    decidedBy: "operator-1",
+    decidedAt: new Date(0),
+    reason,
+  });
 }
 
 function expectLabel(value: unknown): { content: string; origin: string; path: string } {
@@ -244,13 +332,16 @@ describe("the file tools", () => {
         ok: false,
         reason: "outside_home",
       });
-      await expect(tools.run("file_write", { path, content: "x" })).resolves.toMatchObject({
-        ok: false,
-        reason: "outside_home",
-      });
       await expect(tools.run("file_list", { path })).resolves.toMatchObject({
         ok: false,
         reason: "outside_home",
+      });
+      // A write outside the home is a dangerous action; with no gate to ask,
+      // the answer is fail-closed rather than the plain confinement refusal.
+      await expect(tools.run("file_write", { path, content: "x" })).resolves.toMatchObject({
+        ok: false,
+        reason: "approval_unavailable",
+        class: "write_outside_home",
       });
     }
 
@@ -390,7 +481,7 @@ describe("the browser tool", () => {
         text: "body text",
       }),
     });
-    const tools = toolsFor(provider);
+    const tools = toolsFor(provider, { allowlist: ["example.invalid"] });
 
     const result = await tools.run("browser", {
       action: "open",
@@ -450,6 +541,91 @@ describe("the browser tool", () => {
   });
 });
 
+describe("the danger policy on the tools", () => {
+  it("gates a credential-store read: denied never reaches the machine, approved reads it", async () => {
+    const deniedProvider = new RecordingProvider();
+    const deniedApprovals = memoryApprovals();
+    seedDecision(deniedApprovals, "denied", "not the keys");
+
+    const denied = await toolsFor(deniedProvider, { approvals: deniedApprovals.store }).run(
+      "file_read",
+      { path: ".ssh/id_rsa" },
+    );
+
+    expect(denied).toMatchObject({
+      ok: false,
+      reason: "approval_denied",
+      class: "credential_access",
+      operatorReason: "not the keys",
+    });
+    expect(deniedProvider.requests).toEqual([]);
+
+    const approvedProvider = new RecordingProvider().queue({ stdout: "PRIVATE KEY" });
+    const approvedApprovals = memoryApprovals();
+    seedDecision(approvedApprovals, "approved");
+
+    const approved = await toolsFor(approvedProvider, {
+      approvals: approvedApprovals.store,
+    }).run("file_read", { path: ".ssh/id_rsa" });
+
+    expect(approved).toMatchObject({ ok: true, path: ".ssh/id_rsa" });
+    expect(approvedProvider.requests[0]?.command).toBe("cat -- '/home/agent/.ssh/id_rsa'");
+  });
+
+  it("gates a write outside the home and acts on the resolved path when approved", async () => {
+    const provider = new RecordingProvider();
+    const approvals = memoryApprovals();
+    seedDecision(approvals, "approved");
+    const tools = toolsFor(provider, { approvals: approvals.store });
+
+    const result = await tools.run("file_write", { path: "../outside.txt", content: "x" });
+
+    expect(result).toMatchObject({ ok: true, path: "../outside.txt" });
+    expect(provider.requests[0]?.command).toContain("> '/home/outside.txt'");
+  });
+
+  it("leaves a benign action in the same classes ungated", async () => {
+    const provider = new RecordingProvider();
+    const approvals = memoryApprovals();
+    const tools = toolsFor(provider, { approvals: approvals.store, allowlist: ["example.com"] });
+
+    await tools.run("file_read", { path: "notes/todo.md" });
+    await tools.run("file_write", { path: "notes/todo.md", content: "x" });
+    await tools.run("browser", { action: "open", url: "https://example.com/page" });
+
+    expect(approvals.rows.size).toBe(0);
+    expect(provider.requests).toHaveLength(3);
+  });
+
+  it("gates a browser navigation to a host outside the allowlist", async () => {
+    const provider = new RecordingProvider();
+    const approvals = memoryApprovals();
+    seedDecision(approvals, "denied");
+    const tools = toolsFor(provider, { approvals: approvals.store });
+
+    const result = await tools.run("browser", { action: "open", url: "https://other.test/page" });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "approval_denied",
+      class: "egress_unlisted",
+    });
+    expect(provider.requests).toEqual([]);
+  });
+
+  it("refuses a dangerous call with no gate to ask", async () => {
+    const provider = new RecordingProvider();
+    const tools = toolsFor(provider);
+
+    await expect(tools.run("file_read", { path: ".env" })).resolves.toMatchObject({
+      ok: false,
+      reason: "approval_unavailable",
+      class: "credential_access",
+    });
+    expect(provider.requests).toEqual([]);
+  });
+});
+
 describe("the computer tool registrations", () => {
   it("offers every tool the model may call, with a schema and a description", () => {
     const tools = toolsFor(new RecordingProvider());
@@ -505,6 +681,18 @@ describe("the computer tool registrations", () => {
         commands: providerCommands(new RecordingProvider()),
         computer,
         maxDurationMs: 0,
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it("refuses a budget that does not cover the approval window", () => {
+    expect(() =>
+      createComputerTools({
+        commands: providerCommands(new RecordingProvider()),
+        computer,
+        approvals: memoryApprovals().store,
+        approvalTimeoutMs: 60_000,
+        maxDurationMs: 30_000,
       }),
     ).toThrow(RangeError);
   });

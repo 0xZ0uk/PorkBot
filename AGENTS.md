@@ -234,11 +234,20 @@ change it without breaking what the boundaries and the CI gate protect.
   (`packages/core/src/ingestion.test.ts`, `packages/core/src/run-context.test.ts`,
   `packages/effect/src/web-tools.test.ts`).
 - **Egress is allowlisted per run and gated.** `decideEgress` in `@porkbot/core`
-  decides allowed, needs-approval or refused on the host alone; the web tools
-  open the run's durable approval gate for any host outside the list before a
-  request is made. Checked by: test
-  (`packages/core/src/egress-policy.test.ts`,
-  `packages/effect/src/egress-guard.test.ts`).
+  decides allowed, needs-approval or refused on the host alone; a tool opens the
+  run's durable approval gate for any host outside the list before a request is
+  made. Checked by: test (`packages/core/src/egress-policy.test.ts`,
+  `packages/effect/src/danger-guard.test.ts`) and review.
+- **"Dangerous" is one register, and the gate fires from it.**
+  `DANGEROUS_ACTION_CLASSES` in `packages/core/src/dangerous-actions.ts` is the
+  whole definition — credential-store access, a write outside the bot's home,
+  egress to a host outside the run's allowlist, and any send or delete — and a
+  tool whose target the arguments name consults it before it acts, opening the
+  run's durable approval gate for a flagged call and refusing one when no gate
+  is configured. `shell` is deliberately outside the register: a command string
+  names no single class, and the sandbox is its boundary. Checked by: test
+  (`packages/core/src/dangerous-actions.test.ts`,
+  `packages/effect/src/danger-guard.test.ts`) and review.
 - **Hostile fixtures ship with the path they attack.** The injection fixtures
   for E10.4 live in `packages/adapters/src/ingestion-fixtures.ts`, one per
   registered path, with a marker a pass must never observe. Checked by: test
