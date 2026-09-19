@@ -313,6 +313,19 @@ describe("voting on a gate", () => {
     expect(query?.text).toContain("order by a.created_at desc, a.id desc");
     expect(query?.values).toEqual(["space-1", "bot-1", "run-1", "pending"]);
   });
+
+  it("lists history without optional filters", async () => {
+    const database = fakeDatabase(({ text }) =>
+      text.startsWith("select a.id") ? [historyRecord()] : [],
+    );
+    const store = createApprovalStore(operator, database);
+
+    await expect(store.list()).resolves.toEqual([historyRecord()]);
+
+    const query = database.calls[0];
+    expect(query?.values).toEqual(["space-1"]);
+    expect(query?.text).toContain("where a.space_id = $1 order by a.created_at desc");
+  });
 });
 
 describe("the actor's half of the seam", () => {
