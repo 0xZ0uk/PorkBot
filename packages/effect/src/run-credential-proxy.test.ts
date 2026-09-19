@@ -7,6 +7,7 @@ import type {
   CredentialStore,
 } from "@porkbot/adapter-kit";
 import { describe, expect, it } from "vitest";
+import type { BotSecretResolver } from "./bot-secrets.ts";
 import { createProxyCapabilityCodec } from "./proxy-capability.ts";
 import {
   createRunCredentialProxy,
@@ -289,6 +290,146 @@ describe("the run-scoped credential proxy", () => {
 
     await handle.revoke();
 
+    expect(admin.revoked).toEqual([{ computer, runId: "run-1" }]);
+  });
+});
+
+describe("a bot secret asked for mid-life (slice 9.6)", () => {
+  const secretName = "example_api";
+  const secretValue = "bot-secret-marker-value";
+  const secretOrigin = "https://api.example.test";
+
+  function botSecrets(entries: Iterable<readonly [string, string]> = []): BotSecretResolver {
+    const stored = new Map(entries);
+
+    return {
+      resolve: (botId, name) => {
+        if (botId !== computer.botId) {
+          return Promise.resolve(undefined);
+        }
+
+        const value = stored.get(name);
+
+        return Promise.resolve(
+          value === undefined
+            ? undefined
+            : {
+                destination: {
+                  name,
+                  origin: secretOrigin,
+                  auth: { type: "bearer" as const },
+                },
+                value,
+              },
+        );
+      },
+    };
+  }
+
+  function proxyWith(admin: CredentialProxyAdmin, secrets: BotSecretResolver | undefined) {
+    return createRunCredentialProxy({
+      provider: providerWith(admin),
+      credentials: credentialStore([[credentialName, credentialValue]]),
+      ...(secrets === undefined ? {} : { botSecrets: secrets }),
+      tokenSecret: proxySecret,
+    });
+  }
+
+  it("resolves the stored value into one more upstream and republishes the whole grant", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, botSecrets([[secretName, secretValue]])).open(
+      openRequest,
+    );
+
+    await expect(handle.grantSecret(secretName)).resolves.toEqual({ status: "granted" });
+
+    expect(admin.grants).toHaveLength(2);
+    expect(admin.grants[1]?.upstreams).toEqual([
+      {
+        name: "model",
+        origin: "https://api.model.example",
+        headers: { authorization: `Bearer ${credentialValue}` },
+      },
+      {
+        name: secretName,
+        origin: secretOrigin,
+        headers: { authorization: `Bearer ${secretValue}` },
+      },
+    ]);
+
+    const environment = handle.environmentFor(30_000);
+    expect(JSON.stringify(environment)).not.toContain(secretValue);
+  });
+
+  it("re-grants the same secret as a refresh rather than a name collision", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, botSecrets([[secretName, secretValue]])).open(
+      openRequest,
+    );
+
+    await handle.grantSecret(secretName);
+    await expect(handle.grantSecret(secretName)).resolves.toEqual({ status: "granted" });
+
+    expect(admin.grants).toHaveLength(3);
+    expect(admin.grants[2]?.upstreams.filter(({ name }) => name === secretName)).toHaveLength(1);
+  });
+
+  it("answers missing without publishing anything", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, botSecrets()).open(openRequest);
+
+    await expect(handle.grantSecret(secretName)).resolves.toEqual({ status: "missing" });
+    expect(admin.grants).toHaveLength(1);
+  });
+
+  it("answers name_taken for an upstream the opening plan already carries", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, botSecrets([[secretName, secretValue]])).open({
+      ...openRequest,
+      upstreams: [
+        { name: "model", origin: "https://api.model.example", credentialName },
+        { name: secretName, origin: secretOrigin },
+      ],
+    });
+
+    await expect(handle.grantSecret(secretName)).resolves.toEqual({ status: "name_taken" });
+    expect(admin.grants).toHaveLength(1);
+  });
+
+  it("answers unavailable when the run has no secret resolver", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, undefined).open(openRequest);
+
+    await expect(handle.grantSecret(secretName)).resolves.toEqual({ status: "unavailable" });
+    expect(admin.grants).toHaveLength(1);
+  });
+
+  it("takes one upstream back and republishes, so the next request cannot name it", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, botSecrets([[secretName, secretValue]])).open(
+      openRequest,
+    );
+
+    await handle.grantSecret(secretName);
+    await handle.revokeSecret(secretName);
+
+    expect(admin.grants).toHaveLength(3);
+    expect(admin.grants[2]?.upstreams.map(({ name }) => name)).toEqual(["model"]);
+
+    // Revoking a name the handle does not own publishes nothing.
+    await handle.revokeSecret("never_granted");
+    expect(admin.grants).toHaveLength(3);
+  });
+
+  it("refuses a late grant after the run's revoke rather than resurrecting the grant", async () => {
+    const admin = recordingProxy();
+    const handle = await proxyWith(admin, botSecrets([[secretName, secretValue]])).open(
+      openRequest,
+    );
+
+    await handle.revoke();
+    await expect(handle.grantSecret(secretName)).resolves.toEqual({ status: "unavailable" });
+    expect(admin.grants).toHaveLength(1);
     expect(admin.revoked).toEqual([{ computer, runId: "run-1" }]);
   });
 });

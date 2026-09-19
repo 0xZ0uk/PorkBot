@@ -3,6 +3,7 @@ import { ORPCError } from "@porkbot/contracts";
 import {
   ApprovalStoreError,
   BlockedUrlError,
+  BotSecretDestinationError,
   ComputerUnavailableError,
   CredentialMissingError,
   CredentialStoreError,
@@ -111,6 +112,12 @@ export const errorMappings = {
     message: "The credential store could not be read.",
     matches: (error: unknown): error is CredentialStoreError =>
       error instanceof CredentialStoreError,
+  },
+  BotSecretDestinationError: {
+    code: "CONFLICT",
+    message: "That credential is already stored for another destination.",
+    matches: (error: unknown): error is BotSecretDestinationError =>
+      error instanceof BotSecretDestinationError,
   },
   BlockedUrlError: {
     code: "BAD_REQUEST",

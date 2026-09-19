@@ -18,10 +18,12 @@ import { CredentialStoreError } from "@porkbot/effect";
  *     two rows never share a data key even when the master key does, and the
  *     same value written twice yields two unrelated ciphertexts.
  *   - The **additional authenticated data** binds the ciphertext to the row it
- *     belongs to: the space and the name, JSON-encoded so no separator can be
- *     forged from a crafted name. Copying an envelope into another row — a
- *     different name, or the same name in another space — fails authentication
- *     before a byte is decrypted.
+ *     belongs to: the space, the name and — for a bot secret (slice 9.6) — the
+ *     bot, JSON-encoded so no separator can be forged from a crafted name.
+ *     Copying an envelope into another row — a different name, a different bot
+ *     or the same name in another space — fails authentication before a byte is
+ *     decrypted. A space credential's AAD is the original two-part array, so
+ *     rows written before bot secrets existed still decrypt.
  *
  * A failure to parse, a key this keyring does not hold, and a failed
  * authentication all surface as the typed `CredentialStoreError`; none of them
@@ -65,6 +67,8 @@ export interface CredentialKeyringInput {
 /** What a ciphertext is bound to, and the identity every row query uses. */
 export interface CredentialBinding {
   readonly spaceId: string;
+  /** The bot a bot secret belongs to; absent for a space-level credential. */
+  readonly botId?: string | undefined;
   readonly name: string;
 }
 
@@ -166,8 +170,16 @@ function deriveKey(masterKey: Buffer, salt: Buffer): Buffer {
 
 function credentialAad(binding: CredentialBinding): Buffer {
   // JSON, not a delimiter: a name containing the delimiter would otherwise let
-  // one row's ciphertext authenticate as another's.
-  return Buffer.from(JSON.stringify([derivationInfo, binding.spaceId, binding.name]), "utf8");
+  // one row's ciphertext authenticate as another's. A bot secret's array
+  // carries the bot, so a ciphertext copied between bots — or between the
+  // space's credentials and a bot's — fails; a space credential keeps the
+  // original two-part array byte for byte.
+  const parts =
+    binding.botId === undefined
+      ? [derivationInfo, binding.spaceId, binding.name]
+      : [derivationInfo, binding.spaceId, binding.botId, binding.name];
+
+  return Buffer.from(JSON.stringify(parts), "utf8");
 }
 
 interface ParsedEnvelope {

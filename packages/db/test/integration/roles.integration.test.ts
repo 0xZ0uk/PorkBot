@@ -360,6 +360,11 @@ describe("the catalog's answer", () => {
       api_reads_occurrence: boolean;
       api_deletes_credential: boolean;
       worker_deletes_credential: boolean;
+      api_inserts_bot_secret: boolean;
+      api_reads_bot_secret: boolean;
+      worker_reads_bot_secret: boolean;
+      worker_updates_bot_secret: boolean;
+      worker_deletes_bot_secret: boolean;
       api_reads_jobs: boolean;
       worker_creates_jobs: boolean;
       api_creates_schemas: boolean;
@@ -399,6 +404,11 @@ describe("the catalog's answer", () => {
         "has_table_privilege($1, 'public.routine_occurrence', 'SELECT') as api_reads_occurrence, " +
         "has_table_privilege($1, 'public.encrypted_credential', 'DELETE') as api_deletes_credential, " +
         "has_table_privilege($2, 'public.encrypted_credential', 'DELETE') as worker_deletes_credential, " +
+        "has_table_privilege($1, 'public.bot_secret', 'INSERT') as api_inserts_bot_secret, " +
+        "has_table_privilege($1, 'public.bot_secret', 'SELECT') as api_reads_bot_secret, " +
+        "has_table_privilege($2, 'public.bot_secret', 'SELECT') as worker_reads_bot_secret, " +
+        "has_table_privilege($2, 'public.bot_secret', 'UPDATE') as worker_updates_bot_secret, " +
+        "has_table_privilege($2, 'public.bot_secret', 'DELETE') as worker_deletes_bot_secret, " +
         "has_table_privilege($2, 'public.computer_lease', 'SELECT') as worker_reads_computer_lease, " +
         "has_table_privilege($2, 'public.computer_lease', 'INSERT') as worker_inserts_computer_lease, " +
         "has_table_privilege($2, 'public.computer_lease', 'UPDATE') as worker_updates_computer_lease, " +
@@ -447,6 +457,15 @@ describe("the catalog's answer", () => {
       // credential and can never enumerate or revoke the store.
       api_deletes_credential: true,
       worker_deletes_credential: false,
+      // The operator stores and reads bot secrets; the run resolves one name
+      // and clears its envelope with a forget. Neither role deletes rows — a
+      // bot's cascade does that as the table's owner — and a job resolves only
+      // a name it already holds.
+      api_inserts_bot_secret: true,
+      api_reads_bot_secret: true,
+      worker_reads_bot_secret: true,
+      worker_updates_bot_secret: true,
+      worker_deletes_bot_secret: false,
       api_reads_jobs: false,
       worker_creates_jobs: true,
       api_creates_schemas: false,

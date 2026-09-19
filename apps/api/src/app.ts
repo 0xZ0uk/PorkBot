@@ -29,6 +29,7 @@ import { httpRateLimited, installLimits, resolveLimits, routeRules } from "./lim
 import type { LimitEnv, LimitPrincipal, LimitsOverrides } from "./limits.ts";
 import { createAccountRouter } from "./routers/account.ts";
 import { createApprovalsRouter } from "./routers/approvals.ts";
+import { createBotSecretsRouter } from "./routers/bot-secrets.ts";
 import { createBotsRouter } from "./routers/bots.ts";
 import { createComputersRouter } from "./routers/computers.ts";
 import { createCredentialsRouter } from "./routers/credentials.ts";
@@ -209,6 +210,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
       createBotService(storage),
       createComputerService(options.services.computers ?? unconfiguredComputerProvider()),
     ),
+    botSecrets: createBotSecretsRouter(),
     computers: createComputersRouter(
       createComputerService(options.services.computers ?? unconfiguredComputerProvider()),
     ),

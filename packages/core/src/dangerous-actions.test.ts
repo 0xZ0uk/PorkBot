@@ -48,9 +48,10 @@ function danger(
 }
 
 describe("the class register", () => {
-  it("enumerates the five classes the policy answers to", () => {
+  it("enumerates the six classes the policy answers to", () => {
     expect(DANGEROUS_ACTION_CLASSES).toEqual([
       "credential_access",
+      "credential_request",
       "write_outside_home",
       "egress_unlisted",
       "send",
@@ -61,6 +62,7 @@ describe("the class register", () => {
   it("produces every enumerated class from a concrete call", () => {
     const calls: Record<DangerousActionClass, ReturnType<typeof danger>> = {
       credential_access: danger("file_read", { path: ".ssh/id_rsa" }, ["credential_access"]),
+      credential_request: danger("request_secret", { name: "example_api" }, ["credential_request"]),
       write_outside_home: danger("file_write", { path: "/etc/hosts" }, ["write_outside_home"]),
       egress_unlisted: danger("web_fetch", { url: "https://other.test/page" }, ["egress_unlisted"]),
       send: danger("mcp_slack_send_message", { text: "hi" }, ["send"]),
@@ -124,6 +126,26 @@ describe("credential access", () => {
     expect(isCredentialStorePath("s3crets/notes.md")).toBe(false);
     expect(isCredentialStorePath("environment.md")).toBe(false);
     expect(isCredentialStorePath("notes/ssh-keys.md")).toBe(false);
+  });
+});
+
+describe("credential requests", () => {
+  it("flags an ask that names a stored credential", () => {
+    expect(danger("request_secret", { name: "example_api" }, ["credential_request"])).toMatchObject(
+      {
+        class: "credential_request",
+        summary: 'use the stored credential "example_api"',
+      },
+    );
+  });
+
+  it("leaves a call that names no credential to the tool's own validation", () => {
+    expect(danger("request_secret", {}, ["credential_request"])).toBeUndefined();
+    expect(danger("request_secret", { name: "   " }, ["credential_request"])).toBeUndefined();
+  });
+
+  it("does not fire for a tool that never declared the class", () => {
+    expect(danger("request_secret", { name: "example_api" })).toBeUndefined();
   });
 });
 

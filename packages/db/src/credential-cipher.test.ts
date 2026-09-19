@@ -53,6 +53,36 @@ describe("the credential envelope", () => {
     expect(first.split(":")[2]).not.toBe(second.split(":")[2]);
   });
 
+  it("binds a bot secret to its bot, so another bot's row cannot read it", () => {
+    const keys = keyring("k1", [["k1", 1]]);
+    const botBinding = { spaceId: "space-1", botId: "bot-1", name: "example_api" };
+    const envelope = encryptCredentialValue(keys, botBinding, secret);
+
+    expect(decryptCredentialValue(keys, botBinding, envelope)).toBe(secret);
+    expect(() => decryptCredentialValue(keys, { ...botBinding, botId: "bot-2" }, envelope)).toThrow(
+      CredentialStoreError,
+    );
+    expect(() =>
+      decryptCredentialValue(keys, { spaceId: "space-1", name: "example_api" }, envelope),
+    ).toThrow(CredentialStoreError);
+  });
+
+  it("keeps a space credential's AAD unchanged, so pre-bot-secret rows still decrypt", () => {
+    const keys = keyring("k1", [["k1", 1]]);
+    const envelope = encryptCredentialValue(keys, binding, secret);
+
+    expect(decryptCredentialValue(keys, { spaceId: "space-1", name: "model-key" }, envelope)).toBe(
+      secret,
+    );
+    expect(() =>
+      decryptCredentialValue(
+        keys,
+        { spaceId: "space-1", botId: "bot-1", name: "model-key" },
+        envelope,
+      ),
+    ).toThrow(CredentialStoreError);
+  });
+
   it("refuses an envelope presented for another row", () => {
     const keys = keyring("k1", [["k1", 1]]);
     const envelope = encryptCredentialValue(keys, binding, secret);

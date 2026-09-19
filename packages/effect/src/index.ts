@@ -11,6 +11,7 @@ export const moduleInfo = {
 export {
   ApprovalStoreError,
   BlockedUrlError,
+  BotSecretDestinationError,
   ComputerUnavailableError,
   CredentialMissingError,
   CredentialStoreError,
@@ -441,12 +442,36 @@ export {
   RunProxyUnavailableError,
 } from "./run-credential-proxy.ts";
 export type {
+  BotSecretGrantResult,
+  BotSecretUpstreams,
   OpenRunCredentialProxyRequest,
   RunCredentialProxy,
   RunCredentialProxyHandle,
   RunCredentialProxyOptions,
   RunProxyUpstreamPlan,
 } from "./run-credential-proxy.ts";
+
+// Bot secrets (slice 9.6, E9 epic; reference parity BotSecret and
+// `request_secret` / `list_secrets` / `forget_secret`). The durable rows'
+// actor-scoped seams, cut so the run's half has no method that returns a
+// value; the one resolver that does is called only by the run's proxy
+// composition; and the tool factory the model is offered, which gates every
+// ask and grows the run's proxy by the approved name.
+export type {
+  BotSecretReader,
+  BotSecretRequests,
+  BotSecretResolver,
+  BotSecrets,
+  BotSecretSummary,
+  BotSecretValue,
+} from "./bot-secrets.ts";
+export {
+  BOT_SECRET_TOOL_NAMES,
+  createBotSecretTools,
+  DEFAULT_BOT_SECRET_TOOL_DURATION_MS,
+  MAX_SECRET_TOOL_NAME_LENGTH,
+} from "./bot-secret-tools.ts";
+export type { BotSecretToolOptions } from "./bot-secret-tools.ts";
 
 // Untrusted ingestion, egress and dangerous actions (slices 10.1 and 10.2,
 // PRD decision 30; story 40). The danger guard is the policy's enforcement

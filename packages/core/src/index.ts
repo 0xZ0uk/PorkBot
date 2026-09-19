@@ -341,6 +341,34 @@ export {
 } from "./mcp-registry.ts";
 export type { McpAuthMode, McpServerStatus } from "./mcp-registry.ts";
 
+// Bot secrets (slice 9.6, E9 epic): the name, origin and authentication
+// vocabulary a request, a durable row and a proxy grant are written from, and
+// the one function that turns a destination plus a value into the request
+// header the run's credential proxy injects. The value is never a field of
+// anything this module returns except that header.
+export {
+  botSecretCredentialHeader,
+  BOT_SECRET_AUTH_TYPES,
+  BOT_SECRET_NAME_PATTERN,
+  BOT_SECRET_STATUSES,
+  isBotSecretName,
+  isBotSecretOrigin,
+  isBotSecretStatus,
+  MAX_BOT_SECRET_NAME_LENGTH,
+  MAX_BOT_SECRET_USERNAME_LENGTH,
+  MAX_BOT_SECRET_VALUE_LENGTH,
+  parseBotSecretAuth,
+  parseBotSecretDestination,
+  sameBotSecretDestination,
+} from "./bot-secrets.ts";
+export type {
+  BotSecretAuth,
+  BotSecretDestination,
+  BotSecretDestinationParse,
+  BotSecretDestinationRejection,
+  BotSecretStatus,
+} from "./bot-secrets.ts";
+
 export {
   INGESTION_PATH_DEFINITIONS,
   INGESTION_PATHS,
