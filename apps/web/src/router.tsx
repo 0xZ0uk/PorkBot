@@ -7,10 +7,11 @@ import {
   createHttpAuthTransport,
   createHttpConsoleTransport,
   createHttpMemoryTransport,
+  createHttpUsageTransport,
 } from "./transport.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type { AuthTransport, SessionController } from "./session.ts";
-import type { ConsoleTransport } from "./transport.ts";
+import type { ConsoleTransport, UsageTransport } from "./transport.ts";
 
 /**
  * The router and the things every route may read from its context: the
@@ -27,6 +28,8 @@ export interface RouterContext {
   readonly threads: ConsoleTransport;
   /** The memory screen's data surface: documents, history and the operator's writes. */
   readonly memory: MemoryTransport;
+  /** The usage screen's data surface: one bot's totals and daily buckets. */
+  readonly usage: UsageTransport;
 }
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
@@ -51,5 +54,6 @@ export function getRouter() {
     session: createSessionController({ transport: auth }),
     threads: createHttpConsoleTransport(),
     memory: createHttpMemoryTransport(),
+    usage: createHttpUsageTransport(),
   });
 }

@@ -8,7 +8,12 @@ import { createAppRouter } from "../../src/router.tsx";
 import { createSessionController } from "../../src/session.ts";
 import type { AuthTransport, SessionActor } from "../../src/session.ts";
 import { createHttpMemoryTransport } from "../../src/transport.ts";
-import { fakeMemoryDocument, fakeMemoryRevision, scriptedThreadTransport } from "../fakes.ts";
+import {
+  fakeMemoryDocument,
+  fakeMemoryRevision,
+  scriptedThreadTransport,
+  scriptedUsageTransport,
+} from "../fakes.ts";
 import { startScriptedMemoryApi } from "./scripted-memory-api.ts";
 import type { ScriptedMemoryApi } from "./scripted-memory-api.ts";
 
@@ -78,6 +83,7 @@ async function mountMemory(api: ScriptedMemoryApi): Promise<MountedMemory> {
       session,
       threads: scriptedThreadTransport(),
       memory: createHttpMemoryTransport({ origin: api.url }),
+      usage: scriptedUsageTransport(),
     },
     createMemoryHistory({ initialEntries: [`/bots/${botId}/memory`] }),
   );

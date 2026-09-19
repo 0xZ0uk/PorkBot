@@ -120,6 +120,14 @@ export {
 } from "./memory.ts";
 export type { MemoryDocumentView, MemoryRevisionView, MemoryWriteOutcomeView } from "./memory.ts";
 
+// Token usage (slice 8.8, PRD story 34): one bot's all-time totals and its
+// daily buckets. Every token figure is nullable and a null is "not reported",
+// so a provider that stayed silent is never rendered as a zero. This is a
+// display surface only — recorded and displayed, not charged (PRD #183), with
+// no budget or plan field a client could mistake for enforcement.
+export { usageBotContract, usageBotSchema, usagePeriodSchema, usageTotalsSchema } from "./usage.ts";
+export type { UsageBot, UsagePeriodView, UsageTotalsView } from "./usage.ts";
+
 export {
   defaultMessagePageSize,
   defaultThreadPageSize,
