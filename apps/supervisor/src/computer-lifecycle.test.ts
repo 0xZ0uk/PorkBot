@@ -183,3 +183,111 @@ describe("the boot reconciliation pass", () => {
     });
   });
 });
+
+describe("the idle sweep", () => {
+  const idleTimeoutMs = 1_000;
+
+  function clocked(provider: ComputerProvider, clock: { ms: number }) {
+    return createComputerLifecycle({ provider, idleTimeoutMs, now: () => clock.ms });
+  }
+
+  it("parks a machine whose last command is older than the timeout, keeping its home", async () => {
+    const provider = new ComputerEmulator();
+    const clock = { ms: 0 };
+    const lifecycle = clocked(provider, clock);
+    await lifecycle.boot(computer);
+    await lifecycle.exec({
+      computer,
+      command: "printf 'kept' > /home/agent/idle.txt",
+      timeoutMs: 5_000,
+    });
+
+    clock.ms = idleTimeoutMs - 1;
+    await expect(lifecycle.stopIdle()).resolves.toEqual({ checked: 1, stopped: [], failed: [] });
+    await expect(lifecycle.status(computer)).resolves.toMatchObject({ state: "running" });
+
+    clock.ms = idleTimeoutMs;
+    await expect(lifecycle.stopIdle()).resolves.toEqual({
+      checked: 1,
+      stopped: [computer],
+      failed: [],
+    });
+    await expect(lifecycle.status(computer)).resolves.toMatchObject({ state: "stopped" });
+
+    // The next boot brings the same home back.
+    await lifecycle.boot(computer);
+    const kept = await lifecycle.exec({
+      computer,
+      command: "cat /home/agent/idle.txt",
+      timeoutMs: 5_000,
+    });
+
+    expect(kept.stdout).toBe("kept");
+  });
+
+  it("counts a command as activity and status checks as none", async () => {
+    const provider = new ComputerEmulator();
+    const clock = { ms: 0 };
+    const lifecycle = clocked(provider, clock);
+    await lifecycle.boot(computer);
+
+    clock.ms = idleTimeoutMs - 100;
+    await lifecycle.exec({ computer, command: "printf 'work'", timeoutMs: 5_000 });
+    clock.ms = idleTimeoutMs - 1;
+    await lifecycle.status(computer);
+    clock.ms = idleTimeoutMs + idleTimeoutMs - 101;
+
+    await expect(lifecycle.stopIdle()).resolves.toEqual({ checked: 1, stopped: [], failed: [] });
+
+    clock.ms = idleTimeoutMs + idleTimeoutMs - 100;
+    await expect(lifecycle.stopIdle()).resolves.toMatchObject({ stopped: [computer] });
+  });
+
+  it("parks nothing while the sweep is disabled", async () => {
+    const provider = new ComputerEmulator();
+    const lifecycle = createComputerLifecycle({ provider });
+    await lifecycle.boot(computer);
+
+    await expect(lifecycle.stopIdle()).resolves.toEqual({ checked: 0, stopped: [], failed: [] });
+    await expect(lifecycle.status(computer)).resolves.toMatchObject({ state: "running" });
+  });
+
+  it("keeps a machine running when the provider refuses the stop, and says why", async () => {
+    const emulator = new ComputerEmulator();
+    const clock = { ms: 0 };
+    const provider: ComputerProvider = {
+      ensure: (ref: ComputerRef) => emulator.ensure(ref),
+      status: (ref: ComputerRef) => emulator.status(ref),
+      stop: (ref: ComputerRef) =>
+        Promise.reject(new ComputerProviderError("timed_out", `refused ${ref.computerId}`)),
+      list: () => emulator.list(),
+      exec: (request: ComputerExecRequest) => emulator.exec(request),
+      snapshot: (ref: ComputerRef) => emulator.snapshot(ref),
+      restore: (ref: ComputerRef, snapshot: ComputerSnapshot) => emulator.restore(ref, snapshot),
+      destroy: (ref: ComputerRef) => emulator.destroy(ref),
+    };
+    const lifecycle = clocked(provider, clock);
+    await lifecycle.boot(computer);
+    clock.ms = idleTimeoutMs;
+
+    await expect(lifecycle.stopIdle()).resolves.toEqual({
+      checked: 1,
+      stopped: [],
+      failed: [{ computer, detail: `refused ${computer.computerId}` }],
+    });
+    await expect(lifecycle.status(computer)).resolves.toMatchObject({ state: "running" });
+  });
+
+  it("does not park a machine adopted by a restarted supervisor on the first sweep", async () => {
+    const provider = new ComputerEmulator();
+    const crashed = createComputerLifecycle({ provider });
+    await crashed.boot(computer);
+
+    const clock = { ms: 0 };
+    const restarted = clocked(provider, clock);
+    await expect(restarted.reconcile()).resolves.toMatchObject({ adopted: [computer] });
+
+    clock.ms = idleTimeoutMs - 1;
+    await expect(restarted.stopIdle()).resolves.toMatchObject({ stopped: [] });
+  });
+});

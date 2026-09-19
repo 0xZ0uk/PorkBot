@@ -171,6 +171,43 @@ export type {
 } from "./computer-emulator.ts";
 export { ComputerProviderError } from "./computer-errors.ts";
 
+// The Docker computer provider (slice 7.2, PRD decisions 19 and 20; stories
+// 27, 29). It is constructed inside the supervisor process only — the process
+// that holds the Docker socket — and speaks the Engine API over that socket,
+// one container per bot on a per-computer internal network, its home on a
+// named volume, its CPU, memory, process count and (optionally) disk bounded.
+// Every daemon refusal is translated into the shared failure vocabulary by
+// `docker-errors.ts`, the one module allowed to read Docker's statuses and
+// messages. `docker-engine-emulator.ts` is the fake daemon the provider is
+// tested against offline, over the same HTTP the real socket serves.
+export {
+  createDockerComputerProvider,
+  DEFAULT_COMPUTER_CEILINGS,
+  DEFAULT_DOCKER_COMPUTER_HOME,
+  DEFAULT_DOCKER_SNAPSHOT_DIRECTORY,
+  dockerComputerLabels,
+} from "./docker-computer.ts";
+export type { ComputerCeilings, DockerComputerProviderOptions } from "./docker-computer.ts";
+export { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
+export { createDockerEngine, DockerEngineError } from "./docker-engine.ts";
+export type {
+  DockerContainerInspect,
+  DockerContainerResources,
+  DockerContainerSummary,
+  DockerCreateContainerSpec,
+  DockerEngine,
+  DockerEngineOptions,
+  DockerExecRequest,
+  DockerExecResult,
+  DockerFailureOrigin,
+  DockerStreamBody,
+} from "./docker-engine.ts";
+export { DockerEngineEmulator, readTar, writeTar } from "./docker-engine-emulator.ts";
+export type {
+  DockerEngineEmulatorOptions,
+  EmulatedDockerRequest,
+} from "./docker-engine-emulator.ts";
+
 // The computer conformance suite: one set of behaviors every provider must
 // show, whatever it is made of. The emulator runs it directly, the supervisor
 // runs it over its wire, and the Docker provider will run it against a real

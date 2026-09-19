@@ -116,6 +116,15 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   to local placeholders. The screen-capability signing key is
   `PORKBOT_SCREEN_TOKEN_SECRET`; a deployment that leaves it unset refuses
   screen access entirely.
+- **A computer is offline or Docker.** `supervisor` owns the provider choice
+  and the generic computer settings: `PORKBOT_COMPUTER_PROVIDER` is `offline`
+  by default and `docker` for real machines, `PORKBOT_COMPUTER_IMAGE` names the
+  image a Docker computer boots (required by that selection),
+  `PORKBOT_COMPUTER_SOCKET` is its daemon socket, and
+  `PORKBOT_COMPUTER_CPUS` / `PORKBOT_COMPUTER_MEMORY_MB` /
+  `PORKBOT_COMPUTER_DISK_MB` are one bot's share of the host floor under "A
+  bot's computer". `PORKBOT_COMPUTER_IDLE_MS` (default fifteen minutes, zero
+  disables) parks a machine no run is using; the home volume survives.
 - **CI runs the same command.** The integration tier starts the stack with
   `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
   of booting its own container, runs the integration suites against it, and
@@ -279,22 +288,49 @@ shows. `packages/adapters/src/computer-conformance.ts` is the suite every
 provider is held to — idempotent `ensure`, idempotent `stop`, `list`,
 `gone` answers, timeout classification, persistence across commands, isolation
 between computers, snapshot and restore, the reserved path and the browser
-protocol — and the Docker provider registers it when it lands.
+protocol — and the Docker provider registers it against a real container.
 
 The supervisor owns lifecycle (slice 7.1). `apps/supervisor` is the only
 process that will hold the Docker socket and the only one that constructs a
-computer provider; the API holds `createSupervisorComputerProvider` today (the
-worker's provider wiring lands with the Docker provider),
+computer provider; the API holds `createSupervisorComputerProvider` today —
 from `packages/adapters`, an authenticated client for the supervisor's internal
-surface (`server.ts`). Boot, stop, reset and recover are compositions inside the
-supervisor, reconciliation on boot adopts whatever a crashed process left
-behind, and every machine gets its own internal Docker network with an isolated
-gateway (`planComputerNetwork` in `packages/core`), so a computer reaches
-neither another bot's machine nor a service on the host. Screen access is gated
-by a short-lived capability token bound to one computer and one actor even
-though the stream behind it is v1.1 work. The operator's reach is
-`computers.status`, `boot`, `stop`, `reset` and `recover` in the contract,
-scoped by bot id.
+surface (`server.ts`) — and the worker reaches a computer through the same
+client once its run path needs one. Boot, stop, reset and recover are
+compositions inside the supervisor, reconciliation on boot adopts whatever a
+crashed process left behind, and every machine gets its own internal Docker
+network with an isolated gateway (`planComputerNetwork` in `packages/core`), so
+a computer reaches neither another bot's machine nor a service on the host.
+Screen access is gated by a short-lived capability token bound to one computer
+and one actor even though the stream behind it is v1.1 work. The operator's
+reach is `computers.status`, `boot`, `stop`, `reset` and `recover` in the
+contract, scoped by bot id.
+
+The real local machine is `createDockerComputerProvider` (slice 7.2). It is
+constructed only inside the supervisor, speaks the Docker Engine API over the
+mounted socket — no SDK, no CLI — and gives every bot one container on its own
+internal network, its home on a named volume. Boot is bounded and reported: a
+machine that does not become ready inside the boot budget fails as the shared
+vocabulary's `timed_out`, and every daemon refusal is translated by
+`docker-errors.ts` alone — `gone`, `not_found`, `rate_limited`, `timed_out`,
+`auth_failed` — so lifecycle code reads no Docker status and no Docker message.
+`stop` parks the container, `destroy` removes it and keeps the home volume, so
+the supervisor's reset rebuilds a clean machine with the agent's files intact,
+and the idle sweep parks anything no run has used for `PORKBOT_COMPUTER_IDLE_MS`
+with the same guarantee. Ceilings are per bot: CPU, memory (swap pinned to the
+same ceiling), the process count, and a write-layer disk quota that only
+applies with `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt` on a daemon whose
+storage driver answers it. The defaults are one bot's share of the documented
+floor — a host of 4 vCPU and 8 GB plus roughly 2 GB and 50 GB+ of disk per bot,
+with 50 GB+ more for images — and the README setting the floors is the
+deployment contract, so raise the ceilings only after raising the host.
+Snapshots stream the home through the archive API into
+`PORKBOT_COMPUTER_SNAPSHOT_DIR` (a named volume in the stack); slice 7.5 moves
+that landing zone onto the storage seam. The image contract is a POSIX shell
+and the coreutils `timeout` the command budget is enforced with. The offline
+suite drives the provider through a fake Engine API on a unix socket, and the
+supervisor's integration tier runs the shared conformance suite against a real
+container, asserts the ceilings on the daemon's own inspect output, and shows
+that an idle stop and a reset both keep the home.
 
 The model reaches that machine through `createComputerTools` in
 `packages/effect`: `shell`, `file_read`, `file_write`, `file_list` and
@@ -1479,25 +1515,31 @@ The computer emulator and the first run whose tools execute land with slice
 6.9. `ComputerEmulator` implements the whole `ComputerProvider` seam —
 filesystem, bounded shell, scripted browser, snapshots and the reserved
 `frames()`/`input()` path — behind one conformance suite the Docker provider
-registers in E7; `createComputerTools` turns `exec` into the model's `shell`,
-`file_read`, `file_write`, `file_list` and `browser` tools with their content
-labelled at the ingestion boundary; and the offline runtime executes tool steps
-through the dispatcher, so a full run does real work with no key, network or
-daemon. The live model launch that fills the worker's work seam waits on the
-stream bridge from Pi's agent loop to the model runtime.
+now registers against a real container; `createComputerTools` turns `exec` into
+the model's `shell`, `file_read`, `file_write`, `file_list` and `browser` tools
+with their content labelled at the ingestion boundary; and the offline runtime
+executes tool steps through the dispatcher, so a full run does real work with no
+key, network or daemon. The live model launch that fills the worker's work seam
+waits on the stream bridge from Pi's agent loop to the model runtime.
 
-The supervisor boundary lands with slice 7.1. `apps/supervisor` is the only
-compose service the Docker socket is mounted into, and it is the only process
-that constructs a computer provider: boot, stop, reset and recover are
-compositions inside its lifecycle service, reconciliation on boot adopts what a
-crashed process left behind, and its internal HTTP surface is authenticated
+The supervisor boundary lands with slice 7.1, and the Docker provider with slice
+7.2. `apps/supervisor` is the only compose service the Docker socket is mounted
+into, and it is the only process that constructs a computer provider: boot,
+stop, reset and recover are compositions inside its lifecycle service,
+reconciliation on boot adopts what a crashed process left behind, an idle sweep
+parks a machine no run is using, and its internal HTTP surface is authenticated
 with a process credential the API presents through
-`createSupervisorComputerProvider`. Every computer is planned onto its own
-internal Docker network with an isolated gateway, and the integration tier
-builds those networks and drives real containers to show that one bot's
-machine reaches neither another bot's machine nor a host service, while the
-running stack is inspected to prove the API container has no socket. The
-reserved screen paths are already gated by a short-lived capability token
+`createSupervisorComputerProvider`. The provider it constructs is the offline
+emulator by default and, when the deployment names an image,
+`createDockerComputerProvider` — the Engine API client over the socket, one
+container per bot on its own internal network with an isolated gateway and its
+home on a named volume, every per-bot ceiling applied at create, and every
+daemon refusal classified in one module. The integration tier runs the shared
+conformance suite against a real container, builds those networks and drives
+real containers to show that one bot's machine reaches neither another bot's
+machine nor a host service, asserts the ceilings on the daemon's own inspect
+output, and inspects the running stack to prove the API container has no socket.
+The reserved screen paths are already gated by a short-lived capability token
 scoped to one computer and one actor; the stream behind them is v1.1 work.
 
 The model runtime adapter lands with slice 9.2. `createOpenAiCompatibleModelRuntime`
