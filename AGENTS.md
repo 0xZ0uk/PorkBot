@@ -186,6 +186,16 @@ change it without breaking what the boundaries and the CI gate protect.
   test (`packages/core/src/compaction-policy.test.ts`,
   `packages/adapters/src/two-lane-context.test.ts`) and review.
 
+### Configuration
+
+- **Every environment variable is declared in the schema that owns it.** Shared
+  values live in the root `.env.schema`, a package's own values in its
+  `.env.schema`, and the `env` CI tier runs `varlock audit` so a key the code
+  reads but the schema does not declare — or a declared key no code reads —
+  fails by name. Secret values come from the deployment environment or a
+  device-local encrypted `.env.local`, never from a committed file. Checked by:
+  the `env` CI tier (`scripts/env-check.mjs`) and review.
+
 ### Secrets and public-safe text
 
 - **Never commit a secret.** No `.env` files, keys, tokens, private URLs or real

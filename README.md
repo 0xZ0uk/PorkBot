@@ -30,6 +30,7 @@ pnpm test:e2e         # end-to-end tests (the only tier that retries)
 pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
 pnpm dependencies:check # validate dependencies.json, manifests, lockfile and image digests
 pnpm dependencies:diff  # print the lockfile delta against origin/main
+pnpm env:check        # load every .env.schema and audit it against the code
 pnpm stack:up         # build the stack, start it, wait for every healthcheck
 pnpm stack:logs       # follow the stack's logs
 pnpm stack:status     # show the stack's services, states and ports
@@ -162,6 +163,41 @@ Each service image builds from the root `Dockerfile`; the shared build stage
 installs and builds the workspace once and `pnpm deploy`s each app into its own
 runtime image. Every process answers `/healthz` — `packages/health` is the
 shared route, `apps/api` keeps its own because its listener also logs requests.
+
+## Environment configuration
+
+Every variable an entrypoint reads is declared in a `.env.schema` next to it
+([varlock](https://varlock.dev), pinned in `dependencies.json`). The root
+`.env.schema` owns the values more than one process uses; `apps/api`,
+`apps/worker`, `apps/supervisor`, `apps/web`, `packages/db` (the migration
+runner) and `packages/adapters` (the credential-proxy sidecar) each own theirs
+and import the root for the shared keys. The schemas are the source of truth:
+`varlock audit`, run by `pnpm env:check` and the required `env` CI tier, fails
+when code reads a key the schema does not declare, or a schema declares a key
+no code reads.
+
+- **Local development.** The api, worker and supervisor `dev` scripts run
+  through `varlock run`, as does web's built host (`pnpm --filter
+@porkbot/web serve`), so environment files are resolved and validated before
+  the process starts. Put local values in a git-ignored `.env.local` — the root
+  one applies to every app, an app's own wins — and keep the sensitive ones
+  encrypted, so they never sit in plaintext: write `DATABASE_URL=varlock(prompt)`,
+  run `pnpm dev` once, and the encrypted form is written back. `varlock reveal
+DATABASE_URL` prints a value, and `varlock encrypt --file .env.local`
+  encrypts a file of plaintext values in place. The key is device-local: these
+  files are not shared between machines and never committed. Vite's dev server
+  reads no environment variables and is not wrapped. `varlock scan` checks the
+  tracked tree for a resolved sensitive value that leaked into plaintext, so a
+  secret caught by a schema is still caught when it is copied into a file.
+- **CI.** `pnpm env:check` loads every schema with `APP_ENV=ci` and the
+  committed `.env.ci` fixtures — obvious fakes, never secrets — because the
+  tier must prove required items resolve without a deployment's environment.
+  The tier deliberately does not use `APP_ENV=test`; Vite loads `.env.test`
+  into every Vitest process, and CI fixtures have no business there.
+- **Production.** The deployment injects real environment variables and varlock
+  is not in the runtime image; it reads nothing there. The schema's job in
+  production is to be the contract the variables must satisfy, and the `env`
+  tier is what proves code and schema still agree.
 
 ## Boundaries
 
@@ -1435,6 +1471,7 @@ with a name instead of a step index buried in one long log.
 - `build` — `tsc` emit, the artifact the later tiers and every deploy consume
 - `quarantine` — `quarantine.json` is valid and nothing in it has expired
 - `dependencies` — the pin register, manifests, lockfile integrity and image digests agree
+- `env` — every `.env.schema` loads under the CI fixtures and every audit is in sync
 - `unit` — unit tests with coverage
 - `integration` — the tests that need a real Postgres, against the local stack the job starts
 - `e2e` — whole-process tests against the built output
