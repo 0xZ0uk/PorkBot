@@ -8,12 +8,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router.tsx";
 import { createSessionController } from "./session.ts";
 import type { AuthTransport, SessionActor } from "./session.ts";
+import type { ConsoleTransport } from "./transport.ts";
+import {
+  createScriptedEvents,
+  fakeBot,
+  fakeThread,
+  runCompleted,
+  runStarted,
+  scriptedThreadTransport,
+  textMessage,
+  tokenDelta,
+} from "../test/fakes.ts";
 
 /**
  * The route guards, in a real DOM: the shell's three states are reachable from
  * the router. A visitor with no session lands on sign-in, an actor lands on the
- * console, and a session read that has not answered yet shows the bootstrapping
- * screen instead of either.
+ * home console, and a session read that has not answered yet shows the
+ * bootstrapping screen instead of either.
  *
  * The router runs on a memory history with fake transports, so nothing here
  * touches a network or the browser's own history. Rendering the root document
@@ -55,17 +66,37 @@ afterEach(async () => {
   container.remove();
 });
 
-function appWith(currentActor: AuthTransport["currentActor"]) {
+function appWith(
+  currentActor: AuthTransport["currentActor"],
+  transport: ConsoleTransport = scriptedThreadTransport(),
+) {
   const auth = fakeTransport(currentActor);
   const session = createSessionController({ transport: auth });
 
-  return createAppRouter({ auth, session }, createMemoryHistory({ initialEntries: ["/"] }));
+  return createAppRouter(
+    { auth, session, threads: transport },
+    createMemoryHistory({ initialEntries: ["/"] }),
+  );
 }
 
 async function render(element: ReactElement): Promise<void> {
   await act(async () => {
     root.render(element);
   });
+}
+
+async function until(predicate: () => boolean, label: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${label}`);
+    }
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+  }
 }
 
 describe("the shell's route guards", () => {
@@ -90,7 +121,7 @@ describe("the shell's route guards", () => {
     await render(<RouterProvider router={router} />);
 
     expect(router.state.location.pathname).toBe("/");
-    expect(container.textContent).toContain("Signed in.");
+    expect(container.textContent).toContain("No bots yet.");
     expect(container.textContent).toContain("Sign out");
   });
 
@@ -98,7 +129,7 @@ describe("the shell's route guards", () => {
     const auth = fakeTransport(async () => actor);
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session },
+      { auth, session, threads: scriptedThreadTransport() },
       createMemoryHistory({ initialEntries: ["/sign-in"] }),
     );
 
@@ -108,7 +139,7 @@ describe("the shell's route guards", () => {
     await render(<RouterProvider router={router} />);
 
     expect(router.state.location.pathname).toBe("/");
-    expect(container.textContent).toContain("Signed in.");
+    expect(container.textContent).toContain("No bots yet.");
   });
 
   it("does not settle while the session read is unanswered", async () => {
@@ -174,7 +205,7 @@ describe("the shell's route guards", () => {
     });
     const session = createSessionController({ transport: auth });
     const router = createAppRouter(
-      { auth, session },
+      { auth, session, threads: scriptedThreadTransport() },
       createMemoryHistory({ initialEntries: ["/"] }),
     );
 
@@ -193,6 +224,65 @@ describe("the shell's route guards", () => {
       signOut?.click();
     });
 
-    expect(container.textContent).toContain("Signed in.");
+    expect(container.textContent).toContain("No bots yet.");
+  });
+});
+
+describe("the console routes", () => {
+  it("lists a bot's threads on the home screen", async () => {
+    const router = appWith(
+      async () => actor,
+      scriptedThreadTransport({
+        bots: [fakeBot("bot-1", "Ada")],
+        threads: [fakeThread("thread-1", "bot-1")],
+      }),
+    );
+
+    await act(async () => {
+      await router.load();
+    });
+    await render(<RouterProvider router={router} />);
+
+    expect(container.textContent).toContain("Ada");
+    expect(container.textContent).toContain("New thread");
+
+    const link = container.querySelector("a[href='/threads/thread-1']");
+
+    expect(link).not.toBeNull();
+  });
+
+  it("renders a thread's streamed text on the console route", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({
+      transcript: [
+        textMessage({ id: "message-0", threadId: "thread-1", seq: 0, role: "user", text: "go" }),
+      ],
+      events: events.procedure,
+    });
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+    const router = createAppRouter(
+      { auth, session, threads: transport },
+      createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
+    );
+
+    await act(async () => {
+      await router.load();
+    });
+    await render(<RouterProvider router={router} />);
+
+    expect(container.textContent).toContain("go");
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted("thread-1", "run-1", 1));
+    events.push(tokenDelta("thread-1", "run-1", 2, "message-1", "Hel"));
+
+    await until(() => container.textContent?.includes("Hel") === true, "the first delta");
+    expect(container.textContent).not.toContain("Hello");
+
+    events.push(tokenDelta("thread-1", "run-1", 3, "message-1", "lo"));
+    events.push(runCompleted("thread-1", "run-1", 4, "message-1"));
+
+    await until(() => container.textContent?.includes("Hello") === true, "the completed text");
   });
 });

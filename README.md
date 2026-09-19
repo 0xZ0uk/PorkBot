@@ -958,11 +958,53 @@ the surfaces and stylesheet name only those properties. The lint rule in
 `@porkbot/eslint-config` fails a hardcoded colour in `@porkbot/web`, so a theme
 change stays one file. The screens are labelled and keyboard-reachable: labels
 bind to inputs, the refusal is a `role="alert"` that takes focus, and a skip
-link leads to the focused `#main`. The e2e tier
-(`apps/web/test/e2e/static-build.e2e.test.ts`) builds the artifact, serves it
+link leads to the focused `#main`. The e2e tier builds the artifact, serves it
 with the static host and asserts the shell's asset references exist, the
 bootstrapping state is in the prerendered HTML, and an unknown route is
-rewritten rather than 404ed.
+rewritten rather than 404ed (`static-build.e2e.test.ts`), and mounts the thread
+console over a real HTTP connection to a scripted oRPC/SSE server to prove the
+resume path (`thread-console.e2e.test.tsx`).
+
+## Thread console
+
+Slice 6.6 is the product's first real screen: `apps/web/src/console.ts` is the
+console's state machine, `use-console.ts` is its React binding, and
+`routes/_app/threads.$threadId.tsx` is its route. The console owns one thread's
+subscription, folds every frame through the reducer in `packages/core`, and
+publishes one state the screen renders — the reducer is the only interpretation
+of the stream and the screen is a pure function of the state.
+
+- **Tokens render as they stream.** A `token.delta` extends the assistant
+  message in place; the client never waits for `run.completed`.
+- **Reload is a replay, not a client-held cursor.** A reload starts a fresh
+  snapshot at seq 0; the durable rows are the stream, so the server replays
+  every event and the reducer rebuilds the snapshot the wire would have
+  produced. The signed cursor still resumes a dropped socket inside one
+  connection, where `subscribeThreadEvents` owns the backoff.
+- **Connection state is visible without noise.** `subscribeThreadEvents`
+  reports `connecting`, `live`, `reconnecting` and `resumed`; the screen shows
+  one polite status line for the phases that are not plainly live, and no
+  chrome while frames are flowing.
+- **The transcript is the order, the reducer is the content.**
+  `threads.messages` carries the user turns and the message sequence — the send
+  that started a run is a row, not a run event — and each message renders the
+  reducer's text for its id, so a partial assistant message and its closed text
+  are the same element. The transcript is read once per console start, walking
+  the contract's forward pages to the newest turn (bounded at ten pages), so a
+  run-starting message written in another tab arrives on the next mount while a
+  steering message arrives as an event.
+- **A refusal is a state with a retry.** A typed `NOT_FOUND` says the thread is
+  not available; any other failure says the stream could not be read; either
+  offers one retry that restarts from zero.
+
+The home screen is the smallest entry point that makes the console reachable —
+the actor's bots, their recent threads and a New thread button — and the bot
+editor and sections (slice 11.2) replace it.
+
+The e2e tier mounts the console in a DOM over a real HTTP connection to a
+scripted oRPC/SSE server and proves the resume-path criteria: tokens before
+completion, a reload replaying to the same snapshot, and a dropped connection
+reconnecting from its signed cursor with `Reconnecting…` becoming `Resumed`.
 
 ## Migrations
 
@@ -1385,6 +1427,18 @@ labelled at the ingestion boundary; and the offline runtime executes tool steps
 through the dispatcher, so a full run does real work with no key, network or
 daemon. The live model launch that fills the worker's work seam arrives with
 the model runtime adapter (slice 9.2).
+
+The thread console lands with slice 6.6: `threads.events` streams into the
+console controller, which folds each frame through the core reducer and renders
+the transcript, the tokens as they arrive, and one connection-status line; a
+reload replays the durable events from zero and reconstructs the same snapshot,
+while a dropped connection resumes from the signed cursor with no duplicate and
+no gap. The transport reports its phases (`connecting`, `live`, `reconnecting`,
+`resumed`) through `subscribeThreadEvents`, so the screen renders the state the
+reconnect loop owns. The home screen lists bots and their threads as the
+console's entry point until the bot editor (slice 11.2) replaces it, and the
+e2e tier drives the resume path through a real socket against a scripted
+oRPC/SSE server.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that

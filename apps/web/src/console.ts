@@ -1,0 +1,281 @@
+import { ORPCError, subscribeThreadEvents } from "@porkbot/contracts";
+import type { Message, ThreadEventsProcedure, ThreadSubscriptionState } from "@porkbot/contracts";
+import { createThreadSnapshot, messageText, reduceRunEvent } from "@porkbot/core";
+import type { BackoffPolicy, ThreadSnapshot } from "@porkbot/core";
+
+/**
+ * The thread console: one thread's transcript, read live (story 18) and
+ * resumable (story 19).
+ *
+ * The console is a framework-free state machine, like the session controller:
+ * it owns the subscription, folds every frame through the reducer in
+ * `@porkbot/core`, and publishes one state object a React binding renders.
+ * Nothing here parses an event itself — the reducer is the only interpretation
+ * of the stream — and nothing here re-implements the reconnect loop: the
+ * contracts' `subscribeThreadEvents` owns the backoff and reports the
+ * connection phase the screen shows.
+ *
+ * Resume is a replay, not a cursor the tab has to keep. A reload starts a
+ * fresh snapshot at seq 0 and the durable rows are the stream, so the server
+ * replays every event and the reducer rebuilds exactly the snapshot the wire
+ * would have produced. The signed cursor still does its work inside one
+ * connection — a dropped socket resumes from the last received id without a
+ * duplicate or a gap — but a reload never depends on a client-held cursor that
+ * a process restart could invalidate.
+ *
+ * The transcript fetch seeds what the event vocabulary does not carry: the
+ * user message that started a run is a `message` row, not a run event, so the
+ * merged view takes its order and its user turns from `threads.messages` and
+ * its assistant text from the reducer — a partial message while tokens stream,
+ * the same text once the run closes it.
+ *
+ * The transcript is read once per start: a run-starting message written in
+ * another tab while this console is mounted is not in the event vocabulary, so
+ * it appears on the next mount rather than live. Steering messages do arrive
+ * as events, and a run that produces one shows it immediately.
+ */
+
+/** The API surface the console needs, narrow enough to fake without a network. */
+export interface ThreadConsoleTransport {
+  /** The thread's persisted messages, oldest first. */
+  transcript(threadId: string): Promise<readonly Message[]>;
+  readonly events: ThreadEventsProcedure;
+}
+
+/** One rendered turn: a persisted message with its live text when there is one. */
+export interface TranscriptEntry {
+  readonly id: string;
+  readonly role: "user" | "assistant";
+  readonly text: string;
+  /** True while the run is still appending tokens to this message. */
+  readonly streaming: boolean;
+}
+
+export interface ThreadConsoleState {
+  readonly threadId: string;
+  readonly status: "loading" | "ready" | "refused";
+  readonly entries: readonly TranscriptEntry[];
+  /** The sentence to show when `status` is `refused`, else `null`. */
+  readonly refusal: string | null;
+  readonly connection: ThreadSubscriptionState;
+}
+
+export interface ThreadConsoleOptions {
+  readonly transport: ThreadConsoleTransport;
+  readonly threadId: string;
+  /** Test seams, passed through to the contracts' reconnect loop. */
+  readonly policy?: BackoffPolicy | undefined;
+  readonly random?: (() => number) | undefined;
+  readonly sleep?:
+    ((delayMs: number, signal: AbortSignal | undefined) => Promise<void>) | undefined;
+}
+
+export interface ThreadConsole {
+  state(): ThreadConsoleState;
+  subscribe(listener: () => void): () => void;
+  /** Starts loading and subscribing; a second call while running is a no-op. */
+  start(): void;
+  /** Ends the subscription; its in-flight work is ignored from here on. */
+  stop(): void;
+  /** Restarts from an empty snapshot: the reload path, offered after a refusal. */
+  retry(): void;
+}
+
+/**
+ * The two sentences a refusal can produce. A missing thread is the API's typed
+ * `NOT_FOUND`, whether the id is unknown or the actor's access is gone; every
+ * other failure is something the client cannot name, so it says only that the
+ * stream could not be read.
+ */
+const notAvailable = "This thread is not available.";
+const streamUnreadable = "The stream could not be read.";
+
+function refusalFor(error: unknown): string {
+  return error instanceof ORPCError && error.code === "NOT_FOUND" ? notAvailable : streamUnreadable;
+}
+
+export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsole {
+  const { transport, threadId } = options;
+  const listeners = new Set<() => void>();
+  let snapshot = createThreadSnapshot(threadId);
+  let transcript: readonly Message[] = [];
+  let state: ThreadConsoleState = {
+    threadId,
+    status: "loading",
+    entries: [],
+    refusal: null,
+    connection: "connecting",
+  };
+  // Bumped by stop/retry, so a slow fetch or frame from an earlier run never
+  // writes into the state of a later one.
+  let generation = 0;
+  let running = false;
+  let controller: AbortController | undefined;
+
+  function setState(next: Partial<ThreadConsoleState>): void {
+    state = { ...state, ...next };
+
+    for (const listener of listeners) {
+      listener();
+    }
+  }
+
+  async function run(current: number, active: AbortController): Promise<void> {
+    let fetched: readonly Message[];
+
+    try {
+      fetched = await transport.transcript(threadId);
+    } catch (error) {
+      if (current === generation) {
+        setState({ status: "refused", refusal: refusalFor(error) });
+      }
+
+      return;
+    }
+
+    // The generation is checked before the result is stored, not only before
+    // the state is published: a fetch overtaken by a retry must not overwrite
+    // the transcript the retry's own fetch already installed.
+    if (current !== generation) {
+      return;
+    }
+
+    transcript = fetched;
+    setState({ status: "ready", entries: mergeTranscript(transcript, snapshot) });
+
+    try {
+      const subscription = subscribeThreadEvents(
+        transport.events,
+        { threadId },
+        {
+          signal: active.signal,
+          onState: (connection) => {
+            if (current === generation) {
+              setState({ connection });
+            }
+          },
+          ...(options.policy === undefined ? {} : { policy: options.policy }),
+          ...(options.random === undefined ? {} : { random: options.random }),
+          ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+        },
+      );
+
+      for await (const event of subscription) {
+        if (current !== generation) {
+          return;
+        }
+
+        const reduced = reduceRunEvent(snapshot, event);
+
+        if (!reduced.ok) {
+          // A contradiction in the stream is not something to repair here: the
+          // reducer refuses to guess and the console says so.
+          setState({ status: "refused", refusal: streamUnreadable });
+
+          return;
+        }
+
+        snapshot = reduced.snapshot;
+        setState({ entries: mergeTranscript(transcript, snapshot) });
+      }
+    } catch (error) {
+      if (current === generation) {
+        setState({ status: "refused", refusal: refusalFor(error) });
+      }
+    }
+  }
+
+  /**
+   * Starts a run from an empty view. Both `start` and `retry` come through
+   * here, so an instance that was stopped and started again cannot carry the
+   * earlier run's snapshot or transcript into the new subscription.
+   */
+  function begin(): void {
+    running = true;
+    generation += 1;
+    controller = new AbortController();
+    snapshot = createThreadSnapshot(threadId);
+    transcript = [];
+
+    setState({ status: "loading", refusal: null, connection: "connecting", entries: [] });
+    void run(generation, controller);
+  }
+
+  return {
+    state: () => state,
+
+    subscribe: (listener) => {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+
+    start: () => {
+      if (running) {
+        return;
+      }
+
+      begin();
+    },
+
+    stop: () => {
+      running = false;
+      generation += 1;
+      controller?.abort();
+      controller = undefined;
+    },
+
+    retry: () => {
+      running = false;
+      generation += 1;
+      controller?.abort();
+      begin();
+    },
+  };
+}
+
+/**
+ * The rendered turns: persisted messages in their sequence order, each showing
+ * the reducer's text for its id when the stream has one — a partial assistant
+ * message while tokens arrive, the closed text after `run.completed` — plus
+ * any message only the stream knows about, in stream order. Ordering stays the
+ * transcript's because the transcript carries the per-thread sequence the
+ * events do not repeat.
+ */
+export function mergeTranscript(
+  messages: readonly Message[],
+  snapshot: ThreadSnapshot,
+): TranscriptEntry[] {
+  const reduced = new Map(snapshot.messages.map((message) => [message.id, message]));
+  const entries: TranscriptEntry[] = [];
+  const seen = new Set<string>();
+
+  for (const message of messages) {
+    seen.add(message.id);
+    const live = reduced.get(message.id);
+
+    entries.push({
+      id: message.id,
+      role: message.role,
+      text: live === undefined ? (messageText(message.blocks) ?? "") : live.text,
+      streaming: live !== undefined && !live.complete,
+    });
+  }
+
+  for (const message of snapshot.messages) {
+    if (seen.has(message.id)) {
+      continue;
+    }
+
+    entries.push({
+      id: message.id,
+      role: message.role,
+      text: message.text,
+      streaming: !message.complete,
+    });
+  }
+
+  return entries;
+}

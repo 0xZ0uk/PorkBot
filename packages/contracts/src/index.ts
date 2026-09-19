@@ -120,7 +120,13 @@ export type { ApiClientOptions, AppClient } from "./client.ts";
 // `threads.events` and reconnect from the last signed cursor with the core
 // backoff policy, so a dropped connection resumes instead of refetching.
 export { subscribeThreadEvents } from "./stream.ts";
-export type { ThreadSubscriptionOptions } from "./stream.ts";
+export type {
+  ThreadEventsCallOptions,
+  ThreadEventsInput,
+  ThreadEventsProcedure,
+  ThreadSubscriptionOptions,
+  ThreadSubscriptionState,
+} from "./stream.ts";
 
 // The error envelope: the oRPC class the boundary mapping in @porkbot/effect
 // constructs, re-exported so no other package imports the transport library.
