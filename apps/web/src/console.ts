@@ -1,7 +1,7 @@
 import { ORPCError, subscribeThreadEvents } from "@porkbot/contracts";
 import type { Message, ThreadEventsProcedure, ThreadSubscriptionState } from "@porkbot/contracts";
 import { createThreadSnapshot, messageText, reduceRunEvent } from "@porkbot/core";
-import type { BackoffPolicy, ThreadSnapshot } from "@porkbot/core";
+import type { BackoffPolicy, RunSnapshot, ThreadSnapshot, ToolCallSnapshot } from "@porkbot/core";
 
 /**
  * The thread console: one thread's transcript, read live (story 18) and
@@ -29,6 +29,13 @@ import type { BackoffPolicy, ThreadSnapshot } from "@porkbot/core";
  * its assistant text from the reducer — a partial message while tokens stream,
  * the same text once the run closes it.
  *
+ * The tool-call timeline (slice 6.8) is the same reduced state read a second
+ * way: every run's `toolCalls` are entries beside the messages, anchored to
+ * the run they belong to — after the user message that prompted it when the
+ * transcript carries one, before the run's first message when it does not (a
+ * routine run has no user row). A live frame and a reload's replay therefore
+ * produce the same timeline, because both assemble it from the same snapshot.
+ *
  * The transcript is read once per start: a run-starting message written in
  * another tab while this console is mounted is not in the event vocabulary, so
  * it appears on the next mount rather than live. Steering messages do arrive
@@ -43,13 +50,25 @@ export interface ThreadConsoleTransport {
 }
 
 /** One rendered turn: a persisted message with its live text when there is one. */
-export interface TranscriptEntry {
+export interface TranscriptMessageEntry {
+  readonly kind: "message";
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly text: string;
   /** True while the run is still appending tokens to this message. */
   readonly streaming: boolean;
 }
+
+/** One tool call of a run, rendered in place in the transcript. */
+export interface TranscriptToolEntry {
+  readonly kind: "tool";
+  /** Unique across runs, because a call id is only unique within its run. */
+  readonly id: string;
+  readonly runId: string;
+  readonly call: ToolCallSnapshot;
+}
+
+export type TranscriptEntry = TranscriptMessageEntry | TranscriptToolEntry;
 
 export interface ThreadConsoleState {
   readonly threadId: string;
@@ -243,25 +262,43 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
  * any message only the stream knows about, in stream order. Ordering stays the
  * transcript's because the transcript carries the per-thread sequence the
  * events do not repeat.
+ *
+ * A run's tool calls are then anchored to it: after the first user message
+ * that names the run — the prompt a message-triggered run answers — or before
+ * the run's first message when the transcript has no user row for it, which is
+ * how a routine-triggered run reads. A run with no message at all appends in
+ * run order, so a tool call that arrives before any text is still visible.
+ * The anchor is computed fresh on every fold, so a frame that fills in a
+ * missing message moves nothing that was already read.
  */
 export function mergeTranscript(
   messages: readonly Message[],
   snapshot: ThreadSnapshot,
 ): TranscriptEntry[] {
   const reduced = new Map(snapshot.messages.map((message) => [message.id, message]));
-  const entries: TranscriptEntry[] = [];
+  const rendered: TranscriptMessageEntry[] = [];
+  const owners: (string | null)[] = [];
   const seen = new Set<string>();
+
+  function pushMessage(entry: TranscriptMessageEntry, runId: string | null): void {
+    rendered.push(entry);
+    owners.push(runId);
+  }
 
   for (const message of messages) {
     seen.add(message.id);
     const live = reduced.get(message.id);
 
-    entries.push({
-      id: message.id,
-      role: message.role,
-      text: live === undefined ? (messageText(message.blocks) ?? "") : live.text,
-      streaming: live !== undefined && !live.complete,
-    });
+    pushMessage(
+      {
+        kind: "message",
+        id: message.id,
+        role: message.role,
+        text: live === undefined ? (messageText(message.blocks) ?? "") : live.text,
+        streaming: live !== undefined && !live.complete,
+      },
+      message.runId,
+    );
   }
 
   for (const message of snapshot.messages) {
@@ -269,12 +306,87 @@ export function mergeTranscript(
       continue;
     }
 
-    entries.push({
-      id: message.id,
-      role: message.role,
-      text: message.text,
-      streaming: !message.complete,
-    });
+    pushMessage(
+      {
+        kind: "message",
+        id: message.id,
+        role: message.role,
+        text: message.text,
+        streaming: !message.complete,
+      },
+      message.runId,
+    );
+  }
+
+  const promptAt = new Map<string, number>();
+  const firstAt = new Map<string, number>();
+
+  owners.forEach((runId, index) => {
+    if (runId === null) {
+      return;
+    }
+
+    if (!firstAt.has(runId)) {
+      firstAt.set(runId, index);
+    }
+
+    if (rendered[index]?.role === "user" && !promptAt.has(runId)) {
+      promptAt.set(runId, index);
+    }
+  });
+
+  const before = new Map<number, RunSnapshot[]>();
+  const after = new Map<number, RunSnapshot[]>();
+  const trailing: RunSnapshot[] = [];
+
+  for (const run of snapshot.runs) {
+    if (run.toolCalls.length === 0) {
+      continue;
+    }
+
+    const prompt = promptAt.get(run.runId);
+
+    if (prompt !== undefined) {
+      after.set(prompt, [...(after.get(prompt) ?? []), run]);
+      continue;
+    }
+
+    const first = firstAt.get(run.runId);
+
+    if (first !== undefined) {
+      before.set(first, [...(before.get(first) ?? []), run]);
+      continue;
+    }
+
+    trailing.push(run);
+  }
+
+  const entries: TranscriptEntry[] = [];
+  const pushTools = (run: RunSnapshot): void => {
+    for (const call of run.toolCalls) {
+      entries.push({
+        kind: "tool",
+        id: `tool:${run.runId}:${call.callId}`,
+        runId: run.runId,
+        call,
+      });
+    }
+  };
+
+  rendered.forEach((entry, index) => {
+    for (const run of before.get(index) ?? []) {
+      pushTools(run);
+    }
+
+    entries.push(entry);
+
+    for (const run of after.get(index) ?? []) {
+      pushTools(run);
+    }
+  });
+
+  for (const run of trailing) {
+    pushTools(run);
   }
 
   return entries;

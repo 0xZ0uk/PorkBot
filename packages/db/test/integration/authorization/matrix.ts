@@ -709,21 +709,31 @@ export const resources: readonly Resource<unknown>[] = [
     },
   }),
 
-  resource<{ readonly runId: string; readonly callId: string }>({
+  resource<{ readonly threadId: string; readonly runId: string; readonly callId: string }>({
     entity: "external_effect",
     tables: ["external_effect"],
     seed: async (space) => {
       const seed = await seedRun(space, "Effect host");
       const callId = randomUUID();
+      const call = { runId: seed.runId, callId, tool: "matrix.tool", arguments: {} };
 
-      await space.ledger.begin({
-        runId: seed.runId,
-        callId,
-        tool: "matrix.tool",
-        arguments: {},
-      });
+      // Settled as completed so the console's artifact read has a value to
+      // resolve; the ledger's own probes still answer the claim itself.
+      await space.ledger.begin(call);
+      await space.ledger.complete(call, { matrix: true });
 
-      return { runId: seed.runId, callId };
+      return { threadId: seed.threadId, runId: seed.runId, callId };
+    },
+    user: {
+      // The full value behind a truncated tool event (slice 6.8).
+      read: (subject, seed) =>
+        visibleOn(() =>
+          subject.repositories.toolResults.read({
+            threadId: seed.threadId,
+            runId: seed.runId,
+            callId: seed.callId,
+          }),
+        ),
     },
     state: async (space, seed) =>
       json(

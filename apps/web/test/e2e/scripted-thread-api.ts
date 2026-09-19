@@ -39,6 +39,13 @@ export interface ScriptedThreadApiOptions {
   readonly threadId: string;
   readonly messages?: readonly Message[];
   readonly events?: readonly RunEvent[];
+  /**
+   * The settled tool results `threads.toolResult` answers, keyed the way the
+   * ledger keys them: `runId:callId`.
+   */
+  readonly toolResults?: Readonly<
+    Record<string, { readonly tool: string; readonly result: unknown }>
+  >;
 }
 
 export async function startScriptedThreadApi(
@@ -85,6 +92,23 @@ export async function startScriptedThreadApi(
       "content-length": Buffer.byteLength(body),
     });
     response.end(body);
+  }
+
+  /** The oRPC RPC envelope for a defined error, as the real API writes it. */
+  function writeError(response: ServerResponse, status: number, code: string): void {
+    const body = JSON.stringify({ defined: true, code, status, message: code });
+
+    response.writeHead(status, {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(body),
+    });
+    response.end(body);
+  }
+
+  function stringField(input: unknown, field: string): string {
+    return typeof input === "object" && input !== null
+      ? String((input as Record<string, unknown>)[field] ?? "")
+      : "";
   }
 
   async function readBody(request: IncomingMessage): Promise<unknown> {
@@ -161,6 +185,18 @@ export async function startScriptedThreadApi(
       case "/rpc/threads/messages":
         writeJson(response, { messages: options.messages ?? [], nextSeq: null });
         return;
+      case "/rpc/threads/toolResult": {
+        const stored =
+          options.toolResults?.[`${stringField(input, "runId")}:${stringField(input, "callId")}`];
+
+        if (stored === undefined || stringField(input, "threadId") !== options.threadId) {
+          writeError(response, 404, "NOT_FOUND");
+          return;
+        }
+
+        writeJson(response, stored);
+        return;
+      }
       case "/rpc/threads/events":
         await streamEvents(request, response, input);
         return;
