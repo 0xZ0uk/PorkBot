@@ -67,6 +67,10 @@ class CountingProvider implements ComputerProvider {
     return this.requests.length;
   }
 
+  async validate(): Promise<void> {
+    // Nothing to check in a test double.
+  }
+
   async ensure(): Promise<ComputerStatus> {
     return { computer, state: "running" };
   }

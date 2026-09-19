@@ -6,11 +6,13 @@ import { createSessionController } from "./session.ts";
 import {
   createHttpAuthTransport,
   createHttpBotsTransport,
+  createHttpComputerTransport,
   createHttpConnectionsTransport,
   createHttpConsoleTransport,
   createHttpMemoryTransport,
   createHttpUsageTransport,
 } from "./transport.ts";
+import type { ComputerTransport } from "./computer.ts";
 import type { ConnectionsTransport } from "./connections.ts";
 import type { BotsTransport } from "./bots.ts";
 import type { MemoryTransport } from "./memory.ts";
@@ -37,6 +39,8 @@ export interface RouterContext {
   readonly usage: UsageTransport;
   /** The connections screen's data surface: connections, keys, bots and the probe. */
   readonly connections: ConnectionsTransport;
+  /** The computer settings screen's data surface: providers, one machine and its snapshots. */
+  readonly computer: ComputerTransport;
 }
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
@@ -64,5 +68,6 @@ export function getRouter() {
     memory: createHttpMemoryTransport(),
     usage: createHttpUsageTransport(),
     connections: createHttpConnectionsTransport(),
+    computer: createHttpComputerTransport(),
   });
 }

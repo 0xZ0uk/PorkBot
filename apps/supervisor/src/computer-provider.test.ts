@@ -95,6 +95,24 @@ describe("the computer provider selection", () => {
     expect(isProviderFailure(refusal) ? refusal.kind : undefined).toBe("not_found");
   });
 
+  it("answers a selection check for every configured kind, without touching a machine", async () => {
+    const selection = createComputerProviderSelection({});
+
+    await expect(selection.validate("offline")).resolves.toEqual({
+      kind: "offline",
+      available: true,
+      failure: null,
+    });
+    // The check is a read: no machine was created or adopted by asking.
+    await expect(selection.provider.status(computer)).resolves.toMatchObject({ state: "gone" });
+  });
+
+  it("refuses a selection check for a kind this deployment never configured", async () => {
+    const selection = createComputerProviderSelection({});
+
+    await expect(selection.validate("daytona")).rejects.toThrow(/daytona/);
+  });
+
   it("refuses docker without an image rather than booting a nameless machine", () => {
     expect(() => createComputerProviderSelection({ PORKBOT_COMPUTER_PROVIDER: "docker" })).toThrow(
       /PORKBOT_COMPUTER_IMAGE/,
