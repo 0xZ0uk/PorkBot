@@ -1,5 +1,6 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { assertComputerNetworkPlan, planComputerNetwork } from "@porkbot/core";
 import type { ComputerNetworkPlan } from "@porkbot/core";
@@ -7,8 +8,11 @@ import type {
   ComputerExecRequest,
   ComputerExecResult,
   ComputerProvider,
+  ComputerProxyEndpoint,
+  ComputerProxyGrant,
   ComputerRef,
   ComputerState,
+  CredentialProxyAdmin,
   StorageProvider,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
@@ -16,6 +20,8 @@ import {
   createComputerSnapshotStore,
   DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
 } from "./computer-snapshot-store.ts";
+import { proxyGrantFileName, serializeProxyGrant } from "./credential-proxy.ts";
+import { writeTar } from "./computer-archive.ts";
 import { createDockerEngine } from "./docker-engine.ts";
 import type { DockerContainerInspect, DockerEngine } from "./docker-engine.ts";
 import { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
@@ -121,6 +127,53 @@ export const dockerComputerLabels = {
   botId: "porkbot.bot.id",
 } as const;
 
+/**
+ * The label a proxy sidecar carries instead of `computer.id` (slice 7.8). It
+ * names the computer it serves, but under a different key so `list` never
+ * reports a sidecar as a second machine.
+ */
+export const dockerProxyLabel = "porkbot.proxy.for";
+
+/**
+ * The directory grant files land in inside a proxy container. It is the
+ * sidecar's own filesystem, never a mount shared with a sandbox: the daemon's
+ * archive API is the only writer, and the sandbox has no mount of it. (A tmpfs
+ * here would be shadowed at runtime — an archive write lands in the layer, not
+ * the mount — so the sidecar's layer is the honest place for them.) Grants are
+ * written relative to the container's root, where a `grants/...` entry makes
+ * the directory as it is extracted; the daemon refuses an archive whose
+ * destination path does not exist yet.
+ */
+export const DOCKER_PROXY_GRANT_DIR = "/grants";
+/** The archive destination a grant is written under: the root, with a `grants/` entry. */
+export const DOCKER_PROXY_ARCHIVE_PATH = "/";
+
+/** The port the proxy listens on inside its container. */
+export const DEFAULT_DOCKER_PROXY_PORT = 8321;
+
+/**
+ * The credential-proxy sidecar's settings (slice 7.8, PRD decision 29).
+ *
+ * The sidecar is one extra container per computer, created on the computer's
+ * own isolated network — the only network peer a sandbox can reach — and
+ * secondarily attached to the deployment's egress network, which is the leg
+ * that reaches an upstream. The grants it holds are tmpfs, written through
+ * the daemon's archive API, so the Docker socket holder is the only writer
+ * and no credential ever crosses a bind mount or a shared filesystem.
+ */
+export interface DockerProxyOptions {
+  /** The image the sidecar runs: the deployed workspace, which carries the proxy entrypoint. */
+  readonly image: string;
+  /** The HMAC key the proxy verifies run capabilities with; shared with the worker. */
+  readonly tokenSecret: string;
+  /** The deployment's egress network the sidecar joins for the upstream leg. */
+  readonly egressNetwork: string;
+  /** The container's command; the default is the adapter's own proxy entrypoint. */
+  readonly command?: readonly string[] | undefined;
+  /** The port the proxy binds; 8321 by default. */
+  readonly port?: number | undefined;
+}
+
 export interface DockerComputerProviderOptions {
   /** The image a computer boots from; the deployment's one image contract. */
   readonly image: string;
@@ -165,6 +218,13 @@ export interface DockerComputerProviderOptions {
   readonly scratchDirectory?: string | undefined;
   /** The most stdout or stderr one command may return, in bytes. */
   readonly maxOutputBytes?: number | undefined;
+  /**
+   * The credential-proxy sidecar (slice 7.8). Configured means every computer
+   * gets one and the provider exposes `proxy`; absent means no sidecar and no
+   * proxy seam, which is the honest answer for a deployment that has no
+   * egress network or capability key to run one with.
+   */
+  readonly proxy?: DockerProxyOptions | undefined;
   /** Injected for tests; built from the endpoint options when absent. */
   readonly engine?: DockerEngine | undefined;
 }
@@ -175,6 +235,23 @@ function containerName(computer: ComputerRef): string {
 
 function volumeName(computer: ComputerRef): string {
   return `porkbot-home-${computerIdentityHash(`${computer.botId}\u0000${computer.computerId}`)}`;
+}
+
+function proxyName(computer: ComputerRef): string {
+  return `porkbot-proxy-${computerIdentityHash(`${computer.botId}\u0000${computer.computerId}`)}`;
+}
+
+/**
+ * The names a computer's containers carry, derived from one identity hash.
+ * Exported so a test can address the machine and its sidecar, whose references
+ * the provider keeps private.
+ */
+export function dockerProxyName(computer: ComputerRef): string {
+  return proxyName(computer);
+}
+
+export function dockerComputerName(computer: ComputerRef): string {
+  return containerName(computer);
 }
 
 function assertCeilings(ceilings: ComputerCeilings): void {
@@ -232,8 +309,23 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+/**
+ * The sidecar's own slice: small, because a proxy is a loop, not a workload.
+ * Its writable layer holds the grant files — the only place they can live
+ * while the daemon's archive API is the writer — and a grant is kilobytes, so
+ * the whole layer stays far inside this bound.
+ */
+const PROXY_SIDECAR_RESOURCES = {
+  nanoCpus: 250_000_000,
+  memoryBytes: 128 * 1024 * 1024,
+  pidsLimit: 128,
+} as const;
+
 /** Builds the runtime over one daemon; `createDockerComputerProvider` owns the seam. */
-function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRuntime {
+function createDockerRuntime(options: DockerComputerProviderOptions): {
+  readonly runtime: ComputerRuntime;
+  readonly proxy: CredentialProxyAdmin | undefined;
+} {
   if (options.image.trim() === "") {
     throw new RangeError("the Docker computer provider needs an image");
   }
@@ -290,8 +382,157 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
     return await call.catch((error: unknown) => failure(error, subject));
   }
 
-  async function ensureImage(budgetMs: number): Promise<void> {
-    const present = await guarded(engine.imageExists(options.image, budgetMs), "image");
+  const proxyOptions = options.proxy;
+  const proxyPort = proxyOptions?.port ?? DEFAULT_DOCKER_PROXY_PORT;
+
+  function proxyEndpointFor(computer: ComputerRef): ComputerProxyEndpoint {
+    // The sandbox resolves the sidecar by its container name over the shared
+    // isolated network's Docker DNS; no published port, no host address.
+    return { url: `http://${proxyName(computer)}:${proxyPort}` };
+  }
+
+  function proxySpec(
+    computer: ComputerRef,
+    network: string,
+  ): Parameters<DockerEngine["createContainer"]>[0] {
+    if (proxyOptions === undefined) {
+      throw new Error("a proxy sidecar was requested with no proxy configured");
+    }
+
+    return {
+      name: proxyName(computer),
+      image: proxyOptions.image,
+      labels: {
+        [dockerComputerLabels.managed]: "true",
+        [dockerProxyLabel]: computer.computerId,
+        [dockerComputerLabels.botId]: computer.botId,
+      },
+      network,
+      workingDirectory: "/",
+      user: "node",
+      command: proxyOptions.command ?? [
+        "node",
+        "/app/node_modules/@porkbot/adapters/dist/proxy-main.js",
+      ],
+      // The capability key is the sidecar's whole trust basis: the deployment
+      // configures it on this container and on the worker, and no sandbox ever
+      // sees it. Grants live on this container's own layer — no bind, no shared
+      // volume — so a stop or a destroy takes the credential material with it.
+      environment: {
+        PORKBOT_PROXY_TOKEN_SECRET: proxyOptions.tokenSecret,
+        PORKBOT_PROXY_COMPUTER_ID: computer.computerId,
+        PORKBOT_PROXY_BOT_ID: computer.botId,
+        PORKBOT_PROXY_GRANT_DIR: DOCKER_PROXY_GRANT_DIR,
+        PORKBOT_PROXY_PORT: String(proxyPort),
+        PORKBOT_PROXY_HOST: "0.0.0.0",
+      },
+      // The probe is what makes the provider's `ready` mean "the proxy is
+      // listening": a running process that has not bound its port yet would
+      // otherwise accept a grant the proxy could never read. A TCP connect is
+      // the whole readiness question here — the server binds before it serves
+      // — and `node` is the image's own binary, so the probe needs nothing
+      // installed.
+      healthcheck: {
+        test: [
+          "CMD",
+          "node",
+          "-e",
+          `const net=require("node:net");const socket=net.connect(${String(proxyPort)},"127.0.0.1",()=>{socket.end();process.exit(0)});socket.on("error",()=>process.exit(1))`,
+        ],
+        intervalMs: 500,
+        timeoutMs: 2_000,
+        retries: 20,
+        startPeriodMs: 1_000,
+      },
+      resources: PROXY_SIDECAR_RESOURCES,
+    };
+  }
+
+  async function inspectProxy(computer: ComputerRef): Promise<DockerContainerInspect | undefined> {
+    return await guarded(
+      engine.inspectContainer(proxyName(computer), requestTimeoutMs),
+      "container",
+    );
+  }
+
+  /**
+   * Waits for the sidecar's own readiness, not merely its existence: the
+   * sidecar declares a healthcheck that fetches its `/healthz`, so a grant is
+   * only ever written once the proxy answers. A sidecar that is running but
+   * not yet listening would otherwise accept a grant it could not read.
+   */
+  async function waitProxyReady(computer: ComputerRef, budgetMs: number): Promise<void> {
+    const deadline = Date.now() + budgetMs;
+
+    for (;;) {
+      const proxy = await inspectProxy(computer);
+
+      if (proxy?.State?.Running !== true) {
+        throw new ComputerProviderError(
+          "gone",
+          "the machine's credential proxy has stopped; re-read its state",
+        );
+      }
+
+      const health = proxy.State?.Health?.Status;
+
+      if (health === undefined || health === "healthy") {
+        return;
+      }
+
+      if (health === "unhealthy") {
+        throw new ComputerProviderError(
+          "gone",
+          "the machine's credential proxy reported unhealthy; re-read its state",
+        );
+      }
+
+      if (Date.now() >= deadline) {
+        throw new ComputerProviderError(
+          "timed_out",
+          `the machine's credential proxy did not become ready within ${budgetMs}ms`,
+        );
+      }
+
+      await sleep(Math.min(250, Math.max(1, deadline - Date.now())));
+    }
+  }
+
+  async function createProxyFor(computer: ComputerRef, network: string): Promise<string> {
+    if (proxyOptions === undefined) {
+      throw new Error("a proxy sidecar was requested with no proxy configured");
+    }
+
+    let id: string;
+
+    try {
+      id = await engine.createContainer(proxySpec(computer, network), requestTimeoutMs);
+    } catch (error) {
+      const adopted = await engine
+        .inspectContainer(proxyName(computer), requestTimeoutMs)
+        .catch(() => undefined);
+
+      if (adopted !== undefined) {
+        id = adopted.Id;
+      } else {
+        failure(error, "container");
+      }
+    }
+
+    // The upstream leg: the sidecar's second interface is the deployment's
+    // egress network. Its first — the one the create attached — is the
+    // computer's own isolated network, which is what makes this container the
+    // only network peer a sandbox can reach.
+    await guarded(
+      engine.connectNetwork(id, proxyOptions.egressNetwork, undefined, requestTimeoutMs),
+      "network",
+    );
+
+    return id;
+  }
+
+  async function ensureImage(image: string, budgetMs: number): Promise<void> {
+    const present = await guarded(engine.imageExists(image, budgetMs), "image");
 
     if (present && pullPolicy !== "always") {
       return;
@@ -300,11 +541,11 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
     if (pullPolicy === "never") {
       throw new ComputerProviderError(
         "not_found",
-        `the image "${options.image}" is not present and pulling is disabled`,
+        `the image "${image}" is not present and pulling is disabled`,
       );
     }
 
-    await guarded(engine.pullImage(options.image, archiveTimeoutMs), "image");
+    await guarded(engine.pullImage(image, archiveTimeoutMs), "image");
   }
 
   async function waitReady(id: string, budgetMs: number): Promise<ComputerMachine> {
@@ -396,7 +637,7 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
     );
   }
 
-  return {
+  const runtime: ComputerRuntime = {
     async validate(): Promise<void> {
       // The daemon's own ping: the socket answers only when the daemon is
       // there, and the check is read-only, so a selection cannot leave a
@@ -439,7 +680,12 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
     },
 
     async prepare(computer: ComputerRef): Promise<void> {
-      await ensureImage(requestTimeoutMs);
+      await ensureImage(options.image, requestTimeoutMs);
+
+      if (proxyOptions !== undefined) {
+        await ensureImage(proxyOptions.image, requestTimeoutMs);
+      }
+
       await guarded(engine.ensureNetwork(planFor(computer), requestTimeoutMs), "network");
     },
 
@@ -447,10 +693,45 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
       const network = planFor(computer);
       const id = await createFor(computer, network.name);
 
+      if (proxyOptions !== undefined) {
+        try {
+          await createProxyFor(computer, network.name);
+        } catch (error) {
+          // A half-boot is never left behind: the machine goes back to gone
+          // and the next ensure starts clean rather than adopting a computer
+          // whose proxy is missing.
+          await engine
+            .removeContainer(id, { force: true }, requestTimeoutMs)
+            .catch(() => undefined);
+          throw error;
+        }
+      }
+
       return { instanceId: id, state: "stopped" };
     },
 
-    async start(machine: ComputerMachine): Promise<ComputerMachine> {
+    async start(machine: ComputerMachine, computer: ComputerRef): Promise<ComputerMachine> {
+      if (proxyOptions !== undefined) {
+        // A sidecar left over from a crash is replaced, not adopted: its
+        // layer may hold a dead run's grant and its configuration may name an
+        // older capability key, and a fresh sidecar is a loop, not a cost.
+        // The machine is stopped here — a running machine never reaches this
+        // path — so nothing live is lost by the removal.
+        const existing = await inspectProxy(computer);
+
+        if (existing !== undefined) {
+          await engine
+            .removeContainer(existing.Id, { force: true }, requestTimeoutMs)
+            .catch((error: unknown) => failure(error, "container"));
+        }
+
+        const proxyId = await createProxyFor(computer, planFor(computer).name);
+
+        await engine
+          .startContainer(proxyId, requestTimeoutMs)
+          .catch((error: unknown) => failure(error, "container"));
+      }
+
       await engine
         .startContainer(machine.instanceId, bootTimeoutMs)
         .catch((error: unknown) => failure(error, "container"));
@@ -458,10 +739,29 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
       return { instanceId: machine.instanceId, state: "running" };
     },
 
-    async stop(machine: ComputerMachine): Promise<ComputerMachine | undefined> {
+    async stop(
+      machine: ComputerMachine,
+      computer: ComputerRef,
+    ): Promise<ComputerMachine | undefined> {
       await engine
         .stopContainer(machine.instanceId, 10, requestTimeoutMs)
         .catch((error: unknown) => failure(error, "container"));
+
+      // The sidecar parks with its machine and its grants park with it: a
+      // parked computer has no live run, so a grant that outlived its run —
+      // the writer crashed before revoking — must not be reachable when the
+      // machine comes back. Removing the sidecar is what makes "parked means
+      // gone" true on Docker, exactly as the emulator's stop releases its
+      // proxy; the next `start` creates a fresh sidecar with an empty layer.
+      if (proxyOptions !== undefined) {
+        const proxy = await inspectProxy(computer);
+
+        if (proxy !== undefined) {
+          await engine
+            .removeContainer(proxy.Id, { force: true }, requestTimeoutMs)
+            .catch((error: unknown) => failure(error, "container"));
+        }
+      }
 
       const stopped = await engine
         .inspectContainer(machine.instanceId, requestTimeoutMs)
@@ -470,14 +770,30 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
       return stopped === undefined ? undefined : machineOf(stopped);
     },
 
-    async remove(machine: ComputerMachine): Promise<void> {
+    async remove(machine: ComputerMachine, computer: ComputerRef): Promise<void> {
+      if (proxyOptions !== undefined) {
+        const proxy = await inspectProxy(computer);
+
+        if (proxy !== undefined) {
+          await engine
+            .removeContainer(proxy.Id, { force: true }, requestTimeoutMs)
+            .catch((error: unknown) => failure(error, "container"));
+        }
+      }
+
       await engine
         .removeContainer(machine.instanceId, { force: true }, requestTimeoutMs)
         .catch((error: unknown) => failure(error, "container"));
     },
 
-    async ready(machine: ComputerMachine, _computer: ComputerRef, budgetMs: number) {
-      return await waitReady(machine.instanceId, budgetMs);
+    async ready(machine: ComputerMachine, computer: ComputerRef, budgetMs: number) {
+      const ready = await waitReady(machine.instanceId, budgetMs);
+
+      if (proxyOptions !== undefined) {
+        await waitProxyReady(computer, budgetMs);
+      }
+
+      return ready;
     },
 
     async exec(
@@ -490,6 +806,7 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
           containerId: machine.instanceId,
           command: request.command,
           workingDirectory: home,
+          environment: request.environment,
           timeoutMs: request.timeoutMs,
           maxOutputBytes,
         })
@@ -546,17 +863,100 @@ function createDockerRuntime(options: DockerComputerProviderOptions): ComputerRu
         .catch((error: unknown) => failure(error, "archive"));
     },
   };
+
+  // The credential-proxy administration (slice 7.8). Grants and tombstones
+  // cross through the daemon's archive API alone, which is what keeps the
+  // Docker socket holder the only writer of credential material — the proxy
+  // container serves reads; it is never asked to mutate its own grants.
+  const proxy: CredentialProxyAdmin | undefined =
+    proxyOptions === undefined
+      ? undefined
+      : {
+          async grant(
+            computer: ComputerRef,
+            grant: ComputerProxyGrant,
+          ): Promise<ComputerProxyEndpoint> {
+            const proxy = await inspectProxy(computer);
+
+            if (proxy?.State?.Running !== true) {
+              throw new ComputerProviderError(
+                "gone",
+                "the computer's credential proxy has not started; boot the machine first",
+              );
+            }
+
+            const archive = writeTar([
+              {
+                name: `grants/${proxyGrantFileName(grant.runId)}`,
+                content: serializeProxyGrant(grant),
+              },
+            ]);
+
+            await engine
+              .putArchive(proxy.Id, DOCKER_PROXY_ARCHIVE_PATH, {
+                stream: Readable.from(archive),
+                length: archive.byteLength,
+              })
+              .catch((error: unknown) => failure(error, "archive"));
+
+            return proxyEndpointFor(computer);
+          },
+
+          async revoke(computer: ComputerRef, runId: string): Promise<void> {
+            const proxy = await inspectProxy(computer);
+
+            if (proxy?.State?.Running !== true) {
+              // A gone or parked proxy holds nothing — its grants are tmpfs,
+              // which dies with the process — so the revoke is already done.
+              return;
+            }
+
+            // The tombstone is a grant that is already expired: the proxy
+            // reads it on every request and answers `no_grant`, so revocation
+            // is durable even if a later read races the file.
+            const archive = writeTar([
+              {
+                name: `grants/${proxyGrantFileName(runId)}`,
+                content: serializeProxyGrant({
+                  runId,
+                  expiresAtSeconds: 1,
+                  upstreams: [],
+                }),
+              },
+            ]);
+
+            await engine
+              .putArchive(proxy.Id, DOCKER_PROXY_ARCHIVE_PATH, {
+                stream: Readable.from(archive),
+                length: archive.byteLength,
+              })
+              .catch((error: unknown) => failure(error, "archive"));
+          },
+
+          async endpoint(computer: ComputerRef): Promise<ComputerProxyEndpoint | undefined> {
+            const proxy = await inspectProxy(computer);
+
+            return proxy?.State?.Running === true ? proxyEndpointFor(computer) : undefined;
+          },
+        };
+
+  return { runtime, proxy };
 }
 
 export function createDockerComputerProvider(
   options: DockerComputerProviderOptions,
 ): ComputerProvider {
-  return createRuntimeComputerProvider({
-    runtime: createDockerRuntime(options),
-    snapshots: createComputerSnapshotStore({
-      storage: options.storage,
-      scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+  const { runtime, proxy } = createDockerRuntime(options);
+
+  return {
+    ...createRuntimeComputerProvider({
+      runtime,
+      snapshots: createComputerSnapshotStore({
+        storage: options.storage,
+        scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+      }),
+      bootTimeoutMs: options.bootTimeoutMs,
     }),
-    bootTimeoutMs: options.bootTimeoutMs,
-  });
+    ...(proxy === undefined ? {} : { proxy }),
+  };
 }

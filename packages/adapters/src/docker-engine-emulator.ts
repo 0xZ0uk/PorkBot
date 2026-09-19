@@ -55,7 +55,11 @@ interface EmulatedContainer {
   readonly image: string;
   readonly labels: Readonly<Record<string, string>>;
   readonly network: string | undefined;
+  /** Every network the container is attached to, primary first. */
+  readonly networks: Set<string>;
   readonly volume: { readonly name: string; readonly mountPath: string } | undefined;
+  /** True when the create spec declared a healthcheck, so inspect reports health. */
+  readonly healthchecked: boolean;
   state: "created" | "running" | "exited";
   /** When set, `start` reports `starting` until this wall-clock time. */
   readyAt: number;
@@ -475,7 +479,68 @@ export class DockerEngineEmulator {
       return;
     }
 
+    if (method === "POST" && segments.length === 3 && segments[2] === "connect") {
+      const network = this.#networks.get(decodeURIComponent(segments[1] ?? ""));
+      const record = body as { Container?: unknown } | undefined;
+      const containerId = typeof record?.Container === "string" ? record.Container : "";
+      const container = this.#find(containerId);
+
+      if (network === undefined) {
+        dockerError(response, 404, `network ${decodeURIComponent(segments[1] ?? "")} not found`);
+        return;
+      }
+
+      if (container === undefined) {
+        dockerError(response, 404, `No such container: ${containerId}`);
+        return;
+      }
+
+      if (container.networks.has(network.name)) {
+        dockerError(
+          response,
+          403,
+          `container ${container.id} is already connected to network ${network.name}`,
+        );
+        return;
+      }
+
+      container.networks.add(network.name);
+      response.writeHead(200);
+      response.end();
+      return;
+    }
+
     dockerError(response, 404, `page not found: ${url.pathname}`);
+  }
+
+  /** Every network a container is attached to, for sidecar assertions. */
+  attachmentsOf(nameOrId: string): readonly string[] {
+    const container = this.#find(nameOrId);
+
+    return container === undefined ? [] : [...container.networks];
+  }
+
+  /**
+   * Every file the emulated container's writable layers hold, for assertions
+   * about what a machine or a sidecar can and cannot read.
+   */
+  filesOf(nameOrId: string): ReadonlyMap<string, string> {
+    return this.#find(nameOrId)?.files ?? new Map<string, string>();
+  }
+
+  /**
+   * Registers a network without going through the plan guard, for the
+   * deployment's egress network: a proxy sidecar's second leg is an ordinary
+   * network, never a computer's isolated one.
+   */
+  addNetwork(name: string): void {
+    this.#networks.set(name, {
+      id: `network-${this.#nextId++}`,
+      name,
+      driver: "bridge",
+      internal: false,
+      gatewayMode: "nat",
+    });
   }
 
   async #container(
@@ -612,6 +677,7 @@ export class DockerEngineEmulator {
       | {
           readonly Image?: unknown;
           readonly Labels?: unknown;
+          readonly Healthcheck?: unknown;
           readonly HostConfig?:
             { readonly Binds?: unknown; readonly NetworkMode?: unknown } | undefined;
         }
@@ -657,17 +723,20 @@ export class DockerEngineEmulator {
       this.#volumes.set(volume.name, volume.files);
     }
 
+    const network =
+      typeof record?.HostConfig?.NetworkMode === "string"
+        ? record.HostConfig.NetworkMode
+        : undefined;
     const id = `container-${this.#nextId++}`;
     this.#containers.set(id, {
       id,
       name,
       image,
       labels,
-      network:
-        typeof record?.HostConfig?.NetworkMode === "string"
-          ? record.HostConfig.NetworkMode
-          : undefined,
+      network,
+      networks: new Set(network === undefined ? [] : [network]),
       volume: volume === undefined ? undefined : { name: volume.name, mountPath: volume.mountPath },
+      healthchecked: typeof record?.Healthcheck === "object" && record.Healthcheck !== null,
       state: "created",
       readyAt: 0,
       files: volume?.files ?? new Map<string, string>(),
@@ -760,6 +829,14 @@ export class DockerEngineEmulator {
 
     if (container.readyAt > Date.now()) {
       return { Running: true, Status: "running", Health: { Status: "starting" } };
+    }
+
+    // A container that declared a healthcheck reports one; the emulator cannot
+    // run the probe, so a running container with a declared check is healthy
+    // once its boot window (if any) has passed. That is the shape the provider
+    // reads — `starting` until the check could have run, then `healthy`.
+    if (container.healthchecked) {
+      return { Running: true, Status: "running", Health: { Status: "healthy" } };
     }
 
     return { Running: true, Status: "running" };

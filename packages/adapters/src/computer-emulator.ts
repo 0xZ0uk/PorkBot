@@ -1,14 +1,27 @@
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type {
   ComputerExecRequest,
   ComputerExecResult,
   ComputerFrame,
   ComputerInput,
   ComputerProvider,
+  ComputerProxyEndpoint,
+  ComputerProxyGrant,
   ComputerRef,
   ComputerSnapshot,
   ComputerStatus,
+  CredentialProxyAdmin,
 } from "@porkbot/adapter-kit";
+import type { SafeFetch } from "@porkbot/effect";
+import {
+  createCredentialProxyServer,
+  proxyGrantFileName,
+  serializeProxyGrant,
+} from "./credential-proxy.ts";
+import type { CredentialProxyServer } from "./credential-proxy.ts";
 import { ComputerProviderError } from "./computer-errors.ts";
 import { computerSnapshotKey } from "./computer-snapshot-store.ts";
 import { runShellCommand } from "./computer-shell.ts";
@@ -96,11 +109,37 @@ export interface RecordedBrowserAction {
   readonly text?: string | undefined;
 }
 
+/**
+ * The emulated computer's credential proxy (slice 7.8, PRD decision 29). When
+ * configured, every computer this emulator serves gets a real credential-proxy
+ * server on loopback, so a run's grant, its capability token and its allowlist
+ * are exercised over real HTTP with no daemon and no keys. The upstream leg is
+ * injectable for the same reason the model emulator's endpoint is: a test can
+ * record exactly what crossed the proxy's wire without leaving the process.
+ */
+export interface ComputerEmulatorProxyOptions {
+  /** The HMAC key a run's capability tokens are signed with. */
+  readonly tokenSecret: string | Uint8Array;
+  /** The upstream leg; `safeFetch` by default, injected so tests record calls. */
+  readonly fetch?: SafeFetch | undefined;
+  /** The clock, in whole seconds; injected in tests. */
+  readonly nowSeconds?: (() => number) | undefined;
+}
+
 export interface ComputerEmulatorOptions {
   /** The agent's home directory; defaults to `DEFAULT_COMPUTER_HOME`. */
   readonly home?: string | undefined;
   /** Wall-clock milliseconds for frame timestamps; defaults to the epoch. */
   readonly now?: (() => number) | undefined;
+  /** Present, the emulator runs one real credential proxy per computer. */
+  readonly proxy?: ComputerEmulatorProxyOptions | undefined;
+}
+
+/** One computer's running proxy: its server, its grant directory and the runs on it. */
+interface EmulatedProxy {
+  readonly server: CredentialProxyServer;
+  readonly grantDir: string;
+  readonly runIds: Set<string>;
 }
 
 function normalizeUrl(url: string): string | undefined {
@@ -154,6 +193,16 @@ function screenSvg(state: {
 export class ComputerEmulator implements ComputerProvider {
   readonly #home: string;
   readonly #now: () => number;
+  readonly #proxyOptions: ComputerEmulatorProxyOptions | undefined;
+  /** One proxy per computer, created the first time a run asks for one. */
+  readonly #proxies = new Map<string, EmulatedProxy>();
+  /**
+   * The credential-proxy administration (slice 7.8), present only when the
+   * emulator was configured with a key. It runs the shipped proxy server, not
+   * a mock: `grant` writes a grant file the server reads on every request and
+   * `revoke` removes it, so revocation is observable the moment it happens.
+   */
+  readonly proxy?: CredentialProxyAdmin;
   readonly #instances = new Map<string, ComputerInstance>();
   /** The bot each computer belongs to, so `list()` can report a full reference. */
   readonly #botIds = new Map<string, string>();
@@ -176,12 +225,36 @@ export class ComputerEmulator implements ComputerProvider {
   constructor(options: ComputerEmulatorOptions = {}) {
     this.#home = options.home ?? DEFAULT_COMPUTER_HOME;
     this.#now = options.now ?? (() => 0);
+    this.#proxyOptions = options.proxy;
 
     if (!this.#home.startsWith("/") || this.#home === "/") {
       throw new RangeError(
         `home must be an absolute path below the root, received "${this.#home}"`,
       );
     }
+
+    if (options.proxy !== undefined) {
+      this.proxy = {
+        grant: (computer, grant) => this.#grantProxy(computer, grant),
+        revoke: (computer, runId) => this.#revokeProxy(computer, runId),
+        endpoint: (computer) => this.#proxyEndpoint(computer),
+      };
+    }
+  }
+
+  /**
+   * Stops every proxy server this emulator started and removes its grant
+   * directory. A test that configured a proxy calls this with the emulator; a
+   * machine that is stopped or destroyed releases its proxy on its own, since
+   * a parked machine's grants are as gone as a stopped sidecar's tmpfs.
+   */
+  async close(): Promise<void> {
+    const computers = [...this.#proxies.keys()].map((computerId) => ({
+      computerId,
+      botId: this.#botIds.get(computerId) ?? "",
+    }));
+
+    await Promise.all(computers.map((computer) => this.#closeProxy(computer)));
   }
 
   /** Every command received, oldest first. */
@@ -247,6 +320,10 @@ export class ComputerEmulator implements ComputerProvider {
     if (instance !== undefined) {
       instance.state = "stopped";
     }
+
+    // A parked machine's proxy parks with it, exactly as the Docker sidecar
+    // does: its grants were memory, and memory does not survive a stop.
+    await this.#closeProxy(computer);
 
     return this.#status(computer);
   }
@@ -345,6 +422,7 @@ export class ComputerEmulator implements ComputerProvider {
   }
 
   async destroy(computer: ComputerRef): Promise<void> {
+    await this.#closeProxy(computer);
     this.#instances.delete(computer.computerId);
     this.#botIds.delete(computer.computerId);
   }
@@ -378,6 +456,92 @@ export class ComputerEmulator implements ComputerProvider {
     } else if (input.type === "text") {
       instance.browser.typedBuffer += input.text;
     }
+  }
+
+  /** The proxy configuration, or a wiring defect if a proxy method ran without one. */
+  #proxyConfiguration(): ComputerEmulatorProxyOptions {
+    if (this.#proxyOptions === undefined) {
+      throw new Error("the emulator was asked for a credential proxy without one configured");
+    }
+
+    return this.#proxyOptions;
+  }
+
+  /** One computer's proxy, started on first use; its URL is stable while it lives. */
+  async #ensureProxy(computer: ComputerRef): Promise<EmulatedProxy> {
+    const existing = this.#proxies.get(computer.computerId);
+
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const configuration = this.#proxyConfiguration();
+    const grantDir = await mkdtemp(path.join(tmpdir(), "porkbot-emulator-proxy-"));
+    const server = await createCredentialProxyServer({
+      tokenSecret: configuration.tokenSecret,
+      computer,
+      grantDir,
+      host: "127.0.0.1",
+      port: 0,
+      ...(configuration.fetch === undefined ? {} : { fetch: configuration.fetch }),
+      ...(configuration.nowSeconds === undefined ? {} : { nowSeconds: configuration.nowSeconds }),
+    });
+    const proxy: EmulatedProxy = { server, grantDir, runIds: new Set<string>() };
+    this.#proxies.set(computer.computerId, proxy);
+
+    return proxy;
+  }
+
+  async #closeProxy(computer: ComputerRef): Promise<void> {
+    const proxy = this.#proxies.get(computer.computerId);
+
+    if (proxy === undefined) {
+      return;
+    }
+
+    this.#proxies.delete(computer.computerId);
+    await proxy.server.close();
+    await rm(proxy.grantDir, { recursive: true, force: true });
+  }
+
+  async #grantProxy(
+    computer: ComputerRef,
+    grant: ComputerProxyGrant,
+  ): Promise<ComputerProxyEndpoint> {
+    // The machine has to be running for its proxy to be reachable; a stopped
+    // machine's sidecar is stopped with it.
+    this.#running(computer);
+    const proxy = await this.#ensureProxy(computer);
+
+    await writeFile(
+      path.join(proxy.grantDir, proxyGrantFileName(grant.runId)),
+      serializeProxyGrant(grant),
+    );
+    proxy.runIds.add(grant.runId);
+
+    return { url: proxy.server.url };
+  }
+
+  async #revokeProxy(computer: ComputerRef, runId: string): Promise<void> {
+    const proxy = this.#proxies.get(computer.computerId);
+
+    if (proxy === undefined) {
+      // The proxy is gone, so the grant is gone: the revoke is already done.
+      return;
+    }
+
+    await rm(path.join(proxy.grantDir, proxyGrantFileName(runId)), { force: true });
+    proxy.runIds.delete(runId);
+  }
+
+  async #proxyEndpoint(computer: ComputerRef): Promise<ComputerProxyEndpoint | undefined> {
+    const instance = this.#instances.get(computer.computerId);
+
+    if (instance === undefined || instance.state !== "running") {
+      return undefined;
+    }
+
+    return { url: (await this.#ensureProxy(computer)).server.url };
   }
 
   #createInstance(): ComputerInstance {

@@ -405,6 +405,47 @@ export type {
   ScreenCapabilityRejection,
 } from "./screen-capability.ts";
 
+// Proxy capabilities (slice 7.8, PRD decision 29; audit P1 item 7). The token a
+// sandboxed command holds in place of a credential: HMAC-signed, bound to one
+// run and one computer, expired within a bounded lifetime, and verified by the
+// computer's proxy alone. It is a capability, not a credential — it names no
+// upstream and carries no key — and settling the run removes the grant the
+// token points at, so an unexpired token is still dead past its run's end.
+export {
+  createProxyCapabilityCodec,
+  DEFAULT_PROXY_CAPABILITY_TTL_SECONDS,
+  MAX_PROXY_CAPABILITY_LENGTH,
+  MAX_PROXY_CAPABILITY_TTL_SECONDS,
+} from "./proxy-capability.ts";
+export type {
+  ProxyCapabilityBinding,
+  ProxyCapabilityCheck,
+  ProxyCapabilityCodec,
+  ProxyCapabilityCodecOptions,
+  ProxyCapabilityExpectation,
+  ProxyCapabilityRejection,
+} from "./proxy-capability.ts";
+
+// The run-scoped grant (slice 7.8, PRD decision 29): the composition that
+// resolves a run's credentials server-side, writes them into the computer's
+// proxy and gives the run's commands a capability instead. A provider without
+// a proxy is a typed `not_found`; a missing credential never reaches a log
+// line; and revoking the grant is the run's settle path, not a sweep.
+export {
+  createRunCredentialProxy,
+  RUN_PROXY_TOKEN_ENV,
+  RUN_PROXY_URL_ENV,
+  RunProxyCredentialError,
+  RunProxyUnavailableError,
+} from "./run-credential-proxy.ts";
+export type {
+  OpenRunCredentialProxyRequest,
+  RunCredentialProxy,
+  RunCredentialProxyHandle,
+  RunCredentialProxyOptions,
+  RunProxyUpstreamPlan,
+} from "./run-credential-proxy.ts";
+
 // Untrusted ingestion, egress and dangerous actions (slices 10.1 and 10.2,
 // PRD decision 30; story 40). The danger guard is the policy's enforcement
 // edge: `@porkbot/core` owns the register of dangerous classes, and a flagged

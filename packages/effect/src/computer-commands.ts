@@ -146,6 +146,14 @@ export interface FencedComputerCommandsOptions {
   readonly runLeaseTtlSeconds: number;
   /** The computer lease's TTL, in whole seconds; must not exceed the run's. */
   readonly computerLeaseTtlSeconds: number;
+  /**
+   * The per-command environment (slice 7.8): what the run's capability is
+   * carried in, built fresh for each command from that command's own budget.
+   * It is never a credential — the run's credentials live in the computer's
+   * proxy, and this environment names the proxy and its short-lived token. A
+   * run without a proxy leaves it out, and the provider passes no environment.
+   */
+  readonly environment?: ((timeoutMs: number) => Readonly<Record<string, string>>) | undefined;
   /** The clock backing the `busy` detail; injected for tests, `Date.now` by default. */
   readonly now?: (() => number) | undefined;
 }
@@ -248,12 +256,15 @@ export function createFencedComputerCommands(
           ),
         );
 
+        const environment = options.environment?.(request.timeoutMs);
+
         const result = yield* Effect.tryPromise({
           try: () =>
             options.provider.exec({
               computer: request.computer,
               command: request.command,
               timeoutMs: request.timeoutMs,
+              ...(environment === undefined ? {} : { environment }),
             }),
           catch: (error) => error,
         }).pipe(

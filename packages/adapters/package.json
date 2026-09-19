@@ -31,6 +31,7 @@
     "@porkbot/adapter-kit": "workspace:*",
     "@porkbot/core": "workspace:*",
     "@porkbot/effect": "workspace:*",
+    "@porkbot/logging": "workspace:*",
     "effect": "3.22.2"
   }
 }

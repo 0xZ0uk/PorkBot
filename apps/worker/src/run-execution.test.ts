@@ -317,6 +317,56 @@ describe("the run execution harness", () => {
     expect(runner.abandoned[0]).toMatchObject({ fence: 1 });
   });
 
+  it("revokes a registered proxy grant on completion, on failure and on a lost lease", async () => {
+    const completed: string[] = [];
+    const completedRunner = fakeRepositories();
+    await createRunExecutor({
+      heartbeatIntervalMs: 5,
+      work: (execution) =>
+        Effect.sync(() => {
+          execution.registerProxy?.({
+            revoke: async () => {
+              completed.push("run-1");
+            },
+          });
+
+          return { status: "completed" } as const;
+        }),
+    })(executionFor(completedRunner));
+
+    const failed: string[] = [];
+    const failedRunner = fakeRepositories();
+    await createRunExecutor({
+      heartbeatIntervalMs: 5,
+      work: (execution) =>
+        Effect.sync(() => {
+          execution.registerProxy?.({
+            revoke: async () => {
+              failed.push("run-1");
+            },
+          });
+        }).pipe(Effect.zipRight(Effect.fail(new Error("the computer is gone")))),
+    })(executionFor(failedRunner));
+
+    const interrupted: string[] = [];
+    const interruptedRunner = fakeRepositories({ heartbeatFails: true });
+    await createRunExecutor({
+      heartbeatIntervalMs: 5,
+      work: (execution) =>
+        Effect.sync(() => {
+          execution.registerProxy?.({
+            revoke: async () => {
+              interrupted.push("run-1");
+            },
+          });
+        }).pipe(Effect.zipRight(Effect.never)),
+    })(executionFor(interruptedRunner));
+
+    expect(completed).toEqual(["run-1"]);
+    expect(failed).toEqual(["run-1"]);
+    expect(interrupted).toEqual(["run-1"]);
+  });
+
   it("keeps the run alive when a subscriber of its events is interrupted", async () => {
     const runner = fakeRepositories();
     const script: readonly EmulatorStep[] = [

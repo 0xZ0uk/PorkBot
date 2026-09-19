@@ -33,10 +33,14 @@ export type {
   ComputerFrame,
   ComputerInput,
   ComputerProvider,
+  ComputerProxyEndpoint,
+  ComputerProxyGrant,
   ComputerRef,
   ComputerSnapshot,
   ComputerState,
   ComputerStatus,
+  CredentialProxyAdmin,
+  ProxyUpstreamGrant,
 } from "./computer.ts";
 export { COMPUTER_STATES, snapshotChecksumPattern } from "./computer.ts";
 

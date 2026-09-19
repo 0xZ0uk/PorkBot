@@ -1,5 +1,10 @@
 import { Effect } from "effect";
-import { ComputerEmulator, emulatorAgentRuntimeLayer } from "@porkbot/adapters";
+import {
+  ComputerEmulator,
+  createMemoryCredentialStore,
+  emulatorAgentRuntimeLayer,
+  proxyTokenHeader,
+} from "@porkbot/adapters";
 import type { EmulatorStep } from "@porkbot/adapters";
 import { createRepositories } from "@porkbot/db";
 import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@porkbot/db";
@@ -7,11 +12,15 @@ import {
   consumeRunSession,
   createComputerTools,
   createFencedComputerCommands,
+  createRunCredentialProxy,
   createRunEventRecorder,
   createToolDispatcher,
   liveRunsLayer,
+  RUN_PROXY_TOKEN_ENV,
+  RUN_PROXY_URL_ENV,
   withLiveRun,
 } from "@porkbot/effect";
+import type { SafeFetch } from "@porkbot/effect";
 import type {
   ComputerLease,
   ComputerLeaseAcquisition,
@@ -25,7 +34,7 @@ import type {
 import { parseEgressAllowlist } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import { createLogger } from "@porkbot/logging";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { MemoryStorage } from "../test/memory-storage.ts";
 import { createRunExecutor } from "./run-execution.ts";
 import type { RunExecution } from "./jobs/run-execute.ts";
@@ -51,6 +60,10 @@ import { materializeRunAttachments } from "./run-attachments.ts";
 
 const computer = { computerId: "computer-1", botId: "bot-1" };
 const pageUrl = "https://docs.example.invalid/start";
+const proxySecret = "test-proxy-capability-secret";
+const modelOrigin = "https://model.example.test";
+const modelCredentialName = "model-key";
+const modelCredentialValue = "sk-model-secret-marker";
 const attachment = {
   id: "41a2f8a2-4a5a-4a6e-8f3a-2f5c9d1b7e4c",
   storageKey: "files/space-1/object/report.txt",
@@ -70,7 +83,9 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     errorCode: null,
     leaseOwner: "job-1",
     leaseFence: 1,
-    leaseExpiresAt: new Date(120_000),
+    // A live lease, because slice 7.8's grant deadline is read against the
+    // wall clock the proxy holds rather than this record's epoch clock.
+    leaseExpiresAt: new Date(Date.now() + 120_000),
     stopRequestedAt: null,
     lastHeartbeatAt: null,
     lastProgressAt: null,
@@ -246,6 +261,45 @@ interface OfflineRun {
   readonly recorded: readonly RunEvent[];
   readonly updates: FakeRunner["updates"];
   readonly leases: MemoryComputerLeases;
+  /** Every command the emulated sandbox received, in order. */
+  readonly commands: readonly {
+    readonly command: string;
+    readonly environment?: Readonly<Record<string, string>> | undefined;
+  }[];
+  /** What the proxy put on the wire upstream, recorded by the injected leg. */
+  readonly upstreamCalls: readonly {
+    readonly url: string;
+    readonly headers: Readonly<Record<string, string>>;
+  }[];
+  /** Every capability environment handed to a command, in order. */
+  readonly environments: readonly Readonly<Record<string, string>>[];
+  /** A call a holder of the run's capability made before the run settled. */
+  readonly capabilityCallStatus: number;
+}
+
+/** Every emulator this suite started, so each test's proxy servers are released. */
+const runningEmulators: ComputerEmulator[] = [];
+
+afterEach(async () => {
+  await Promise.all(runningEmulators.splice(0).map(async (emulator) => emulator.close()));
+});
+
+/** The upstream leg: records what crossed, answers a fixed model response. */
+function recordingUpstream(calls: OfflineRun["upstreamCalls"][number][]): SafeFetch {
+  return async (url, init) => {
+    const headers: Record<string, string> = {};
+
+    for (const [name, value] of Object.entries((init?.headers ?? {}) as Record<string, string>)) {
+      headers[name.toLowerCase()] = value;
+    }
+
+    calls.push({ url: url.toString(), headers });
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
 }
 
 async function runOffline(): Promise<OfflineRun> {
@@ -253,11 +307,25 @@ async function runOffline(): Promise<OfflineRun> {
   const runner = fakeRepositories(leases);
   const storage = new MemoryStorage();
   storage.putFrom(attachment.storageKey, "the attached brief", "text/plain");
-  const emulator = new ComputerEmulator();
+  const upstreamCalls: OfflineRun["upstreamCalls"][number][] = [];
+  const emulator = new ComputerEmulator({
+    proxy: { tokenSecret: proxySecret, fetch: recordingUpstream(upstreamCalls) },
+  });
+  runningEmulators.push(emulator);
   emulator
     .servePage({ url: pageUrl, title: "Start here", text: "The report is due today." })
     .serveBrowserAction({ url: pageUrl, selector: "#next", action: "click" });
   await emulator.ensure(computer);
+
+  const credentials = createMemoryCredentialStore([[modelCredentialName, modelCredentialValue]]);
+  const runProxy = createRunCredentialProxy({
+    provider: emulator,
+    credentials,
+    tokenSecret: proxySecret,
+  });
+  /** What the proxy-holding command actually got, kept for the assertions. */
+  const commandEnvironments: Readonly<Record<string, string>>[] = [];
+  let capabilityCallStatus = 0;
 
   const recorded: RunEvent[] = [];
   const script: readonly EmulatorStep[] = [
@@ -295,6 +363,34 @@ async function runOffline(): Promise<OfflineRun> {
       Effect.gen(function* () {
         const ledger = memoryLedger();
         const owner = execution.run.leaseOwner ?? "job-1";
+        // The run's grant (slice 7.8): the credential is resolved server-side
+        // into the computer's proxy, and the commands below carry only the
+        // proxy's URL and a per-command capability. The grant's deadline is
+        // the run's own lease end.
+        const proxy = yield* Effect.tryPromise(() =>
+          runProxy.open({
+            computer,
+            runId: execution.run.id,
+            expiresAtSeconds: Math.floor(
+              (execution.run.leaseExpiresAt ?? new Date()).getTime() / 1_000,
+            ),
+            upstreams: [
+              { name: "model", origin: modelOrigin, credentialName: modelCredentialName },
+            ],
+          }),
+        );
+
+        // The harness owns revocation: registering here is the whole
+        // contract, and the settle path revokes whether the session completed,
+        // failed or lost its lease.
+        execution.registerProxy?.(proxy);
+        const environment = (timeoutMs: number): Readonly<Record<string, string>> => {
+          const built = proxy.environmentFor(timeoutMs);
+
+          commandEnvironments.push(built);
+          return built;
+        };
+
         const commands = createFencedComputerCommands({
           provider: emulator,
           ledger,
@@ -307,6 +403,7 @@ async function runOffline(): Promise<OfflineRun> {
           },
           runLeaseTtlSeconds: 120,
           computerLeaseTtlSeconds: 120,
+          environment,
         });
 
         // The message's attachment is placed in the home before the session
@@ -330,6 +427,22 @@ async function runOffline(): Promise<OfflineRun> {
           heartbeat: Effect.void,
         });
 
+        // What a holder of the run's capability does with it: a real HTTP call
+        // to the proxy while the grant is open. The credential crosses on the
+        // proxy's own upstream leg; the caller's request carries none.
+        const capability = proxy.environmentFor(30_000);
+        const response = yield* Effect.tryPromise(() =>
+          fetch(`${capability[RUN_PROXY_URL_ENV]}/u/model/v1/chat/completions`, {
+            method: "POST",
+            headers: {
+              [proxyTokenHeader]: capability[RUN_PROXY_TOKEN_ENV] ?? "",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ model: "test-model" }),
+          }),
+        );
+        capabilityCallStatus = response.status;
+
         return yield* withLiveRun(
           execution.run.id,
           emulatorAgentRuntimeLayer(startRequest(execution.run.id), script, { tools }),
@@ -348,7 +461,15 @@ async function runOffline(): Promise<OfflineRun> {
 
   await execute(executionFor(runner));
 
-  return { recorded: recorded as readonly RunEvent[], updates: runner.updates, leases };
+  return {
+    recorded: recorded as readonly RunEvent[],
+    updates: runner.updates,
+    leases,
+    commands: emulator.commands,
+    upstreamCalls,
+    environments: commandEnvironments,
+    capabilityCallStatus,
+  };
 }
 
 function toolResult(recorded: readonly RunEvent[], callId: string): unknown {
@@ -436,5 +557,46 @@ describe("the first full offline run", () => {
     expect(browser.text.path).toBe("computer_output");
     expect(browser.text.origin).toBe(pageUrl);
     expect(browser.text.content).toContain("The report is due today.");
+  });
+
+  it("carries only a proxy capability into the sandbox, never the model credential", async () => {
+    const { commands, environments, upstreamCalls, capabilityCallStatus } = await runOffline();
+
+    // The capability worked: a real HTTP call through the proxy reached the
+    // upstream with the credential the proxy injected.
+    expect(capabilityCallStatus).toBe(200);
+    expect(upstreamCalls).toHaveLength(1);
+    expect(upstreamCalls[0]?.url).toBe(`${modelOrigin}/v1/chat/completions`);
+    expect(upstreamCalls[0]?.headers["authorization"]).toBe(`Bearer ${modelCredentialValue}`);
+
+    // Every command carried the proxy's address and its own short-lived
+    // token, and nothing a credential could hide in.
+    expect(environments.length).toBeGreaterThan(0);
+
+    for (const environment of environments) {
+      expect(environment[RUN_PROXY_URL_ENV]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(environment[RUN_PROXY_TOKEN_ENV]).toBeTruthy();
+      expect(Object.keys(environment).sort()).toEqual([RUN_PROXY_TOKEN_ENV, RUN_PROXY_URL_ENV]);
+    }
+
+    const sandboxView = JSON.stringify({ commands, environments });
+    expect(sandboxView).not.toContain(modelCredentialValue);
+    expect(sandboxView).not.toContain(modelOrigin);
+  });
+
+  it("revokes the run's grant when the run ends, so an unexpired capability dies with it", async () => {
+    const { environments } = await runOffline();
+    const last = environments.at(-1);
+
+    expect(last).toBeDefined();
+
+    const response = await fetch(`${last?.[RUN_PROXY_URL_ENV] ?? ""}/u/model/v1/models`, {
+      headers: { [proxyTokenHeader]: last?.[RUN_PROXY_TOKEN_ENV] ?? "" },
+    });
+
+    // The token still verifies — it is unexpired and bound to this computer —
+    // but the run it names has no grant any more, so the proxy refuses.
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "no_grant" });
   });
 });
