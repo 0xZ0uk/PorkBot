@@ -17,7 +17,7 @@
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node src/migrate-cli.ts"
+    "db:migrate": "varlock run -- node src/migrate-cli.ts"
   },
   "dependencies": {
     "@porkbot/adapter-kit": "workspace:*",
@@ -38,6 +38,7 @@
     "effect": "3.22.2",
     "eslint": "10.10.0",
     "typescript": "7.0.2",
+    "varlock": "1.20.0",
     "vitest": "5.0.1"
   }
 }
