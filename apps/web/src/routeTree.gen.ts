@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
+import { Route as AppThreadsThreadIdToolResultsRunIdCallIdRouteImport } from './routes/_app/threads.$threadId_.tool-results.$runId.$callId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -44,18 +45,26 @@ const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
   path: '/threads/$threadId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppThreadsThreadIdToolResultsRunIdCallIdRoute =
+  AppThreadsThreadIdToolResultsRunIdCallIdRouteImport.update({
+    id: '/threads/$threadId_/tool-results/$runId/$callId',
+    path: '/threads/$threadId/tool-results/$runId/$callId',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -65,12 +74,23 @@ export interface FileRoutesById {
   '/_auth/sign-up': typeof AuthSignUpRoute
   '/_app/': typeof AppIndexRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/_app/threads/$threadId_/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sign-in' | '/sign-up' | '/threads/$threadId'
+  fullPaths:
+    | '/'
+    | '/sign-in'
+    | '/sign-up'
+    | '/threads/$threadId'
+    | '/threads/$threadId/tool-results/$runId/$callId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sign-in' | '/sign-up' | '/threads/$threadId'
+  to:
+    | '/'
+    | '/sign-in'
+    | '/sign-up'
+    | '/threads/$threadId'
+    | '/threads/$threadId/tool-results/$runId/$callId'
   id:
     | '__root__'
     | '/_app'
@@ -79,6 +99,7 @@ export interface FileRouteTypes {
     | '/_auth/sign-up'
     | '/_app/'
     | '/_app/threads/$threadId'
+    | '/_app/threads/$threadId_/tool-results/$runId/$callId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -130,17 +151,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppThreadsThreadIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/threads/$threadId_/tool-results/$runId/$callId': {
+      id: '/_app/threads/$threadId_/tool-results/$runId/$callId'
+      path: '/threads/$threadId/tool-results/$runId/$callId'
+      fullPath: '/threads/$threadId/tool-results/$runId/$callId'
+      preLoaderRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
+  AppThreadsThreadIdToolResultsRunIdCallIdRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
+  AppThreadsThreadIdToolResultsRunIdCallIdRoute:
+    AppThreadsThreadIdToolResultsRunIdCallIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

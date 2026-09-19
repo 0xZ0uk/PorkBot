@@ -143,6 +143,7 @@ function stubRepositories(): UserRepositories {
       findByNonce: notExercised,
       steer: notExercised,
     },
+    toolResults: { read: notExercised },
     routines: {
       findById: vi.fn(async () => routine),
       list: vi.fn(async () => [routine]),

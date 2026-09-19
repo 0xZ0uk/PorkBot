@@ -71,6 +71,15 @@ export function createThreadsRouter(events: ThreadEventsService, service: Thread
     ),
   );
 
+  const toolResult = authenticated.threads.toolResult.handler(async ({ input, context }) =>
+    service.toolResult({
+      repositories: context.repositories,
+      threadId: input.threadId,
+      runId: input.runId,
+      callId: input.callId,
+    }),
+  );
+
   const subscribe = authenticated.threads.events.handler(
     async ({ input, context, lastEventId, signal }) =>
       frames(
@@ -90,6 +99,7 @@ export function createThreadsRouter(events: ThreadEventsService, service: Thread
     messages,
     send,
     clear,
+    toolResult,
     events: subscribe,
   });
 }
