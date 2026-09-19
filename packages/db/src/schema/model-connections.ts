@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { primaryKeyId, timestamps } from "./columns.ts";
 import { space } from "./tenancy.ts";
 
@@ -29,6 +38,13 @@ import { space } from "./tenancy.ts";
  * the space; deleting a connection leaves its bots' `model_connection_id` null
  * (the column's `on delete set null`), which is the same "no selection" state.
  *
+ * `last_used_at` is nullable because "never used" is a real answer. It is
+ * stamped by the API whenever a request leaves for the connection — the probe
+ * today, and the run executor's model selection when that integration lands —
+ * so the settings list can say which endpoint is actually in service. Only
+ * `porkbot_api` may write it; the worker's grant stays SELECT, so a job cannot
+ * move the timestamp of the connection it uses.
+ *
  * The checks are structural rather than decorative: a blank label or
  * credential name is not a name, a base URL must be http(s) and must not embed
  * credentials (the URL-safety module and the credential store own those
@@ -46,6 +62,7 @@ export const modelConnection = pgTable(
     credentialName: text("credential_name").notNull(),
     defaultModel: text("default_model"),
     isDefault: boolean("is_default").notNull().default(false),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     ...timestamps(),
   },
   (table) => [

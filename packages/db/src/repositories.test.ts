@@ -707,6 +707,7 @@ const connection: ModelConnectionRecord = {
   credentialName: "model-key",
   defaultModel: "fixture-model",
   isDefault: false,
+  lastUsedAt: null,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
@@ -859,6 +860,20 @@ describe("model connections", () => {
     await expect(
       createRepositories(owner, fakeDatabase()).modelConnections.delete("connection-9"),
     ).rejects.toMatchObject({ name: "NotFoundError", resource: "model connection" });
+  });
+
+  it("stamps a use on one scoped column and stays silent about a missing row", async () => {
+    const database = fakeDatabase();
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(store.markUsed("connection-1")).resolves.toBeUndefined();
+    expect(database.calls[0]?.text).toBe(
+      "update model_connection set last_used_at = now() where id = $1 and space_id = $2",
+    );
+    expect(database.calls[0]?.values).toEqual(["connection-1", "space-1"]);
+
+    await expect(store.markUsed("connection-9")).resolves.toBeUndefined();
+    expect(database.calls[1]?.values).toEqual(["connection-9", "space-1"]);
   });
 
   it("resolves a bot's selection through the system actor's space", async () => {

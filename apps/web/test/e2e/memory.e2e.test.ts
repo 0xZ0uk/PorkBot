@@ -11,6 +11,7 @@ import { createHttpMemoryTransport } from "../../src/transport.ts";
 import {
   fakeMemoryDocument,
   fakeMemoryRevision,
+  scriptedConnectionsTransport,
   scriptedThreadTransport,
   scriptedUsageTransport,
 } from "../fakes.ts";
@@ -84,6 +85,7 @@ async function mountMemory(api: ScriptedMemoryApi): Promise<MountedMemory> {
       threads: scriptedThreadTransport(),
       memory: createHttpMemoryTransport({ origin: api.url }),
       usage: scriptedUsageTransport(),
+      connections: scriptedConnectionsTransport(),
     },
     createMemoryHistory({ initialEntries: [`/bots/${botId}/memory`] }),
   );

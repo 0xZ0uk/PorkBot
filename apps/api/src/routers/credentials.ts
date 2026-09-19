@@ -14,6 +14,11 @@ import { authenticated } from "../gate.ts";
  * leaves the store except through `resolve`, which no procedure calls. The one
  * place a value exists is the write's request body, which is bounded by the
  * schema and the body cap before it reaches the store.
+ *
+ * `remove` is the revoke: a scoped delete by name that takes effect on the next
+ * resolve and answers the name it was addressed by. It reads and writes no
+ * value, so it works even when the keyring cannot unlock the store — an
+ * operator revoking after a key loss is exactly the case it must serve.
  */
 export function createCredentialsRouter() {
   const list = authenticated.credentials.list.handler(async ({ context }) => {
@@ -24,7 +29,13 @@ export function createCredentialsRouter() {
     toView(await context.repositories.credentials.store(input.name, input.value)),
   );
 
-  return authenticated.credentials.router({ list, store });
+  const remove = authenticated.credentials.remove.handler(async ({ input, context }) => {
+    await context.repositories.credentials.remove(input.name);
+
+    return { name: input.name };
+  });
+
+  return authenticated.credentials.router({ list, store, remove });
 }
 
 function toView(summary: CredentialSummary) {

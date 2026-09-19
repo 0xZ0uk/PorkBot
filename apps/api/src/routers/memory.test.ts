@@ -189,6 +189,7 @@ function stubRepositories(memory: MemoryStoreStub): UserRepositories {
       update: notExercised,
       setDefault: notExercised,
       delete: notExercised,
+      markUsed: notExercised,
     },
     mcp: {
       list: notExercised,

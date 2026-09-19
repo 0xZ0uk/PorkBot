@@ -9,7 +9,11 @@ import {
   computersStatusContract,
   computersStopContract,
 } from "./computers.ts";
-import { credentialsListContract, credentialsStoreContract } from "./credentials.ts";
+import {
+  credentialsListContract,
+  credentialsRemoveContract,
+  credentialsStoreContract,
+} from "./credentials.ts";
 import {
   modelConnectionsCreateContract,
   modelConnectionsListContract,
@@ -160,6 +164,7 @@ export const appContract = {
   credentials: {
     list: credentialsListContract,
     store: credentialsStoreContract,
+    remove: credentialsRemoveContract,
   },
   modelConnections: {
     list: modelConnectionsListContract,

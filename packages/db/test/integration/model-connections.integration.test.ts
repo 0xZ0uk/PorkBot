@@ -121,6 +121,26 @@ describe("the model connection row", () => {
     await expect(store.findById(created.id)).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it("stamps a use on its own row and leaves a foreign row's last use alone", async () => {
+    const store = repositories(spaceA, aliceId).modelConnections;
+    const created = await createConnection(spaceA, `Stamped ${randomUUID()}`);
+
+    await expect(store.findById(created.id)).resolves.toMatchObject({ lastUsedAt: null });
+
+    await store.markUsed(created.id);
+    await expect(store.findById(created.id)).resolves.toMatchObject({
+      lastUsedAt: expect.any(Date) as Date,
+    });
+
+    // A foreign id is a scoped no-op: no cross-space write, and no throw that
+    // a completed probe would have to absorb.
+    const foreign = await createConnection(spaceB, `Foreign ${randomUUID()}`);
+    await store.markUsed(foreign.id);
+    await expect(
+      repositories(spaceB, bobId).modelConnections.findById(foreign.id),
+    ).resolves.toMatchObject({ lastUsedAt: null });
+  });
+
   it("refuses a label already used in the space", async () => {
     const label = `Duplicate ${randomUUID()}`;
     await createConnection(spaceA, label);

@@ -4,9 +4,12 @@ import type { ApprovalDecision, RunEvent, ToolResultArtifact } from "@porkbot/co
 import { colors } from "@porkbot/tokens";
 import type {
   Bot,
+  Credential,
   MemoryDocumentView,
   MemoryRevisionView,
   Message,
+  ModelConnection,
+  ModelProbe,
   RunGet,
   Thread,
   ThreadEventsCallOptions,
@@ -14,6 +17,7 @@ import type {
   UsageBot,
   UsageTotalsView,
 } from "@porkbot/contracts";
+import type { ConnectionsTransport } from "../src/connections.ts";
 import type { MemoryTransport } from "../src/memory.ts";
 import type { ConsoleTransport, UsageTransport } from "../src/transport.ts";
 
@@ -605,6 +609,165 @@ export function scriptedUsageTransport(
       }
 
       return options.usage ?? fakeUsage({ botId });
+    },
+  };
+}
+
+/** One stored credential as the masked list answers it. */
+export function fakeCredential(overrides: Partial<Credential> = {}): Credential {
+  return {
+    id: "credential-1",
+    name: "model-key",
+    maskedValue: "••••cdef",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** One model connection as the settings list answers it. */
+export function fakeConnection(overrides: Partial<ModelConnection> = {}): ModelConnection {
+  return {
+    id: "connection-1",
+    label: "Local models",
+    baseUrl: "https://models.example.invalid/v1",
+    credentialName: "model-key",
+    credentialMaskedValue: "••••cdef",
+    defaultModel: "fixture-model",
+    isDefault: false,
+    lastUsedAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A probe that answered: reachable by default, with one streaming model. */
+export function fakeProbe(overrides: Partial<ModelProbe> = {}): ModelProbe {
+  return {
+    reachable: true,
+    models: [{ id: "fixture-model" }],
+    streaming: true,
+    failure: null,
+    ...overrides,
+  };
+}
+
+export interface ScriptedConnectionsTransportOptions {
+  readonly connections?: readonly ModelConnection[];
+  readonly credentials?: readonly Credential[];
+  readonly bots?: readonly Bot[];
+  /** What every probe answers; defaults to a reachable streaming model. */
+  readonly probe?: ModelProbe;
+  /** Throws from the list reads, for the refusal path. */
+  readonly listFailure?: unknown;
+  /** Throws from every write, for the write-refusal path. */
+  readonly writeFailure?: unknown;
+}
+
+/**
+ * The connections screen's transport fake. It applies the same decisions the
+ * durable stores do — a revoke removes the credential, a disconnect removes
+ * the connection, a default swap moves the flag, a bot assignment moves the
+ * bot — so a controller or screen test observes state change the way a reload
+ * after the real write would show it.
+ */
+export function scriptedConnectionsTransport(
+  options: ScriptedConnectionsTransportOptions = {},
+): ConnectionsTransport {
+  let connections = [...(options.connections ?? [])];
+  let credentials = [...(options.credentials ?? [])];
+  let bots = [...(options.bots ?? [])];
+
+  function writeGuard(): void {
+    if (options.writeFailure !== undefined) {
+      throw options.writeFailure;
+    }
+  }
+
+  function listGuard(): void {
+    if (options.listFailure !== undefined) {
+      throw options.listFailure;
+    }
+  }
+
+  return {
+    listConnections: async () => {
+      listGuard();
+
+      return connections;
+    },
+    listCredentials: async () => {
+      listGuard();
+
+      return credentials;
+    },
+    listBots: async () => {
+      listGuard();
+
+      return bots;
+    },
+    createConnection: async (input) => {
+      writeGuard();
+
+      const connection = fakeConnection({
+        id: `connection-${String(connections.length + 1)}`,
+        label: input.label,
+        baseUrl: input.baseUrl,
+        credentialName: input.credentialName,
+        credentialMaskedValue:
+          credentials.find((credential) => credential.name === input.credentialName)?.maskedValue ??
+          null,
+        defaultModel: input.defaultModel,
+      });
+      connections = [...connections, connection];
+
+      return connection;
+    },
+    storeCredential: async (input) => {
+      writeGuard();
+
+      const credential = fakeCredential({ id: `credential-${input.name}`, name: input.name });
+      credentials = [...credentials.filter((existing) => existing.name !== input.name), credential];
+
+      return credential;
+    },
+    revokeCredential: async (name) => {
+      writeGuard();
+
+      credentials = credentials.filter((credential) => credential.name !== name);
+    },
+    setDefaultConnection: async (id) => {
+      writeGuard();
+
+      connections = connections.map((connection) => ({
+        ...connection,
+        isDefault: connection.id === id,
+      }));
+
+      return connections.find((connection) => connection.id === id) ?? fakeConnection();
+    },
+    removeConnection: async (id) => {
+      writeGuard();
+
+      const removed = connections.find((connection) => connection.id === id);
+      connections = connections.filter((connection) => connection.id !== id);
+
+      return removed ?? fakeConnection();
+    },
+    probeConnection: async () => {
+      writeGuard();
+
+      return options.probe ?? fakeProbe();
+    },
+    setBotConnection: async ({ botId, connectionId }) => {
+      writeGuard();
+
+      bots = bots.map((bot) =>
+        bot.id === botId ? { ...bot, modelConnectionId: connectionId } : bot,
+      );
+
+      return bots.find((bot) => bot.id === botId) ?? fakeBot(botId, "Bot");
     },
   };
 }

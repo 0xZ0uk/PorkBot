@@ -172,14 +172,15 @@ export {
 } from "./runs.ts";
 export type { RunGet, RunLiveness, RunStop } from "./runs.ts";
 
-// Stored credentials (slices 9.1 and 9.2, PRD decision 10; stories 14 and 15):
-// the list surface answers masked summaries only and `store` takes a value in
-// and answers a mask back. No output schema has a field for a value, so "no
-// endpoint returns a full secret" is a property of the contract rather than a
-// promise about a handler.
+// Stored credentials (slices 9.1 through 9.3, PRD decision 10; stories 14 and
+// 15): the list surface answers masked summaries only, `store` takes a value in
+// and answers a mask back, and `remove` revokes by name. No output schema has a
+// field for a value, so "no endpoint returns a full secret" is a property of
+// the contract rather than a promise about a handler.
 export {
   credentialSchema,
   credentialsListContract,
+  credentialsRemoveContract,
   credentialsStoreContract,
 } from "./credentials.ts";
 export type { Credential } from "./credentials.ts";

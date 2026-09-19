@@ -259,6 +259,15 @@ export interface ModelConnectionWriter {
   setDefault(id: string): Promise<ModelConnectionRecord>;
   /** Removes the connection; bots that selected it fall back to the space default. */
   delete(id: string): Promise<ModelConnectionRecord>;
+  /**
+   * Records that a request left for the connection. The probe stamps it today;
+   * the run executor's model selection stamps the same column when runs select
+   * a connection, which is why the worker's grant will widen to this one update
+   * rather than the API owning a second timestamp. Scoped like every write and
+   * silent for an id the space does not hold, so a concurrent delete never
+   * turns a completed probe into a not-found.
+   */
+  markUsed(id: string): Promise<void>;
 }
 
 /**
@@ -695,6 +704,7 @@ export function createRepositories(
       update: (id, patch) => updateModelConnection(actor, database, id, patch),
       setDefault: (id) => setDefaultModelConnection(actor, database, id),
       delete: (id) => deleteModelConnection(actor, database, id),
+      markUsed: (id) => markModelConnectionUsed(actor, database, id),
     },
     memory: createMemoryStore(actor, database),
     usage: createUsageStore(actor, database),
@@ -1363,6 +1373,24 @@ async function deleteModelConnection(
   );
 
   return requiredRow(rows, "model connection", id);
+}
+
+/**
+ * The write half of a use: one column, one row, scoped to the actor's space.
+ * It deliberately does not read the row back or throw on a missing id — a
+ * delete racing a probe is not a reason to answer the probe with a 404 — and
+ * it leaves `updated_at` alone, because "last edited" and "last used" are
+ * different facts the settings list shows separately.
+ */
+async function markModelConnectionUsed(
+  actor: UserActor,
+  database: Queryable,
+  id: string,
+): Promise<void> {
+  await database.query(
+    "update model_connection set last_used_at = now() where id = $1 and space_id = $2",
+    [id, actor.spaceId],
+  );
 }
 
 /**
