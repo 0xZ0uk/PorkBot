@@ -230,9 +230,42 @@ export {
   createDockerComputerProvider,
   DEFAULT_COMPUTER_CEILINGS,
   DEFAULT_DOCKER_COMPUTER_HOME,
+  DEFAULT_DOCKER_PROXY_PORT,
+  DOCKER_PROXY_GRANT_DIR,
   dockerComputerLabels,
+  dockerComputerName,
+  dockerProxyLabel,
+  dockerProxyName,
 } from "./docker-computer.ts";
-export type { ComputerCeilings, DockerComputerProviderOptions } from "./docker-computer.ts";
+export type {
+  ComputerCeilings,
+  DockerComputerProviderOptions,
+  DockerProxyOptions,
+} from "./docker-computer.ts";
+
+// The credential proxy (slice 7.8, PRD decision 29; audit P1 item 7). The one
+// door credentialed egress takes out of a sandbox: the run's upstream keys live
+// in the proxy's grant directory — written only by the Docker socket holder,
+// through the daemon's archive API — and the sandbox holds a signed capability
+// instead. The proxy verifies the token, resolves the upstream by name against
+// the run's grant, and injects the credential headers on its own leg; nothing
+// sensitive is ever echoed, logged or returned. `proxy-main.ts` is the sidecar
+// entrypoint the Docker provider starts on the machine's isolated network.
+export {
+  createCredentialProxyServer,
+  FORBIDDEN_GRANT_HEADERS,
+  parseProxyGrantFile,
+  PROXY_MAX_GRANT_BYTES,
+  PROXY_MAX_REQUEST_BYTES,
+  PROXY_MAX_RESPONSE_BYTES,
+  PROXY_MAX_UPSTREAM_NAME_LENGTH,
+  PROXY_UPSTREAM_TIMEOUT_MS,
+  proxyGrantFileName,
+  proxyTokenHeader,
+  serializeProxyGrant,
+} from "./credential-proxy.ts";
+export type { CredentialProxyServer, CredentialProxyServerOptions } from "./credential-proxy.ts";
+export { proxySettingsFromEnvironment, startProxySidecar } from "./proxy-main.ts";
 export { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
 export { createDockerEngine, DockerEngineError } from "./docker-engine.ts";
 export type {

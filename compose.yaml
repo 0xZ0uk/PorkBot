@@ -175,6 +175,16 @@ services:
       PORKBOT_COMPUTER_ENDPOINT: ${PORKBOT_COMPUTER_ENDPOINT:-}
       PORKBOT_COMPUTER_TOKEN: ${PORKBOT_COMPUTER_TOKEN:-}
       PORKBOT_COMPUTER_TOOLBOX_URL: ${PORKBOT_COMPUTER_TOOLBOX_URL:-}
+      # The credential proxy (slice 7.8): three settings that only make sense
+      # together, and all unset by default — an offline stack needs no proxy.
+      # Configured, every Docker computer gets a sidecar on its isolated
+      # network; run credentials live on the sidecar's own layer and the
+      # sandbox carries only a short-lived capability. PORKBOT_PROXY_TOKEN_SECRET is
+      # the key both the worker and the sidecars verify capabilities with, and
+      # the egress network is the sidecar's second leg to an upstream.
+      PORKBOT_COMPUTER_PROXY_IMAGE: ${PORKBOT_COMPUTER_PROXY_IMAGE:-}
+      PORKBOT_PROXY_TOKEN_SECRET: ${PORKBOT_PROXY_TOKEN_SECRET:-}
+      PORKBOT_COMPUTER_EGRESS_NETWORK: ${PORKBOT_COMPUTER_EGRESS_NETWORK:-}
       # Snapshot storage (slice 7.5): the same seam the API writes avatars
       # through, so an operator's chosen storage root holds both. The archive
       # directory stages a home while it is written or verified.

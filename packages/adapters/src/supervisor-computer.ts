@@ -2,10 +2,12 @@ import type {
   ComputerExecRequest,
   ComputerExecResult,
   ComputerProvider,
+  ComputerProxyEndpoint,
   ComputerRef,
   ComputerSnapshot,
   ComputerState,
   ComputerStatus,
+  CredentialProxyAdmin,
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
 
@@ -68,6 +70,9 @@ export const supervisorComputerRoutes = {
   snapshot: `${supervisorComputerBasePath}/snapshot`,
   restore: `${supervisorComputerBasePath}/restore`,
   destroy: `${supervisorComputerBasePath}/destroy`,
+  proxyGrant: `${supervisorComputerBasePath}/proxy/grant`,
+  proxyRevoke: `${supervisorComputerBasePath}/proxy/revoke`,
+  proxyEndpoint: `${supervisorComputerBasePath}/proxy/endpoint`,
 } as const;
 
 /** The reserved screen routes, gated by a capability token rather than the service token. */
@@ -231,6 +236,20 @@ export function parseComputerStatus(value: unknown): ComputerStatus {
         state: parseComputerState(record["state"]),
         instanceId,
       };
+}
+
+function parseProxyEndpoint(value: unknown): ComputerProxyEndpoint {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("the supervisor reported a malformed proxy endpoint");
+  }
+
+  const url = (value as Record<string, unknown>)["url"];
+
+  if (typeof url !== "string" || url.trim() === "") {
+    throw new Error("the supervisor reported a malformed proxy endpoint");
+  }
+
+  return { url };
 }
 
 /** Validates one configured-kind list the wire carried; a drift fails here. */
@@ -608,5 +627,37 @@ export function createSupervisorComputerProvider(
     async recover(computer): Promise<ComputerStatus> {
       return statusOf(supervisorComputerRoutes.recover, computer, requestTimeoutMs);
     },
+
+    /**
+     * The credential-proxy administration (slice 7.8). A grant carries the
+     * run's credential material, so it crosses only this authenticated,
+     * service-token-only surface; the supervisor refuses `grant` when the
+     * deployment has no proxy, and `endpoint` answers absent for a computer
+     * whose kind has none.
+     */
+    proxy: {
+      async grant(computer, grant): Promise<ComputerProxyEndpoint> {
+        return parseProxyEndpoint(
+          payloadOf(
+            await call(supervisorComputerRoutes.proxyGrant, { computer, grant }, requestTimeoutMs),
+            "endpoint",
+          ),
+        );
+      },
+
+      async revoke(computer, runId): Promise<void> {
+        await call(supervisorComputerRoutes.proxyRevoke, { computer, runId }, requestTimeoutMs);
+      },
+
+      async endpoint(computer): Promise<ComputerProxyEndpoint | undefined> {
+        const endpoint = (
+          await call(supervisorComputerRoutes.proxyEndpoint, { computer }, requestTimeoutMs)
+        )["endpoint"];
+
+        return endpoint === null || endpoint === undefined
+          ? undefined
+          : parseProxyEndpoint(endpoint);
+      },
+    } satisfies CredentialProxyAdmin,
   };
 }

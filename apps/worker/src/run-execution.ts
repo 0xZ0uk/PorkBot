@@ -42,6 +42,20 @@ import type { RunNotificationTarget } from "./run-notifications.ts";
  */
 export interface RunWorkExecution extends RunExecution {
   readonly progress: RunProgress;
+  /**
+   * Registers the run's credential-proxy grant (slice 7.8). The harness
+   * revokes every registered handle once the work has ended — on completion,
+   * on failure and on a lost lease — so "a credential is scoped to the run and
+   * revoked when the run ends" is a property of the harness rather than a step
+   * each work function must remember. A run without a proxy never registers
+   * anything, and the revoke is idempotent besides.
+   */
+  readonly registerProxy?: ((handle: RunProxyHandle) => void) | undefined;
+}
+
+/** The revocable half of a run's proxy grant, as the harness needs it. */
+export interface RunProxyHandle {
+  revoke(): Promise<void>;
 }
 
 /**
@@ -73,9 +87,17 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
     const { run, repositories, logger } = execution;
     const lease = { owner: requiredOwner(run), fence: run.leaseFence };
     const progress = createRunProgress();
+    /** Every grant this run opened, revoked when the work ends however it ends. */
+    const proxyHandles: RunProxyHandle[] = [];
 
     const program = Effect.gen(function* () {
-      const outcome = yield* options.work({ ...execution, progress }).pipe(Effect.exit);
+      const outcome = yield* options
+        .work({
+          ...execution,
+          progress,
+          registerProxy: (handle) => proxyHandles.push(handle),
+        })
+        .pipe(Effect.exit);
 
       if (Exit.isSuccess(outcome)) {
         const settled = yield* settle(repositories, run, lease, settlement(outcome.value));
@@ -115,7 +137,18 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
           heartbeat: heartbeatEffect(repositories, run.id, lease, progress),
         },
         program,
-      ).pipe(Effect.exit),
+      ).pipe(
+        // The grant is revoked in the same scope the work ran in, so an
+        // interrupt, a lost lease or a defect all end with no reachable grant;
+        // a revoke that cannot be made is the watchdog's or the grant's own
+        // deadline to bound, never a reason to fail the settlement.
+        Effect.ensuring(
+          Effect.tryPromise(() => revokeProxies(proxyHandles)).pipe(
+            Effect.catchAllCause(() => Effect.void),
+          ),
+        ),
+        Effect.exit,
+      ),
     );
 
     if (Exit.isSuccess(exit)) {
@@ -142,6 +175,24 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
       logger.warn("could not close the abandoned attempt", { error });
     }
   };
+}
+
+/**
+ * Revokes every grant the run opened. Each revoke is attempted even when an
+ * earlier one failed, and a failure is swallowed: the run's outcome is durable
+ * and the grant carries its own deadline, so one unreachable proxy cannot stop
+ * the others from being revoked.
+ */
+async function revokeProxies(handles: readonly RunProxyHandle[]): Promise<void> {
+  await Promise.all(
+    handles.map(async (handle) => {
+      try {
+        await handle.revoke();
+      } catch {
+        // The grant's own expiry is the second bound.
+      }
+    }),
+  );
 }
 
 /**
