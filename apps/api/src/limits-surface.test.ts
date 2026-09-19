@@ -186,6 +186,7 @@ const requestBodies: Record<string, string> = {
   "memory.restore": JSON.stringify({
     json: { botId: "bot-1", documentId: "doc-1", revision: 1, reason: "why" },
   }),
+  "usage.bot": JSON.stringify({ json: { botId: "bot-1", days: 30 } }),
 };
 
 describe("the route list", () => {
@@ -286,6 +287,7 @@ describe("every contract procedure", () => {
       "threads.messages",
       "threads.send",
       "threads.toolResult",
+      "usage.bot",
     ]);
 
     for (const leaf of leaves) {
@@ -403,6 +405,7 @@ describe("the typed answer", () => {
         write: notExercised,
         restore: notExercised,
       },
+      usage: { forBot: notExercised },
       routines: {
         findById: notExercised,
         list: notExercised,

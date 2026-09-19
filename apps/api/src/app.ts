@@ -40,6 +40,7 @@ import { createRoutinesRouter } from "./routers/routines.ts";
 import { createRunsRouter } from "./routers/runs.ts";
 import { createSectionsRouter } from "./routers/sections.ts";
 import { createThreadsRouter } from "./routers/threads.ts";
+import { createUsageRouter } from "./routers/usage.ts";
 import { createBotService } from "./services/bots.ts";
 import { createComputerService, unconfiguredComputerProvider } from "./services/computers.ts";
 import type { ComputerLifecycleProvider } from "./services/computers.ts";
@@ -203,6 +204,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     runs: createRunsRouter(),
     routines: createRoutinesRouter(),
     memory: createMemoryRouter(),
+    usage: createUsageRouter(),
     credentials: createCredentialsRouter(),
     mcpServers: createMcpRouter(options.services.mcp),
     modelConnections: createModelConnectionsRouter(

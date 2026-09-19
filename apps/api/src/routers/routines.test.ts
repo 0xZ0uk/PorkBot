@@ -203,6 +203,7 @@ function stubRepositories(): UserRepositories {
       write: notExercised,
       restore: notExercised,
     },
+    usage: { forBot: notExercised },
   };
 }
 

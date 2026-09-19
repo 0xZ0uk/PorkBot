@@ -204,6 +204,7 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       write: notExercised,
       restore: notExercised,
     },
+    usage: { forBot: notExercised },
   };
 }
 

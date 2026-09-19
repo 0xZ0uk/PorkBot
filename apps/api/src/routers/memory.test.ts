@@ -197,6 +197,7 @@ function stubRepositories(memory: MemoryStoreStub): UserRepositories {
       listForServer: notExercised,
     },
     memory,
+    usage: { forBot: notExercised },
   };
 }
 
