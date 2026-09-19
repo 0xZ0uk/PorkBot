@@ -1,17 +1,22 @@
 import { Effect } from "effect";
 import { labelUntrustedContent } from "@porkbot/core";
-import type { ComputerExecResult, ComputerProvider, ComputerRef } from "@porkbot/adapter-kit";
-import type { ToolRegistration } from "./tool-dispatcher.ts";
+import type { ComputerExecResult, ComputerRef } from "@porkbot/adapter-kit";
+import type { ComputerCommandRunner } from "./computer-commands.ts";
+import type { ToolCall, ToolRegistration } from "./tool-dispatcher.ts";
 
 /**
  * The computer tools (slice 6.9, PRD decisions 20 and 30; stories 27–30).
  *
  * A run reaches its machine through five registrations — `shell`, `file_read`,
- * `file_write`, `file_list` and `browser` — and every one of them is a
- * `ComputerProvider.exec` call. That is the seam's own design: the emulator and
- * the real providers serve file and browser tools through the same door, so
+ * `file_write`, `file_list` and `browser` — and every one of them is a command
+ * through the fenced runner (slice 7.4), which is a `ComputerProvider.exec`
+ * under the run's computer lease. That is the seam's own design: the emulator
+ * and the real providers serve file and browser tools through the same door, so
  * the tool layer never grows a second way to reach a machine and the Docker
- * provider (slice 7.2) inherits this layer unchanged.
+ * provider (slice 7.2) inherits this layer unchanged. Fencing and idempotency
+ * are not tool business: the runner carries the run's `(owner, fence)` and the
+ * call's durable id, and a lost lease reaches the run as the typed error rather
+ * than as a committed side effect.
  *
  * The computer is bound at construction, never chosen from arguments: a run's
  * tools reach the run's computer, and a model cannot name another one. The
@@ -54,8 +59,13 @@ export const MAX_COMPUTER_PATH_LENGTH = 4_096;
 
 export interface ComputerToolOptions {
   /** The run's machine. It is fixed here, never read from a tool argument. */
-  readonly provider: ComputerProvider;
   readonly computer: ComputerRef;
+  /**
+   * The fenced command runner (slice 7.4): the provider under the run's
+   * computer lease, so every command carries the run's `(owner, fence)` and the
+   * tool call's durable id. The tools never hold a raw provider.
+   */
+  readonly commands: ComputerCommandRunner;
   /**
    * The tools' declared budget and their claim on the run lease. Defaults to a
    * minute, and the run lease TTL must cover it — the dispatcher refuses a
@@ -403,15 +413,14 @@ export function createComputerTools(options: ComputerToolOptions): readonly Tool
     throw new RangeError(`maxDurationMs must be a positive integer, received ${maxDurationMs}`);
   }
 
-  const exec = (command: string): Effect.Effect<ComputerExecResult, unknown> =>
-    Effect.tryPromise({
-      try: () =>
-        options.provider.exec({
-          computer: options.computer,
-          command,
-          timeoutMs: maxDurationMs,
-        }),
-      catch: (error) => error,
+  const exec = (call: ToolCall, command: string): Effect.Effect<ComputerExecResult, unknown> =>
+    options.commands.exec({
+      computer: options.computer,
+      runId: call.runId,
+      callId: call.callId,
+      tool: call.tool,
+      command,
+      timeoutMs: maxDurationMs,
     });
 
   const shell: ToolRegistration = {
@@ -430,7 +439,7 @@ export function createComputerTools(options: ComputerToolOptions): readonly Tool
           return { ok: false, reason: "invalid_arguments", message: parsed.message };
         }
 
-        const result = yield* exec(parsed.value.command);
+        const result = yield* exec(call, parsed.value.command);
         const stdout = labelledOutput(`computer:${options.computer.computerId}`, result.stdout);
         const stderr = clampOutput(result.stderr);
 
@@ -460,7 +469,7 @@ export function createComputerTools(options: ComputerToolOptions): readonly Tool
           return { ok: false, reason: "invalid_arguments", message: parsed.message };
         }
 
-        const result = yield* exec(`cat -- ${quoteShellArgument(parsed.value.path)}`);
+        const result = yield* exec(call, `cat -- ${quoteShellArgument(parsed.value.path)}`);
 
         if (result.exitCode !== 0) {
           return {
@@ -509,7 +518,7 @@ export function createComputerTools(options: ComputerToolOptions): readonly Tool
         const command =
           parent === "" ? write : `mkdir -p ${quoteShellArgument(parent)} && ${write}`;
 
-        const result = yield* exec(command);
+        const result = yield* exec(call, command);
 
         if (result.exitCode !== 0) {
           return {
@@ -546,7 +555,7 @@ export function createComputerTools(options: ComputerToolOptions): readonly Tool
 
         const command =
           parsed.value.path === undefined ? "ls" : `ls -- ${quoteShellArgument(parsed.value.path)}`;
-        const result = yield* exec(command);
+        const result = yield* exec(call, command);
 
         if (result.exitCode !== 0) {
           return {
@@ -590,7 +599,7 @@ export function createComputerTools(options: ComputerToolOptions): readonly Tool
           return { ok: false, reason: "invalid_arguments", message: parsed.message };
         }
 
-        const result = yield* exec(browserCommand(parsed.value));
+        const result = yield* exec(call, browserCommand(parsed.value));
         let page: BrowserResult;
 
         try {

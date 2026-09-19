@@ -82,6 +82,10 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       "packages/adapters/src/computer-runtime.ts",
       "packages/adapters/src/supervisor-computer.ts",
       "apps/supervisor/src/computer-lifecycle.ts",
+      // The fenced command runner carries the provider's result up to the tool
+      // layer, which labels it; the runner itself never shows content to a
+      // model and never inspects it.
+      "packages/effect/src/computer-commands.ts",
       "packages/core/src/ingestion.ts",
     ],
     note: "",
@@ -112,13 +116,15 @@ const boundaries: Record<IngestionPath, BoundaryRule> = {
       "packages/adapters/src/computer-conformance.ts",
       "packages/adapters/src/computer-emulator.ts",
       // Same raw boundary as `file_read`: the providers, the shared
-      // lifecycle and the transport forward stdout and stderr unlabelled on
-      // purpose, and the tool layer labels what it shows.
+      // lifecycle, the transport and the fenced command runner forward stdout
+      // and stderr unlabelled on purpose, and the tool layer labels what it
+      // shows.
       "packages/adapters/src/docker-computer.ts",
       "packages/adapters/src/daytona-computer.ts",
       "packages/adapters/src/computer-runtime.ts",
       "packages/adapters/src/supervisor-computer.ts",
       "apps/supervisor/src/computer-lifecycle.ts",
+      "packages/effect/src/computer-commands.ts",
       "packages/core/src/ingestion.ts",
     ],
     note: "",

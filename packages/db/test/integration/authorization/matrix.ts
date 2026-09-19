@@ -16,6 +16,7 @@ import type {
   ToolCallLedger,
 } from "@porkbot/effect";
 import {
+  COMPUTER_LEASE_TTL_SECONDS,
   createApprovalStore,
   createCredentialKeyring,
   createEncryptedCredentialStore,
@@ -806,6 +807,54 @@ export const resources: readonly Resource<unknown>[] = [
             arguments: {},
           }),
         ),
+    },
+  }),
+
+  resource<{
+    readonly botId: string;
+    readonly runId: string;
+    readonly owner: string;
+    readonly fence: number;
+  }>({
+    entity: "computer_lease",
+    tables: ["computer_lease"],
+    seed: async (space) => {
+      const run = await seedRun(space, "Computer lease host");
+      const claimed = await space.systemRepositories.runs.claim(run.runId, 0, "matrix job");
+
+      if (claimed === undefined) {
+        throw new Error("the matrix could not claim the computer-lease run");
+      }
+
+      return {
+        botId: run.botId,
+        runId: run.runId,
+        owner: "matrix job",
+        fence: claimed.leaseFence,
+      };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          'select count(*)::int as rows, max(expires_at) as "expiresAt" ' +
+            "from computer_lease where bot_id = $1",
+          [seed.botId],
+        ),
+      ),
+    system: {
+      // The hold is the lease's seam and its answer is the read: `held` for the
+      // run whose live lease owns the row, `run_lost` for a run the acting
+      // space cannot see. There is deliberately no row reader above the seam,
+      // so this probe is both the write and the visibility check, and the state
+      // fingerprint proves the foreign attempt changed nothing.
+      write: async (subject, seed) => {
+        const held = await subject.repositories.computerLeases.hold(
+          { botId: seed.botId, runId: seed.runId, owner: seed.owner, fence: seed.fence },
+          COMPUTER_LEASE_TTL_SECONDS,
+        );
+
+        return held.status === "held" ? "applied" : "refused";
+      },
     },
   }),
 

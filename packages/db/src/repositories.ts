@@ -2,6 +2,7 @@ import type { CredentialStore } from "@porkbot/adapter-kit";
 import { ACTIVE_RUN_STATUSES } from "@porkbot/core";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import type {
+  ComputerLeaseStore,
   Credentials,
   McpRunServers,
   McpServers,
@@ -23,6 +24,7 @@ import type { AssistantMessageWriter, MessageReader, SteeringMessageWriter } fro
 import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
+import { createComputerLeaseStore } from "./computer-leases.ts";
 import { createMcpStore } from "./mcp-store.ts";
 import { createMemoryStore } from "./memory-store.ts";
 import { createNotificationStore } from "./notification-store.ts";
@@ -467,6 +469,13 @@ export interface SystemRepositories {
    * ledger for enforcement.
    */
   readonly usage: UsageRecorder;
+  /**
+   * The computer lease (slice 7.4): acquire-or-renew and release, fenced on
+   * the run's `(run_id, owner, fence)` and live lease. The run executor holds
+   * it around a command and releases it when the run settles; the watchdog's
+   * expired scan is deliberately outside this seam.
+   */
+  readonly computerLeases: ComputerLeaseStore;
 }
 
 /**
@@ -601,6 +610,7 @@ export function createRepositories(
         resolveForBot: (botId) => resolveModelSelection(actor, database, botId),
       },
       usage: createUsageStore(actor, database),
+      computerLeases: createComputerLeaseStore(actor, database),
     };
   }
 

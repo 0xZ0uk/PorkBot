@@ -199,6 +199,20 @@ export type {
   RunProgressStamp,
 } from "./run-leases.ts";
 
+// The durable half of the computer lease (slice 7.4, PRD decision 26): one row
+// per held computer, fenced on the run's `(run_id, owner, fence)` and live
+// lease, and the cross-space scan the watchdog sweeps. The store implements the
+// `ComputerLeaseStore` seam in `@porkbot/effect`; the scan returns addressing
+// only and cannot be reached through `createRepositories`, exactly like
+// `findExpiredLeases`.
+export {
+  COMPUTER_LEASE_TTL_SECONDS,
+  COMPUTER_WATCHDOG_BATCH_LIMIT,
+  createComputerLeaseStore,
+  findExpiredComputerLeases,
+} from "./computer-leases.ts";
+export type { ExpiredComputerLease } from "./computer-leases.ts";
+
 // Run-liveness detection and its notification claims (slices 6.10 and 8.7,
 // PRD decision 33): the cross-space scan for active runs whose progress
 // stopped, the guarded episode marker a stall notification keys its

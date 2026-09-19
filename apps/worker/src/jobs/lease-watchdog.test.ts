@@ -1,5 +1,11 @@
 import { NotificationEmulator } from "@porkbot/adapters";
-import type { ExpiredLease, Queryable, RunRecord, StalledRun } from "@porkbot/db";
+import type {
+  ExpiredComputerLease,
+  ExpiredLease,
+  Queryable,
+  RunRecord,
+  StalledRun,
+} from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
 import { parseCronItems } from "graphile-worker";
@@ -57,6 +63,16 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
 interface FakeWorld {
   readonly expired: readonly ExpiredLease[];
   readonly stalled: readonly StalledRun[];
+  /** The expired computer leases the sweep's scan finds. */
+  readonly computerLeases: readonly ExpiredComputerLease[];
+  /** The bindings the sweep's scoped deletes addressed, in order. */
+  readonly computerReleases: Array<{
+    readonly spaceId: string;
+    readonly botId: string;
+    readonly runId: string;
+    readonly owner: string;
+    readonly fence: number;
+  }>;
   readonly notificationEnabled: boolean;
   readonly runs: Map<string, RunRecord>;
   readonly reclaimed: Map<string, RunRecord | undefined>;
@@ -93,6 +109,29 @@ function fakeContext(world: FakeWorld): JobContext {
 
       if (text.startsWith('select id as "runId"')) {
         return { rows: world.expired as unknown as readonly Row[] };
+      }
+
+      if (text.startsWith('select space_id as "spaceId"')) {
+        return { rows: world.computerLeases as unknown as readonly Row[] };
+      }
+
+      if (text.startsWith("delete from computer_lease")) {
+        world.computerReleases.push({
+          spaceId: String(values[0]),
+          botId: String(values[1]),
+          runId: String(values[2]),
+          owner: String(values[3]),
+          fence: Number(values[4]),
+        });
+        const present = world.computerLeases.some(
+          (lease) =>
+            lease.botId === values[1] &&
+            lease.runId === values[2] &&
+            lease.owner === values[3] &&
+            lease.fence === values[4],
+        );
+
+        return { rows: (present ? [{ id: "lease-1" }] : []) as unknown as readonly Row[] };
       }
 
       if (text.startsWith("update run set stalled_at = now()")) {
@@ -171,6 +210,7 @@ function fakeContext(world: FakeWorld): JobContext {
 function world(options: {
   readonly expired?: readonly ExpiredLease[];
   readonly stalled?: readonly StalledRun[];
+  readonly computerLeases?: readonly ExpiredComputerLease[];
   readonly notificationEnabled?: boolean;
   readonly run?: RunRecord | undefined;
   readonly stalledRun?: RunRecord | undefined;
@@ -199,6 +239,8 @@ function world(options: {
   return {
     expired: options.expired ?? [candidate],
     stalled: options.stalled ?? [],
+    computerLeases: options.computerLeases ?? [],
+    computerReleases: [],
     notificationEnabled: options.notificationEnabled ?? true,
     runs,
     reclaimed: new Map([[candidate.runId, options.reclaimed]]),
@@ -536,5 +578,53 @@ describe("the watchdog's stall pass", () => {
           line["msg"] === "lease watchdog skipped a run that moved on before it could be marked",
       ),
     ).toBe(true);
+  });
+
+  it("releases a stale computer lease and reports it in the pass", async () => {
+    const stale: ExpiredComputerLease = {
+      spaceId: "space-1",
+      botId: "bot-1",
+      runId: "run-1",
+      owner: "dead-worker",
+      fence: 3,
+      expiresAt: new Date(0),
+    };
+    const fake = world({ computerLeases: [stale] });
+
+    await leaseWatchdogJob().handle({}, fakeContext(fake));
+
+    expect(fake.computerReleases).toEqual([
+      { spaceId: "space-1", botId: "bot-1", runId: "run-1", owner: "dead-worker", fence: 3 },
+    ]);
+    expect(
+      fake.lines.some((line) => line["msg"] === "lease watchdog released a stale computer lease"),
+    ).toBe(true);
+    expect(fake.lines.at(-1)).toMatchObject({ computersReleased: 1 });
+  });
+
+  it("sweeps stale computer leases even when no run lease is expired", async () => {
+    // A machine whose holder stopped renewing between commands is stale on its
+    // own; the sweep must not be conditional on the run scan finding anything.
+    const fake = world({
+      expired: [],
+      computerLeases: [
+        {
+          spaceId: "space-1",
+          botId: "bot-1",
+          runId: "run-1",
+          owner: "dead-worker",
+          fence: 3,
+          expiresAt: new Date(0),
+        },
+      ],
+    });
+
+    await leaseWatchdogJob().handle({}, fakeContext(fake));
+
+    expect(fake.computerReleases).toHaveLength(1);
+    expect(fake.lines.at(-1)).toMatchObject({
+      msg: "lease watchdog pass found no expired lease",
+      computersReleased: 1,
+    });
   });
 });

@@ -140,11 +140,11 @@ export type { RunFenceOptions } from "./run-fence.ts";
 
 // The computer tools (slice 6.9, PRD decisions 20 and 30; stories 27–30). A
 // run reaches its machine through five registrations — shell, file read/write,
-// listing and browser — and every one is a `ComputerProvider.exec` call, so the
-// offline emulator and the real Docker provider serve the same tool code. The
-// computer is bound at construction and never chosen by the model; file bytes,
-// shell stdout and browser text are labelled `UntrustedContent` at this
-// boundary before they can reach a prompt.
+// listing and browser — and every one is a command through the fenced runner,
+// so the offline emulator and the real Docker provider serve the same tool
+// code. The computer is bound at construction and never chosen by the model;
+// file bytes, shell stdout and browser text are labelled `UntrustedContent` at
+// this boundary before they can reach a prompt.
 export {
   COMPUTER_TOOL_NAMES,
   createComputerTools,
@@ -154,6 +154,31 @@ export {
   MAX_SHELL_COMMAND_LENGTH,
 } from "./computer-tools.ts";
 export type { ComputerToolOptions } from "./computer-tools.ts";
+
+// The fenced computer command runner (slice 7.4, PRD decision 26). The
+// provider seam carries no fence, so this layer holds the run's own
+// `(runId, owner, fence)` on a durable computer lease around every command:
+// a reclaimed run's in-flight command cannot renew or commit, a retried
+// command with the same `callId` replays instead of repeating its effect, and
+// a lease held live by another run is the classified `ComputerLeaseHeldError`
+// rather than a provider timeout. The constructor is the one place the
+// computer TTL is asserted not to outlive the run TTL; `@porkbot/db`
+// implements the store over the computer-lease rows.
+export {
+  ComputerCommandFailedError,
+  ComputerLeaseHeldError,
+  ComputerLeaseTtlError,
+  createFencedComputerCommands,
+} from "./computer-commands.ts";
+export type {
+  ComputerCommandRequest,
+  ComputerCommandRunner,
+  ComputerLease,
+  ComputerLeaseAcquisition,
+  ComputerLeaseHolder,
+  ComputerLeaseStore,
+  FencedComputerCommandsOptions,
+} from "./computer-commands.ts";
 
 // Tool dispatch (slice 5.5, PRD decision 26; audit section 3). One registration
 // carries a tool's metadata and its handler, so the list the model sees is
