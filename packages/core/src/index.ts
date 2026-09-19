@@ -233,6 +233,25 @@ export {
 export type { ReclaimDecision, RunReclaimFailure } from "./run-recovery.ts";
 
 export {
+  assessRunLiveness,
+  createRunProgress,
+  isRunStepKind,
+  RUN_LIVENESS_STATES,
+  RUN_STALL_THRESHOLD_SECONDS,
+  RUN_STEP_KINDS,
+} from "./run-liveness.ts";
+export type {
+  RunLiveness,
+  RunLivenessSnapshot,
+  RunLivenessState,
+  RunProgress,
+  RunProgressOptions,
+  RunProgressSnapshot,
+  RunStep,
+  RunStepKind,
+} from "./run-liveness.ts";
+
+export {
   AmbiguousSectionPrecedence,
   BlankMemoryRecord,
   composeSystemPrompt,

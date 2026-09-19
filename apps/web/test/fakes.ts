@@ -5,6 +5,7 @@ import { colors } from "@porkbot/tokens";
 import type {
   Bot,
   Message,
+  RunGet,
   Thread,
   ThreadEventsCallOptions,
   ThreadEventsProcedure,
@@ -123,18 +124,26 @@ export interface ScriptedThreadTransportOptions {
   readonly toolResults?: Readonly<
     Record<string, { readonly tool: string; readonly result: unknown }>
   >;
+  /**
+   * The liveness reads the console makes, keyed by run id; a miss is the typed
+   * NOT_FOUND. A function is read per call, so a test can script a row that
+   * disappears between polls.
+   */
+  readonly runs?: Readonly<Record<string, RunGet>> | (() => Readonly<Record<string, RunGet>>);
 }
 
 export function scriptedThreadTransport(
   options: ScriptedThreadTransportOptions = {},
-): ConsoleTransport & { readonly transcriptCalls: string[] } {
+): ConsoleTransport & { readonly transcriptCalls: string[]; readonly runCalls: string[] } {
   const transcriptCalls: string[] = [];
+  const runCalls: string[] = [];
   const notExercised = (): never => {
     throw new Error("not exercised by this test");
   };
 
   return {
     transcriptCalls,
+    runCalls,
 
     async transcript(threadId) {
       transcriptCalls.push(threadId);
@@ -156,6 +165,22 @@ export function scriptedThreadTransport(
     listBots: async () => options.bots ?? [],
     listThreads: async () => options.threads ?? [],
     createThread: async () => options.newThread ?? notExercised(),
+
+    async run(runId) {
+      runCalls.push(runId);
+      const runs = typeof options.runs === "function" ? options.runs() : options.runs;
+      const read = runs?.[runId];
+
+      if (read === undefined) {
+        throw new ORPCError("NOT_FOUND", {
+          defined: true,
+          status: 404,
+          message: "no such run",
+        });
+      }
+
+      return read;
+    },
 
     async toolResult({ runId, callId }) {
       const stored = options.toolResults?.[`${runId}:${callId}`];

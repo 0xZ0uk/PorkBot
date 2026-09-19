@@ -1,4 +1,6 @@
 import { Cause, Effect, Exit, Option } from "effect";
+import { createRunProgress } from "@porkbot/core";
+import type { RunProgress } from "@porkbot/core";
 import { RUN_HEARTBEAT_INTERVAL_SECONDS } from "@porkbot/db";
 import type { FencedRunPatch, RunRecord, SystemRepositories } from "@porkbot/db";
 import { LeaseLostError, withRunFence } from "@porkbot/effect";
@@ -30,11 +32,22 @@ import type { RunExecution, RunExecutor } from "./jobs/run-execute.ts";
  */
 
 /**
+ * The execution a run's work receives: the acquired row plus the progress
+ * recorder the harness stamps onto every heartbeat (slice 6.10). The work notes
+ * each session event exactly where it records it, so the durable row reports
+ * the same step the client's reducer shows; the assessment itself lives in
+ * `@porkbot/core` and is shared with the notification path.
+ */
+export interface RunWorkExecution extends RunExecution {
+  readonly progress: RunProgress;
+}
+
+/**
  * A run's work. It reports how the session ended — the same outcome
  * `consumeRunSession` returns — and the harness settles the row from it. A
  * work failure is still classified by the harness; it never reaches a client.
  */
-export type RunWork = (execution: RunExecution) => Effect.Effect<RunSessionOutcome, unknown>;
+export type RunWork = (execution: RunWorkExecution) => Effect.Effect<RunSessionOutcome, unknown>;
 
 export interface RunExecutionOptions {
   readonly work: RunWork;
@@ -51,9 +64,10 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
   return async (execution) => {
     const { run, repositories, logger } = execution;
     const lease = { owner: requiredOwner(run), fence: run.leaseFence };
+    const progress = createRunProgress();
 
     const program = Effect.gen(function* () {
-      const outcome = yield* options.work(execution).pipe(Effect.exit);
+      const outcome = yield* options.work({ ...execution, progress }).pipe(Effect.exit);
 
       if (Exit.isSuccess(outcome)) {
         yield* settle(repositories, run, lease, settlement(outcome.value));
@@ -83,7 +97,7 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
         {
           runId: run.id,
           interval,
-          heartbeat: heartbeatEffect(repositories, run.id, lease),
+          heartbeat: heartbeatEffect(repositories, run.id, lease, progress),
         },
         program,
       ).pipe(Effect.exit),
@@ -167,10 +181,11 @@ function heartbeatEffect(
   repositories: SystemRepositories,
   runId: string,
   lease: { readonly owner: string; readonly fence: number },
+  progress: RunProgress,
 ): Effect.Effect<void, LeaseLostError> {
   return Effect.tryPromise({
     try: async () => {
-      await repositories.runs.heartbeat(runId, lease);
+      await repositories.runs.heartbeat(runId, lease, progress.snapshot());
     },
     catch: (error) => (error instanceof LeaseLostError ? error : new LeaseLostError(runId)),
   });

@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { RUN_STEP_KINDS } from "@porkbot/core";
 import { bot } from "./bots.ts";
 import { primaryKeyId, timestamps } from "./columns.ts";
 import { attemptStatus, runStatus } from "./enums.ts";
@@ -19,6 +20,13 @@ import { message } from "./messages.ts";
 import { task } from "./tasks.ts";
 import { space } from "./tenancy.ts";
 import { thread } from "./threads.ts";
+
+// The step vocabulary as a SQL list. `drizzle-kit` does not inline template
+// parameters inside a check constraint, so the values are rendered from the
+// same `RUN_STEP_KINDS` the tracker writes and the check below enforces; the
+// generated SQL carries literals and the migration suite compares it
+// byte-for-byte.
+const runStepKindList = sql.raw(RUN_STEP_KINDS.map((kind) => `'${kind}'`).join(", "));
 
 /**
  * The run: the lease-and-fence row the product's correctness hangs on.
@@ -58,6 +66,17 @@ import { thread } from "./threads.ts";
  * the fenced executor settle the row — so a stop survives a worker restart
  * (a resumed session finds the mark and cancels immediately) and cannot race a
  * settlement the worker is already making.
+ *
+ * The liveness columns (slice 6.10, PRD decision 33) are the run's own record
+ * of what it is doing: `last_heartbeat_at` is the worker's last renewal,
+ * `last_progress_at` the last event it emitted, and `current_step` plus
+ * `current_step_tool` the step it is on. `stalled_at` is the detector's
+ * episode marker — set once by the watchdog, cleared by the next heartbeat
+ * that reports progress — so a stall notifies once rather than every pass.
+ * A heartbeat renews the lease; only progress moves `last_progress_at`, which
+ * is the distinction "work versus hang" is built from. `current_step` is a
+ * closed vocabulary checked against `@porkbot/core`'s `RUN_STEP_KINDS`, and
+ * the tool is only meaningful for the two kinds that name one.
  */
 export const run = pgTable(
   "run",
@@ -86,6 +105,11 @@ export const run = pgTable(
     leaseFence: integer("lease_fence").notNull().default(0),
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     stopRequestedAt: timestamp("stop_requested_at", { withTimezone: true }),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    lastProgressAt: timestamp("last_progress_at", { withTimezone: true }),
+    currentStep: text("current_step"),
+    currentStepTool: text("current_step_tool"),
+    stalledAt: timestamp("stalled_at", { withTimezone: true }),
     checkpoint: jsonb("checkpoint").notNull().default({}),
     clientNonce: text("client_nonce").notNull(),
     sourceMessageId: uuid("source_message_id").references((): AnyPgColumn => message.id, {
@@ -98,6 +122,14 @@ export const run = pgTable(
   (table) => [
     uniqueIndex("run_space_client_nonce_unique").on(table.spaceId, table.clientNonce),
     check("run_trigger_check", sql`${table.trigger} in ('message', 'routine')`),
+    check(
+      "run_current_step_check",
+      sql`${table.currentStep} is null or ${table.currentStep} in (${runStepKindList})`,
+    ),
+    check(
+      "run_current_step_tool_check",
+      sql`${table.currentStepTool} is null or ${table.currentStep} in ('working', 'waiting')`,
+    ),
     index("run_status_lease_expires_idx").on(table.status, table.leaseExpiresAt),
     index("run_thread_status_created_idx").on(table.threadId, table.status, table.createdAt),
     index("run_bot_id_idx").on(table.botId),

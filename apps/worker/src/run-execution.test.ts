@@ -1,8 +1,15 @@
 import { Effect, Fiber, Stream } from "effect";
+import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
 import { emulatorAgentRuntimeLayer } from "@porkbot/adapters";
 import type { EmulatorStep } from "@porkbot/adapters";
 import { createRepositories } from "@porkbot/db";
-import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@porkbot/db";
+import type {
+  FencedRunPatch,
+  RunLease,
+  RunProgressStamp,
+  RunRecord,
+  SystemRepositories,
+} from "@porkbot/db";
 import {
   consumeRunSession,
   LeaseLostError,
@@ -39,6 +46,11 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseFence: 1,
     leaseExpiresAt: new Date(120_000),
     stopRequestedAt: null,
+    lastHeartbeatAt: null,
+    lastProgressAt: null,
+    currentStep: null,
+    currentStepTool: null,
+    stalledAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -52,13 +64,13 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
 
 interface FakeRunner {
   readonly repositories: SystemRepositories;
-  readonly heartbeats: RunLease[];
+  readonly heartbeats: Array<{ readonly lease: RunLease; readonly progress: RunProgressStamp }>;
   readonly updates: Array<{ readonly lease: RunLease; readonly patch: FencedRunPatch }>;
   readonly abandoned: Array<{ readonly fence: number; readonly reason: string }>;
 }
 
 function fakeRepositories(options: { readonly heartbeatFails?: boolean } = {}): FakeRunner {
-  const heartbeats: RunLease[] = [];
+  const heartbeats: Array<{ lease: RunLease; progress: RunProgressStamp }> = [];
   const updates: Array<{ lease: RunLease; patch: FencedRunPatch }> = [];
   const abandoned: Array<{ fence: number; reason: string }> = [];
 
@@ -69,8 +81,8 @@ function fakeRepositories(options: { readonly heartbeatFails?: boolean } = {}): 
     },
   });
 
-  repositories.runs.heartbeat = async (_id, lease) => {
-    heartbeats.push(lease);
+  repositories.runs.heartbeat = async (_id, lease, progress) => {
+    heartbeats.push({ lease, progress });
 
     if (options.heartbeatFails === true) {
       throw new LeaseLostError("run-1");
@@ -135,6 +147,47 @@ describe("the run execution harness", () => {
     });
     expect(runner.heartbeats.length).toBeGreaterThan(0);
     expect(runner.abandoned).toEqual([]);
+  });
+
+  it("stamps each heartbeat with the step and progress the work reported", async () => {
+    const runner = fakeRepositories();
+    const execute = createRunExecutor({
+      heartbeatIntervalMs: 5,
+      work: (execution) =>
+        Effect.gen(function* () {
+          yield* Effect.sync(() => {
+            execution.progress.note({
+              schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+              seq: 2,
+              threadId: "thread-1",
+              runId: "run-1",
+              type: "tool.requested",
+              callId: "call-1",
+              tool: "shell",
+              arguments: {},
+            });
+          });
+          yield* Effect.sleep("20 millis");
+
+          return { status: "completed" } as const;
+        }),
+    });
+
+    await execute(executionFor(runner));
+
+    expect(
+      runner.heartbeats.some(
+        (beat) =>
+          beat.progress.progressed &&
+          beat.progress.step !== null &&
+          beat.progress.step.kind === "working" &&
+          beat.progress.step.tool === "shell",
+      ),
+    ).toBe(true);
+    // A beat after the event has been stamped reports no progress, which is
+    // what makes a silent run's stall detectable.
+    expect(runner.heartbeats.length).toBeGreaterThan(1);
+    expect(runner.heartbeats.at(-1)?.progress.progressed).toBe(false);
   });
 
   it("settles a stopped session as cancelled with its attempt and releases the lease", async () => {

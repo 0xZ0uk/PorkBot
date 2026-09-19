@@ -63,6 +63,11 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseFence: 1,
     leaseExpiresAt: new Date(120_000),
     stopRequestedAt: null,
+    lastHeartbeatAt: null,
+    lastProgressAt: null,
+    currentStep: null,
+    currentStepTool: null,
+    stalledAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -184,6 +189,7 @@ async function runControlled(input: {
             const recorder = createRunEventRecorder();
             const outcome = yield* consumeRunSession(session, (event) =>
               Effect.sync(() => {
+                execution.progress.note(event);
                 const recordedEvent = recorder.record(event);
                 recorded.push(recordedEvent);
                 input.onEvent?.(recordedEvent);

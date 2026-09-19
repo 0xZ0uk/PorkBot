@@ -1,4 +1,5 @@
-import type { RunStatus } from "@porkbot/core";
+import type { RunStatus, RunStep } from "@porkbot/core";
+import { isTerminalStatus } from "@porkbot/core";
 import { LeaseLostError } from "@porkbot/effect";
 import type { SystemActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
@@ -24,6 +25,28 @@ export const RUN_WATCHDOG_BATCH_LIMIT = 50;
 export interface RunLease {
   readonly owner: string;
   readonly fence: number;
+}
+
+/**
+ * What one lease renewal records about progress (slice 6.10). It travels with
+ * the heartbeat rather than in a second statement so a run's liveness is never
+ * older than its lease: whichever worker holds the fence is the worker whose
+ * progress the row reports.
+ *
+ * `progressed` is the tracker's answer to "did any event arrive since the last
+ * beat". When it is false the row's `last_progress_at` is left exactly where it
+ * was — that is what makes a stalled run's silence visible — and when it is
+ * true the instant is reconstructed from the database's clock and the idle
+ * seconds the worker measured, so the stored instant does not depend on the
+ * worker's clock agreeing with the database's. A beat that finds no prior
+ * baseline (a row claimed before this slice shipped) writes `now()`: liveness
+ * begins when a version that measures it takes the lease, never from a guess
+ * about the run's earlier activity.
+ */
+export interface RunProgressStamp {
+  readonly progressed: boolean;
+  readonly idleSeconds: number;
+  readonly step: RunStep | null;
 }
 
 /**
@@ -164,8 +187,14 @@ async function acquireRun(
   previousOwner?: string,
 ): Promise<RunRecord | undefined> {
   const availability = availabilityGuard(mode);
+  // A new owner — a fresh claim, a reclaim after a crash, or a watchdog
+  // handoff — starts the run's liveness over: the lease has a new heartbeat,
+  // the session has new progress, and a stall recorded against the previous
+  // owner's execution is no longer the current episode.
   const startRun =
-    mode === "claim" ? ", status = 'running', started_at = coalesce(started_at, now())" : "";
+    (mode === "claim" ? ", status = 'running', started_at = coalesce(started_at, now())" : "") +
+    ", last_heartbeat_at = now(), last_progress_at = now(), " +
+    "current_step = 'starting', current_step_tool = null, stalled_at = null";
   const reason = mode === "reclaim" ? options?.reason : undefined;
   const recordAttempt = mode !== "reclaim" || options?.recordAttempt !== false;
 
@@ -285,19 +314,43 @@ export function expiredLeaseReason(expiresAt: Date | null): string {
   );
 }
 
-/** Renews only the exact lease the caller owns; a stale owner loses cleanly. */
+/**
+ * Renews only the exact lease the caller owns; a stale owner loses cleanly.
+ *
+ * The renewal also stamps the caller's progress (slice 6.10): the heartbeat is
+ * the only writer on the path, so a beat that reports progress clears the stall
+ * episode in the same statement that renews the lease — there is no instant in
+ * which the lease is fresh but the stall marker lies.
+ */
 export async function heartbeatRun(
   actor: SystemActor,
   database: Queryable,
   runId: string,
   lease: RunLease,
+  progress: RunProgressStamp,
 ): Promise<RunRecord> {
   const { rows } = await database.query<RunRecord>(
-    "update run set lease_expires_at = now() + make_interval(secs => $5), updated_at = now() " +
+    "update run set lease_expires_at = now() + make_interval(secs => $5), " +
+      "last_heartbeat_at = now(), " +
+      "last_progress_at = case when $6 then now() - make_interval(secs => $7) " +
+      "when last_progress_at is null then now() " +
+      "else last_progress_at end, " +
+      "stalled_at = case when $6 then null else stalled_at end, " +
+      "current_step = $8, current_step_tool = $9, updated_at = now() " +
       "where id = $1 and space_id = $2 and lease_owner = $3 and lease_fence = $4 " +
       "and status in ('running', 'waiting_approval') and lease_expires_at > now() " +
       `returning ${runColumns}`,
-    [runId, actor.spaceId, lease.owner, lease.fence, RUN_LEASE_TTL_SECONDS],
+    [
+      runId,
+      actor.spaceId,
+      lease.owner,
+      lease.fence,
+      RUN_LEASE_TTL_SECONDS,
+      progress.progressed,
+      progress.idleSeconds,
+      progress.step?.kind ?? null,
+      progress.step?.tool ?? null,
+    ],
   );
 
   return ownedRow(rows, runId);
@@ -338,6 +391,12 @@ export async function updateClaimedRun(
 
   if (patch.release === true) {
     assignments.push("lease_owner = null", "lease_expires_at = null");
+  }
+
+  // A terminal run is on no step and no stall episode is current; the row
+  // keeps `last_progress_at` as the honest record of its last activity.
+  if (patch.status !== undefined && isTerminalStatus(patch.status)) {
+    assignments.push("current_step = null", "current_step_tool = null", "stalled_at = null");
   }
 
   values.push(runId, actor.spaceId, lease.owner, lease.fence);

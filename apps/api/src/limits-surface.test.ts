@@ -156,6 +156,7 @@ const requestBodies: Record<string, string> = {
   "routines.preview": JSON.stringify({ json: { cron: "0 9 * * *", timezone: "UTC" } }),
   "routines.testRun": JSON.stringify({ json: { id: "routine-1", clientNonce: "nonce-1" } }),
   "routines.outcomes": JSON.stringify({ json: { id: "routine-1" } }),
+  "runs.get": JSON.stringify({ json: { runId: "run-1" } }),
   "runs.stop": JSON.stringify({ json: { runId: "run-1" } }),
   "mcpServers.get": JSON.stringify({ json: { id: "server-1" } }),
   "mcpServers.create": JSON.stringify({
@@ -248,6 +249,7 @@ describe("every contract procedure", () => {
       "routines.remove",
       "routines.testRun",
       "routines.update",
+      "runs.get",
       "runs.stop",
       "sections.create",
       "sections.delete",

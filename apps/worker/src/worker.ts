@@ -4,6 +4,7 @@ import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
 import { leaseWatchdogIdentifier, leaseWatchdogJob } from "./jobs/lease-watchdog.ts";
+import type { StallNotificationTarget } from "./jobs/lease-watchdog.ts";
 import { routineTickIdentifier, routineTickJob } from "./jobs/routine-schedule.ts";
 import { runExecuteJob } from "./jobs/run-execute.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
@@ -78,13 +79,25 @@ export interface WorkerOptions {
    * it settles are its own fixtures'.
    */
   readonly scheduleRoutines?: boolean;
+  /**
+   * Where a stalled run's notification goes (slice 6.10). Absent, the watchdog
+   * records the stall but sends nothing; slice 8.7 composes the provider and
+   * the link's origin in `main.ts`.
+   */
+  readonly stallNotification?: StallNotificationTarget;
 }
 
 export async function startWorker(options: WorkerOptions): Promise<Runner> {
   const registry = createJobRegistry({
     jobs: [
       defineJob(runExecuteJob(options.executeRun)),
-      defineJob(leaseWatchdogJob()),
+      defineJob(
+        leaseWatchdogJob(
+          options.stallNotification === undefined
+            ? {}
+            : { stallNotification: options.stallNotification },
+        ),
+      ),
       defineJob(routineTickJob()),
     ],
     logger: options.logger,
