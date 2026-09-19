@@ -129,9 +129,9 @@ function runEventFor(record: EventRecord): RunEvent {
 
 async function row(run: string, call: string): Promise<ApprovalRecord | undefined> {
   const { rows } = await db().query<ApprovalRecord>(
-    'select id, run_id as "runId", call_id as "callId", tool, status::text as status, ' +
-      'expires_at as "expiresAt", decided_by_user_id as "decidedBy", ' +
-      'decided_at as "decidedAt", reason ' +
+    'select id, run_id as "runId", call_id as "callId", tool, arguments, ' +
+      'status::text as status, expires_at as "expiresAt", ' +
+      'decided_by_user_id as "decidedBy", decided_at as "decidedAt", reason ' +
       "from approval where run_id = $1 and call_id = $2",
     [run, call],
   );
@@ -147,6 +147,7 @@ describe("a gate that outlives the worker", () => {
       runId,
       callId,
       tool: "shell",
+      arguments: { command: "printf ready" },
       expiresAt: deadline,
     });
 
@@ -160,6 +161,7 @@ describe("a gate that outlives the worker", () => {
       runId,
       callId,
       tool: "shell",
+      arguments: { command: "printf ready" },
       expiresAt: future(5),
     });
 
@@ -174,6 +176,7 @@ describe("a gate that outlives the worker", () => {
       runId,
       callId,
       tool: "shell",
+      arguments: {},
       expiresAt: future(600),
     });
 
@@ -198,7 +201,9 @@ describe("an offline operator", () => {
     const store = stores(systemActor(user.spaceId));
     const gate = createApprovalGate({ runId, store, timeoutMs: 200, pollIntervalMs: 20 });
 
-    const opened = await Effect.runPromise(gate.open({ callId, tool: "shell" }));
+    const opened = await Effect.runPromise(
+      gate.open({ callId, tool: "shell", arguments: { command: "printf ready" } }),
+    );
     const outcome = await Effect.runPromise(gate.waitFor(opened).pipe(Effect.either));
 
     expect(outcome._tag).toBe("Left");
@@ -223,7 +228,11 @@ describe("an offline operator", () => {
 
     const opened = await Effect.runPromise(
       Effect.gen(function* () {
-        const record = yield* gate.open({ callId, tool: "shell" });
+        const record = yield* gate.open({
+          callId,
+          tool: "shell",
+          arguments: { command: "printf ready" },
+        });
         const outcome = yield* gate.waitFor(record).pipe(Effect.either);
         expect(Either.isLeft(outcome)).toBe(true);
         return record;
@@ -273,7 +282,13 @@ describe("an offline operator", () => {
   it("settles a vote that arrives after the deadline as the timeout, not an approval", async () => {
     const callId = `call-late-${randomUUID()}`;
     const actor = systemActor(user.spaceId);
-    await stores(actor).open({ runId, callId, tool: "shell", expiresAt: future(-1) });
+    await stores(actor).open({
+      runId,
+      callId,
+      tool: "shell",
+      arguments: {},
+      expiresAt: future(-1),
+    });
 
     const result = await createApprovalStore(user, db()).decide({
       runId,
@@ -289,7 +304,13 @@ describe("an offline operator", () => {
   it("does not time out a gate the server clock still holds open", async () => {
     const callId = `call-early-${randomUUID()}`;
     const actor = systemActor(user.spaceId);
-    await stores(actor).open({ runId, callId, tool: "shell", expiresAt: future(600) });
+    await stores(actor).open({
+      runId,
+      callId,
+      tool: "shell",
+      arguments: {},
+      expiresAt: future(600),
+    });
 
     const settled = await stores(actor).resolveTimeout(runId, callId);
 
@@ -299,12 +320,13 @@ describe("an offline operator", () => {
 });
 
 describe("an operator who answers", () => {
-  it("records who, when and which call", async () => {
+  it("records who, when, which call and what it was asked to do", async () => {
     const callId = `call-decided-${randomUUID()}`;
     await stores(systemActor(user.spaceId)).open({
       runId,
       callId,
       tool: "web",
+      arguments: { url: "https://example.com/page" },
       expiresAt: future(600),
     });
 
@@ -319,11 +341,18 @@ describe("an operator who answers", () => {
       runId,
       callId,
       tool: "web",
+      arguments: { url: "https://example.com/page" },
       status: "approved",
       decidedBy: userId,
       reason: null,
     });
     expect(result.record.decidedAt).toBeInstanceOf(Date);
+
+    // The payload survives the jsonb column, so a reloading client or an
+    // audit reads the same call the operator approved.
+    expect((await row(runId, callId))?.arguments).toEqual({
+      url: "https://example.com/page",
+    });
   });
 
   it("resolves exactly once when approve and deny race", async () => {
@@ -332,6 +361,7 @@ describe("an operator who answers", () => {
       runId,
       callId,
       tool: "shell",
+      arguments: {},
       expiresAt: future(600),
     });
 
@@ -362,6 +392,7 @@ describe("an operator who answers", () => {
       runId,
       callId,
       tool: "shell",
+      arguments: {},
       expiresAt: future(600),
     });
 
@@ -394,7 +425,7 @@ describe("actor scope", () => {
   it("answers not-found for a run in another space and writes nothing", async () => {
     const callId = `call-cross-space-${randomUUID()}`;
     const error = await stores(systemActor(otherSpace))
-      .open({ runId, callId, tool: "shell", expiresAt: future(600) })
+      .open({ runId, callId, tool: "shell", arguments: {}, expiresAt: future(600) })
       .then(
         () => undefined,
         (thrown: unknown) => thrown,
@@ -412,6 +443,7 @@ describe("actor scope", () => {
       runId,
       callId,
       tool: "shell",
+      arguments: {},
       expiresAt: future(600),
     });
 

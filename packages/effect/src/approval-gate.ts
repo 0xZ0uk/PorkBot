@@ -1,6 +1,7 @@
 import { Clock, Effect } from "effect";
 import { APPROVAL_POLL_INTERVAL_MS, DEFAULT_APPROVAL_TIMEOUT_MS } from "@porkbot/core";
 import type { ApprovalStatus, ApprovalVote } from "@porkbot/core";
+import { redact } from "@porkbot/logging";
 import {
   ApprovalStoreError,
   GateTimeoutError,
@@ -34,6 +35,14 @@ import {
  * the typed `ApprovalStoreError` — a call whose gate cannot be recorded must
  * not run — while a missing row stays the shared `NotFoundError`.
  *
+ * `open` records the call's arguments through the shared redaction helper
+ * before the row is written, so the operator reviews the same rendered payload
+ * the transcript carries: secret-shaped fields are `[redacted]` and a string
+ * beyond the log bound is `[truncated]`. The operator approves the action and
+ * the tool executes the call it already holds; the gate is not a byte-exact
+ * copy of an unattested payload, and a deployment that needs byte review must
+ * keep gated payloads inside the inline bound.
+ *
  * Wire events are the caller's side of the seam: `open` returns the row (whose
  * `expiresAt` is the durable deadline) and `waitFor` returns the settled row or
  * fails `GateTimeoutError`, and the run executor emits `approval.requested` /
@@ -48,19 +57,27 @@ export interface ApprovalRequest {
   readonly runId: string;
   readonly callId: string;
   readonly tool: string;
+  /**
+   * The tool call's arguments, as the operator will review them. They are
+   * redacted by the gate before the row is written, so the durable decision
+   * carries what the call would do without carrying a secret-shaped value.
+   */
+  readonly arguments: unknown;
   readonly expiresAt: Date;
 }
 
 /**
  * One durable approval row. `decidedBy` and `decidedAt` are the operator of
  * record and the instant the decision was recorded; a `timed_out` row has the
- * instant but no operator, because the system denied it.
+ * instant but no operator, because the system denied it. `arguments` is the
+ * redacted tool-call payload the decision was made about.
  */
 export interface ApprovalRecord {
   readonly id: string;
   readonly runId: string;
   readonly callId: string;
   readonly tool: string;
+  readonly arguments: unknown;
   readonly status: ApprovalStatus;
   readonly expiresAt: Date;
   readonly decidedBy: string | null;
@@ -130,6 +147,7 @@ export interface ApprovalGateShape {
   readonly open: (input: {
     readonly callId: string;
     readonly tool: string;
+    readonly arguments: unknown;
   }) => Effect.Effect<ApprovalRecord, ApprovalStoreError | NotFoundError | InvalidToolCallError>;
   /**
    * Waits until the row is decided. Returns the settled record for an operator
@@ -174,6 +192,7 @@ export function createApprovalGate(options: ApprovalGateOptions): ApprovalGateSh
           runId: options.runId,
           callId: input.callId,
           tool: input.tool,
+          arguments: redact(input.arguments),
           expiresAt: new Date(now + timeoutMs),
         }),
       );

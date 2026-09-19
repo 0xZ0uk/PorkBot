@@ -149,8 +149,15 @@ export {
   MAX_ATTACHMENT_FILE_NAME_LENGTH,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MESSAGE_ATTACHMENTS_DIRECTORY,
+  resolveComputerPath,
 } from "./files.ts";
-export type { HomePath, HomePathRefusal, HomePathResolution } from "./files.ts";
+export type {
+  ComputerPathResolution,
+  HomePath,
+  HomePathRefusal,
+  HomePathResolution,
+  ResolvedComputerPath,
+} from "./files.ts";
 
 export {
   decideRoutineDue,
@@ -372,6 +379,24 @@ export type {
   EgressHostRejection,
   EgressHostRule,
 } from "./egress-policy.ts";
+
+export {
+  classifyDangerousAction,
+  connectorDangerousActions,
+  CONNECTOR_DELETE_VERBS,
+  CONNECTOR_SEND_VERBS,
+  CREDENTIAL_STORE_DIRECTORIES,
+  CREDENTIAL_STORE_FILES,
+  DANGEROUS_ACTION_CLASSES,
+  isCredentialStorePath,
+  isDangerousActionClass,
+} from "./dangerous-actions.ts";
+export type {
+  DangerousAction,
+  DangerousActionClass,
+  DangerousActionClassification,
+  DangerousActionRequest,
+} from "./dangerous-actions.ts";
 
 export {
   assertComputerNetworkPlan,
