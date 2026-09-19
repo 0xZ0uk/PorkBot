@@ -28,6 +28,7 @@ const base: ThreadConsoleState = {
   ],
   refusal: null,
   connection: "live",
+  liveness: null,
 };
 
 function call(overrides: Partial<ToolCallSnapshot> = {}): ToolCallSnapshot {
@@ -248,5 +249,56 @@ describe("the tool-call timeline", () => {
     );
 
     expect(container.querySelector(".tool-call-status")?.textContent).toBe("Waiting for approval");
+  });
+});
+
+describe("the console's liveness line", () => {
+  it("names the step, the tool and the heartbeat lag while the run works", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={{
+          ...base,
+          liveness: {
+            state: "working",
+            tool: "shell",
+            heartbeatLagMs: 3_000,
+            sinceProgressMs: 10_000,
+          },
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("[data-liveness='working']")?.textContent).toBe(
+      "Running shell… · heartbeat 3s ago",
+    );
+  });
+
+  it("marks a stuck run with its silence, not as healthy", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={{
+          ...base,
+          liveness: {
+            state: "stuck",
+            tool: "shell",
+            heartbeatLagMs: 62_000,
+            sinceProgressMs: 185_000,
+          },
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const line = container.querySelector("[data-liveness='stuck']");
+
+    expect(line?.textContent).toBe("Stuck — no progress for 3m 5s · heartbeat 1m 2s ago");
+    expect(line?.className).toContain("console-liveness-stuck");
+  });
+
+  it("shows no liveness chrome when no run is active", async () => {
+    await render(<ThreadConsoleScreen state={base} onRetry={vi.fn()} />);
+
+    expect(container.querySelector("[data-liveness]")).toBeNull();
   });
 });

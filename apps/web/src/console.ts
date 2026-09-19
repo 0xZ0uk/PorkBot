@@ -1,6 +1,18 @@
 import { ORPCError, subscribeThreadEvents } from "@porkbot/contracts";
-import type { Message, ThreadEventsProcedure, ThreadSubscriptionState } from "@porkbot/contracts";
-import { createThreadSnapshot, messageText, reduceRunEvent } from "@porkbot/core";
+import type {
+  Message,
+  RunGet,
+  RunLiveness,
+  ThreadEventsProcedure,
+  ThreadSubscriptionState,
+} from "@porkbot/contracts";
+import {
+  createThreadSnapshot,
+  isActiveStatus,
+  isTerminalStatus,
+  messageText,
+  reduceRunEvent,
+} from "@porkbot/core";
 import type { BackoffPolicy, RunSnapshot, ThreadSnapshot, ToolCallSnapshot } from "@porkbot/core";
 
 /**
@@ -40,12 +52,21 @@ import type { BackoffPolicy, RunSnapshot, ThreadSnapshot, ToolCallSnapshot } fro
  * another tab while this console is mounted is not in the event vocabulary, so
  * it appears on the next mount rather than live. Steering messages do arrive
  * as events, and a run that produces one shows it immediately.
+ *
+ * Liveness (slice 6.10, story 22) is the one read that is not an event: lag and
+ * progress age grow with the wall clock, so while a run is active the console
+ * re-reads the API's assessment on an interval and stops the moment the run
+ * settles. The assessment itself is computed server-side from the persisted
+ * row with the same function the notification path uses, so a reload renders
+ * the same numbers as the last live tick.
  */
 
 /** The API surface the console needs, narrow enough to fake without a network. */
 export interface ThreadConsoleTransport {
   /** The thread's persisted messages, oldest first. */
   transcript(threadId: string): Promise<readonly Message[]>;
+  /** One run's persisted liveness, assessed by the API at request time. */
+  run(runId: string): Promise<RunGet>;
   readonly events: ThreadEventsProcedure;
 }
 
@@ -77,11 +98,15 @@ export interface ThreadConsoleState {
   /** The sentence to show when `status` is `refused`, else `null`. */
   readonly refusal: string | null;
   readonly connection: ThreadSubscriptionState;
+  /** The newest active run's liveness, or `null` when none is running. */
+  readonly liveness: RunLiveness | null;
 }
 
 export interface ThreadConsoleOptions {
   readonly transport: ThreadConsoleTransport;
   readonly threadId: string;
+  /** How often the active run's liveness is re-read; defaults to five seconds. */
+  readonly livenessIntervalMs?: number;
   /** Test seams, passed through to the contracts' reconnect loop. */
   readonly policy?: BackoffPolicy | undefined;
   readonly random?: (() => number) | undefined;
@@ -113,8 +138,27 @@ function refusalFor(error: unknown): string {
   return error instanceof ORPCError && error.code === "NOT_FOUND" ? notAvailable : streamUnreadable;
 }
 
+/**
+ * The newest run the snapshot still considers active. A thread has at most one
+ * live run (the send path steers rather than starting a second), but the
+ * snapshot keeps history, so the search walks back to the newest one rather
+ * than assuming the last entry is the live one.
+ */
+function newestActiveRun(snapshot: ThreadSnapshot): string | null {
+  for (let index = snapshot.runs.length - 1; index >= 0; index -= 1) {
+    const run = snapshot.runs[index];
+
+    if (run !== undefined && isActiveStatus(run.status)) {
+      return run.runId;
+    }
+  }
+
+  return null;
+}
+
 export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsole {
   const { transport, threadId } = options;
+  const livenessIntervalMs = options.livenessIntervalMs ?? 5_000;
   const listeners = new Set<() => void>();
   let snapshot = createThreadSnapshot(threadId);
   let transcript: readonly Message[] = [];
@@ -124,12 +168,18 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     entries: [],
     refusal: null,
     connection: "connecting",
+    liveness: null,
   };
   // Bumped by stop/retry, so a slow fetch or frame from an earlier run never
   // writes into the state of a later one.
   let generation = 0;
   let running = false;
   let controller: AbortController | undefined;
+  // The run the interval is following, and its last assessment. The run id is
+  // the generation of the poll: a frame for a different active run moves it,
+  // and a poll that returns after that is ignored.
+  let livenessRunId: string | null = null;
+  let livenessTimer: ReturnType<typeof setInterval> | undefined;
 
   function setState(next: Partial<ThreadConsoleState>): void {
     state = { ...state, ...next };
@@ -139,6 +189,83 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     }
   }
 
+  function stopLiveness(): void {
+    if (livenessTimer !== undefined) {
+      clearInterval(livenessTimer);
+      livenessTimer = undefined;
+    }
+
+    livenessRunId = null;
+  }
+
+  /**
+   * Follows the newest active run in the reduced snapshot. It is called after
+   * every fold and after the transcript load, so the run whose events arrive is
+   * the run that gets polled, and the terminal event ends the poll in the same
+   * pass that ends the run.
+   */
+  function syncLiveness(): void {
+    const active = newestActiveRun(snapshot);
+
+    if (active === livenessRunId) {
+      return;
+    }
+
+    stopLiveness();
+
+    if (active === null) {
+      if (state.liveness !== null) {
+        setState({ liveness: null });
+      }
+
+      return;
+    }
+
+    livenessRunId = active;
+
+    if (state.liveness !== null) {
+      setState({ liveness: null });
+    }
+
+    const current = generation;
+    void pollLiveness(active, current);
+    livenessTimer = setInterval(() => {
+      void pollLiveness(active, current);
+    }, livenessIntervalMs);
+  }
+
+  async function pollLiveness(runId: string, current: number): Promise<void> {
+    let read: RunGet;
+
+    try {
+      read = await transport.run(runId);
+    } catch (error) {
+      // The stream, not this read, is the console's source of truth: a failed
+      // poll is retried on the next tick, and only a run that no longer exists
+      // stops it — and clears the line rather than leaving a stale assessment
+      // on screen. A contradiction still refuses in the frame loop above.
+      if (current === generation && error instanceof ORPCError && error.code === "NOT_FOUND") {
+        stopLiveness();
+
+        if (state.liveness !== null) {
+          setState({ liveness: null });
+        }
+      }
+
+      return;
+    }
+
+    if (current !== generation || runId !== livenessRunId) {
+      return;
+    }
+
+    if (read.liveness === null && isTerminalStatus(read.status)) {
+      stopLiveness();
+    }
+
+    setState({ liveness: read.liveness });
+  }
+
   async function run(current: number, active: AbortController): Promise<void> {
     let fetched: readonly Message[];
 
@@ -146,7 +273,8 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       fetched = await transport.transcript(threadId);
     } catch (error) {
       if (current === generation) {
-        setState({ status: "refused", refusal: refusalFor(error) });
+        stopLiveness();
+        setState({ status: "refused", refusal: refusalFor(error), liveness: null });
       }
 
       return;
@@ -161,6 +289,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
 
     transcript = fetched;
     setState({ status: "ready", entries: mergeTranscript(transcript, snapshot) });
+    syncLiveness();
 
     try {
       const subscription = subscribeThreadEvents(
@@ -189,17 +318,20 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
         if (!reduced.ok) {
           // A contradiction in the stream is not something to repair here: the
           // reducer refuses to guess and the console says so.
-          setState({ status: "refused", refusal: streamUnreadable });
+          stopLiveness();
+          setState({ status: "refused", refusal: streamUnreadable, liveness: null });
 
           return;
         }
 
         snapshot = reduced.snapshot;
         setState({ entries: mergeTranscript(transcript, snapshot) });
+        syncLiveness();
       }
     } catch (error) {
       if (current === generation) {
-        setState({ status: "refused", refusal: refusalFor(error) });
+        stopLiveness();
+        setState({ status: "refused", refusal: refusalFor(error), liveness: null });
       }
     }
   }
@@ -215,8 +347,15 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     controller = new AbortController();
     snapshot = createThreadSnapshot(threadId);
     transcript = [];
+    stopLiveness();
 
-    setState({ status: "loading", refusal: null, connection: "connecting", entries: [] });
+    setState({
+      status: "loading",
+      refusal: null,
+      connection: "connecting",
+      entries: [],
+      liveness: null,
+    });
     void run(generation, controller);
   }
 
@@ -244,6 +383,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       generation += 1;
       controller?.abort();
       controller = undefined;
+      stopLiveness();
     },
 
     retry: () => {

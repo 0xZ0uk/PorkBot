@@ -191,7 +191,21 @@ export {
   RUN_LEASE_TTL_SECONDS,
   RUN_WATCHDOG_BATCH_LIMIT,
 } from "./run-leases.ts";
-export type { ExpiredLease, FencedRunPatch, ReclaimOptions, RunLease } from "./run-leases.ts";
+export type {
+  ExpiredLease,
+  FencedRunPatch,
+  ReclaimOptions,
+  RunLease,
+  RunProgressStamp,
+} from "./run-leases.ts";
+
+// Run-stall detection (slice 6.10, PRD decision 33): the cross-space scan for
+// active runs whose progress stopped and the guarded episode marker the
+// notification path keys its exactly-once delivery on. Like
+// `findExpiredLeases`, the scan returns addressing only and cannot be reached
+// through `createRepositories`; the mark is a `SystemRunWriter` method.
+export { findStalledRuns, markRunStalled } from "./run-liveness.ts";
+export type { StalledRun } from "./run-liveness.ts";
 export type {
   AttemptStatus,
   BotRecord,

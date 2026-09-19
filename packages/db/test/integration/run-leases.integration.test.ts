@@ -140,9 +140,13 @@ describe("run lease compare-and-swap", () => {
 
     const staleRepositories = createRepositories(system("stale-job"), db());
     const staleLease = { owner: oldOwner, fence: 1 };
-    await expect(staleRepositories.runs.heartbeat(runId, staleLease)).rejects.toBeInstanceOf(
-      LeaseLostError,
-    );
+    await expect(
+      staleRepositories.runs.heartbeat(runId, staleLease, {
+        progressed: false,
+        idleSeconds: 0,
+        step: null,
+      }),
+    ).rejects.toBeInstanceOf(LeaseLostError);
     await expect(
       staleRepositories.runs.update(runId, staleLease, { checkpoint: { owner: oldOwner } }),
     ).rejects.toBeInstanceOf(LeaseLostError);
