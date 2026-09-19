@@ -68,6 +68,13 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
     actor,
     membership: { requireActive: notExercised },
     approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
+    botSecrets: {
+      list: notExercised,
+      find: notExercised,
+      put: notExercised,
+      forget: notExercised,
+      rotate: notExercised,
+    },
     bots: {
       findById: notExercised,
       list: notExercised,

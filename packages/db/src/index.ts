@@ -358,6 +358,19 @@ export type { UsagePeriod, UsageReader, UsageSummary, UsageTotals } from "./usag
 // half on each actor's repository set and takes the keyring in its options.
 export { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 
+// The durable half of bot secrets (slice 9.6, E9 epic; reference parity
+// BotSecret): AES-256-GCM envelopes in the bot secret rows, each bound to its
+// `(space, bot, name)` identity so a ciphertext moved between bots fails
+// authentication. This module is the only shipped code that names the rows, and
+// `createBotSecretStore` is the only way in or out. The factory splits by
+// actor: an operator lists destinations and statuses, stores a value, forgets
+// and rotates through the actor's space, while a job reads metadata, forgets,
+// and resolves one name for the run's proxy handle. The seams it implements
+// (`BotSecrets`, `BotSecretRequests` and `BotSecretResolver`) are declared in
+// `@porkbot/effect`, and `createRepositories` exposes the matching half on each
+// actor's repository set.
+export { createBotSecretStore } from "./bot-secret-store.ts";
+
 // The durable half of MCP servers (slice 9.5, PRD story 38): the installed
 // server rows, the tool list discovery cached and the per-bot grants. This
 // module is the only one in the package — and, by the call-site suite beside

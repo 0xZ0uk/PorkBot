@@ -10,6 +10,7 @@ import { createRepositories } from "@porkbot/db";
 import type { FencedRunPatch, RunLease, RunRecord, SystemRepositories } from "@porkbot/db";
 import {
   consumeRunSession,
+  createBotSecretTools,
   createComputerTools,
   createFencedComputerCommands,
   createRunCredentialProxy,
@@ -20,7 +21,14 @@ import {
   RUN_PROXY_URL_ENV,
   withLiveRun,
 } from "@porkbot/effect";
-import type { SafeFetch } from "@porkbot/effect";
+import type {
+  ApprovalRecord,
+  ApprovalStore,
+  BotSecretRequests,
+  BotSecretResolver,
+  BotSecretSummary,
+  SafeFetch,
+} from "@porkbot/effect";
 import type {
   ComputerLease,
   ComputerLeaseAcquisition,
@@ -64,6 +72,9 @@ const proxySecret = "test-proxy-capability-secret";
 const modelOrigin = "https://model.example.test";
 const modelCredentialName = "model-key";
 const modelCredentialValue = "sk-model-secret-marker";
+const botSecretName = "example_api";
+const botSecretOrigin = "https://api.example.test";
+const botSecretValue = "sk-bot-secret-marker";
 const attachment = {
   id: "41a2f8a2-4a5a-4a6e-8f3a-2f5c9d1b7e4c",
   storageKey: "files/space-1/object/report.txt",
@@ -227,6 +238,52 @@ function executionFor(runner: FakeRunner): RunExecution {
   };
 }
 
+/** The run's gate, already answered: every ask resolves approved on the first read. */
+function autoApprovedGate(): ApprovalStore {
+  const recordFor = (request: {
+    readonly runId: string;
+    readonly callId: string;
+    readonly tool: string;
+    readonly arguments: unknown;
+    readonly expiresAt: Date;
+  }): ApprovalRecord => ({
+    id: `approval-${request.callId}`,
+    runId: request.runId,
+    callId: request.callId,
+    tool: request.tool,
+    arguments: request.arguments,
+    status: "approved",
+    expiresAt: request.expiresAt,
+    decidedBy: "operator-1",
+    decidedAt: new Date(0),
+    reason: null,
+  });
+
+  return {
+    async open(request) {
+      return recordFor(request);
+    },
+    async find(runId, callId) {
+      return recordFor({
+        runId,
+        callId,
+        tool: "request_secret",
+        arguments: {},
+        expiresAt: new Date(0),
+      });
+    },
+    async resolveTimeout(runId, callId) {
+      return recordFor({
+        runId,
+        callId,
+        tool: "request_secret",
+        arguments: {},
+        expiresAt: new Date(0),
+      });
+    },
+  };
+}
+
 function memoryLedger(): ToolCallLedger {
   const settled = new Map<string, ToolOutcome>();
 
@@ -275,6 +332,10 @@ interface OfflineRun {
   readonly environments: readonly Readonly<Record<string, string>>[];
   /** A call a holder of the run's capability made before the run settled. */
   readonly capabilityCallStatus: number;
+  /** The capability call naming the approved bot secret, before the forget. */
+  readonly secretCallStatus: number;
+  /** The same call after the agent's forget took the upstream back. */
+  readonly secretAfterForgetStatus: number;
 }
 
 /** Every emulator this suite started, so each test's proxy servers are released. */
@@ -318,14 +379,71 @@ async function runOffline(): Promise<OfflineRun> {
   await emulator.ensure(computer);
 
   const credentials = createMemoryCredentialStore([[modelCredentialName, modelCredentialValue]]);
+
+  // One stored bot secret: the value is held server-side, and only the proxy
+  // handle's resolver ever sees it.
+  const botSecretRow: {
+    destination: { name: string; origin: string; auth: { type: "bearer" } };
+    value: string | undefined;
+  } = {
+    destination: { name: botSecretName, origin: botSecretOrigin, auth: { type: "bearer" } },
+    value: botSecretValue,
+  };
+  const botSecrets: BotSecretRequests & BotSecretResolver = {
+    async list(): Promise<readonly BotSecretSummary[]> {
+      return [
+        {
+          name: botSecretName,
+          status: botSecretRow.value === undefined ? "forgotten" : "stored",
+          origin: botSecretOrigin,
+          auth: { type: "bearer" },
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        },
+      ];
+    },
+    async find(_botId, name) {
+      if (name !== botSecretName) {
+        return undefined;
+      }
+
+      return {
+        name: botSecretName,
+        status: botSecretRow.value === undefined ? "forgotten" : "stored",
+        origin: botSecretOrigin,
+        auth: { type: "bearer" },
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      };
+    },
+    async forget(_botId, name) {
+      if (name !== botSecretName || botSecretRow.value === undefined) {
+        return { removed: false };
+      }
+
+      botSecretRow.value = undefined;
+      return { removed: true };
+    },
+    async resolve(_botId, name) {
+      if (name !== botSecretName || botSecretRow.value === undefined) {
+        return undefined;
+      }
+
+      return { destination: botSecretRow.destination, value: botSecretRow.value };
+    },
+  };
   const runProxy = createRunCredentialProxy({
     provider: emulator,
     credentials,
+    botSecrets,
     tokenSecret: proxySecret,
   });
+  const approvals = autoApprovedGate();
   /** What the proxy-holding command actually got, kept for the assertions. */
   const commandEnvironments: Readonly<Record<string, string>>[] = [];
   let capabilityCallStatus = 0;
+  let secretCallStatus = 0;
+  let secretAfterForgetStatus = 0;
 
   const recorded: RunEvent[] = [];
   const script: readonly EmulatorStep[] = [
@@ -354,6 +472,13 @@ async function runOffline(): Promise<OfflineRun> {
       tool: "browser",
       arguments: { action: "open", url: pageUrl },
     },
+    {
+      kind: "tool.immediate",
+      callId: "call-secret-request",
+      tool: "request_secret",
+      arguments: { name: botSecretName, origin: botSecretOrigin, auth: { type: "bearer" } },
+    },
+    { kind: "tool.immediate", callId: "call-secret-list", tool: "list_secrets", arguments: {} },
     { kind: "run.completed", messageId: "assistant-1" },
   ];
 
@@ -416,12 +541,25 @@ async function runOffline(): Promise<OfflineRun> {
         });
 
         const tools = createToolDispatcher({
-          registrations: createComputerTools({
-            commands,
-            computer,
-            maxDurationMs: 30_000,
-            allowlist: parseEgressAllowlist(["docs.example.invalid"]),
-          }),
+          registrations: [
+            ...createComputerTools({
+              commands,
+              computer,
+              maxDurationMs: 30_000,
+              allowlist: parseEgressAllowlist(["docs.example.invalid"]),
+            }),
+            // The bot secret tools (slice 9.6): the ask opens the run's durable
+            // gate, the approved name becomes one more proxy upstream, and the
+            // value is resolved inside the proxy handle rather than here.
+            ...createBotSecretTools({
+              botId: execution.run.botId,
+              secrets: botSecrets,
+              proxy,
+              approvals,
+              approvalTimeoutMs: 10_000,
+              maxDurationMs: 30_000,
+            }),
+          ],
           ledger,
           leaseTtlMs: 120_000,
           heartbeat: Effect.void,
@@ -443,7 +581,7 @@ async function runOffline(): Promise<OfflineRun> {
         );
         capabilityCallStatus = response.status;
 
-        return yield* withLiveRun(
+        const outcome = yield* withLiveRun(
           execution.run.id,
           emulatorAgentRuntimeLayer(startRequest(execution.run.id), script, { tools }),
           (session) => {
@@ -456,6 +594,31 @@ async function runOffline(): Promise<OfflineRun> {
             );
           },
         ).pipe(Effect.provide(liveRunsLayer));
+
+        // The run's holder reaches the approved secret exactly as it reaches
+        // the model credential: a capability and the upstream name, and the
+        // proxy injects the value on its own leg.
+        const secretCapability = proxy.environmentFor(30_000);
+        const secretCall = (): Promise<Response> =>
+          fetch(`${secretCapability[RUN_PROXY_URL_ENV]}/u/${botSecretName}/v1/items`, {
+            headers: { [proxyTokenHeader]: secretCapability[RUN_PROXY_TOKEN_ENV] ?? "" },
+          });
+
+        secretCallStatus = (yield* Effect.tryPromise(secretCall)).status;
+
+        // The agent's own forget: the value is cleared and the upstream is
+        // taken back through the same handle, so the next request is refused
+        // before any upstream is dialed.
+        yield* tools.execute({
+          runId: execution.run.id,
+          callId: "call-secret-forget",
+          tool: "forget_secret",
+          arguments: { name: botSecretName },
+        });
+
+        secretAfterForgetStatus = (yield* Effect.tryPromise(secretCall)).status;
+
+        return outcome;
       }),
   });
 
@@ -469,6 +632,8 @@ async function runOffline(): Promise<OfflineRun> {
     upstreamCalls,
     environments: commandEnvironments,
     capabilityCallStatus,
+    secretCallStatus,
+    secretAfterForgetStatus,
   };
 }
 
@@ -487,6 +652,10 @@ describe("the first full offline run", () => {
     expect(recorded.map((event) => event.type)).toEqual([
       "run.started",
       "token.delta",
+      "tool.requested",
+      "tool.completed",
+      "tool.requested",
+      "tool.completed",
       "tool.requested",
       "tool.completed",
       "tool.requested",
@@ -564,10 +733,12 @@ describe("the first full offline run", () => {
 
     // The capability worked: a real HTTP call through the proxy reached the
     // upstream with the credential the proxy injected.
+    const modelCalls = upstreamCalls.filter((call) => call.url.startsWith(modelOrigin));
+
     expect(capabilityCallStatus).toBe(200);
-    expect(upstreamCalls).toHaveLength(1);
-    expect(upstreamCalls[0]?.url).toBe(`${modelOrigin}/v1/chat/completions`);
-    expect(upstreamCalls[0]?.headers["authorization"]).toBe(`Bearer ${modelCredentialValue}`);
+    expect(modelCalls).toHaveLength(1);
+    expect(modelCalls[0]?.url).toBe(`${modelOrigin}/v1/chat/completions`);
+    expect(modelCalls[0]?.headers["authorization"]).toBe(`Bearer ${modelCredentialValue}`);
 
     // Every command carried the proxy's address and its own short-lived
     // token, and nothing a credential could hide in.
@@ -582,6 +753,47 @@ describe("the first full offline run", () => {
     const sandboxView = JSON.stringify({ commands, environments });
     expect(sandboxView).not.toContain(modelCredentialValue);
     expect(sandboxView).not.toContain(modelOrigin);
+  });
+
+  it("lets an approved ask reach the secret's upstream only through the proxy", async () => {
+    const { recorded, upstreamCalls, environments, secretCallStatus } = await runOffline();
+
+    // The ask was annotated by the tool and answered by the gate; the list
+    // names the credential and its status, never its value or destination.
+    expect(toolResult(recorded, "call-secret-request")).toMatchObject({
+      ok: true,
+      name: botSecretName,
+      status: "granted",
+    });
+    expect(toolResult(recorded, "call-secret-list")).toEqual({
+      ok: true,
+      secrets: [{ name: botSecretName, status: "stored" }],
+    });
+
+    // The capability call reached the secret's origin with the injected
+    // header; the sandbox's own request carried nothing but the token.
+    expect(secretCallStatus).toBe(200);
+    const secretCall = upstreamCalls.find((call) => call.url === `${botSecretOrigin}/v1/items`);
+    expect(secretCall?.headers["authorization"]).toBe(`Bearer ${botSecretValue}`);
+
+    // Nothing the model can see — events, tool results, the sandbox's
+    // environments — carries the value. The destination is the ask itself and
+    // the operator's card; the list result above is the one surface and it
+    // names only the credential and its status.
+    const modelView = JSON.stringify({ recorded, environments });
+    expect(modelView).not.toContain(botSecretValue);
+  });
+
+  it("takes the upstream back on the agent's forget, so the next request is refused", async () => {
+    const { recorded, upstreamCalls, secretAfterForgetStatus } = await runOffline();
+
+    expect(secretAfterForgetStatus).toBe(403);
+    // The second call never dialed an upstream: the proxy refused the name
+    // before the request left the machine.
+    expect(upstreamCalls.filter((call) => call.url.startsWith(botSecretOrigin))).toHaveLength(1);
+
+    const modelView = JSON.stringify(recorded);
+    expect(modelView).not.toContain(botSecretValue);
   });
 
   it("revokes the run's grant when the run ends, so an unexpired capability dies with it", async () => {

@@ -183,6 +183,13 @@ function stubRepositories(memory: MemoryStoreStub): UserRepositories {
       rotate: notExercised,
       remove: notExercised,
     },
+    botSecrets: {
+      list: notExercised,
+      find: notExercised,
+      put: notExercised,
+      forget: notExercised,
+      rotate: notExercised,
+    },
     modelConnections: {
       findById: notExercised,
       list: notExercised,

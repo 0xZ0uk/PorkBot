@@ -184,9 +184,9 @@ export async function mountSpace(database: Queryable, label: string): Promise<Sp
     owner,
     member,
     system,
-    ownerRepositories: createRepositories(owner, database),
-    memberRepositories: createRepositories(member, database),
-    systemRepositories: createRepositories(system, database),
+    ownerRepositories: createRepositories(owner, database, { credentialKeys: keyring }),
+    memberRepositories: createRepositories(member, database, { credentialKeys: keyring }),
+    systemRepositories: createRepositories(system, database, { credentialKeys: keyring }),
     memory: createMemoryStore(owner, database),
     memberMemory: createMemoryStore(member, database),
     systemMemory: createMemoryStore(system, database),
@@ -379,6 +379,49 @@ export const resources: readonly Resource<unknown>[] = [
     },
     system: {
       read: (subject, seed) => visibleOn(() => subject.repositories.bots.findById(seed.id)),
+    },
+  }),
+
+  resource<{ readonly botId: string; readonly name: string }>({
+    entity: "bot_secret",
+    tables: ["bot_secret"],
+    seed: async (space) => {
+      const bot = await createBot(space, "Secrets host");
+      const name = "matrix_api";
+
+      // The operator's write is the seed: a value stored beside its one origin.
+      await space.ownerRepositories.botSecrets.put(
+        bot.id,
+        { name, origin: "https://api.example.test", auth: { type: "bearer" } },
+        "matrix-secret-value",
+      );
+
+      return { botId: bot.id, name };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          "select name, origin, auth, (envelope is null) as forgotten " +
+            "from bot_secret where bot_id = $1 order by name asc",
+          [seed.botId],
+        ),
+      ),
+    user: {
+      read: (subject, seed) =>
+        visibleOn(() => subject.repositories.botSecrets.find(seed.botId, seed.name)),
+      // The forget is the write the operator and the agent share; a foreign
+      // bot refuses before the update matches anything.
+      write: (subject, seed) =>
+        appliedOn(() => subject.repositories.botSecrets.forget(seed.botId, seed.name)),
+    },
+    system: {
+      // The run path's read: the one resolve the proxy handle injects.
+      read: (subject, seed) =>
+        visibleOn(() => subject.repositories.botSecrets.resolve(seed.botId, seed.name)),
+      // The agent's own forget, which clears the value before the call returns;
+      // a foreign bot refuses before the update matches anything.
+      write: (subject, seed) =>
+        appliedOn(() => subject.repositories.botSecrets.forget(seed.botId, seed.name)),
     },
   }),
 

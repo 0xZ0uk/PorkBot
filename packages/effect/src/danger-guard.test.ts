@@ -197,6 +197,12 @@ describe("each dangerous class", () => {
       declared: ["credential_access"],
     },
     {
+      name: "credential_request",
+      tool: "request_secret",
+      arguments: { name: "example_api" },
+      declared: ["credential_request"],
+    },
+    {
       name: "write_outside_home",
       tool: "file_write",
       arguments: { path: "/etc/hosts" },

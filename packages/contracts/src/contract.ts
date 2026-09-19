@@ -25,6 +25,11 @@ import {
   modelConnectionsUpdateContract,
 } from "./model-connections.ts";
 import {
+  botSecretsListContract,
+  botSecretsPutContract,
+  botSecretsRemoveContract,
+} from "./bot-secrets.ts";
+import {
   botsArchiveContract,
   botsAvatarContract,
   botsClearAvatarContract,
@@ -118,6 +123,11 @@ export const appContract = {
     setAvatar: botsSetAvatarContract,
     avatar: botsAvatarContract,
     clearAvatar: botsClearAvatarContract,
+  },
+  botSecrets: {
+    list: botSecretsListContract,
+    put: botSecretsPutContract,
+    remove: botSecretsRemoveContract,
   },
   computers: {
     providers: computersProvidersContract,
