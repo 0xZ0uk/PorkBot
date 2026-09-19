@@ -18,6 +18,7 @@ import {
   runCompleted,
   runStarted,
   scriptedConnectionsTransport,
+  scriptedBotsTransport,
   scriptedMemoryTransport,
   scriptedUsageTransport,
   scriptedThreadTransport,
@@ -83,6 +84,7 @@ function appWith(
     {
       auth,
       session,
+      bots: scriptedBotsTransport(transport),
       threads: transport,
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),
@@ -134,7 +136,7 @@ describe("the shell's route guards", () => {
     await render(<RouterProvider router={router} />);
 
     expect(router.state.location.pathname).toBe("/");
-    expect(container.textContent).toContain("No bots yet.");
+    expect(container.textContent).toContain("Create your first bot");
     expect(container.textContent).toContain("Sign out");
   });
 
@@ -145,6 +147,7 @@ describe("the shell's route guards", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(),
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
@@ -159,7 +162,7 @@ describe("the shell's route guards", () => {
     await render(<RouterProvider router={router} />);
 
     expect(router.state.location.pathname).toBe("/");
-    expect(container.textContent).toContain("No bots yet.");
+    expect(container.textContent).toContain("Create your first bot");
   });
 
   it("does not settle while the session read is unanswered", async () => {
@@ -228,6 +231,7 @@ describe("the shell's route guards", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(),
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
@@ -251,7 +255,7 @@ describe("the shell's route guards", () => {
       signOut?.click();
     });
 
-    expect(container.textContent).toContain("No bots yet.");
+    expect(container.textContent).toContain("Create your first bot");
   });
 });
 
@@ -300,6 +304,7 @@ describe("the console routes", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(transport),
         threads: transport,
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
@@ -340,6 +345,7 @@ describe("the console routes", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(transport),
         threads: transport,
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
@@ -370,6 +376,7 @@ describe("the console routes", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(),
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage: scriptedUsageTransport(),
@@ -398,6 +405,7 @@ describe("the memory route", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(),
         threads: scriptedThreadTransport(),
         memory,
         usage: scriptedUsageTransport(),
@@ -641,6 +649,7 @@ describe("the usage route", () => {
       {
         auth,
         session,
+        bots: scriptedBotsTransport(),
         threads: scriptedThreadTransport(),
         memory: scriptedMemoryTransport(),
         usage,
