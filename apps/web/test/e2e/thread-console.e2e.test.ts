@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
-import { act } from "react";
+import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -102,7 +102,7 @@ async function mountConsole(api: ScriptedThreadApi): Promise<MountedConsole> {
     await router.load();
   });
   await act(async () => {
-    root.render(<RouterProvider router={router} />);
+    root.render(createElement(RouterProvider, { router }));
   });
 
   return {

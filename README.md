@@ -1000,7 +1000,7 @@ with the static host and asserts the shell's asset references exist, the
 bootstrapping state is in the prerendered HTML, and an unknown route is
 rewritten rather than 404ed (`static-build.e2e.test.ts`), and mounts the thread
 console over a real HTTP connection to a scripted oRPC/SSE server to prove the
-resume path (`thread-console.e2e.test.tsx`).
+resume path (`thread-console.e2e.test.ts`).
 
 ## Thread console
 
