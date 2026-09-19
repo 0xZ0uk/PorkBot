@@ -21,9 +21,21 @@ import { ToolCallEntry } from "./tool-call.tsx";
 export interface ThreadConsoleScreenProps {
   readonly state: ThreadConsoleState;
   readonly onRetry: () => void;
+  readonly onApprovalDecision?:
+    | ((input: {
+        readonly runId: string;
+        readonly callId: string;
+        readonly vote: "approve" | "deny";
+        readonly reason?: string;
+      }) => Promise<void>)
+    | undefined;
 }
 
-export function ThreadConsoleScreen({ state, onRetry }: ThreadConsoleScreenProps) {
+export function ThreadConsoleScreen({
+  state,
+  onRetry,
+  onApprovalDecision,
+}: ThreadConsoleScreenProps) {
   if (state.status === "refused") {
     return (
       <section className="console">
@@ -71,6 +83,7 @@ export function ThreadConsoleScreen({ state, onRetry }: ThreadConsoleScreenProps
                 threadId={state.threadId}
                 runId={entry.runId}
                 call={entry.call}
+                {...(onApprovalDecision === undefined ? {} : { onApprovalDecision })}
               />
             ) : (
               <li

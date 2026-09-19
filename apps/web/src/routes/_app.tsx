@@ -62,6 +62,7 @@ function AppLayout() {
           <Link to="/">PorkBot</Link>
         </h1>
         <div className="app-header-actions">
+          <Link to="/approvals">Approvals</Link>
           <Link to="/settings/connections">Connections</Link>
           <Button
             onClick={() => {

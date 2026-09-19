@@ -1,6 +1,8 @@
 import { NotFoundError } from "@porkbot/effect";
 import type {
   ApprovalDecisions,
+  ApprovalHistoryRecord,
+  ApprovalListInput,
   ApprovalRecord,
   ApprovalStore,
   ApprovalVoteInput,
@@ -39,6 +41,12 @@ export const approvalColumns =
   'id, run_id as "runId", call_id as "callId", tool, arguments, ' +
   'status::text as "status", expires_at as "expiresAt", ' +
   'decided_by_user_id as "decidedBy", decided_at as "decidedAt", reason';
+
+const approvalHistoryColumns =
+  'a.id, a.run_id as "runId", a.call_id as "callId", a.tool, a.arguments, ' +
+  'a.status::text as "status", a.expires_at as "expiresAt", ' +
+  'a.decided_by_user_id as "decidedBy", a.decided_at as "decidedAt", a.reason, ' +
+  'r.bot_id as "botId", r.thread_id as "threadId"';
 
 export function createApprovalStore(actor: SystemActor, database: Queryable): ApprovalStore;
 export function createApprovalStore(actor: UserActor, database: Queryable): ApprovalDecisions;
@@ -175,6 +183,35 @@ function userApprovalStore(actor: UserActor, database: Queryable): ApprovalDecis
         `select ${approvalColumns} from approval where space_id = $1 and run_id = $2 ` +
           "order by created_at asc, id asc",
         [actor.spaceId, runId],
+      );
+
+      return rows;
+    },
+
+    async list(input: ApprovalListInput = {}): Promise<readonly ApprovalHistoryRecord[]> {
+      const values: unknown[] = [actor.spaceId];
+      const predicates = ["a.space_id = $1"];
+
+      if (input.botId !== undefined) {
+        values.push(input.botId);
+        predicates.push(`r.bot_id = $${values.length}`);
+      }
+
+      if (input.runId !== undefined) {
+        values.push(input.runId);
+        predicates.push(`a.run_id = $${values.length}`);
+      }
+
+      if (input.status !== undefined) {
+        values.push(input.status);
+        predicates.push(`a.status = $${values.length}::approval_status`);
+      }
+
+      const { rows } = await database.query<ApprovalHistoryRecord>(
+        `select ${approvalHistoryColumns} from approval a ` +
+          "join run r on r.id = a.run_id and r.space_id = a.space_id " +
+          `where ${predicates.join(" and ")} order by a.created_at desc, a.id desc`,
+        values,
       );
 
       return rows;

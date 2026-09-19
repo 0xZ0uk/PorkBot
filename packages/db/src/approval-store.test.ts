@@ -1,5 +1,5 @@
 import { NotFoundError } from "@porkbot/effect";
-import type { ApprovalRecord } from "@porkbot/effect";
+import type { ApprovalHistoryRecord, ApprovalRecord } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
@@ -58,6 +58,15 @@ function record(overrides: Partial<ApprovalRecord> = {}): ApprovalRecord {
     decidedBy: null,
     decidedAt: null,
     reason: null,
+    ...overrides,
+  };
+}
+
+function historyRecord(overrides: Partial<ApprovalHistoryRecord> = {}): ApprovalHistoryRecord {
+  return {
+    ...record(),
+    botId: "bot-1",
+    threadId: "thread-1",
     ...overrides,
   };
 }
@@ -284,6 +293,25 @@ describe("voting on a gate", () => {
     expect(await store.listForRun("run-1")).toEqual([record()]);
     expect(database.calls[0]?.text).toContain("where space_id = $1 and run_id = $2");
     expect(database.calls[0]?.text).toContain("order by created_at asc");
+  });
+
+  it("lists history with run relationships and optional bot, run and status filters", async () => {
+    const database = fakeDatabase(({ text }) =>
+      text.startsWith("select a.id") ? [historyRecord()] : [],
+    );
+    const store = createApprovalStore(operator, database);
+
+    await expect(
+      store.list({ botId: "bot-1", runId: "run-1", status: "pending" }),
+    ).resolves.toEqual([historyRecord()]);
+
+    const query = database.calls[0];
+    expect(query?.text).toContain("join run r on r.id = a.run_id and r.space_id = a.space_id");
+    expect(query?.text).toContain("r.bot_id = $2");
+    expect(query?.text).toContain("a.run_id = $3");
+    expect(query?.text).toContain("a.status = $4::approval_status");
+    expect(query?.text).toContain("order by a.created_at desc, a.id desc");
+    expect(query?.values).toEqual(["space-1", "bot-1", "run-1", "pending"]);
   });
 });
 

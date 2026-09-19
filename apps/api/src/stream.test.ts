@@ -145,6 +145,7 @@ function fakeRepositories(actor: UserActor): UserRepositories {
         }
       },
     },
+    approvals: { decide: notExercised, listForRun: notExercised, list: notExercised },
     bots: {
       findById: notExercised,
       list: notExercised,

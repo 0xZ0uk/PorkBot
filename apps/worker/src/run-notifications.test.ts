@@ -4,7 +4,11 @@ import type { RunRecord, SystemRepositories } from "@porkbot/db";
 import type { NotificationEligibility } from "@porkbot/effect";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
-import { notifySettledRun, notifyStalledRun } from "./run-notifications.ts";
+import {
+  notifyApprovalRequested,
+  notifySettledRun,
+  notifyStalledRun,
+} from "./run-notifications.ts";
 import type { RunNotificationContext, RunNotificationTarget } from "./run-notifications.ts";
 
 /**
@@ -281,5 +285,64 @@ describe("stall notifications", () => {
 
     expect(emulator.size).toBe(0);
     expect(world.eligibilityCalls).toEqual([{ userId: runRecord().userId, kind: "run.stalled" }]);
+  });
+});
+
+describe("approval notifications", () => {
+  it("announces a pending gate without leaking its arguments", async () => {
+    const world = fake();
+    const emulator = new NotificationEmulator();
+
+    await notifyApprovalRequested(
+      runRecord(),
+      {
+        id: "approval-1",
+        runId: "run-1",
+        callId: "call-1",
+        tool: "web_fetch",
+        arguments: { url: "https://private.example.invalid", token: "[redacted]" },
+        status: "pending",
+        expiresAt: new Date("2026-01-01T00:10:00.000Z"),
+        decidedBy: null,
+        decidedAt: null,
+        reason: null,
+      },
+      world.context(emulator),
+    );
+
+    expect(emulator.last()).toMatchObject({
+      title: "Approval needed",
+      body: "A run is waiting for approval to use web_fetch. It will be denied after 2026-01-01T00:10:00.000Z.",
+      url: `${origin}/threads/thread-1?run=run-1`,
+    });
+    expect(emulator.last()?.body).not.toContain("private.example");
+    expect(emulator.last()?.body).not.toContain("redacted");
+    expect(world.eligibilityCalls).toEqual([
+      { userId: runRecord().userId, kind: "run.needs_approval" },
+    ]);
+  });
+
+  it("does not re-notify a gate that is already resolved", async () => {
+    const world = fake();
+    const emulator = new NotificationEmulator();
+
+    await notifyApprovalRequested(
+      runRecord(),
+      {
+        id: "approval-1",
+        runId: "run-1",
+        callId: "call-1",
+        tool: "file_write",
+        arguments: {},
+        status: "timed_out",
+        expiresAt: new Date(1),
+        decidedBy: null,
+        decidedAt: new Date(2),
+        reason: null,
+      },
+      world.context(emulator),
+    );
+
+    expect(emulator.size).toBe(0);
   });
 });
