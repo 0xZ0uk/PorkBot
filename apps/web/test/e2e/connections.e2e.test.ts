@@ -13,6 +13,7 @@ import {
   fakeConnection,
   fakeCredential,
   fakeProbe,
+  scriptedBotsTransport,
   scriptedMemoryTransport,
   scriptedThreadTransport,
   scriptedUsageTransport,
@@ -83,6 +84,7 @@ async function mountConnections(api: ScriptedConnectionsApi): Promise<MountedCon
     {
       auth,
       session,
+      bots: scriptedBotsTransport(),
       threads: scriptedThreadTransport(),
       memory: scriptedMemoryTransport(),
       usage: scriptedUsageTransport(),

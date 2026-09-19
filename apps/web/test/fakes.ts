@@ -4,6 +4,7 @@ import type { ApprovalDecision, RunEvent, ToolResultArtifact } from "@porkbot/co
 import { colors } from "@porkbot/tokens";
 import type {
   Bot,
+  BotSection,
   Credential,
   MemoryDocumentView,
   MemoryRevisionView,
@@ -17,6 +18,7 @@ import type {
   UsageBot,
   UsageTotalsView,
 } from "@porkbot/contracts";
+import type { BotsTransport } from "../src/bots.ts";
 import type { ConnectionsTransport } from "../src/connections.ts";
 import type { MemoryTransport } from "../src/memory.ts";
 import type { ConsoleTransport, UsageTransport } from "../src/transport.ts";
@@ -204,6 +206,33 @@ export function scriptedThreadTransport(
 
       return stored;
     },
+  };
+}
+
+export function scriptedBotsTransport(
+  consoleTransport: Pick<ConsoleTransport, "listBots" | "listThreads"> = scriptedThreadTransport(),
+): BotsTransport {
+  const notExercised = (): never => {
+    throw new Error("not exercised by this test");
+  };
+
+  return {
+    listBots: async (scope) => (scope === "active" ? consoleTransport.listBots() : []),
+    getBot: async () => notExercised(),
+    listSections: async (): Promise<readonly BotSection[]> => [],
+    listThreads: (botId) => consoleTransport.listThreads(botId),
+    computerStatus: async () => ({ assigned: false }),
+    createBot: async () => notExercised(),
+    updateBot: async () => notExercised(),
+    archiveBot: async () => notExercised(),
+    restoreBot: async () => notExercised(),
+    createSection: async () => notExercised(),
+    readAvatar: async () => notExercised(),
+    setAvatar: async () => notExercised(),
+    clearAvatar: async () => notExercised(),
+    bootComputer: async () => notExercised(),
+    stopComputer: async () => notExercised(),
+    recoverComputer: async () => notExercised(),
   };
 }
 
