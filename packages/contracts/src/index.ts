@@ -120,12 +120,23 @@ export {
 } from "./threads.ts";
 export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 
-// Run control (slice 6.7, story 21): the operator's one write into a single
-// run. A stop is recorded as a durable request the worker's live session
-// observes, so the cancellation keeps the session's event sequence and lease
-// release; the answer is the run's state, and a finished run answers it too.
-export { runsStopContract, runStatusSchema, runStopSchema } from "./runs.ts";
-export type { RunStop } from "./runs.ts";
+// Run control (slice 6.7, story 21) and the liveness read (slice 6.10, story
+// 22): the operator's one write into a single run, and the assessment of what
+// it is doing. A stop is recorded as a durable request the worker's live
+// session observes, so the cancellation keeps the session's event sequence and
+// lease release; the answer is the run's state, and a finished run answers it
+// too. `get` answers the persisted liveness the console renders and the
+// notification path consumes.
+export {
+  runsGetContract,
+  runsStopContract,
+  runGetSchema,
+  runLivenessSchema,
+  runLivenessStateSchema,
+  runStatusSchema,
+  runStopSchema,
+} from "./runs.ts";
+export type { RunGet, RunLiveness, RunStop } from "./runs.ts";
 
 // Stored credentials (slices 9.1 and 9.2, PRD decision 10; stories 14 and 15):
 // the list surface answers masked summaries only and `store` takes a value in

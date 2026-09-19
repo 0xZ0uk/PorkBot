@@ -432,3 +432,122 @@ describe("the thread console", () => {
     console.stop();
   });
 });
+
+describe("the console's liveness follow", () => {
+  const runIdle = "run-2";
+  const assessment = {
+    id: runId,
+    status: "running",
+    liveness: {
+      state: "working",
+      tool: "shell",
+      heartbeatLagMs: 3_000,
+      sinceProgressMs: 10_000,
+    },
+  } as const;
+
+  function livenessConsole(
+    transport: Parameters<typeof createThreadConsole>[0]["transport"],
+    intervalMs = 5,
+  ) {
+    return createThreadConsole({
+      transport,
+      threadId,
+      livenessIntervalMs: intervalMs,
+      policy: pinnedPolicy,
+      sleep: async () => undefined,
+    });
+  }
+
+  it("reads the active run's assessment and clears it when the run settles", async () => {
+    const events = createScriptedEvents();
+    const scripted = scriptedThreadTransport({
+      transcript: [
+        textMessage({ id: "message-0", threadId, seq: 0, role: "user", text: "do it", runId }),
+      ],
+      events: events.procedure,
+      runs: { [runId]: assessment },
+    });
+    const console = livenessConsole(scripted);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+
+    await until(() => console.state().liveness !== null, "the liveness read");
+    expect(console.state().liveness).toEqual(assessment.liveness);
+    expect(scripted.runCalls).toEqual([runId]);
+
+    // The run settles: the same fold that ends the run ends the poll, and the
+    // line clears rather than showing a finished run as working.
+    events.push(runCompleted(threadId, runId, 2, messageId));
+    await until(() => console.state().liveness === null, "the liveness to clear");
+
+    const reads = scripted.runCalls.length;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(scripted.runCalls).toHaveLength(reads);
+
+    console.stop();
+  });
+
+  it("clears the line and stops polling a run the API no longer has", async () => {
+    const events = createScriptedEvents();
+    let reads = 0;
+    const scripted = scriptedThreadTransport({
+      events: events.procedure,
+      // The row exists for the first read and is gone after it, the way a
+      // reaped or rolled-back row disappears between two polls.
+      runs: () => (reads++ === 0 ? { [runId]: assessment } : {}),
+    });
+    const console = livenessConsole(scripted);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+
+    await until(() => scripted.runCalls.length >= 2, "the second liveness read");
+    await until(() => console.state().liveness === null, "the liveness to clear");
+    const calls = scripted.runCalls.length;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(scripted.runCalls).toHaveLength(calls);
+    expect(console.state().status).toBe("ready");
+
+    console.stop();
+  });
+
+  it("follows a later run in the same thread once the first settled", async () => {
+    const events = createScriptedEvents();
+    const scripted = scriptedThreadTransport({
+      events: events.procedure,
+      runs: {
+        [runId]: { id: runId, status: "completed", liveness: null },
+        [runIdle]: {
+          id: runIdle,
+          status: "running",
+          liveness: {
+            state: "thinking",
+            tool: null,
+            heartbeatLagMs: 1_000,
+            sinceProgressMs: 2_000,
+          },
+        },
+      },
+    });
+    const console = livenessConsole(scripted);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+    events.push(runCompleted(threadId, runId, 2, messageId));
+    events.push(runStarted(threadId, runIdle, 3));
+
+    await until(() => console.state().liveness?.state === "thinking", "the second run's liveness");
+    expect(scripted.runCalls).toContain(runIdle);
+
+    console.stop();
+  });
+});

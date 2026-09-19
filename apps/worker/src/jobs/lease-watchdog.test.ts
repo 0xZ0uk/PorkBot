@@ -1,4 +1,5 @@
-import type { ExpiredLease, Queryable, RunRecord } from "@porkbot/db";
+import { NotificationEmulator } from "@porkbot/adapters";
+import type { ExpiredLease, Queryable, RunRecord, StalledRun } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { describe, expect, it } from "vitest";
 import { parseCronItems } from "graphile-worker";
@@ -36,6 +37,11 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseFence: 3,
     leaseExpiresAt: new Date(0),
     stopRequestedAt: null,
+    lastHeartbeatAt: null,
+    lastProgressAt: null,
+    currentStep: null,
+    currentStepTool: null,
+    stalledAt: null,
     checkpoint: { step: 2 },
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -49,8 +55,12 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
 
 interface FakeWorld {
   readonly expired: readonly ExpiredLease[];
+  readonly stalled: readonly StalledRun[];
+  readonly notificationEnabled: boolean;
   readonly runs: Map<string, RunRecord>;
   readonly reclaimed: Map<string, RunRecord | undefined>;
+  readonly stalledRuns: Map<string, RunRecord>;
+  readonly marked: string[];
   readonly updates: Array<{
     readonly runId: string;
     readonly values: readonly unknown[];
@@ -68,8 +78,30 @@ interface FakeWorld {
 function fakeContext(world: FakeWorld): JobContext {
   const client: Queryable = {
     async query<Row>(text: string, values: readonly unknown[] = []) {
-      if (text.includes('select id as "runId"')) {
+      if (text.includes("left join notification_preference")) {
+        return { rows: [{ enabled: world.notificationEnabled }] as unknown as readonly Row[] };
+      }
+
+      if (text.startsWith('select id as "runId"') && text.includes("stalled_at is null")) {
+        return { rows: world.stalled as unknown as readonly Row[] };
+      }
+
+      if (text.startsWith('select id as "runId"')) {
         return { rows: world.expired as unknown as readonly Row[] };
+      }
+
+      if (text.startsWith("update run set stalled_at = now()")) {
+        const runId = String(values[0]);
+        const row = world.stalledRuns.get(runId);
+
+        if (row === undefined || row.stalledAt !== null) {
+          return { rows: [] as readonly Row[] };
+        }
+
+        const marked: RunRecord = { ...row, stalledAt: new Date() };
+        world.stalledRuns.set(runId, marked);
+        world.marked.push(runId);
+        return { rows: [marked] as unknown as readonly Row[] };
       }
 
       if (text.startsWith("with claimed as")) {
@@ -121,7 +153,10 @@ function fakeContext(world: FakeWorld): JobContext {
 
 function world(options: {
   readonly expired?: readonly ExpiredLease[];
+  readonly stalled?: readonly StalledRun[];
+  readonly notificationEnabled?: boolean;
   readonly run?: RunRecord | undefined;
+  readonly stalledRun?: RunRecord | undefined;
   readonly reclaimed?: RunRecord | undefined;
 }): FakeWorld {
   const candidate = {
@@ -132,15 +167,25 @@ function world(options: {
     stopRequestedAt: null,
   };
   const runs = new Map<string, RunRecord>();
+  const stalledRuns = new Map<string, RunRecord>();
 
   if (options.run !== undefined) {
     runs.set(`${candidate.spaceId}:${candidate.runId}`, options.run);
   }
 
+  if (options.stalledRun !== undefined) {
+    runs.set(`${candidate.spaceId}:${candidate.runId}`, options.stalledRun);
+    stalledRuns.set(candidate.runId, options.stalledRun);
+  }
+
   return {
     expired: options.expired ?? [candidate],
+    stalled: options.stalled ?? [],
+    notificationEnabled: options.notificationEnabled ?? true,
     runs,
     reclaimed: new Map([[candidate.runId, options.reclaimed]]),
+    stalledRuns,
+    marked: [],
     updates: [],
     enqueued: [],
     lines: [],
@@ -274,5 +319,119 @@ describe("the lease watchdog pass", () => {
 
   it("reads the batch limit from its options", () => {
     expect(leaseWatchdogJob({ batchLimit: 1 }).identifier).toBe(leaseWatchdogIdentifier);
+  });
+});
+
+describe("the watchdog's stall pass", () => {
+  const stalledCandidate: StalledRun = { runId: "run-1", spaceId: "space-1" };
+
+  function stalledRecord(overrides: Partial<RunRecord> = {}): RunRecord {
+    // A real recipient id, because the delivery's space check refuses anything
+    // that cannot name a member before it reads a preference.
+    return runRecord({
+      userId: "00000000-0000-4000-8000-000000000001",
+      lastHeartbeatAt: new Date(),
+      lastProgressAt: new Date(Date.now() - 400_000),
+      currentStep: "working",
+      currentStepTool: "shell",
+      ...overrides,
+    });
+  }
+
+  it("marks a silent live run and delivers one notification through the E8 path", async () => {
+    const fake = world({
+      expired: [],
+      stalled: [stalledCandidate],
+      stalledRun: stalledRecord(),
+    });
+    const emulator = new NotificationEmulator();
+    const job = leaseWatchdogJob({
+      stallNotification: {
+        origin: "https://porkbot.example.invalid",
+        provider: emulator,
+      },
+    });
+
+    await job.handle({}, fakeContext(fake));
+
+    expect(fake.marked).toEqual(["run-1"]);
+    expect(emulator.size).toBe(1);
+    expect(emulator.last()).toMatchObject({
+      title: "A run has stalled",
+      url: "https://porkbot.example.invalid/threads/thread-1",
+    });
+    expect(emulator.last()?.body).toContain("while running shell");
+    expect(fake.lines.at(-1)).toMatchObject({
+      scanned: 0,
+      resumed: 0,
+      failed: 0,
+      stalled: 1,
+      marked: 1,
+    });
+
+    // The episode is durable: a second pass finds the same candidate but the
+    // marker refuses it, so the operator is told once.
+    await job.handle({}, fakeContext(fake));
+
+    expect(fake.marked).toEqual(["run-1"]);
+    expect(emulator.size).toBe(1);
+  });
+
+  it("records the stall and logs it when no delivery path is composed", async () => {
+    const fake = world({ expired: [], stalled: [stalledCandidate], stalledRun: stalledRecord() });
+
+    await leaseWatchdogJob().handle({}, fakeContext(fake));
+
+    expect(fake.marked).toEqual(["run-1"]);
+    expect(
+      fake.lines.some((line) => line["msg"] === "lease watchdog found a run making no progress"),
+    ).toBe(true);
+  });
+
+  it("respects the operator's preference: a disabled kind records but never sends", async () => {
+    const fake = world({
+      expired: [],
+      stalled: [stalledCandidate],
+      stalledRun: stalledRecord(),
+      notificationEnabled: false,
+    });
+    const emulator = new NotificationEmulator();
+    const job = leaseWatchdogJob({
+      stallNotification: {
+        origin: "https://porkbot.example.invalid",
+        provider: emulator,
+      },
+    });
+
+    await job.handle({}, fakeContext(fake));
+
+    expect(fake.marked).toEqual(["run-1"]);
+    expect(emulator.size).toBe(0);
+  });
+
+  it("skips a candidate another detector already marked", async () => {
+    const fake = world({
+      expired: [],
+      stalled: [stalledCandidate],
+      stalledRun: stalledRecord({ stalledAt: new Date(0) }),
+    });
+    const emulator = new NotificationEmulator();
+    const job = leaseWatchdogJob({
+      stallNotification: {
+        origin: "https://porkbot.example.invalid",
+        provider: emulator,
+      },
+    });
+
+    await job.handle({}, fakeContext(fake));
+
+    expect(fake.marked).toEqual([]);
+    expect(emulator.size).toBe(0);
+    expect(
+      fake.lines.some(
+        (line) =>
+          line["msg"] === "lease watchdog skipped a run that moved on before it could be marked",
+      ),
+    ).toBe(true);
   });
 });

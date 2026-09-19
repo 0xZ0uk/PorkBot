@@ -43,6 +43,11 @@ function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     leaseFence: 1,
     leaseExpiresAt: new Date(120_000),
     stopRequestedAt: null,
+    lastHeartbeatAt: null,
+    lastProgressAt: null,
+    currentStep: null,
+    currentStepTool: null,
+    stalledAt: null,
     checkpoint: {},
     clientNonce: "nonce-1",
     sourceMessageId: null,
@@ -263,6 +268,92 @@ describe("the run stop surface", () => {
 
     const error = await client()
       .runs.stop({ runId: "run-1" })
+      .catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ORPCError);
+    expect(error).toMatchObject({ code: "UNAUTHORIZED", status: 401, defined: true });
+  });
+});
+
+describe("the run liveness read", () => {
+  it("answers a working run with its step, heartbeat lag and progress age", async () => {
+    runs.clear();
+    sessionActor = owner;
+    runs.set(
+      "run-1",
+      runRecord({
+        lastHeartbeatAt: new Date(Date.now() - 10_000),
+        lastProgressAt: new Date(Date.now() - 5_000),
+        currentStep: "working",
+        currentStepTool: "shell",
+      }),
+    );
+
+    const read = await client().runs.get({ runId: "run-1" });
+
+    expect(read).toMatchObject({
+      id: "run-1",
+      status: "running",
+      liveness: { state: "working", tool: "shell" },
+    });
+    expect(read.liveness?.heartbeatLagMs).toBeGreaterThanOrEqual(10_000);
+    expect(read.liveness?.sinceProgressMs).toBeGreaterThanOrEqual(5_000);
+  });
+
+  it("flags a run with stale progress as stuck rather than healthy", async () => {
+    runs.clear();
+    sessionActor = owner;
+    runs.set(
+      "run-1",
+      runRecord({
+        lastHeartbeatAt: new Date(),
+        lastProgressAt: new Date(Date.now() - 400_000),
+        currentStep: "working",
+        currentStepTool: "shell",
+      }),
+    );
+
+    const read = await client().runs.get({ runId: "run-1" });
+
+    expect(read.liveness).toMatchObject({ state: "stuck", tool: "shell" });
+  });
+
+  it("has nothing live to say about a terminal or queued run", async () => {
+    runs.clear();
+    sessionActor = owner;
+    runs.set(
+      "run-done",
+      runRecord({
+        id: "run-done",
+        status: "completed",
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        completedAt: new Date(2),
+      }),
+    );
+    runs.set("run-queued", runRecord({ id: "run-queued", status: "queued", leaseOwner: null }));
+
+    expect((await client().runs.get({ runId: "run-done" })).liveness).toBeNull();
+    expect((await client().runs.get({ runId: "run-queued" })).liveness).toBeNull();
+  });
+
+  it("reports a run outside the actor's space as the shared typed not-found", async () => {
+    runs.clear();
+    sessionActor = owner;
+    runs.set("run-foreign", runRecord({ id: "run-foreign", spaceId: "space-2" }));
+
+    await expect(client().runs.get({ runId: "run-foreign" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+    });
+  });
+
+  it("answers the typed 401 without a session", async () => {
+    runs.clear();
+    sessionActor = null;
+
+    const error = await client()
+      .runs.get({ runId: "run-1" })
       .catch((thrown: unknown) => thrown);
 
     expect(error).toBeInstanceOf(ORPCError);

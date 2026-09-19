@@ -15,6 +15,7 @@ import {
   RUN_LEASE_TTL_SECONDS,
   RUN_WATCHDOG_BATCH_LIMIT,
 } from "./run-leases.ts";
+import type { RunProgressStamp } from "./run-leases.ts";
 
 interface QueryCall {
   readonly text: string;
@@ -48,6 +49,11 @@ const run: RunRecord = {
   leaseFence: 1,
   leaseExpiresAt: new Date(120_000),
   stopRequestedAt: null,
+  lastHeartbeatAt: null,
+  lastProgressAt: null,
+  currentStep: null,
+  currentStepTool: null,
+  stalledAt: null,
   checkpoint: {},
   clientNonce: "nonce-1",
   sourceMessageId: "message-1",
@@ -56,6 +62,10 @@ const run: RunRecord = {
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
+
+function silentProgress(): RunProgressStamp {
+  return { progressed: false, idleSeconds: 0, step: { kind: "thinking", tool: null } };
+}
 
 describe("run leases", () => {
   it("documents a grace period in the lease TTL", () => {
@@ -142,7 +152,7 @@ describe("run leases", () => {
     const repositories = createRepositories(actor, database);
     const lease = { owner: "worker-a", fence: 1 };
 
-    await repositories.runs.heartbeat(run.id, lease);
+    await repositories.runs.heartbeat(run.id, lease, silentProgress());
     await repositories.runs.update(run.id, lease, {
       status: "completed",
       checkpoint: { step: 2 },
@@ -161,6 +171,101 @@ describe("run leases", () => {
     }
     expect(database.calls[1]?.text).toContain("status in ('running', 'waiting_approval')");
     expect(database.calls[1]?.text).toContain("and status = 'running'");
+  });
+
+  it("starts a new owner's liveness on every acquisition, not just a claim", async () => {
+    const database = fakeDatabase([run]);
+    const repositories = createRepositories(actor, database);
+
+    await repositories.runs.claim(run.id, 0, "worker-a");
+    await repositories.runs.reclaim(run.id, 1, "worker-b", { reason: "expired" });
+    await repositories.runs.adopt(run.id, 1, "worker-b", "watchdog-job");
+
+    for (const call of database.calls) {
+      expect(call.text).toContain("last_heartbeat_at = now()");
+      expect(call.text).toContain("last_progress_at = now()");
+      expect(call.text).toContain("current_step = 'starting'");
+      expect(call.text).toContain("current_step_tool = null");
+      expect(call.text).toContain("stalled_at = null");
+    }
+  });
+
+  it("stamps progress, the step and the cleared stall onto the heartbeat carrying them", async () => {
+    const database = fakeDatabase([run]);
+    const repositories = createRepositories(actor, database);
+
+    await repositories.runs.heartbeat(
+      run.id,
+      { owner: "worker-a", fence: 1 },
+      { progressed: true, idleSeconds: 4, step: { kind: "working", tool: "shell" } },
+    );
+
+    const beat = database.calls[0];
+    expect(beat?.text).toContain("last_heartbeat_at = now()");
+    expect(beat?.text).toContain(
+      "last_progress_at = case when $6 then now() - make_interval(secs => $7)",
+    );
+    expect(beat?.text).toContain("stalled_at = case when $6 then null else stalled_at end");
+    expect(beat?.text).toContain("current_step = $8, current_step_tool = $9");
+    expect(beat?.values).toEqual([
+      run.id,
+      actor.spaceId,
+      "worker-a",
+      1,
+      120,
+      true,
+      4,
+      "working",
+      "shell",
+    ]);
+  });
+
+  it("leaves the progress instant untouched on a beat that saw no event", async () => {
+    const database = fakeDatabase([run]);
+    const repositories = createRepositories(actor, database);
+
+    await repositories.runs.heartbeat(
+      run.id,
+      { owner: "worker-a", fence: 1 },
+      {
+        progressed: false,
+        idleSeconds: 245,
+        step: { kind: "thinking", tool: null },
+      },
+    );
+
+    const beat = database.calls[0];
+    expect(beat?.values).toEqual([
+      run.id,
+      actor.spaceId,
+      "worker-a",
+      1,
+      120,
+      false,
+      245,
+      "thinking",
+      null,
+    ]);
+  });
+
+  it("clears a terminal run's step and stall marker in the settling write", async () => {
+    const database = fakeDatabase([run]);
+    const repositories = createRepositories(actor, database);
+    const lease = { owner: "worker-a", fence: 1 };
+
+    await repositories.runs.update(run.id, lease, { status: "failed", completed: true });
+    await repositories.runs.update(run.id, lease, { status: "running" });
+
+    const settled = database.calls[0];
+    expect(settled?.text).toContain("current_step = null");
+    expect(settled?.text).toContain("current_step_tool = null");
+    expect(settled?.text).toContain("stalled_at = null");
+
+    // A transition back to running (the approval resume) keeps the row's
+    // liveness columns: the run is not terminal and its progress is still real.
+    const resumed = database.calls[1];
+    expect(resumed?.text).not.toContain("current_step = null");
+    expect(resumed?.text).not.toContain("stalled_at = null");
   });
 
   it("settles the attempt for the same fence whenever a patch asks for it", async () => {
@@ -253,7 +358,9 @@ describe("run leases", () => {
     const repositories = createRepositories(actor, fakeDatabase());
     const lease = { owner: "worker-a", fence: 1 };
 
-    await expect(repositories.runs.heartbeat(run.id, lease)).rejects.toBeInstanceOf(LeaseLostError);
+    await expect(
+      repositories.runs.heartbeat(run.id, lease, silentProgress()),
+    ).rejects.toBeInstanceOf(LeaseLostError);
     await expect(
       repositories.runs.update(run.id, lease, { checkpoint: {} }),
     ).rejects.toBeInstanceOf(LeaseLostError);
