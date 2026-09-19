@@ -4,7 +4,11 @@ import type { RunEvent } from "@porkbot/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { AppClient } from "./client.ts";
 import { subscribeThreadEvents } from "./stream.ts";
-import type { ThreadEventsCallOptions, ThreadEventsProcedure } from "./stream.ts";
+import type {
+  ThreadEventsCallOptions,
+  ThreadEventsProcedure,
+  ThreadSubscriptionState,
+} from "./stream.ts";
 
 /**
  * The reconnect loop, without a server and without real timers: a fake
@@ -131,6 +135,98 @@ describe("the reconnecting subscription", () => {
     controller.abort();
 
     await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it("reports connecting, live, reconnecting and resumed as the loop moves", async () => {
+    const states: ThreadSubscriptionState[] = [];
+    let attempts = 0;
+
+    const procedure: ThreadEventsProcedure = async () => {
+      attempts += 1;
+
+      if (attempts === 1) {
+        throw new TypeError("the network is down");
+      }
+
+      if (attempts === 2) {
+        return (async function* () {
+          yield firstEvent;
+          throw new TypeError("the connection dropped mid-stream");
+        })();
+      }
+
+      return (async function* () {
+        yield { ...firstEvent, seq: 2 };
+      })();
+    };
+
+    const controller = new AbortController();
+    const received: RunEvent[] = [];
+
+    for await (const event of subscribeThreadEvents(procedure, input, {
+      signal: controller.signal,
+      policy: pinnedPolicy,
+      onState: (state) => {
+        states.push(state);
+      },
+      sleep: async () => undefined,
+    })) {
+      received.push(event);
+
+      // The subscription never ends on its own; two attempts' worth of frames
+      // is everything this test needs, so the caller ends it.
+      if (received.length === 2) {
+        controller.abort();
+      }
+    }
+
+    expect(received.map((event) => event.seq)).toEqual([1, 2]);
+    expect(states).toEqual([
+      "connecting",
+      "reconnecting",
+      "connecting",
+      "resumed",
+      "reconnecting",
+      "connecting",
+      "resumed",
+    ]);
+  });
+
+  it("does not report live for a connection that ends without a frame", async () => {
+    const states: ThreadSubscriptionState[] = [];
+    const controller = new AbortController();
+    let attempts = 0;
+
+    const procedure: ThreadEventsProcedure = async () => {
+      attempts += 1;
+      return emptyStream();
+    };
+
+    for await (const event of subscribeThreadEvents(procedure, input, {
+      signal: controller.signal,
+      policy: pinnedPolicy,
+      onState: (state) => {
+        states.push(state);
+      },
+      sleep: async () => {
+        if (attempts === 3) {
+          controller.abort();
+        }
+      },
+    })) {
+      expect(event).toBeDefined();
+    }
+
+    // Each attempt is `connecting`, the ended stream is `reconnecting`, and
+    // `live` never appears: no frame was ever delivered.
+    expect(states).toEqual([
+      "connecting",
+      "reconnecting",
+      "connecting",
+      "reconnecting",
+      "connecting",
+      "reconnecting",
+    ]);
   });
 
   it("does not retry a typed client refusal", async () => {

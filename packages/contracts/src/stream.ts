@@ -21,6 +21,11 @@ import { ORPCError } from "./errors.ts";
  * answers — is rethrown, because retrying a cursor the server rejected would
  * loop forever. The attempt counter resets only when a frame is delivered, so
  * a server accepting connections that immediately end still backs off.
+ *
+ * The loop is also the one authority on connection state: `onState` reports
+ * `connecting`, `live`, `reconnecting` and `resumed` as they happen, so a
+ * surface renders the phase from the loop that owns it instead of guessing
+ * from frame timing.
  */
 
 /** The input the subscription takes; the cursor travels in the header. */
@@ -33,6 +38,19 @@ export interface ThreadEventsCallOptions {
   readonly signal?: AbortSignal;
   readonly lastEventId?: string;
 }
+
+/**
+ * The connection's phase, as a surface renders it. `connecting` is an attempt
+ * before its first frame — the initial connection and every reconnect attempt
+ * alike; `live` is a connection delivering frames with no earlier failed
+ * attempt or ended stream; `reconnecting` is the backoff wait after one; and
+ * `resumed` is the next connection delivering frames after it, so "the stream
+ * came back" is an observable rather than an inference from timing. A first
+ * connection that fails before any frame and a retry that delivers is
+ * `resumed` too: from this client's side the stream was down and came back,
+ * whether or not a frame had arrived before the drop.
+ */
+export type ThreadSubscriptionState = "connecting" | "live" | "reconnecting" | "resumed";
 
 /**
  * The subscription procedure's shape, structurally: `AppClient["threads"]
@@ -52,6 +70,13 @@ export interface ThreadSubscriptionOptions {
   readonly random?: () => number;
   /** Injectable delay so tests do not wait on real timers. */
   readonly sleep?: (delayMs: number, signal: AbortSignal | undefined) => Promise<void>;
+  /**
+   * Reports every phase change, so a surface renders connection state from the
+   * one reconnect loop rather than re-deriving it from frame timing. It is
+   * called synchronously before the frame that caused the change is yielded;
+   * a caller that only needs the events can ignore it.
+   */
+  readonly onState?: (state: ThreadSubscriptionState) => void;
 }
 
 /**
@@ -64,13 +89,21 @@ export async function* subscribeThreadEvents(
   input: ThreadEventsInput,
   options: ThreadSubscriptionOptions = {},
 ): AsyncGenerator<RunEvent> {
-  const { signal } = options;
+  const { signal, onState } = options;
   const sleep = options.sleep ?? delay;
   const aborted = (): boolean => signal?.aborted === true;
   let lastEventId: string | undefined;
   let attempt = 0;
+  let dropped = false;
 
   while (!aborted()) {
+    onState?.("connecting");
+
+    // Whether this attempt has delivered a frame yet. A connection that opens
+    // and ends without one was never live, so it must not report `live` and
+    // then `reconnecting` for what was really a single failed attempt.
+    let delivered = false;
+
     try {
       const stream = await events(input, {
         ...(signal === undefined ? {} : { signal }),
@@ -85,6 +118,11 @@ export async function* subscribeThreadEvents(
           attempt = 0;
         }
 
+        if (!delivered) {
+          delivered = true;
+          onState?.(dropped ? "resumed" : "live");
+        }
+
         yield event;
       }
     } catch (error) {
@@ -96,6 +134,9 @@ export async function* subscribeThreadEvents(
     if (aborted()) {
       return;
     }
+
+    dropped = true;
+    onState?.("reconnecting");
 
     attempt += 1;
     await sleep(

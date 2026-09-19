@@ -44,7 +44,7 @@ const urlSafetyModule = "packages/effect/src/url-safety.ts";
 const sameOriginTransports: ReadonlyMap<string, string> = new Map([
   [
     "apps/web/src/transport.ts",
-    "the web shell posts the credential exchange to the deployment's own origin: the origin is configuration and the auth paths are constants",
+    "the web shell posts the credential exchange to the deployment's own origin: the origin is configuration and the auth paths are constants, and the console's RPC client dials that same origin through the contract",
   ],
 ]);
 
