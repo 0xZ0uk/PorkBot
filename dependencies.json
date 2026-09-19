@@ -57,6 +57,11 @@
       "reason": "The API's HTTP surface (slice 4.1, PRD decision 14: oRPC over Hono), mounted through the RPC handler and composed by every later route, stream and webhook. Pinned exactly because routing, middleware order and header handling are user-visible behaviors an implicit upgrade could move."
     },
     {
+      "name": "varlock",
+      "version": "1.20.0",
+      "reason": "The environment schema and audit CLI (varlock.dev) the root and per-package .env.schema files are written against, and the `env` CI tier runs. Pinned exactly because a schema is only a contract while the tool that reads it does not move underneath it: an upgrade can change decorator parsing, validation and `varlock audit` behavior at once."
+    },
+    {
       "name": "zod",
       "version": "4.6.5",
       "reason": "The schema library every contract procedure is declared with and the one @orpc/zod converts into the OpenAPI document (slice 4.1, PRD decision 15). Pinned exactly because the same schemas validate requests at runtime and describe them publicly, so a move changes both validation behavior and the published document."

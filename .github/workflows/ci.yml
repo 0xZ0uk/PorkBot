@@ -11,6 +11,8 @@ name: CI
 #   quarantine   the quarantine ledger is valid and nothing in it is stale
 #   dependencies the pin register, manifests, lockfile and image digests agree, and the
 #                lockfile delta is written to the job summary on a pull request
+#   env          every .env.schema loads under the committed APP_ENV=ci fixtures and every
+#                audit is in sync with the code that reads the variables
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  integration tests against the Postgres 18 the local stack boots
 #   e2e          whole-process tests against the built output; the only tier that retries
@@ -113,6 +115,22 @@ jobs:
         env:
           BASE_REF: origin/${{ github.base_ref }}
         run: node packages/testkit/src/dependencies/cli.ts diff --base "$BASE_REF"
+
+  # Environment schemas. `varlock load` proves every `.env.schema` parses, its
+  # imports resolve and its required items have values under the committed
+  # `APP_ENV=ci` fixtures; `varlock audit` proves code and schema agree in both
+  # directions. This tier fails by name when a variable the code reads is not
+  # declared, or a declared variable no code reads is left behind.
+  env:
+    name: env
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Check environment schemas
+        timeout-minutes: 5
+        run: pnpm env:check
 
   # The build job populates the turbo cache that typecheck, unit, e2e and
   # integration then restore, which is why they wait for it rather than racing it.
@@ -238,7 +256,7 @@ jobs:
     # required check would never report and the pull request would hang instead
     # of failing.
     if: always()
-    needs: [format, lint, typecheck, build, quarantine, dependencies, unit, integration, e2e]
+    needs: [format, lint, typecheck, build, quarantine, dependencies, env, unit, integration, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -253,6 +271,7 @@ jobs:
             echo "| build | ${{ needs.build.result }} |"
             echo "| quarantine | ${{ needs.quarantine.result }} |"
             echo "| dependencies | ${{ needs.dependencies.result }} |"
+            echo "| env | ${{ needs.env.result }} |"
             echo "| unit | ${{ needs.unit.result }} |"
             echo "| integration | ${{ needs.integration.result }} |"
             echo "| e2e | ${{ needs.e2e.result }} |"

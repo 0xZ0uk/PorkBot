@@ -25,6 +25,7 @@
     "dependencies:check": "node packages/testkit/src/dependencies/cli.ts check",
     "dependencies:diff": "node packages/testkit/src/dependencies/cli.ts diff --base origin/main",
     "dev": "turbo run dev",
+    "env:check": "node scripts/env-check.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "prettier": "3.9.7",
     "turbo": "2.10.13",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "varlock": "1.20.0"
   }
 }
