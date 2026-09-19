@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { RUN_EVENT_SCHEMA_VERSION, textMessageBlocks } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
-import { NotFoundError } from "@porkbot/effect";
+import { NotFoundError, RunNotActiveError } from "@porkbot/effect";
 import { createSuiteDatabase } from "@porkbot/testkit";
 import type { SuiteDatabase } from "@porkbot/testkit";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "../../src/actor.ts";
 import { createMemoryStore } from "../../src/memory-store.ts";
-import { createAssistantMessageStore } from "../../src/messages.ts";
+import { claimSteeringMessages, createAssistantMessageStore } from "../../src/messages.ts";
 import { createRepositories } from "../../src/repositories.ts";
 import type { UserRepositories } from "../../src/repositories.ts";
 import { createRunEventSink } from "../../src/run-event-sink.ts";
@@ -349,6 +349,114 @@ describe("durable output without a subscriber", () => {
     );
 
     expect(rows).toEqual([{ runId: created.run.id, botId: botA, userId: alice.userId }]);
+  });
+});
+
+describe("the live run's steering claim", () => {
+  it("claims each steer once, oldest first, and leaves a finished run's steers unclaimed", async () => {
+    const thread = await aliceRepositories.threads.createForBot(botA);
+    const created = await aliceRepositories.runs.create(send(thread.id, "start"));
+    const actor = systemActor(alice.spaceId);
+
+    const first = await aliceRepositories.messages.steer({
+      threadId: thread.id,
+      clientNonce: `steer-${randomUUID()}`,
+      blocks: textMessageBlocks("first correction"),
+      runId: created.run.id,
+    });
+    const second = await aliceRepositories.messages.steer({
+      threadId: thread.id,
+      clientNonce: `steer-${randomUUID()}`,
+      blocks: textMessageBlocks("second correction"),
+      runId: created.run.id,
+    });
+
+    const claimed = await claimSteeringMessages(actor, db(), created.run.id);
+    expect(claimed).toEqual([
+      { messageId: first.id, text: "first correction" },
+      { messageId: second.id, text: "second correction" },
+    ]);
+
+    // The claim is the handoff: a second claimant gets nothing, so no session
+    // can deliver the same correction twice.
+    expect(await claimSteeringMessages(actor, db(), created.run.id)).toEqual([]);
+
+    // A run that finished is no steering target: the write is refused with the
+    // typed error and leaves no unclaimed row behind.
+    await db().query("update run set status = 'cancelled', completed_at = now() where id = $1", [
+      created.run.id,
+    ]);
+
+    const refused = await aliceRepositories.messages
+      .steer({
+        threadId: thread.id,
+        clientNonce: `steer-${randomUUID()}`,
+        blocks: textMessageBlocks("too late"),
+        runId: created.run.id,
+      })
+      .catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(RunNotActiveError);
+
+    const { rows } = await db().query<{ readonly steers: number }>(
+      "select count(*)::int as steers from steering_message where run_id = $1",
+      [created.run.id],
+    );
+    expect(rows[0]?.steers).toBe(2);
+  });
+
+  it("hands each steer to exactly one of two concurrent claimants", async () => {
+    const thread = await aliceRepositories.threads.createForBot(botA);
+    const created = await aliceRepositories.runs.create(send(thread.id, "start"));
+
+    const steered = await Promise.all(
+      ["first", "second"].map((text) =>
+        aliceRepositories.messages.steer({
+          threadId: thread.id,
+          clientNonce: `steer-${randomUUID()}`,
+          blocks: textMessageBlocks(text),
+          runId: created.run.id,
+        }),
+      ),
+    );
+
+    const [left, right] = await Promise.all([connect(), connect()]);
+    const actor = systemActor(alice.spaceId);
+    const claims = await Promise.all([
+      claimSteeringMessages(actor, left, created.run.id),
+      claimSteeringMessages(actor, right, created.run.id),
+    ]);
+
+    const claimedIds = claims.flat().map((steer) => steer.messageId);
+
+    // One row, one claimant: no steer is delivered twice, and none is lost.
+    expect(new Set(claimedIds).size).toBe(claimedIds.length);
+    expect(claimedIds.sort()).toEqual(steered.map((message) => message.id).sort());
+  });
+});
+
+describe("the stop request", () => {
+  it("records the mark once and answers a finished run with its state", async () => {
+    const thread = await aliceRepositories.threads.createForBot(botA);
+    const created = await aliceRepositories.runs.create(send(thread.id, "start"));
+
+    const first = await aliceRepositories.runs.requestStop(created.run.id);
+    const second = await aliceRepositories.runs.requestStop(created.run.id);
+
+    expect(first.stopRequestedAt).toBeInstanceOf(Date);
+    expect(second.stopRequestedAt?.toISOString()).toBe(first.stopRequestedAt?.toISOString());
+
+    await db().query("update run set status = 'cancelled', completed_at = now() where id = $1", [
+      created.run.id,
+    ]);
+
+    const finished = await aliceRepositories.runs.requestStop(created.run.id);
+    expect(finished.status).toBe("cancelled");
+    expect(finished.stopRequestedAt?.toISOString()).toBe(first.stopRequestedAt?.toISOString());
+
+    await expect(bobRepositories.runs.requestStop(created.run.id)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
   });
 });
 

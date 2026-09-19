@@ -88,6 +88,7 @@ const run: RunRecord = {
   leaseOwner: null,
   leaseFence: 0,
   leaseExpiresAt: null,
+  stopRequestedAt: null,
   checkpoint: {},
   clientNonce: "nonce-1",
   sourceMessageId: "message-1",

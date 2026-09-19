@@ -151,6 +151,7 @@ const requestBodies: Record<string, string> = {
   "routines.preview": JSON.stringify({ json: { cron: "0 9 * * *", timezone: "UTC" } }),
   "routines.testRun": JSON.stringify({ json: { id: "routine-1", clientNonce: "nonce-1" } }),
   "routines.outcomes": JSON.stringify({ json: { id: "routine-1" } }),
+  "runs.stop": JSON.stringify({ json: { runId: "run-1" } }),
   "mcpServers.get": JSON.stringify({ json: { id: "server-1" } }),
   "mcpServers.create": JSON.stringify({
     json: { name: "research", url: "https://mcp.example.invalid/mcp", auth: "none" },
@@ -237,6 +238,7 @@ describe("every contract procedure", () => {
       "routines.remove",
       "routines.testRun",
       "routines.update",
+      "runs.stop",
       "sections.create",
       "sections.delete",
       "sections.list",
@@ -320,6 +322,7 @@ describe("the typed answer", () => {
         listForThread: notExercised,
         findActiveForThread: notExercised,
         create: notExercised,
+        requestStop: notExercised,
       },
       events: { listAfter: notExercised },
       messages: {

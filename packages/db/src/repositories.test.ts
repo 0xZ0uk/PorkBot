@@ -2,7 +2,12 @@ import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
-import type { BotRecord, ModelConnectionRecord, SystemRepositories } from "./repositories.ts";
+import type {
+  BotRecord,
+  ModelConnectionRecord,
+  RunRecord,
+  SystemRepositories,
+} from "./repositories.ts";
 import { createRepositories } from "./repositories.ts";
 
 /**
@@ -222,6 +227,111 @@ describe("the thread's active run read", () => {
       "thread-1",
       ["queued", "running", "waiting_approval"],
     ]);
+  });
+});
+
+const run: RunRecord = {
+  id: "run-1",
+  spaceId: "space-1",
+  botId: "bot-1",
+  threadId: "thread-1",
+  taskId: "task-1",
+  userId: "user-1",
+  status: "running",
+  trigger: "message",
+  error: null,
+  errorCode: null,
+  leaseOwner: "job-1",
+  leaseFence: 1,
+  leaseExpiresAt: new Date(120_000),
+  stopRequestedAt: null,
+  checkpoint: {},
+  clientNonce: "nonce-1",
+  sourceMessageId: null,
+  startedAt: new Date(0),
+  completedAt: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+describe("the stop request", () => {
+  it("marks an active run once, binding the actor's space and the active set", async () => {
+    const marked: RunRecord = { ...run, stopRequestedAt: new Date(0) };
+    const database = fakeDatabase(() => [marked]);
+    const repositories = createRepositories(owner, database);
+
+    const first = await repositories.runs.requestStop("run-1");
+    const second = await repositories.runs.requestStop("run-1");
+
+    expect(first.stopRequestedAt).toEqual(new Date(0));
+    expect(second.stopRequestedAt).toEqual(new Date(0));
+
+    const call = database.calls[0];
+    expect(call?.text).toContain("set stop_requested_at = coalesce(stop_requested_at, now())");
+    expect(call?.text).toContain("space_id = $2");
+    expect(call?.text).toContain("status = any($3::run_status[])");
+    expect(call?.values).toEqual(["run-1", "space-1", ["queued", "running", "waiting_approval"]]);
+    expect(database.calls).toHaveLength(2);
+  });
+
+  it("returns a run that already finished unchanged rather than erroring", async () => {
+    const finished: RunRecord = { ...run, status: "cancelled", stopRequestedAt: new Date(0) };
+    const database = fakeDatabase((call) => (call.text.startsWith("update run") ? [] : [finished]));
+    const repositories = createRepositories(owner, database);
+
+    const returned = await repositories.runs.requestStop("run-1");
+
+    expect(returned).toEqual(finished);
+    expect(database.calls.map((call) => call.text.split(" ")[0])).toEqual(["update", "select"]);
+  });
+
+  it("reports a run outside the actor's space as the shared not-found, writing nothing", async () => {
+    const database = fakeDatabase(() => []);
+    const repositories = createRepositories(owner, database);
+
+    await expect(repositories.runs.requestStop("run-foreign")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(database.calls.map((call) => call.text.split(" ")[0])).toEqual(["update", "select"]);
+  });
+});
+
+describe("the live run's command source", () => {
+  it("claims the run's steering rows through the job's scope", async () => {
+    const database = fakeDatabase((call) =>
+      call.text.startsWith("with claimed")
+        ? [{ messageId: "message-1", blocks: [{ type: "text", text: "focus" }] }]
+        : [],
+    );
+    const repositories = createRepositories(worker, database);
+
+    const steers = await repositories.commands.claimSteers("run-1");
+
+    expect(steers).toEqual([{ messageId: "message-1", text: "focus" }]);
+    expect(database.calls[0]?.values).toEqual([
+      "run-1",
+      "space-1",
+      ["queued", "running", "waiting_approval"],
+    ]);
+  });
+
+  it("reads the stop flag from the run row, scoped to the job's space", async () => {
+    const database = fakeDatabase((call) =>
+      call.text.includes("stop_requested_at is not null") ? [{ stopRequested: true }] : [],
+    );
+    const repositories = createRepositories(worker, database);
+
+    expect(await repositories.commands.stopRequested("run-1")).toBe(true);
+
+    const call = database.calls[0];
+    expect(call?.text).toContain("where id = $1 and space_id = $2");
+    expect(call?.values).toEqual(["run-1", "space-1"]);
+  });
+
+  it("answers an unmarked run with false rather than failing", async () => {
+    const repositories = createRepositories(worker, fakeDatabase());
+
+    expect(await repositories.commands.stopRequested("run-1")).toBe(false);
   });
 });
 

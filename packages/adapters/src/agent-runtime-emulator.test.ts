@@ -113,12 +113,16 @@ describe("the duplex run seam", () => {
 
     const events = await Effect.runPromise(
       driveRun("run-1", script, (liveRuns) =>
-        liveRuns.dispatch("run-1", { type: "steer", text: "keep going" }),
+        liveRuns.dispatch("run-1", {
+          type: "steer",
+          messageId: "message-1",
+          text: "keep going",
+        }),
       ).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
     );
 
     expect(eventTypes(events)).toEqual(["run.started", "run.steered", "run.completed"]);
-    expect(events[1]).toMatchObject({ messageId: "steer-1", text: "keep going" });
+    expect(events[1]).toMatchObject({ messageId: "message-1", text: "keep going" });
     for (const event of events) {
       expect(parseRunEvent(event).ok).toBe(true);
     }
@@ -318,7 +322,11 @@ describe("the duplex run seam", () => {
           const collectedSecond = yield* collectEvents(liveSecond);
 
           const liveRuns = yield* LiveRuns;
-          yield* liveRuns.dispatch("run-1", { type: "steer", text: "only run one" });
+          yield* liveRuns.dispatch("run-1", {
+            type: "steer",
+            messageId: "message-1",
+            text: "only run one",
+          });
 
           yield* Deferred.succeed(firstRelease, undefined);
           yield* Fiber.join(first);
@@ -353,7 +361,7 @@ describe("the duplex run seam", () => {
       { kind: "run.completed", messageId: "assistant-1" },
     ];
     const send = (liveRuns: LiveRunsShape) =>
-      liveRuns.dispatch("run-1", { type: "steer", text: "carry on" });
+      liveRuns.dispatch("run-1", { type: "steer", messageId: "message-1", text: "carry on" });
 
     const first = await Effect.runPromise(
       driveRun("run-1", script, send).pipe(Effect.scoped, Effect.provide(liveRunsLayer)),
@@ -538,6 +546,68 @@ describe("the offline runtime executing tools", () => {
       "run.completed",
     ]);
     expect(events[2]).toMatchObject({ callId: "call-1", error: 'tool "lookup" failed' });
+  });
+
+  it("stops a call in flight promptly and commits nothing it was doing", async () => {
+    let interrupted = false;
+    const dispatcher = dispatcherWith({
+      name: "lookup",
+      execute: () =>
+        Effect.never.pipe(
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              interrupted = true;
+            }),
+          ),
+        ),
+    });
+
+    const observed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const session = yield* Deferred.make<RunSession>();
+
+          const runFiber = yield* Effect.fork(
+            withLiveRun(
+              "run-1",
+              emulatorAgentRuntimeLayer(
+                startRequest("run-1"),
+                [
+                  { kind: "tool.immediate", callId: "call-1", tool: "lookup", arguments: {} },
+                  { kind: "run.completed" },
+                ],
+                { tools: dispatcher },
+              ),
+              (live) => Deferred.succeed(session, live).pipe(Effect.zipRight(Effect.never)),
+            ),
+          );
+
+          const live = yield* Deferred.await(session);
+          const { queue, fiber: collector } = yield* collectEvents(live);
+
+          const events: RunEvent[] = [];
+          while (!events.some((event) => event.type === "tool.requested")) {
+            events.push(yield* Queue.take(queue));
+          }
+
+          const liveRuns = yield* LiveRuns;
+          yield* liveRuns.dispatch("run-1", {
+            type: "stop",
+            reason: "the operator stopped this run",
+          });
+
+          yield* Fiber.join(collector);
+          events.push(...Array.from(yield* Queue.takeAll(queue)));
+          yield* Fiber.interrupt(runFiber);
+
+          return events;
+        }).pipe(Effect.provide(liveRunsLayer)),
+      ),
+    );
+
+    expect(eventTypes(observed)).toEqual(["run.started", "tool.requested", "run.cancelled"]);
+    expect(observed.at(-1)).toMatchObject({ reason: "the operator stopped this run" });
+    expect(interrupted).toBe(true);
   });
 
   it("turns an unregistered tool into a failed call the model can recover from", async () => {

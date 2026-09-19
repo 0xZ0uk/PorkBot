@@ -91,6 +91,7 @@ const run: RunRecord = {
   leaseOwner: null,
   leaseFence: 0,
   leaseExpiresAt: null,
+  stopRequestedAt: null,
   checkpoint: {},
   clientNonce: routineRunNonce(routine.id, routine.nextRunAt),
   sourceMessageId: null,

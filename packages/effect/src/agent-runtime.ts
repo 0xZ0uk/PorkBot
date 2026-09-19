@@ -44,9 +44,16 @@ import type { ProcessLayer, ProcessTag, RequestLayer, RequestTag } from "./lifet
  * commit its side effect.
  */
 
-/** The four writes an operator can make into a live run (PRD decision 13). */
+/**
+ * The four writes an operator can make into a live run (PRD decision 13).
+ *
+ * A steer carries `messageId` — the durable transcript row the operator's text
+ * was written to before this command existed — so the `run.steered` event a
+ * session emits names the row the console already has instead of inventing an
+ * id the transcript cannot resolve (slice 6.7).
+ */
 export type RunCommand =
-  | { readonly type: "steer"; readonly text: string }
+  | { readonly type: "steer"; readonly messageId: string; readonly text: string }
   | { readonly type: "stop"; readonly reason?: string }
   | { readonly type: "approve"; readonly callId: string }
   | { readonly type: "deny"; readonly callId: string; readonly reason?: string };

@@ -1,5 +1,7 @@
+import { ACTIVE_RUN_STATUSES, isRunStatus, messageText } from "@porkbot/core";
 import type { MessageBlock } from "@porkbot/core";
-import { NotFoundError } from "@porkbot/effect";
+import { NotFoundError, RunNotActiveError } from "@porkbot/effect";
+import type { PendingSteer } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
 import { messageColumns, threadColumns } from "./records.ts";
@@ -226,6 +228,12 @@ export function createAssistantMessageStore(
  * so a live run can claim it and a finished one leaves it unclaimed. The bot
  * comes from the thread row, never from the caller, so a steer cannot target a
  * thread's message at another bot's run.
+ *
+ * The addressed run must be non-terminal (slice 6.7): a steer is a write into
+ * a live run, so a send that raced the run's finish is refused with the typed
+ * `RunNotActiveError` instead of quietly appending a message no session will
+ * ever claim. The caller decides what to tell the operator; what the steer
+ * cannot do is look applied while doing nothing.
  */
 export function createSteeringMessageStore(
   actor: UserActor,
@@ -242,14 +250,14 @@ export function createSteeringMessageStore(
             "update thread set next_message_seq = next_message_seq + 1, updated_at = now() " +
               "where id = $1 and space_id = $2 and exists (" +
               "select 1 from run r where r.id = $3 and r.space_id = $2 and r.thread_id = $1 and " +
-              "r.bot_id = thread.bot_id) " +
+              "r.bot_id = thread.bot_id and r.status = any($4::run_status[])) " +
               'returning next_message_seq - 1 as seq, bot_id as "botId"',
-            [input.threadId, actor.spaceId, input.runId],
+            [input.threadId, actor.spaceId, input.runId, ACTIVE_RUN_STATUSES],
           );
 
           const allocated = rows[0];
           if (allocated === undefined) {
-            throw await missingThreadOrRun(actor.spaceId, input.threadId, input.runId, transaction);
+            throw await steerRefusal(actor.spaceId, input.threadId, input.runId, transaction);
           }
 
           const message = await insertMessage(transaction, {
@@ -344,4 +352,71 @@ async function missingThreadOrRun(
   return rows.length === 0
     ? new NotFoundError("thread", threadId)
     : new NotFoundError("run", runId);
+}
+
+/**
+ * Why a steer found no live run to write into. The distinction is the point:
+ * a thread or run the actor cannot see is the shared `NotFoundError`, exactly
+ * like every other scoped read, while a run that exists and is terminal is the
+ * typed `RunNotActiveError` — a finished run is not a missing one, and the
+ * caller's retry differs (a new send, not a corrected id).
+ */
+async function steerRefusal(
+  spaceId: string,
+  threadId: string,
+  runId: string,
+  database: Queryable,
+): Promise<NotFoundError | RunNotActiveError> {
+  const missing = await missingThreadOrRun(spaceId, threadId, runId, database);
+
+  if (missing.resource === "thread") {
+    return missing;
+  }
+
+  const { rows } = await database.query<{ readonly status: string }>(
+    "select status::text as status from run " +
+      "where id = $1 and space_id = $2 and thread_id = $3",
+    [runId, spaceId, threadId],
+  );
+
+  const status = rows[0]?.status;
+
+  return isRunStatus(status) ? new RunNotActiveError(runId, status) : missing;
+}
+
+/**
+ * The live run's half of steering (slice 6.7): claim every unclaimed
+ * `steering_message` row bound to the run, oldest first, and return the text
+ * and durable message id of each. `claimed_at` is the handoff mark, so two
+ * claimants can never deliver one steer twice, and the statement carries the
+ * same live-status guard the steer write does: a row bound to a run that has
+ * finished stays unclaimed, because no session will ever consume it. The rows
+ * are claimed with the update and read back in transcript order in the same
+ * statement, so a session receives its corrections in the order the operator
+ * wrote them.
+ */
+export async function claimSteeringMessages(
+  actor: SystemActor,
+  database: Queryable,
+  runId: string,
+): Promise<readonly PendingSteer[]> {
+  const { rows } = await database.query<{
+    readonly messageId: string;
+    readonly blocks: unknown;
+  }>(
+    "with claimed as (" +
+      "update steering_message s set claimed_at = now() " +
+      "where s.run_id = $1 and s.claimed_at is null and exists (" +
+      "select 1 from run r where r.id = $1 and r.space_id = $2 " +
+      "and r.status = any($3::run_status[])) " +
+      "returning s.message_id) " +
+      'select m.id as "messageId", m.blocks from claimed ' +
+      "join message m on m.id = claimed.message_id order by m.seq asc",
+    [runId, actor.spaceId, ACTIVE_RUN_STATUSES],
+  );
+
+  return rows.map((row) => ({
+    messageId: row.messageId,
+    text: messageText(row.blocks) ?? "",
+  }));
 }

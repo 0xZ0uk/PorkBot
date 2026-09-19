@@ -2,6 +2,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { RUN_HEARTBEAT_INTERVAL_SECONDS } from "@porkbot/db";
 import type { FencedRunPatch, RunRecord, SystemRepositories } from "@porkbot/db";
 import { LeaseLostError, withRunFence } from "@porkbot/effect";
+import type { RunSessionOutcome } from "@porkbot/effect";
 import type { RunExecution, RunExecutor } from "./jobs/run-execute.ts";
 
 /**
@@ -28,8 +29,12 @@ import type { RunExecution, RunExecutor } from "./jobs/run-execute.ts";
  * build its session from the run's checkpoint when it is.
  */
 
-/** A run's work. The harness classifies its failure; it never reaches a client. */
-export type RunWork = (execution: RunExecution) => Effect.Effect<void, unknown>;
+/**
+ * A run's work. It reports how the session ended — the same outcome
+ * `consumeRunSession` returns — and the harness settles the row from it. A
+ * work failure is still classified by the harness; it never reaches a client.
+ */
+export type RunWork = (execution: RunExecution) => Effect.Effect<RunSessionOutcome, unknown>;
 
 export interface RunExecutionOptions {
   readonly work: RunWork;
@@ -51,11 +56,7 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
       const outcome = yield* options.work(execution).pipe(Effect.exit);
 
       if (Exit.isSuccess(outcome)) {
-        yield* settle(repositories, run, lease, {
-          status: "completed",
-          completed: true,
-          attempt: "completed",
-        });
+        yield* settle(repositories, run, lease, settlement(outcome.value));
         return;
       }
 
@@ -72,6 +73,8 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
         status: "failed",
         error: workFailureMessage(outcome.cause),
         attempt: "failed",
+        completed: true,
+        release: true,
       });
     });
 
@@ -110,6 +113,48 @@ export function createRunExecutor(options: RunExecutionOptions): RunExecutor {
       logger.warn("could not close the abandoned attempt", { error });
     }
   };
+}
+
+/**
+ * The fenced patch a session outcome settles into. Every terminal settlement
+ * releases the lease in the same write (slice 6.7): a finished run is nobody's
+ * lease, and a cancelled one — the operator's stop, or a session that ended in
+ * `run.cancelled` for another reason — settles as `cancelled` with its own
+ * attempt status, never as a completion the operator did not ask for.
+ *
+ * A cancellation or a failure can end a run while a tool call is in flight, so
+ * both settle the calls in the same statement. Nothing will resume a terminal
+ * run, and a claim left open would read as in flight forever — the half-
+ * committed effect the stop is supposed to leave none of. A completion carries
+ * no such reason: a session that completed while a call was open is a bug, not
+ * a reconciliation.
+ */
+function settlement(outcome: RunSessionOutcome): FencedRunPatch {
+  switch (outcome.status) {
+    case "completed":
+      return { status: "completed", completed: true, attempt: "completed", release: true };
+
+    case "cancelled":
+      return {
+        status: "cancelled",
+        errorCode: "cancelled",
+        completed: true,
+        attempt: "cancelled",
+        release: true,
+        settleInFlight: "the run was cancelled before this tool call settled",
+      };
+
+    case "failed":
+      return {
+        status: "failed",
+        error: outcome.error,
+        errorCode: outcome.code ?? null,
+        completed: true,
+        attempt: "failed",
+        release: true,
+        settleInFlight: "the run failed before this tool call settled",
+      };
+  }
 }
 
 /**
