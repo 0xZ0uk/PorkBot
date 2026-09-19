@@ -858,6 +858,51 @@ export const resources: readonly Resource<unknown>[] = [
     },
   }),
 
+  resource<{ readonly rowId: string; readonly botId: string }>({
+    entity: "computer_snapshot",
+    tables: ["computer_snapshot"],
+    seed: async (space) => {
+      const bot = await createBot(space, "Snapshot host");
+      const snapshotId = randomUUID();
+
+      // The row is written through the real seam, so the probes below read and
+      // write exactly what a capture records.
+      const record = await space.ownerRepositories.computerSnapshots.create({
+        botId: bot.id,
+        snapshotId,
+        storageKey: `computer-snapshots/0000000000000000/${snapshotId}.tar`,
+        sizeBytes: 12,
+        checksum: "a".repeat(64),
+      });
+
+      return { rowId: record.id, botId: bot.id };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          "select count(*)::int as snapshots, max(checksum) as checksum " +
+            "from computer_snapshot where space_id = $1 and bot_id = $2",
+          [space.spaceId, seed.botId],
+        ),
+      ),
+    user: {
+      read: (subject, seed) =>
+        visibleOn(() => subject.repositories.computerSnapshots.findById(seed.rowId)),
+      // The capture records against the bot; a foreign bot matches no row in
+      // the scoped insert, so the attempt is the shared refusal.
+      write: (subject, seed) =>
+        appliedOn(() =>
+          subject.repositories.computerSnapshots.create({
+            botId: seed.botId,
+            snapshotId: randomUUID(),
+            storageKey: `computer-snapshots/0000000000000000/${randomUUID()}.tar`,
+            sizeBytes: 1,
+            checksum: "b".repeat(64),
+          }),
+        ),
+    },
+  }),
+
   resource<{ readonly routineId: string; readonly nextRunAt: Date }>({
     entity: "routine",
     tables: ["routine", "routine_occurrence"],

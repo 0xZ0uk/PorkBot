@@ -64,7 +64,7 @@ class RecordingProvider implements ComputerProvider {
   }
 
   async snapshot(): Promise<ComputerSnapshot> {
-    return { snapshotId: "snapshot-1", key: "snapshots/1" };
+    return { snapshotId: "snapshot-1", key: "snapshots/1", size: 1, checksum: "0".repeat(64) };
   }
 
   async restore(computer: ComputerRef): Promise<ComputerStatus> {

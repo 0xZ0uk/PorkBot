@@ -9,8 +9,13 @@ import type {
   ComputerProvider,
   ComputerRef,
   ComputerState,
+  StorageProvider,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
+import {
+  createComputerSnapshotStore,
+  DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+} from "./computer-snapshot-store.ts";
 import { createDockerEngine } from "./docker-engine.ts";
 import type { DockerContainerInspect, DockerEngine } from "./docker-engine.ts";
 import { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
@@ -45,11 +50,12 @@ import type {
  *   - `remove` removes the container and keeps the named home volume, so the
  *     supervisor's reset (destroy, then ensure) rebuilds a clean machine with
  *     the bot's files intact;
- *   - `readHome` streams the home out through the daemon's archive API into
- *     the provider's snapshot directory, and `writeHome` streams an archive
- *     back in, so a snapshot outlives the container it came from. The storage
- *     seam (slice 7.5) is the next owner of the archive directory; until then
- *     it is configuration.
+ *   - `readHome` streams the home out through the daemon's archive API into a
+ *     staging file, and `writeHome` streams an archive back in, so a snapshot
+ *     outlives the container it came from. The shared lifecycle hands those
+ *     staging files to the snapshot store, which writes them through the
+ *     storage seam and verifies them before a restore replaces a machine
+ *     (slice 7.5); this file never names a storage key.
  *
  * Failure mapping: every daemon error goes through `classifyDockerFailure`
  * (slice 7.2, PRD decision 19), so `ensure` on a missing container is `gone`,
@@ -108,9 +114,6 @@ export const DEFAULT_COMPUTER_CEILINGS: ComputerCeilings = {
 /** The home directory a computer starts in, unless configured otherwise. */
 export const DEFAULT_DOCKER_COMPUTER_HOME = "/home/agent";
 
-/** Where snapshots land until the storage seam takes ownership (slice 7.5). */
-export const DEFAULT_DOCKER_SNAPSHOT_DIRECTORY = "/var/lib/porkbot/computer-snapshots";
-
 /** The labels every managed container carries, so `list` finds exactly ours. */
 export const dockerComputerLabels = {
   managed: "porkbot.managed",
@@ -152,8 +155,14 @@ export interface DockerComputerProviderOptions {
    * host floor the README documents.
    */
   readonly diskQuota?: "storage-opt" | "none" | undefined;
-  /** Where home archives land; the storage seam (slice 7.5) will take this over. */
-  readonly snapshotDirectory?: string | undefined;
+  /**
+   * The storage seam every snapshot archive is written through (slice 7.5).
+   * Required: a provider with nowhere durable to put an archive would answer
+   * `snapshot` with bytes it cannot keep, which is worse than saying so.
+   */
+  readonly storage: StorageProvider;
+  /** Where an archive is staged while it is written or verified. */
+  readonly scratchDirectory?: string | undefined;
   /** The most stdout or stderr one command may return, in bytes. */
   readonly maxOutputBytes?: number | undefined;
   /** Injected for tests; built from the endpoint options when absent. */
@@ -535,7 +544,10 @@ export function createDockerComputerProvider(
 ): ComputerProvider {
   return createRuntimeComputerProvider({
     runtime: createDockerRuntime(options),
-    snapshotDirectory: options.snapshotDirectory ?? DEFAULT_DOCKER_SNAPSHOT_DIRECTORY,
+    snapshots: createComputerSnapshotStore({
+      storage: options.storage,
+      scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+    }),
     bootTimeoutMs: options.bootTimeoutMs,
   });
 }

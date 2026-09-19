@@ -329,9 +329,9 @@ storage driver answers it. The defaults are one bot's share of the documented
 floor — a host of 4 vCPU and 8 GB plus roughly 2 GB and 50 GB+ of disk per bot,
 with 50 GB+ more for images — and the README setting the floors is the
 deployment contract, so raise the ceilings only after raising the host.
-Snapshots stream the home through the archive API into
-`PORKBOT_COMPUTER_SNAPSHOT_DIR` (a named volume in the stack); slice 7.5 moves
-that landing zone onto the storage seam. The image contract is a POSIX shell
+Snapshots stream the home through the archive API into a staging file that the
+shared snapshot store writes through the storage seam (slice 7.5). The image
+contract is a POSIX shell
 and the coreutils `timeout` the command budget is enforced with. The offline
 suite drives the provider through a fake Engine API on a unix socket, and the
 supervisor's integration tier runs the shared conformance suite against a real
@@ -348,8 +348,9 @@ deployment's image with the per-bot CPU, memory and disk ceilings; `stop` parks
 it (Daytona keeps a stopped sandbox's filesystem), `start` resumes it,
 `recover` brings an errored sandbox back, and `remove` deletes it, so the
 home's durability is the snapshot path — `tar` in the sandbox and the archive
-through the toolbox download/upload into `PORKBOT_COMPUTER_SNAPSHOT_DIR`,
-restored before the machine runs again. `daytona-errors.ts` is the one module
+through the toolbox download/upload into a staging file, then through the
+shared snapshot store into the storage seam and restored before the machine
+runs again. `daytona-errors.ts` is the one module
 allowed to read a Daytona status or message, and the decision it shares with
 Docker — is the machine gone, is a named thing missing — lives once in
 `computer-failure.ts`.
@@ -369,6 +370,33 @@ and an unconfigured kind is refused with the shared `not_found`. The reserved
 `frames()`/`input()` path stays in the interface: neither v1.0 real provider
 implements it, and the offline emulator exercises the path so the v1.1 surface
 stays alive.
+
+Snapshot and restore (slice 7.5, PRD story 30) is one store over the storage
+seam. `createComputerSnapshotStore` in `packages/adapters` is the only place a
+home archive meets storage: `write` stages the archive the provider produced
+under `computer-snapshots/<scope>/<id>.tar` — the scope hashes the computer's
+bot and id, so a snapshot cannot be pointed at another machine — and records
+its size and SHA-256; `read` fetches the object, verifies both before a byte
+reaches a machine, and refuses a missing, truncated or altered archive as the
+shared `not_found`. A restore that fails validation leaves the existing
+computer exactly as it was, which is what makes "a corrupted snapshot never
+half-boots a computer" a property rather than a hope, and the same store is
+tested over local storage and over the S3-compatible provider's emulator
+because it knows only `StorageProvider`. What a snapshot captures is the agent
+home — files, not processes: running commands, open sessions and network
+connections are not in the archive, and a restore brings the files back into a
+fresh machine.
+
+The operator's half is space-scoped. Each capture is recorded in
+`computer_snapshot` (the API's migration `0029`, grants `0030`), and
+`computers.snapshot`, `computers.snapshots` and `computers.restore` resolve
+that row through the actor-scoped repository before the supervisor is dialed —
+a snapshot from another space, or from another bot in the same space, is the
+typed `NOT_FOUND`, and the contract names a row, never a storage key. The
+supervisor builds one storage seam from `PORKBOT_STORAGE_DIR` and stages
+archives under `PORKBOT_COMPUTER_ARCHIVE_DIR`; a real provider configured
+without a storage root fails at supervisor boot rather than capturing an
+archive it cannot keep.
 
 The model reaches that machine through `createComputerTools` in
 `packages/effect`: `shell`, `file_read`, `file_write`, `file_list` and

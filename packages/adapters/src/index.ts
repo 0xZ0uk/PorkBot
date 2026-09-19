@@ -185,11 +185,23 @@ export type {
   ComputerRuntime,
   RuntimeComputerProviderOptions,
 } from "./computer-runtime.ts";
+export { computerIdentityHash } from "./computer-runtime.ts";
+// The snapshot store (slice 7.5, PRD story 30): the one place a computer's
+// home archive meets the storage seam. The shared lifecycle writes every
+// capture through it and verifies every restore against it, so the key scope
+// and the checksum are decided once whichever provider produced the archive.
 export {
+  computerSnapshotKey,
   computerSnapshotKeyPattern,
-  computerIdentityHash,
+  createComputerSnapshotStore,
+  DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+  snapshotChecksumAlgorithm,
   snapshotScope,
-} from "./computer-runtime.ts";
+} from "./computer-snapshot-store.ts";
+export type {
+  ComputerSnapshotStore,
+  ComputerSnapshotStoreOptions,
+} from "./computer-snapshot-store.ts";
 export { readTar, writeTar } from "./computer-archive.ts";
 export type { TarEntry } from "./computer-archive.ts";
 export {
@@ -218,7 +230,6 @@ export {
   createDockerComputerProvider,
   DEFAULT_COMPUTER_CEILINGS,
   DEFAULT_DOCKER_COMPUTER_HOME,
-  DEFAULT_DOCKER_SNAPSHOT_DIRECTORY,
   dockerComputerLabels,
 } from "./docker-computer.ts";
 export type { ComputerCeilings, DockerComputerProviderOptions } from "./docker-computer.ts";
@@ -254,7 +265,6 @@ export {
   createDaytonaComputerProvider,
   DEFAULT_DAYTONA_CEILINGS,
   DEFAULT_DAYTONA_COMPUTER_HOME,
-  DEFAULT_DAYTONA_SNAPSHOT_DIRECTORY,
   daytonaComputerLabels,
 } from "./daytona-computer.ts";
 export type {

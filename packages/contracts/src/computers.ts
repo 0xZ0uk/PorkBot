@@ -24,6 +24,16 @@ import { authenticatedProcedure } from "./access.ts";
  * `SERVICE_UNAVAILABLE`: the API holds no Docker socket and no provider
  * credential, so "the computer service is unreachable" is a deployment fact,
  * never a defect to guess about.
+ *
+ * Snapshots are the operator's recovery path (slice 7.5, PRD story 30).
+ * `snapshot` captures the bot's computer and records it in the actor's space;
+ * `snapshots` lists what is recoverable; `restore` replays one into the bot's
+ * machine, replacing whatever state it was in. What a snapshot holds is the
+ * agent home and the provider's declared state — files, not processes: running
+ * commands, open sessions and network connections are not captured, and a
+ * restore brings the files back into a fresh machine. A snapshot that is
+ * missing, or whose bytes no longer match what was captured, is the typed
+ * `NOT_FOUND` and the existing computer is left alone.
  */
 
 /**
@@ -123,4 +133,65 @@ export const computersRecoverContract = authenticatedProcedure
   })
   .input(z.object({ botId: z.string().min(1) }))
   .errors(computerErrors)
+  .output(computerViewSchema);
+
+/**
+ * One captured snapshot as the operator sees it: the row that a restore names,
+ * when it was taken and how large the archive is. The storage key and the
+ * checksum stay server-side — the client names a snapshot, never a location.
+ */
+export const computerSnapshotViewSchema = z.object({
+  id: z.uuid(),
+  createdAt: z.iso.datetime(),
+  sizeBytes: z.number().int().nonnegative(),
+});
+
+export type ComputerSnapshotView = z.infer<typeof computerSnapshotViewSchema>;
+
+const snapshotErrors = {
+  /** No such bot in the actor's space, or no computer assigned to it. */
+  NOT_FOUND: {
+    status: 404,
+    message: "No such bot, computer or snapshot in this space",
+  },
+  SERVICE_UNAVAILABLE: computerErrors.SERVICE_UNAVAILABLE,
+} as const;
+
+export const computersSnapshotContract = authenticatedProcedure
+  .route({
+    method: "POST",
+    path: "/bots/{botId}/computer/snapshots",
+    operationId: "computersSnapshot",
+    summary: "Capture the bot's computer home as a snapshot",
+  })
+  .input(z.object({ botId: z.string().min(1) }))
+  .errors(snapshotErrors)
+  .output(computerSnapshotViewSchema);
+
+export const computersSnapshotsContract = authenticatedProcedure
+  .route({
+    method: "GET",
+    path: "/bots/{botId}/computer/snapshots",
+    operationId: "computersSnapshots",
+    summary: "List the bot's captured snapshots, newest first",
+  })
+  .input(z.object({ botId: z.string().min(1) }))
+  .errors(snapshotErrors)
+  .output(z.object({ snapshots: z.array(computerSnapshotViewSchema) }));
+
+export const computersRestoreContract = authenticatedProcedure
+  .route({
+    method: "POST",
+    path: "/bots/{botId}/computer/restore",
+    operationId: "computersRestore",
+    summary: "Restore a captured snapshot into the bot's computer",
+  })
+  .input(
+    z.object({
+      botId: z.string().min(1),
+      /** The snapshot row a capture returned; never a storage key. */
+      snapshotId: z.uuid(),
+    }),
+  )
+  .errors(snapshotErrors)
   .output(computerViewSchema);

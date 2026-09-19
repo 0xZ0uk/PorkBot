@@ -95,7 +95,12 @@ class CountingProvider implements ComputerProvider {
   }
 
   async snapshot(): Promise<ComputerSnapshot> {
-    return { snapshotId: "snapshot-1", key: "scope/snapshot-1.tar" };
+    return {
+      snapshotId: "snapshot-1",
+      key: "scope/snapshot-1.tar",
+      size: 1,
+      checksum: "0".repeat(64),
+    };
   }
 
   async restore(): Promise<ComputerStatus> {

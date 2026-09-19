@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   index,
   integer,
@@ -64,5 +65,55 @@ export const computerLease = pgTable(
     index("computer_lease_expires_at_idx").on(table.expiresAt),
     check("computer_lease_owner_check", sql`length(btrim(${table.owner})) > 0`),
     check("computer_lease_fence_check", sql`${table.fence} >= 0`),
+  ],
+);
+
+/**
+ * One captured snapshot of a bot's computer (slice 7.5, PRD story 30).
+ *
+ * The archive itself lives in the storage seam under `storage_key`; this row is
+ * the operator's index of what was captured, and the four facts a restore needs
+ * to find and verify it. It carries `space_id` like every space-scoped row, so
+ * a snapshot is read only inside the space that took it: the scoped read makes
+ * a restore into another space the shared `NOT_FOUND`, and the key's own scope
+ * — derived from the bot and computer — refuses a foreign archive even if a
+ * handle were leaked.
+ *
+ * `size_bytes` and `checksum` are the integrity pair. A restore fetches the
+ * object, proves the bytes match both, and only then replaces the machine, so a
+ * truncated or altered archive fails as a typed refusal instead of producing a
+ * half-booted computer. The checksum is constrained to lowercase hex SHA-256
+ * and the size is non-negative, so a malformed row cannot ship as data.
+ *
+ * `snapshot_id` is the provider's capture id and is unique per bot: the pair is
+ * what makes a repeated capture of the same bot addressable without collision,
+ * and deleting the bot takes its snapshots with it through the foreign key.
+ */
+export const computerSnapshot = pgTable(
+  "computer_snapshot",
+  {
+    id: primaryKeyId(),
+    spaceId: uuid("space_id")
+      .notNull()
+      .references(() => space.id, { onDelete: "cascade" }),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bot.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id").notNull(),
+    storageKey: text("storage_key").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    checksum: text("checksum").notNull(),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("computer_snapshot_space_bot_snapshot_unique").on(
+      table.spaceId,
+      table.botId,
+      table.snapshotId,
+    ),
+    index("computer_snapshot_bot_id_idx").on(table.botId),
+    index("computer_snapshot_space_id_idx").on(table.spaceId),
+    check("computer_snapshot_size_bytes_check", sql`${table.sizeBytes} >= 0`),
+    check("computer_snapshot_checksum_check", sql`${table.checksum} ~ '^[0-9a-f]{64}$'`),
   ],
 );

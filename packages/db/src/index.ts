@@ -213,6 +213,19 @@ export {
 } from "./computer-leases.ts";
 export type { ExpiredComputerLease } from "./computer-leases.ts";
 
+// The snapshot index (slice 7.5, PRD story 30): the row that names a captured
+// computer's archive, the integrity pair a restore verifies it with, and the
+// actor-scoped reads the API resolves a capture through. This module is the
+// only shipped code that reads or writes `computer_snapshot`; the archive
+// bytes stay behind the storage seam, so a snapshot survives a rebuilt
+// computer without a second storage path.
+export { createComputerSnapshotStore } from "./computer-snapshots.ts";
+export type {
+  ComputerSnapshotRecord,
+  ComputerSnapshots,
+  NewComputerSnapshot,
+} from "./computer-snapshots.ts";
+
 // Run-liveness detection and its notification claims (slices 6.10 and 8.7,
 // PRD decision 33): the cross-space scan for active runs whose progress
 // stopped, the guarded episode marker a stall notification keys its

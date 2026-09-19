@@ -38,7 +38,7 @@ export type {
   ComputerState,
   ComputerStatus,
 } from "./computer.ts";
-export { COMPUTER_STATES } from "./computer.ts";
+export { COMPUTER_STATES, snapshotChecksumPattern } from "./computer.ts";
 
 // The model runtime seam (slices 5.4, 9.2): the agent loop talks to an
 // OpenAI-compatible endpoint through this interface, hosted or self-hosted,

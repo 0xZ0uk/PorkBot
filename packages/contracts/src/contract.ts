@@ -3,6 +3,9 @@ import {
   computersBootContract,
   computersRecoverContract,
   computersResetContract,
+  computersRestoreContract,
+  computersSnapshotContract,
+  computersSnapshotsContract,
   computersStatusContract,
   computersStopContract,
 } from "./computers.ts";
@@ -111,6 +114,9 @@ export const appContract = {
     stop: computersStopContract,
     reset: computersResetContract,
     recover: computersRecoverContract,
+    snapshot: computersSnapshotContract,
+    snapshots: computersSnapshotsContract,
+    restore: computersRestoreContract,
   },
   sections: {
     list: sectionsListContract,
