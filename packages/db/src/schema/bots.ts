@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   pgTable,
@@ -10,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { primaryKeyId, timestamps } from "./columns.ts";
 import { user } from "./identity.ts";
+import { modelConnection } from "./model-connections.ts";
 import { space } from "./tenancy.ts";
 
 /**
@@ -18,9 +21,9 @@ import { space } from "./tenancy.ts";
  * `space_id` and `user_id` are the tenancy columns every runs-domain table
  * carries, and they are real foreign keys now that the identity tables have
  * landed: deleting a space or a user takes its bots with it. `section_id` is
- * nullable because a bot need not be in a section, and the only nullable
- * foreign key in this file; `on delete set null` is what keeps that honest when
- * a section is deleted.
+ * nullable because a bot need not be in a section; `on delete set null` is
+ * what keeps that honest when a section is deleted, and `model_connection_id`
+ * takes the same shape for the same reason.
  *
  * `spawn_key` is the bot's idempotency key: creating the same bot twice cannot
  * insert twice, because the unique index is scoped `(space_id, spawn_key)` on
@@ -84,12 +87,25 @@ export const bot = pgTable(
     spawnKey: text("spawn_key").notNull(),
     avatarKey: text("avatar_key"),
     computerId: uuid("computer_id"),
+    /**
+     * The model this bot runs, and the connection it runs on (slice 9.2). Both
+     * are nullable: an unset connection falls back to the space's default, and
+     * an unset model falls back to that connection's `default_model`. Setting
+     * the connection is a scoped write like `section_id` — the repository
+     * refuses one from another space — and the foreign key nulls the column if
+     * the connection is removed, so "no selection" stays explicit.
+     */
+    modelConnectionId: uuid("model_connection_id").references(() => modelConnection.id, {
+      onDelete: "set null",
+    }),
+    model: text("model"),
     ...timestamps(),
   },
   (table) => [
     uniqueIndex("bot_space_spawn_key_unique").on(table.spaceId, table.spawnKey),
     index("bot_section_id_idx").on(table.sectionId),
     index("bot_computer_id_idx").on(table.computerId),
+    index("bot_model_connection_id_idx").on(table.modelConnectionId),
     index("bot_user_id_idx").on(table.userId),
     index("bot_space_user_archived_pinned_updated_idx").on(
       table.spaceId,
@@ -98,5 +114,9 @@ export const bot = pgTable(
       table.pinned,
       table.updatedAt,
     ),
+    // A blank model id is not a selection; the resolver filters on null, so an
+    // empty string would otherwise be returned and sent to a provider as the
+    // model. The connection's `default_model` carries the same check.
+    check("bot_model_check", sql`${table.model} is null or length(btrim(${table.model})) > 0`),
   ],
 );

@@ -38,9 +38,10 @@ if (connectionString === undefined || connectionString.length === 0) {
  * lost fence, and settles the run and its attempt. Slice 6.9 lands the
  * computer tools and proves a full run with real tool execution offline
  * (`offline-run.test.ts`); the live model launch that fills this seam with a
- * Pi-backed session arrives with the model runtime adapter (slice 9.2). Until
- * then the run records its claim and completes with no output rather than
- * pretending a runtime exists.
+ * Pi-backed session waits on the stream bridge from Pi's agent loop to the
+ * model runtime (slice 9.2 ships the runtime itself). Until then the run
+ * records its claim and completes with no output rather than pretending a
+ * runtime exists.
  */
 const verifiedRunExecutor: RunExecutor = createRunExecutor({
   work: ({ run, logger: runLogger }) =>

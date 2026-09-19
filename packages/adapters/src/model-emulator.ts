@@ -12,6 +12,8 @@ import type {
 } from "@porkbot/adapter-kit";
 import type { SafeFetch } from "@porkbot/effect";
 import { ModelProviderError } from "./model-errors.ts";
+import { createOpenAiWire, modelProbeHeader } from "./openai-compatible.ts";
+import type { OpenAiWire } from "./openai-compatible.ts";
 
 export type ModelEmulatorGateReason = "suspension" | "steering" | "compaction";
 
@@ -47,6 +49,19 @@ export interface ModelEmulatorTurn {
 
 export interface ModelEmulatorScript {
   readonly models?: readonly string[];
+  /**
+   * Whether the endpoint answers a streaming request with SSE. Defaults to
+   * `true`; `false` is the OpenAI-compatible server that ignores `stream` and
+   * returns one JSON completion, which is what makes "streaming unsupported"
+   * a probe result rather than a stored hope.
+   */
+  readonly streaming?: boolean;
+  /**
+   * When set, every request must carry `Authorization: Bearer <apiKey>` or the
+   * endpoint answers the OpenAI-shaped 401. Unset, the emulator checks nothing,
+   * so tests that only exercise the wire need no key.
+   */
+  readonly apiKey?: string;
   readonly turns: readonly ModelEmulatorTurn[];
 }
 
@@ -66,34 +81,6 @@ interface GateState {
   readonly reached: Deferred;
   readonly released: Deferred;
   readonly left: Deferred;
-}
-
-interface OpenAiMessage {
-  readonly role: ModelMessage["role"];
-  readonly content: string;
-  readonly tool_call_id?: string;
-}
-
-interface OpenAiTool {
-  readonly type: "function";
-  readonly function: {
-    readonly name: string;
-    readonly description: string;
-    readonly parameters: unknown;
-  };
-}
-
-interface OpenAiRequest {
-  readonly model: string;
-  readonly messages: readonly OpenAiMessage[];
-  readonly tools?: readonly OpenAiTool[];
-  readonly stream: true;
-}
-
-interface ToolAccumulator {
-  callId: string;
-  name: string;
-  arguments: string;
 }
 
 const defaultModel = "porkbot-emulator";
@@ -333,159 +320,18 @@ function chunk(
   };
 }
 
-function statusKind(status: number): ProviderFailureKind {
-  if (status === 401 || status === 403) {
-    return "auth_failed";
-  }
-  if (status === 404) {
-    return "not_found";
-  }
-  if (status === 410) {
-    return "gone";
-  }
-  if (status === 429) {
-    return "rate_limited";
-  }
-  return "timed_out";
-}
-
-function endpoint(baseUrl: string, path: string): URL {
-  return new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
-}
-
-function requestBody(request: ModelTurnRequest): OpenAiRequest {
-  return {
-    model: request.model,
-    messages: request.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-      ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
-    })),
-    ...(request.tools === undefined
-      ? {}
-      : {
-          tools: request.tools.map((tool) => ({
-            type: "function" as const,
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            },
-          })),
-        }),
-    stream: true,
-  };
-}
-
-function firstChoice(value: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(value) || !Array.isArray(value["choices"])) {
-    return undefined;
-  }
-
-  const choice = value["choices"][0];
-  return isRecord(choice) ? choice : undefined;
-}
-
-function finishReason(value: unknown): "stop" | "tool_calls" | "length" | undefined {
-  return value === "stop" || value === "tool_calls" || value === "length" ? value : undefined;
-}
-
-function parseToolDeltas(value: unknown, tools: Map<number, ToolAccumulator>): ModelStreamEvent[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const events: ModelStreamEvent[] = [];
-
-  for (const candidate of value) {
-    if (!isRecord(candidate) || typeof candidate["index"] !== "number") {
-      continue;
-    }
-
-    const current = tools.get(candidate["index"]) ?? { callId: "", name: "", arguments: "" };
-
-    if (typeof candidate["id"] === "string") {
-      current.callId = candidate["id"];
-    }
-
-    if (isRecord(candidate["function"])) {
-      if (typeof candidate["function"]["name"] === "string") {
-        current.name = candidate["function"]["name"];
-      }
-
-      if (typeof candidate["function"]["arguments"] === "string") {
-        current.arguments += candidate["function"]["arguments"];
-        events.push({
-          type: "tool.delta",
-          callId: current.callId,
-          argumentsDelta: candidate["function"]["arguments"],
-        });
-      }
-    }
-
-    tools.set(candidate["index"], current);
-  }
-
-  return events;
-}
-
-async function* sseData(response: Response): AsyncGenerator<string> {
-  if (response.body === null) {
-    throw new ModelProviderError(
-      "timed_out",
-      "the endpoint returned no stream body",
-      response.status,
-    );
-  }
-
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  let dataLines: string[] = [];
-
-  while (true) {
-    const read = await reader.read();
-    buffer += read.value ?? "";
-
-    while (true) {
-      const newline = buffer.indexOf("\n");
-      if (newline < 0) {
-        break;
-      }
-
-      const rawLine = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-
-      if (line === "") {
-        if (dataLines.length > 0) {
-          yield dataLines.join("\n");
-          dataLines = [];
-        }
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trimStart());
-      }
-    }
-
-    if (read.done) {
-      break;
-    }
-  }
-
-  if (dataLines.length > 0) {
-    yield dataLines.join("\n");
-  }
-}
-
 /**
  * A deterministic OpenAI-compatible loopback endpoint and its provider client.
- * The client reaches the emulator through HTTP and parses the same SSE frames a
- * hosted endpoint produces. It never resolves a credential or dials a host
- * other than the loopback server it owns.
+ * The client is the shipped wire client — the same one the real adapter uses —
+ * pointed at the emulator through HTTP, so it parses the same SSE frames a
+ * hosted endpoint produces and cannot drift from what ships. The scripted key,
+ * when one is set, is answered by the emulator's own credential closure; it
+ * never dials a host other than the loopback server it owns.
  */
 export class ModelEmulator implements ModelRuntimeProvider {
   readonly #server: Server;
   readonly #script: ModelEmulatorScript;
-  readonly #transport: SafeFetch;
+  readonly #wire: OpenAiWire;
   readonly #gates = new Map<string, GateState>();
   readonly #requests: RecordedModelRequest[] = [];
   #baseUrl = "";
@@ -495,7 +341,10 @@ export class ModelEmulator implements ModelRuntimeProvider {
   private constructor(server: Server, script: ModelEmulatorScript, transport: SafeFetch) {
     this.#server = server;
     this.#script = copyScript(script);
-    this.#transport = transport;
+    this.#wire = createOpenAiWire({
+      dial: transport,
+      credential: async () => this.#script.apiKey ?? "offline",
+    });
 
     for (const turn of this.#script.turns) {
       for (const step of turn.steps ?? []) {
@@ -610,125 +459,12 @@ export class ModelEmulator implements ModelRuntimeProvider {
 
   async probe(connection: ModelConnection): Promise<ModelProbeResult> {
     this.assertConnection(connection);
-    const response = await this.#transport(endpoint(this.#baseUrl, "models"));
-
-    if (!response.ok) {
-      throw new ModelProviderError(
-        statusKind(response.status),
-        "the model endpoint refused discovery",
-        response.status,
-      );
-    }
-
-    const payload = (await response.json()) as unknown;
-
-    if (!isRecord(payload) || !Array.isArray(payload["data"])) {
-      throw new ModelProviderError(
-        "timed_out",
-        "the model list had an invalid shape",
-        response.status,
-      );
-    }
-
-    const models = payload["data"].flatMap((candidate): { id: string }[] => {
-      return isRecord(candidate) && typeof candidate["id"] === "string"
-        ? [{ id: candidate["id"] }]
-        : [];
-    });
-
-    return { reachable: true, models, streaming: true };
+    return this.#wire.probe(connection);
   }
 
   async *stream(request: ModelTurnRequest): AsyncIterable<ModelStreamEvent> {
     this.assertConnection(request.connection);
-    let response: Response;
-
-    try {
-      response = await this.#transport(endpoint(this.#baseUrl, "chat/completions"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(requestBody(request)),
-        ...(request.abortSignal === undefined ? {} : { signal: request.abortSignal }),
-      });
-    } catch (cause) {
-      throw new ModelProviderError("timed_out", "the loopback stream was interrupted", undefined, {
-        cause,
-      });
-    }
-
-    if (!response.ok) {
-      throw new ModelProviderError(
-        statusKind(response.status),
-        "the model endpoint refused the turn",
-        response.status,
-      );
-    }
-
-    const tools = new Map<number, ToolAccumulator>();
-    let completed = false;
-
-    try {
-      for await (const data of sseData(response)) {
-        if (data === "[DONE]") {
-          break;
-        }
-
-        let payload: unknown;
-
-        try {
-          payload = JSON.parse(data) as unknown;
-        } catch (cause) {
-          throw new ModelProviderError(
-            "timed_out",
-            "the endpoint sent invalid SSE JSON",
-            undefined,
-            { cause },
-          );
-        }
-
-        const choice = firstChoice(payload);
-
-        if (choice === undefined || !isRecord(choice["delta"])) {
-          continue;
-        }
-
-        if (typeof choice["delta"]["content"] === "string") {
-          yield { type: "text.delta", delta: choice["delta"]["content"] };
-        }
-
-        for (const event of parseToolDeltas(choice["delta"]["tool_calls"], tools)) {
-          yield event;
-        }
-
-        const reason = finishReason(choice["finish_reason"]);
-
-        if (reason !== undefined) {
-          for (const [, tool] of [...tools].sort(([left], [right]) => left - right)) {
-            yield {
-              type: "tool.requested",
-              callId: tool.callId,
-              name: tool.name,
-              arguments: JSON.parse(tool.arguments) as unknown,
-            };
-          }
-
-          yield { type: "completed", finishReason: reason };
-          completed = true;
-        }
-      }
-    } catch (cause) {
-      if (cause instanceof ModelProviderError) {
-        throw cause;
-      }
-
-      throw new ModelProviderError("timed_out", "the model stream was interrupted", undefined, {
-        cause,
-      });
-    }
-
-    if (!completed) {
-      throw new ModelProviderError("timed_out", "the model stream ended before completion");
-    }
+    yield* this.#wire.stream(request);
   }
 
   private assertConnection(connection: ModelConnection): void {
@@ -740,11 +476,52 @@ export class ModelEmulator implements ModelRuntimeProvider {
     }
   }
 
+  /**
+   * The probe's streaming verification: an endpoint that streams answers with
+   * SSE headers, and one that ignores `stream` answers a single JSON
+   * completion. Neither path consumes a scripted turn or is recorded, so a
+   * probe is a real wire check rather than a script step.
+   */
+  private serveProbe(request: IncomingMessage, response: ServerResponse): void {
+    request.resume();
+
+    if (this.#script.streaming === false) {
+      json(response, 200, {
+        id: "chatcmpl-probe",
+        object: "chat.completion",
+        created: 0,
+        model: this.#script.models?.[0] ?? defaultModel,
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "" },
+            finish_reason: "stop",
+          },
+        ],
+      });
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    response.write("data: [DONE]\n\n");
+    response.end();
+  }
+
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let ownsActiveTurn = false;
 
     try {
       const url = new URL(request.url ?? "/", this.#baseUrl);
+      const expectedKey = this.#script.apiKey;
+
+      if (expectedKey !== undefined && request.headers.authorization !== `Bearer ${expectedKey}`) {
+        openAiError(response, 401, "authentication_error", "invalid_api_key");
+        return;
+      }
 
       if (request.method === "GET" && url.pathname === "/v1/models") {
         const models = this.#script.models ?? [defaultModel];
@@ -757,6 +534,14 @@ export class ModelEmulator implements ModelRuntimeProvider {
 
       if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
         openAiError(response, 404, "invalid_request_error", "route_not_found");
+        return;
+      }
+
+      // The probe's streaming check is answered before the scripted turn
+      // machine: it reports what the endpoint does, not what the script says,
+      // and it must not consume the next scripted turn.
+      if (request.headers[modelProbeHeader] !== undefined) {
+        this.serveProbe(request, response);
         return;
       }
 

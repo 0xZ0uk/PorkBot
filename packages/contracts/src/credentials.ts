@@ -13,8 +13,10 @@ import { authenticatedProcedure } from "./access.ts";
  * There is deliberately no field for the value, its ciphertext or its
  * fingerprint: the contract's output is the whole transport surface, so "a list
  * endpoint never returns a secret" is a property of the schema rather than a
- * promise about a handler. Writing and revoking credentials are slices 9.2 and
- * 9.3; they add procedures here, not a second source of the mask.
+ * promise about a handler. `credentials.store` (slice 9.2) is the write half —
+ * the value is an input, the output is only the mask the store derives — and
+ * revoking a credential is slice 9.3; they add procedures here, not a second
+ * source of the mask.
  */
 
 export const credentialSchema = z.object({
@@ -51,3 +53,31 @@ export const credentialsListContract = authenticatedProcedure
     },
   })
   .output(z.object({ credentials: z.array(credentialSchema) }));
+
+export const credentialsStoreContract = authenticatedProcedure
+  .route({
+    method: "PUT",
+    path: "/credentials/{name}",
+    operationId: "credentialsStore",
+    summary: "Store or replace a named credential, encrypted at rest",
+  })
+  .input(
+    z.object({
+      /** The name a provider resolves, e.g. `model-key`. */
+      name: z.string().min(1).max(200),
+      /**
+       * The secret. The request body cap bounds it before it is parsed; this
+       * bound is the schema's own, large enough for a long key or a small PEM
+       * and small enough that a mistake is refused rather than stored.
+       */
+      value: z.string().min(1).max(16_384),
+    }),
+  )
+  .errors({
+    /** The keyring cannot unlock the store; only the operator can repair it. */
+    SERVICE_UNAVAILABLE: {
+      status: 503,
+      message: "The credential store is not readable",
+    },
+  })
+  .output(credentialSchema);

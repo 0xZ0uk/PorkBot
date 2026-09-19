@@ -126,6 +126,14 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
       revoke: notExercised,
       listForServer: notExercised,
     },
+    modelConnections: {
+      findById: notExercised,
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      setDefault: notExercised,
+      delete: notExercised,
+    },
   };
 }
 
@@ -189,6 +197,58 @@ describe("the stored credential surface", () => {
     ]);
     expect(JSON.stringify(answer)).not.toContain(secret);
     expect(lines.join("\n")).not.toContain(secret);
+  });
+
+  it("stores a value encrypted and answers only its mask", async () => {
+    sessionActor = owner;
+    lines.length = 0;
+
+    const calls: Array<{ readonly text: string; readonly values: readonly unknown[] }> = [];
+    const database: Queryable = {
+      async query<Row>(text: string, values: readonly unknown[] = []) {
+        calls.push({ text, values });
+
+        return {
+          rows: [
+            {
+              id: "credential-1",
+              name: "model-key",
+              envelope: validEnvelope,
+              createdAt: new Date("2026-09-18T10:00:00.000Z"),
+              updatedAt: new Date("2026-09-18T10:00:00.000Z"),
+            },
+          ] as unknown as readonly Row[],
+        };
+      },
+    };
+    const app = createApiApp({
+      services,
+      logger,
+      resolveActor: async () => owner,
+      repositoriesFor: (actor) => repositoriesWith(database, actor),
+    });
+
+    const response = await app.request("/rpc/credentials/store", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ json: { name: "model-key", value: secret } }),
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(body)).toEqual({
+      json: {
+        id: "credential-1",
+        name: "model-key",
+        maskedValue: masked,
+        createdAt: "2026-09-18T10:00:00.000Z",
+        updatedAt: "2026-09-18T10:00:00.000Z",
+      },
+    });
+    expect(body).not.toContain(secret);
+    expect(lines.join("\n")).not.toContain(secret);
+    expect(calls[0]?.text).toContain("insert into encrypted_credential");
+    expect(JSON.stringify(calls)).not.toContain(secret);
   });
 
   it("answers the typed 401 without a session", async () => {

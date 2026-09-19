@@ -1,5 +1,13 @@
 import { accountMeContract } from "./account.ts";
-import { credentialsListContract } from "./credentials.ts";
+import { credentialsListContract, credentialsStoreContract } from "./credentials.ts";
+import {
+  modelConnectionsCreateContract,
+  modelConnectionsListContract,
+  modelConnectionsProbeContract,
+  modelConnectionsRemoveContract,
+  modelConnectionsSetDefaultContract,
+  modelConnectionsUpdateContract,
+} from "./model-connections.ts";
 import {
   botsArchiveContract,
   botsAvatarContract,
@@ -106,6 +114,15 @@ export const appContract = {
   },
   credentials: {
     list: credentialsListContract,
+    store: credentialsStoreContract,
+  },
+  modelConnections: {
+    list: modelConnectionsListContract,
+    create: modelConnectionsCreateContract,
+    update: modelConnectionsUpdateContract,
+    setDefault: modelConnectionsSetDefaultContract,
+    remove: modelConnectionsRemoveContract,
+    probe: modelConnectionsProbeContract,
   },
   mcpServers: {
     list: mcpServersListContract,

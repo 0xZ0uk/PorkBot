@@ -60,6 +60,8 @@ const bot: BotRecord = {
   spawnKey: "spawn-1",
   avatarKey: null,
   computerId: null,
+  modelConnectionId: null,
+  model: null,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-02T00:00:00.000Z"),
 };
@@ -182,6 +184,14 @@ function fakeRepositories(forActor: UserActor): UserRepositories {
       revoke: notExercised,
       listForServer: notExercised,
     },
+    modelConnections: {
+      findById: notExercised,
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      setDefault: notExercised,
+      delete: notExercised,
+    },
   };
 }
 
@@ -285,6 +295,8 @@ describe("authenticated by default", () => {
       sectionId: null,
       avatarKey: null,
       computerId: null,
+      modelConnectionId: null,
+      model: null,
       archivedAt: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-02T00:00:00.000Z",

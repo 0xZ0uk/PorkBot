@@ -29,6 +29,8 @@ describe("the bot schema", () => {
       sectionId: null,
       avatarKey: null,
       computerId: null,
+      modelConnectionId: null,
+      model: null,
       archivedAt: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-02T00:00:00.000Z",
@@ -37,6 +39,8 @@ describe("the bot schema", () => {
     expect(parsed.sectionId).toBeNull();
     expect(parsed.avatarKey).toBeNull();
     expect(parsed.computerId).toBeNull();
+    expect(parsed.modelConnectionId).toBeNull();
+    expect(parsed.model).toBeNull();
   });
 });
 

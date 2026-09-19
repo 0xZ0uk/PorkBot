@@ -177,6 +177,14 @@ function stubRepositories(): UserRepositories {
       revoke: notExercised,
       listForServer: notExercised,
     },
+    modelConnections: {
+      findById: notExercised,
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      setDefault: notExercised,
+      delete: notExercised,
+    },
   };
 }
 

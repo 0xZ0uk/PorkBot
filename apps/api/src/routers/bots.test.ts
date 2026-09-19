@@ -43,6 +43,8 @@ const stranger: BotRecord = {
   spawnKey: "spawn-other",
   avatarKey: null,
   computerId: null,
+  modelConnectionId: null,
+  model: null,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
@@ -69,6 +71,8 @@ function seedBot(): BotRecord {
     spawnKey: randomUUID(),
     avatarKey: null,
     computerId: null,
+    modelConnectionId: null,
+    model: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -138,6 +142,8 @@ function repositoriesFor(actor: UserActor): UserRepositories {
           spawnKey: input.spawnKey,
           avatarKey: null,
           computerId: input.computerId ?? null,
+          modelConnectionId: input.modelConnectionId ?? null,
+          model: input.model ?? null,
           createdAt: now,
           updatedAt: now,
         });
@@ -226,6 +232,14 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       grant: notExercised,
       revoke: notExercised,
       listForServer: notExercised,
+    },
+    modelConnections: {
+      findById: notExercised,
+      list: notExercised,
+      create: notExercised,
+      update: notExercised,
+      setDefault: notExercised,
+      delete: notExercised,
     },
   };
 }

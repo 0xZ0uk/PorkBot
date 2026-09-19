@@ -62,6 +62,14 @@ export const botSchema = z.object({
    * E7, which turns this into a reference the read can resolve.
    */
   computerId: z.string().nullable(),
+  /**
+   * The model connection this bot selected, or null to use the space's
+   * default (slice 9.2). The connection's URL and credential *name* live on
+   * the connection; a bot body never carries a secret.
+   */
+  modelConnectionId: z.string().nullable(),
+  /** The model this bot selected, or null to use its connection's default. */
+  model: z.string().nullable(),
   archivedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -119,6 +127,9 @@ export const botsCreateContract = authenticatedProcedure
       position: z.number().int().min(0).optional(),
       sectionId: z.uuid().nullable().optional(),
       computerId: z.uuid().nullable().optional(),
+      /** A connection in the actor's space; one outside it is not found. */
+      modelConnectionId: z.uuid().nullable().optional(),
+      model: z.string().min(1).max(200).nullable().optional(),
     }),
   )
   .errors({
@@ -154,13 +165,17 @@ export const botsUpdateContract = authenticatedProcedure
       sectionId: z.uuid().nullable().optional(),
       /** `null` clears the assignment. */
       computerId: z.uuid().nullable().optional(),
+      /** `null` falls back to the space's default connection. */
+      modelConnectionId: z.uuid().nullable().optional(),
+      /** `null` falls back to the selected connection's default model. */
+      model: z.string().min(1).max(200).nullable().optional(),
     }),
   )
   .errors({
-    /** No such bot, or no such section, in the actor's space. */
+    /** No such bot, no such section, or no such connection, in the actor's space. */
     NOT_FOUND: {
       status: 404,
-      message: "No such bot or bot section in this space",
+      message: "No such bot, bot section or model connection in this space",
     },
   })
   .output(botSchema);

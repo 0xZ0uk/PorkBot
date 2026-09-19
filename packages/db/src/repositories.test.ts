@@ -1,8 +1,8 @@
-import { NotFoundError } from "@porkbot/effect";
+import { NameConflictError, NotFoundError } from "@porkbot/effect";
 import { describe, expect, it } from "vitest";
 import type { SystemActor, UserActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
-import type { BotRecord, SystemRepositories } from "./repositories.ts";
+import type { BotRecord, ModelConnectionRecord, SystemRepositories } from "./repositories.ts";
 import { createRepositories } from "./repositories.ts";
 
 /**
@@ -57,6 +57,8 @@ const bot: BotRecord = {
   sectionId: null,
   archivedAt: null,
   spawnKey: "spawn-1",
+  modelConnectionId: null,
+  model: null,
   avatarKey: null,
   computerId: null,
   createdAt: new Date(0),
@@ -305,7 +307,9 @@ describe("bot writes", () => {
       false,
       0,
       null,
+      null,
       "spawn-1",
+      null,
       null,
     ]);
   });
@@ -323,7 +327,7 @@ describe("bot writes", () => {
     });
 
     expect(database.calls[0]?.text).toContain(
-      "left join bot_section s on s.id = $12::uuid and s.space_id = $1 and s.user_id = $2",
+      "left join bot_section s on s.id = $13::uuid and s.space_id = $1 and s.user_id = $2",
     );
     expect(database.calls[0]?.values).toEqual([
       "space-1",
@@ -336,9 +340,62 @@ describe("bot writes", () => {
       false,
       0,
       "computer-1",
+      null,
       "spawn-1",
       "section-1",
+      null,
     ]);
+  });
+
+  it("resolves the model connection inside the scoped insert too", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.create({
+      name: "Ada",
+      color: "#4f46e5",
+      spawnKey: "spawn-1",
+      modelConnectionId: "connection-1",
+      model: "fixture-model",
+    });
+
+    expect(database.calls[0]?.text).toContain(
+      "left join model_connection c on c.id = $14::uuid and c.space_id = $1",
+    );
+    expect(database.calls[0]?.values).toEqual([
+      "space-1",
+      "user-1",
+      "Ada",
+      "",
+      "",
+      "",
+      "#4f46e5",
+      false,
+      0,
+      null,
+      "fixture-model",
+      "spawn-1",
+      null,
+      "connection-1",
+    ]);
+  });
+
+  it("reports a connection outside the actor's space as not-found", async () => {
+    const database = fakeDatabase(() => []);
+    const repositories = createRepositories(owner, database);
+
+    await expect(
+      repositories.bots.create({
+        name: "Ada",
+        color: "#4f46e5",
+        spawnKey: "spawn-1",
+        modelConnectionId: "connection-9",
+      }),
+    ).rejects.toMatchObject({
+      name: "NotFoundError",
+      resource: "model connection",
+      id: "connection-9",
+    });
   });
 
   it("reports a section outside the actor's space as not-found, with nothing inserted", async () => {
@@ -423,6 +480,35 @@ describe("bot writes", () => {
     ]);
   });
 
+  it("guards a model connection patch inside the same scoped update", async () => {
+    const database = fakeDatabase(() => [bot]);
+    const repositories = createRepositories(owner, database);
+
+    await repositories.bots.update("bot-1", {
+      modelConnectionId: "connection-1",
+      model: "fixture-model",
+    });
+
+    expect(database.calls[0]?.text).toContain("model_connection_id = $1");
+    expect(database.calls[0]?.text).toContain("model = $2");
+    expect(database.calls[0]?.text).toContain("exists (select 1 from model_connection c");
+    expect(database.calls[0]?.values).toEqual([
+      "connection-1",
+      "fixture-model",
+      "bot-1",
+      "space-1",
+    ]);
+  });
+
+  it("separates a missing model connection from a missing bot on an empty update", async () => {
+    const database = fakeDatabase(() => []);
+    const repositories = createRepositories(owner, database);
+
+    await expect(
+      repositories.bots.update("bot-1", { modelConnectionId: "connection-9" }),
+    ).rejects.toMatchObject({ resource: "model connection", id: "connection-9" });
+  });
+
   it("separates a missing section from a missing bot on an empty update", async () => {
     const database = fakeDatabase(() => []);
     const repositories = createRepositories(owner, database);
@@ -490,6 +576,191 @@ describe("bot writes", () => {
     expect(database.calls[0]?.text).toContain("avatar_key = $1");
     expect(database.calls[0]?.values).toEqual(["avatars/space-1/bot-1", "bot-1", "space-1"]);
     expect(database.calls[1]?.values).toEqual([null, "bot-1", "space-1"]);
+  });
+});
+
+const connection: ModelConnectionRecord = {
+  id: "connection-1",
+  spaceId: "space-1",
+  label: "Local models",
+  baseUrl: "https://model.example.invalid/v1",
+  credentialName: "model-key",
+  defaultModel: "fixture-model",
+  isDefault: false,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+describe("model connections", () => {
+  it("reads one by id and lists default-first inside the actor's space", async () => {
+    const database = fakeDatabase(() => [connection]);
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(store.findById("connection-1")).resolves.toEqual(connection);
+    expect(database.calls[0]?.text).toContain(
+      "from model_connection where id = $1 and space_id = $2",
+    );
+    expect(database.calls[0]?.values).toEqual(["connection-1", "space-1"]);
+
+    await expect(store.list()).resolves.toEqual([connection]);
+    expect(database.calls[1]?.text).toContain("order by is_default desc, label asc");
+    expect(database.calls[1]?.values).toEqual(["space-1"]);
+  });
+
+  it("reports a missing connection as the shared not-found", async () => {
+    const store = createRepositories(owner, fakeDatabase()).modelConnections;
+
+    await expect(store.findById("connection-9")).rejects.toMatchObject({
+      name: "NotFoundError",
+      resource: "model connection",
+      id: "connection-9",
+    });
+  });
+
+  it("creates with the actor's space and reports a taken label", async () => {
+    const database = fakeDatabase(() => [connection]);
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(
+      store.create({
+        label: "Local models",
+        baseUrl: "https://model.example.invalid/v1",
+        credentialName: "model-key",
+        defaultModel: "fixture-model",
+      }),
+    ).resolves.toEqual(connection);
+    expect(database.calls[0]?.text).toContain("insert into model_connection");
+    expect(database.calls[0]?.text).toContain("on conflict (space_id, label) do nothing");
+    expect(database.calls[0]?.values).toEqual([
+      "space-1",
+      "Local models",
+      "https://model.example.invalid/v1",
+      "model-key",
+      "fixture-model",
+    ]);
+
+    const conflict = fakeDatabase();
+    await expect(
+      createRepositories(owner, conflict).modelConnections.create({
+        label: "Local models",
+        baseUrl: "https://model.example.invalid/v1",
+        credentialName: "model-key",
+      }),
+    ).rejects.toBeInstanceOf(NameConflictError);
+    expect(conflict.calls[0]?.values).toEqual([
+      "space-1",
+      "Local models",
+      "https://model.example.invalid/v1",
+      "model-key",
+      null,
+    ]);
+  });
+
+  it("updates only the fields the patch names", async () => {
+    const database = fakeDatabase(() => [connection]);
+    const store = createRepositories(owner, database).modelConnections;
+
+    await store.update("connection-1", { defaultModel: null, credentialName: "other-key" });
+
+    expect(database.calls[0]?.text).toContain("credential_name = $1");
+    expect(database.calls[0]?.text).toContain("default_model = $2");
+    expect(database.calls[0]?.values).toEqual(["other-key", null, "connection-1", "space-1"]);
+  });
+
+  it("translates a label conflict on update", async () => {
+    const database = fakeDatabase(() => {
+      throw Object.assign(new Error("duplicate key value"), { code: "23505" });
+    });
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(store.update("connection-1", { label: "taken" })).rejects.toBeInstanceOf(
+      NameConflictError,
+    );
+  });
+
+  it("swaps the default with a scoped read, a clear and a conditional set", async () => {
+    const database = fakeDatabase((call) =>
+      call.text.startsWith("select id from model_connection")
+        ? [{ id: "connection-1" }]
+        : [connection],
+    );
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(store.setDefault("connection-1")).resolves.toEqual(connection);
+    expect(database.calls[0]?.text).toContain(
+      "select id from model_connection where id = $1 and space_id = $2",
+    );
+    expect(database.calls[1]?.text).toContain("set is_default = false");
+    expect(database.calls[1]?.values).toEqual(["space-1", "connection-1"]);
+    expect(database.calls[2]?.text).toContain("set is_default = true");
+    expect(database.calls[2]?.text).toContain("not exists (select 1 from model_connection other");
+    expect(database.calls[2]?.values).toEqual(["connection-1", "space-1"]);
+  });
+
+  it("retries the swap when a concurrent writer holds the default", async () => {
+    let sets = 0;
+    const database = fakeDatabase((call) => {
+      if (call.text.startsWith("select id from model_connection")) {
+        return [{ id: "connection-1" }];
+      }
+
+      if (call.text.includes("set is_default = true")) {
+        sets += 1;
+        return sets === 1 ? [] : [connection];
+      }
+
+      return [];
+    });
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(store.setDefault("connection-1")).resolves.toEqual(connection);
+    expect(sets).toBe(2);
+  });
+
+  it("refuses a swap for a connection outside the actor's space", async () => {
+    const store = createRepositories(owner, fakeDatabase()).modelConnections;
+
+    await expect(store.setDefault("connection-9")).rejects.toMatchObject({
+      name: "NotFoundError",
+      resource: "model connection",
+      id: "connection-9",
+    });
+  });
+
+  it("removes inside the scope and reports a missing row", async () => {
+    const database = fakeDatabase(() => [connection]);
+    const store = createRepositories(owner, database).modelConnections;
+
+    await expect(store.delete("connection-1")).resolves.toEqual(connection);
+    expect(database.calls[0]?.text).toContain(
+      "delete from model_connection where id = $1 and space_id = $2",
+    );
+
+    await expect(
+      createRepositories(owner, fakeDatabase()).modelConnections.delete("connection-9"),
+    ).rejects.toMatchObject({ name: "NotFoundError", resource: "model connection" });
+  });
+
+  it("resolves a bot's selection through the system actor's space", async () => {
+    const selection = {
+      connectionId: "connection-1",
+      baseUrl: "https://model.example.invalid/v1",
+      credentialName: "model-key",
+      model: "fixture-model",
+    };
+    const database = fakeDatabase(() => [selection]);
+    const system = createRepositories(worker, database);
+
+    await expect(system.modelConnections.resolveForBot("bot-1")).resolves.toEqual(selection);
+    expect(database.calls[0]?.text).toContain("from bot b");
+    expect(database.calls[0]?.text).toContain("coalesce(b.model, c.default_model)");
+    expect(database.calls[0]?.values).toEqual(["bot-1", "space-1"]);
+  });
+
+  it("answers nothing when no selection resolves", async () => {
+    const system = createRepositories(worker, fakeDatabase());
+
+    await expect(system.modelConnections.resolveForBot("bot-1")).resolves.toBeUndefined();
   });
 });
 
