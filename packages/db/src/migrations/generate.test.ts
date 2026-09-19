@@ -86,7 +86,11 @@ function describeDifference(
 }
 
 describe("the committed migrations", () => {
-  it("are exactly what drizzle-kit generates from the current schema", () => {
+  // The generation spawns `drizzle-kit` as a child process and copies the
+  // journal and its snapshots, so it takes seconds and competes with the other
+  // workers of the tier; the default ten seconds is a coin flip when the tier
+  // is loaded, and a timeout there is a false report about the migrations.
+  it("are exactly what drizzle-kit generates from the current schema", { timeout: 60_000 }, () => {
     const scratch = mkdtempSync(path.join(tmpdir(), "porkbot-migrations-"));
 
     try {
