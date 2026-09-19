@@ -10,6 +10,7 @@ import type {
   NotificationPreferences,
   NotificationRecipients,
   RunCommandSource,
+  UsageRecorder,
 } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
 import {
@@ -47,6 +48,8 @@ import { createRunAndTask } from "./run-creation.ts";
 import type { CreatedRunAndTask, NewRunAndTask } from "./run-creation.ts";
 import { createRoutineStore } from "./routines.ts";
 import type { RoutineReader, RoutineScheduler, RoutineWriter } from "./routines.ts";
+import { createUsageStore } from "./usage-store.ts";
+import type { UsageReader } from "./usage-store.ts";
 import {
   abandonAttempt,
   adoptRun,
@@ -460,6 +463,13 @@ export interface SystemRepositories {
    */
   readonly modelConnections: ModelSelectionReader;
   /**
+   * The usage write (slice 8.8, story 34): one append per completed model
+   * turn, addressed by the run the adapter is executing. The row's bot and
+   * space are taken from the run, never from the caller. Nothing reads this
+   * ledger for enforcement.
+   */
+  readonly usage: UsageRecorder;
+  /**
    * The computer lease (slice 7.4): acquire-or-renew and release, fenced on
    * the run's `(run_id, owner, fence)` and live lease. The run executor holds
    * it around a command and releases it when the run settles; the watchdog's
@@ -535,6 +545,12 @@ export interface UserRepositories {
    * agent cannot delete or restore.
    */
   readonly memory: MemoryDocuments;
+  /**
+   * The operator's usage read (slice 8.8, story 34): one bot's all-time total
+   * and its daily buckets, scoped by the actor's space. Display only; there is
+   * no enforcement path over these numbers.
+   */
+  readonly usage: UsageReader;
 }
 
 export type Repositories = UserRepositories | SystemRepositories;
@@ -593,6 +609,7 @@ export function createRepositories(
       modelConnections: {
         resolveForBot: (botId) => resolveModelSelection(actor, database, botId),
       },
+      usage: createUsageStore(actor, database),
       computerLeases: createComputerLeaseStore(actor, database),
     };
   }
@@ -645,6 +662,7 @@ export function createRepositories(
       delete: (id) => deleteModelConnection(actor, database, id),
     },
     memory: createMemoryStore(actor, database),
+    usage: createUsageStore(actor, database),
   };
 }
 

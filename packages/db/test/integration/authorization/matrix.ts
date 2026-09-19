@@ -962,6 +962,63 @@ export const resources: readonly Resource<unknown>[] = [
         visibleOn(() => subject.repositories.mcp.listGrantedForBot(seed.botId)),
     },
   }),
+
+  resource<{ readonly botId: string; readonly runId: string }>({
+    entity: "usage",
+    tables: ["usage_record"],
+    seed: async (space) => {
+      const seed = await seedRun(space, "Usage host");
+
+      // The runtime's own write is the seed: one completed model turn's usage,
+      // taken from the run the adapter was executing.
+      await space.systemRepositories.usage.record({
+        runId: seed.runId,
+        provider: "matrix-provider",
+        model: "matrix-model",
+        inputTokens: 12,
+        outputTokens: 3,
+      });
+
+      return { botId: seed.botId, runId: seed.runId };
+    },
+    state: async (space, seed) =>
+      json(
+        await space.query(
+          'select provider, model, input_tokens as "inputTokens", ' +
+            'output_tokens as "outputTokens" from usage_record where run_id = $1 ' +
+            "order by created_at asc, id asc",
+          [seed.runId],
+        ),
+      ),
+    user: {
+      // The operator's read: the scoped per-bot summary. Seeing the seeded
+      // turn is the visible answer; a foreign bot refuses before any aggregate.
+      read: (subject, seed) =>
+        visibleOn(async () => {
+          const summary = await subject.repositories.usage.forBot(seed.botId, {
+            since: new Date(0),
+          });
+
+          if (summary.total.reported === 0) {
+            throw new NotFoundError("usage", seed.runId);
+          }
+        }),
+    },
+    system: {
+      // The run runtime's append: one more turn for the seed's run. A run in
+      // another space matches nothing, so the foreign attempt is refused.
+      write: (subject, seed) =>
+        appliedOn(() =>
+          subject.repositories.usage.record({
+            runId: seed.runId,
+            provider: "matrix-provider",
+            model: "matrix-model",
+            inputTokens: 1,
+            outputTokens: 1,
+          }),
+        ),
+    },
+  }),
 ];
 
 function eventFor(threadId: string, runId: string, seq: number): RunEvent {

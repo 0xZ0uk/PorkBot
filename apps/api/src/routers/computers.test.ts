@@ -157,6 +157,7 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       write: notExercised,
       restore: notExercised,
     },
+    usage: { forBot: notExercised },
     toolResults: { read: notExercised },
   };
 }

@@ -210,6 +210,14 @@ export type {
 export { createRunEventRecorder } from "./run-events.ts";
 export type { RunEventRecorder, RunEventRecorderOptions, RunEventSink } from "./run-events.ts";
 
+// The usage seam (slice 8.8, PRD story 34). A run's adapters report what each
+// completed model turn spent; `createUsageStore` in `@porkbot/db` implements
+// the recorder over the usage rows, and the operator's read half
+// aggregates it per bot and per day. Null token fields are "not reported":
+// v1.0 records and displays usage and never charges or gates on it.
+export { reportUsage } from "./usage.ts";
+export type { RunUsage, UsageRecorder } from "./usage.ts";
+
 // The durable half of memory (slice 8.1, PRD decision 21). Documents and
 // revisions live in Postgres; the provider seam in `@porkbot/adapter-kit` is
 // only an index over them. `createMemoryStore` in `@porkbot/db` implements

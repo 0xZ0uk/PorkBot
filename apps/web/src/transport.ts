@@ -1,5 +1,5 @@
 import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "@porkbot/contracts";
-import type { Bot, Message, Thread } from "@porkbot/contracts";
+import type { Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
 import { AuthRefusal } from "./session.ts";
 import type { ThreadConsoleTransport } from "./console.ts";
 import type { MemoryTransport } from "./memory.ts";
@@ -240,5 +240,22 @@ export function createHttpMemoryTransport(options: HttpAuthTransportOptions = {}
     update: (input) => client.memory.update(input),
     remove: (input) => client.memory.remove(input),
     restore: (input) => client.memory.restore(input),
+  };
+}
+
+/**
+ * The usage screen's API surface: one bot's all-time totals and its daily
+ * buckets, in the contract's shape so the screen invents no wire type. The
+ * procedure's window default is the server's; the client does not pick it.
+ */
+export interface UsageTransport {
+  forBot(botId: string): Promise<UsageBot>;
+}
+
+export function createHttpUsageTransport(options: HttpAuthTransportOptions = {}): UsageTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    forBot: (botId) => client.usage.bot({ botId }),
   };
 }

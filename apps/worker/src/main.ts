@@ -118,9 +118,10 @@ try {
  * computer tools and proves a full run with real tool execution offline
  * (`offline-run.test.ts`); the live model launch that fills this seam with a
  * Pi-backed session waits on the stream bridge from Pi's agent loop to the
- * model runtime (slice 9.2 ships the runtime itself). Until then the run
- * records its claim and completes with no output rather than pretending a
- * runtime exists.
+ * model runtime (slice 9.2 ships the runtime itself). That launch also passes
+ * `repositories.usage` to the runtime layer as its `usage` recorder, which is
+ * how slice 8.8's ledger is fed in production. Until then the run records its
+ * claim and completes with no output rather than pretending a runtime exists.
  */
 const verifiedRunExecutor: RunExecutor = createRunExecutor({
   notificationTarget,
