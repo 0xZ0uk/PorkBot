@@ -1,0 +1,170 @@
+import { randomUUID } from "node:crypto";
+import { attachmentFileName, contentTypeForFileName } from "@porkbot/core";
+import { NotFoundError } from "@porkbot/effect";
+import type { StorageProvider } from "@porkbot/adapter-kit";
+import type { StoredFile, UserRepositories } from "@porkbot/db";
+
+/**
+ * The stored-file service (slice 7.6, stories 32 and 33): the one place the
+ * API turns a request into storage bytes and back.
+ *
+ * An upload arrives as a raw body, not as RPC JSON, so the bytes stream
+ * straight into the storage seam: nothing here buffers the file, and the
+ * route-level body cap refuses an oversized upload before it is read. The
+ * object is written first and the row second, so a failure window leaves an
+ * unreferenced object rather than a row whose bytes are missing; a refusal
+ * after the write — a thread outside the actor's space — deletes the object
+ * again on a best-effort basis.
+ *
+ * A download resolves the id through the actor-scoped store, so a foreign file
+ * is the shared `NOT_FOUND` before any byte is read, and streams the object
+ * back with its stored name and content type. Attachments and artifacts share
+ * this path: the row is the index, the storage key the address, and the kind
+ * never changes how the bytes are served.
+ */
+
+/** The path an attachment is uploaded to; Hono's parameter syntax. */
+export const attachmentUploadPath = "/threads/:threadId/attachments";
+/** The same path as the limits register names it. */
+export const attachmentUploadRulePath = attachmentUploadPath;
+/** The path a stored file is downloaded from. */
+export const fileDownloadPath = "/files/:fileId";
+/** The same path as the limits register names it. */
+export const fileDownloadRulePath = fileDownloadPath;
+
+/** What an upload answers; the send addresses `id`. */
+export interface UploadedAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+}
+
+/** A stored file with its bytes, ready to become an HTTP response body. */
+export interface DownloadableFile extends StoredFile {
+  readonly body: AsyncIterable<Uint8Array>;
+}
+
+export interface UploadAttachmentInput {
+  readonly repositories: UserRepositories;
+  readonly threadId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly body: AsyncIterable<Uint8Array>;
+}
+
+export interface FileService {
+  upload(input: UploadAttachmentInput): Promise<UploadedAttachment>;
+  read(input: {
+    readonly repositories: UserRepositories;
+    readonly fileId: string;
+  }): Promise<DownloadableFile>;
+}
+
+export function createFileService(storage: StorageProvider): FileService {
+  return {
+    async upload({
+      repositories,
+      threadId,
+      filename,
+      contentType,
+      body,
+    }): Promise<UploadedAttachment> {
+      // A malformed id is not a row, so it is the same not-found a missing one
+      // is; checking it here keeps a bad path param from reaching a statement
+      // whose uuid cast would fail as a 500.
+      if (!isRowId(threadId)) {
+        throw new NotFoundError("thread", threadId);
+      }
+
+      const name = attachmentFileName(filename);
+      const resolvedType =
+        contentType.trim() === "" ? contentTypeForFileName(name) : contentType.trim();
+      const key = `files/${repositories.actor.spaceId}/${randomUUID()}/${name}`;
+      const object = await storage.put({ key, body, contentType: resolvedType });
+
+      try {
+        const row = await repositories.files.createAttachment({
+          threadId,
+          filename: name,
+          contentType: resolvedType,
+          sizeBytes: object.size,
+          storageKey: key,
+        });
+
+        return {
+          id: row.id,
+          filename: row.filename,
+          contentType: row.contentType,
+          sizeBytes: row.sizeBytes,
+        };
+      } catch (error) {
+        // The row was refused — a thread outside the actor's space is the
+        // common case — so the object it would have named is removed again.
+        // Best effort: a failed cleanup leaves an unreferenced object, never a
+        // visible row.
+        await storage.delete(key).catch(() => undefined);
+
+        throw error;
+      }
+    },
+
+    async read({ repositories, fileId }): Promise<DownloadableFile> {
+      if (!isRowId(fileId)) {
+        throw new NotFoundError("file", fileId);
+      }
+
+      const stored = await repositories.files.findStoredFile(fileId);
+      const object = await storage.get(stored.storageKey);
+
+      if (object === undefined) {
+        // The row exists and the bytes do not: a store problem surfaced as the
+        // same not-found the row read would have given, never a truncated body.
+        throw new NotFoundError("file", fileId);
+      }
+
+      return { ...stored, body: object.body };
+    },
+  };
+}
+
+/**
+ * Whether a path id can name a row. Ids are UUIDs generated by the database,
+ * and a malformed one is not-found before any statement runs: an id-shaped
+ * check here is cheaper than letting the driver's cast answer 500.
+ */
+function isRowId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+/**
+ * `Content-Disposition` for a stored file: an ASCII-safe quoted name plus the
+ * RFC 5987 form, so a browser saves the operator's own name and a name with
+ * non-ASCII characters still round-trips.
+ */
+export function contentDisposition(filename: string): string {
+  const fallback = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+/** The web-stream bridge: an async iterable becomes the response body. */
+export function toReadableStream(body: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> {
+  const iterator = body[Symbol.asyncIterator]();
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await iterator.next();
+
+      if (done) {
+        controller.close();
+        return;
+      }
+
+      controller.enqueue(value);
+    },
+    async cancel(reason) {
+      await iterator.return?.(reason);
+    },
+  });
+}

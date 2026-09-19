@@ -16,6 +16,7 @@
  * unique index remains the authority on which write wins a race.
  */
 
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "./files.ts";
 import { isActiveStatus, isRunStatus } from "./run-state.ts";
 import type { RunStatus } from "./run-state.ts";
 
@@ -25,6 +26,12 @@ export const MAX_CLIENT_NONCE_LENGTH = 200;
 export interface SendMessageRequest {
   readonly text: string;
   readonly clientNonce: string;
+  /**
+   * The attachment rows the message references, in block order. The nonce's
+   * replay comparison uses them: the same nonce with a different set is a
+   * different request, not a resubmission.
+   */
+  readonly attachmentIds?: readonly string[] | undefined;
 }
 
 export interface ActiveRun {
@@ -117,11 +124,33 @@ export class ClientNonceTooLong extends MessageRuleError {
 
 export class ClientNonceReused extends MessageRuleError {
   readonly messageId: string;
+  readonly reason: "different_text" | "different_attachments";
 
-  constructor(messageId: string) {
-    super(`Client nonce was already used by message "${messageId}" for different text`);
+  constructor(
+    messageId: string,
+    reason: "different_text" | "different_attachments" = "different_text",
+  ) {
+    super(
+      reason === "different_text"
+        ? `Client nonce was already used by message "${messageId}" for different text`
+        : `Client nonce was already used by message "${messageId}" with different attachments`,
+    );
     this.name = "ClientNonceReused";
     this.messageId = messageId;
+    this.reason = reason;
+  }
+}
+
+/** More files were referenced than one message may carry. */
+export class TooManyAttachments extends MessageRuleError {
+  readonly count: number;
+  readonly maxCount: number;
+
+  constructor(count: number) {
+    super(`Message carries ${count} attachments, above the ${MAX_ATTACHMENTS_PER_MESSAGE} limit`);
+    this.name = "TooManyAttachments";
+    this.count = count;
+    this.maxCount = MAX_ATTACHMENTS_PER_MESSAGE;
   }
 }
 
@@ -140,6 +169,10 @@ function validateRequest(request: SendMessageRequest): MessageRuleError | undefi
 
   if (request.clientNonce.length > MAX_CLIENT_NONCE_LENGTH) {
     return new ClientNonceTooLong(request.clientNonce.length);
+  }
+
+  if ((request.attachmentIds?.length ?? 0) > MAX_ATTACHMENTS_PER_MESSAGE) {
+    return new TooManyAttachments(request.attachmentIds?.length ?? 0);
   }
 
   return undefined;
@@ -165,7 +198,14 @@ export function decideMessageSend(
   const existing = context.existingSend;
   if (existing !== undefined) {
     if (existing.request.text !== request.text) {
-      return { ok: false, error: new ClientNonceReused(existing.messageId) };
+      return { ok: false, error: new ClientNonceReused(existing.messageId, "different_text") };
+    }
+
+    if (!sameAttachmentIds(existing.request.attachmentIds, request.attachmentIds)) {
+      return {
+        ok: false,
+        error: new ClientNonceReused(existing.messageId, "different_attachments"),
+      };
     }
 
     return {
@@ -180,4 +220,15 @@ export function decideMessageSend(
   }
 
   return { ok: true, action: { action: "start_run" } };
+}
+
+/** Order-sensitive equality: the attachment list is part of the request's identity. */
+function sameAttachmentIds(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  const leftIds = left ?? [];
+  const rightIds = right ?? [];
+
+  return leftIds.length === rightIds.length && leftIds.every((id, index) => id === rightIds[index]);
 }

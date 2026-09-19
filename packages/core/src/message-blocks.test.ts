@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { isMessageBlock, messageText, textMessageBlocks } from "./message-blocks.ts";
+import {
+  isFileMessageBlock,
+  isMessageBlock,
+  messageBlocksForSend,
+  messageFiles,
+  messagePromptWithAttachments,
+  messageText,
+  textMessageBlocks,
+} from "./message-blocks.ts";
+import type { FileMessageBlock } from "./message-blocks.ts";
 
 /**
  * The block vocabulary is what lets a resubmitted nonce ask "is this the same
@@ -56,5 +65,63 @@ describe("message blocks", () => {
     expect(isMessageBlock({ type: "tool", callId: "call-1" })).toBe(false);
     expect(isMessageBlock(null)).toBe(false);
     expect(isMessageBlock([])).toBe(false);
+  });
+});
+
+const report: FileMessageBlock = {
+  type: "file",
+  attachmentId: "attachment-1",
+  filename: "report.pdf",
+  contentType: "application/pdf",
+  sizeBytes: 2_048,
+};
+
+describe("file message blocks", () => {
+  it("builds a send's blocks with the text first and each file after", () => {
+    expect(messageBlocksForSend("read this", [report])).toEqual([
+      { type: "text", text: "read this" },
+      report,
+    ]);
+  });
+
+  it("reads the file blocks back in order and leaves text out of them", () => {
+    expect(messageFiles([{ type: "text", text: "hi" }, report])).toEqual([report]);
+    expect(messageFiles([report, report])).toEqual([report, report]);
+    expect(messageFiles([])).toEqual([]);
+    expect(messageText([report])).toBe("");
+    expect(messageText([{ type: "text", text: "hi" }, report])).toBe("hi");
+  });
+
+  it("recognizes exactly the file block it understands", () => {
+    expect(isFileMessageBlock(report)).toBe(true);
+    expect(isMessageBlock(report)).toBe(true);
+    expect(isFileMessageBlock({ ...report, attachmentId: "" })).toBe(false);
+    expect(isFileMessageBlock({ ...report, filename: "" })).toBe(false);
+    expect(isFileMessageBlock({ ...report, contentType: "" })).toBe(false);
+    expect(isFileMessageBlock({ ...report, sizeBytes: -1 })).toBe(false);
+    expect(isFileMessageBlock({ ...report, sizeBytes: 1.5 })).toBe(false);
+    expect(isFileMessageBlock({ ...report, sizeBytes: "12" })).toBe(false);
+  });
+
+  it("returns undefined for a list with an unknown block kind", () => {
+    expect(messageFiles([{ type: "image", url: "https://example.test/a.png" }])).toBeUndefined();
+    expect(
+      messageText([
+        { type: "text", text: "ok" },
+        { type: "tool", callId: "call-1" },
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("names each attachment's home-relative path in the run's prompt", () => {
+    expect(messagePromptWithAttachments("please summarise", [report])).toBe(
+      "please summarise\n\n" +
+        "Files attached to this message are in the computer's home directory:\n" +
+        "- attachments/attachment-1/report.pdf (application/pdf, 2048 bytes)",
+    );
+  });
+
+  it("leaves the prompt alone when there are no attachments", () => {
+    expect(messagePromptWithAttachments("hello", textMessageBlocks("hello"))).toBe("hello");
   });
 });

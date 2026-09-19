@@ -126,6 +126,18 @@ function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
   return found as HTMLButtonElement;
 }
 
+/**
+ * The connection card whose text contains `text`. Waits use this rather than a
+ * bare textContent check because a mutation's notice carries the same label
+ * ("Connected Local models.") before the re-read lands, and waiting on that
+ * would assert against the list while it is still loading.
+ */
+function cardWith(container: HTMLElement, text: string): Element | undefined {
+  return [...container.querySelectorAll(".connection")].find((card) =>
+    card.textContent?.includes(text),
+  );
+}
+
 /** React's value tracker ignores a plain `element.value =`, so set natively. */
 function setValue(element: HTMLInputElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -175,7 +187,7 @@ describe("the connections screen over the real wire", () => {
       await submit(form as HTMLFormElement);
 
       await until(
-        () => before.container.textContent?.includes("Local models") === true,
+        () => cardWith(before.container, "model-key") !== undefined,
         "the created connection",
       );
 
@@ -195,11 +207,9 @@ describe("the connections screen over the real wire", () => {
 
     try {
       await until(
-        () => after.container.textContent?.includes("Local models") === true,
+        () => cardWith(after.container, "••••test") !== undefined,
         "the connection after reload",
       );
-
-      expect(after.container.textContent).toContain("••••test");
     } finally {
       await after.unmount();
       await api.close();
@@ -216,7 +226,7 @@ describe("the connections screen over the real wire", () => {
 
     try {
       await until(
-        () => view.container.textContent?.includes("Local models") === true,
+        () => cardWith(view.container, "model-key") !== undefined,
         "the listed connection",
       );
 
@@ -227,8 +237,10 @@ describe("the connections screen over the real wire", () => {
       await click(view.container, "Revoke key");
 
       await until(
-        () => view.container.textContent?.includes("Revoked model-key.") === true,
-        "the revocation notice",
+        () =>
+          view.container.textContent?.includes("Revoked model-key.") === true &&
+          view.container.textContent?.includes("no key stored") === true,
+        "the revocation and the re-read",
       );
 
       expect(view.container.textContent).toContain("no key stored");
@@ -293,20 +305,14 @@ describe("the connections screen over the real wire", () => {
     });
     const view = await mountConnections(api);
 
-    function hostedCard(): Element | undefined {
-      return [...view.container.querySelectorAll(".connection")].find((card) =>
-        card.textContent?.includes("Hosted"),
-      );
-    }
-
     try {
-      await until(
-        () => view.container.textContent?.includes("Hosted") === true,
-        "the two connections",
-      );
+      await until(() => cardWith(view.container, "Hosted") !== undefined, "the two connections");
 
       await act(async () => {
-        [...(hostedCard()?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
+        [
+          ...(cardWith(view.container, "Hosted")?.querySelectorAll<HTMLButtonElement>("button") ??
+            []),
+        ]
           .find((button) => button.textContent === "Disconnect")
           ?.click();
       });
@@ -315,7 +321,11 @@ describe("the connections screen over the real wire", () => {
       expect(view.container.textContent).toContain("1 bot will fall back to the space default.");
 
       await act(async () => {
-        [...(hostedCard()?.querySelectorAll<HTMLButtonElement>(".memory-form button") ?? [])]
+        [
+          ...(cardWith(view.container, "Hosted")?.querySelectorAll<HTMLButtonElement>(
+            ".memory-form button",
+          ) ?? []),
+        ]
           .find((button) => button.textContent === "Disconnect")
           ?.click();
       });
@@ -345,31 +355,27 @@ describe("the connections screen over the real wire", () => {
     const view = await mountConnections(api);
 
     try {
-      await until(
-        () => view.container.textContent?.includes("Hosted") === true,
-        "the two connections",
-      );
-
-      const hostedCard = [...view.container.querySelectorAll(".connection")].find((card) =>
-        card.textContent?.includes("Hosted"),
-      );
+      await until(() => cardWith(view.container, "Hosted") !== undefined, "the two connections");
 
       await act(async () => {
-        [...(hostedCard?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
+        [
+          ...(cardWith(view.container, "Hosted")?.querySelectorAll<HTMLButtonElement>("button") ??
+            []),
+        ]
           .find((button) => button.textContent === "Make default")
           ?.click();
       });
 
+      // The badge is the re-read's answer, so waiting for it is waiting for
+      // the swap to land rather than for the server only.
       await until(
-        () =>
-          api.connections.find((connection) => connection.id === "connection-2")?.isDefault ===
-          true,
-        "the swapped default",
+        () => cardWith(view.container, "Space default")?.textContent?.includes("Hosted") === true,
+        "the swapped default badge",
       );
 
       expect(
-        view.container.querySelector(".connection:last-child .connection-badge")?.textContent,
-      ).toBe("Space default");
+        api.connections.find((connection) => connection.id === "connection-2")?.isDefault,
+      ).toBe(true);
 
       const select = view.container.querySelector("select");
 
@@ -380,9 +386,12 @@ describe("the connections screen over the real wire", () => {
         field.dispatchEvent(new Event("change", { bubbles: true }));
       });
 
-      await until(() => api.bots[0]?.modelConnectionId === "connection-2", "the bot's override");
+      await until(
+        () => view.container.textContent?.includes("Research now uses Hosted.") === true,
+        "the bot's override notice",
+      );
 
-      expect(view.container.textContent).toContain("Research now uses Hosted.");
+      expect(api.bots[0]?.modelConnectionId).toBe("connection-2");
     } finally {
       await view.unmount();
       await api.close();

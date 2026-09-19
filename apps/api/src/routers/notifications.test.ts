@@ -87,6 +87,11 @@ function repositoriesFor(actor: UserActor): UserRepositories {
       findByNonce: notExercised,
       steer: notExercised,
     },
+    files: {
+      createAttachment: notExercised,
+      findAttachments: notExercised,
+      findStoredFile: notExercised,
+    },
     computerSnapshots: { create: notExercised, findById: notExercised, listForBot: notExercised },
     toolResults: { read: notExercised },
     routines: {

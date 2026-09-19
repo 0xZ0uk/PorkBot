@@ -56,6 +56,7 @@ export function createThreadsRouter(events: ThreadEventsService, service: Thread
       threadId: input.threadId,
       text: input.text,
       clientNonce: input.clientNonce,
+      attachmentIds: input.attachmentIds,
     });
 
     return {
