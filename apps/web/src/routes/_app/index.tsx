@@ -54,6 +54,11 @@ function HomeRoute() {
       onNewThread={(botId) => {
         void createThread(botId);
       }}
+      renderMemory={(bot) => (
+        <Link to="/bots/$botId/memory" params={{ botId: bot.id }}>
+          Memory
+        </Link>
+      )}
       renderThread={(thread) => (
         <li key={thread.id}>
           <Link to="/threads/$threadId" params={{ threadId: thread.id }}>

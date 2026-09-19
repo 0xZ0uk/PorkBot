@@ -4,6 +4,7 @@ import {
   AgentCannotDeleteMemory,
   MemoryDocumentExists,
   UnknownMemoryDocument,
+  UnknownMemoryRevision,
 } from "@porkbot/core";
 import { createMemoryTools, NotFoundError } from "@porkbot/effect";
 import type {
@@ -248,6 +249,99 @@ describe("a durable memory document", () => {
     const rewritten = expectRefusal(await asOperator().write(botId, updateWrite(documentId, "x")));
     expect(rewritten).toBeInstanceOf(UnknownMemoryDocument);
     expect(await asOperator().revisions(botId, documentId)).toHaveLength(3);
+  });
+});
+
+describe("restoring a revision", () => {
+  it("reapplies an earlier revision as the next one, with who and why", async () => {
+    const documentId = `doc-${randomUUID()}`;
+    await asOperator().write(botId, createWrite(documentId));
+    await asOperator().write(botId, updateWrite(documentId, "Vim, mostly."));
+
+    const restored = await asOperator().restore(botId, documentId, 1, "put it back");
+
+    expect(restored).toMatchObject({
+      ok: true,
+      action: "restore",
+      revision: {
+        revision: 3,
+        origin: "deliberate",
+        author: userId,
+        reason: "put it back",
+        title: "Preferred editor",
+        content: "The operator prefers keyboard-driven editing.",
+        deleted: false,
+      },
+    });
+
+    const document = await asOperator().find(botId, documentId);
+    expect(document.content).toBe("The operator prefers keyboard-driven editing.");
+    expect(document.revision).toBe(3);
+
+    const history = await asOperator().revisions(botId, documentId);
+    expect(history.map((revision) => revision.revision)).toEqual([1, 2, 3]);
+    expect(history[0]?.createdAt).toBeTruthy();
+  });
+
+  it("reverses a deletion by restoring the tombstone and keeps the id", async () => {
+    const documentId = `doc-${randomUUID()}`;
+    await asOperator().write(botId, createWrite(documentId));
+    await asOperator().write(botId, updateWrite(documentId, "Vim, mostly."));
+    await asOperator().write(botId, {
+      write: { action: "delete", documentId },
+      reason: "operator removed it",
+    });
+
+    const removed = await asOperator().listDeleted(botId);
+    expect(removed.map((entry) => entry.documentId)).toContain(documentId);
+    expect(removed.find((entry) => entry.documentId === documentId)?.deletedAt).toBeTruthy();
+
+    const restored = await asOperator().restore(botId, documentId, 3, "bring it back");
+
+    expect(restored).toMatchObject({ ok: true, action: "restore", revision: { revision: 4 } });
+
+    const document = await asOperator().find(botId, documentId);
+    expect(document.content).toBe("Vim, mostly.");
+    expect((await asOperator().list(botId)).map((entry) => entry.documentId)).toContain(documentId);
+    expect((await asOperator().listDeleted(botId)).map((entry) => entry.documentId)).not.toContain(
+      documentId,
+    );
+  });
+
+  it("persists nothing when the target already is the live state", async () => {
+    const documentId = `doc-${randomUUID()}`;
+    await asOperator().write(botId, createWrite(documentId));
+
+    const decision = await asOperator().restore(botId, documentId, 1, "put it back");
+
+    expect(decision).toEqual({ ok: true, action: "no_change" });
+    expect(await asOperator().revisions(botId, documentId)).toHaveLength(1);
+  });
+
+  it("refuses a revision history does not hold and writes nothing", async () => {
+    const documentId = `doc-${randomUUID()}`;
+    await asOperator().write(botId, createWrite(documentId));
+
+    const refused = expectRefusal(await asOperator().restore(botId, documentId, 9, "put it back"));
+
+    expect(refused).toBeInstanceOf(UnknownMemoryRevision);
+    expect((await asOperator().revisions(botId, documentId)).map((r) => r.revision)).toEqual([1]);
+  });
+
+  it("keeps another space from restoring, and changes nothing", async () => {
+    const documentId = `doc-${randomUUID()}`;
+    await asOperator().write(botId, createWrite(documentId));
+
+    const foreign: UserActor = { kind: "user", spaceId: otherSpace, userId, role: "owner" };
+    const refused = expectRefusal(
+      await asOperator(foreign).restore(botId, documentId, 1, "tampered"),
+    );
+
+    expect(refused).toBeInstanceOf(UnknownMemoryDocument);
+    expect((await asOperator().revisions(botId, documentId)).map((r) => r.revision)).toEqual([1]);
+    expect((await asOperator().find(botId, documentId)).content).toBe(
+      "The operator prefers keyboard-driven editing.",
+    );
   });
 });
 

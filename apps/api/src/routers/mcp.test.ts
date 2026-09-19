@@ -121,6 +121,14 @@ function fakeRepositories(calls: Calls): UserRepositories {
       setDefault: notExercised,
       delete: notExercised,
     },
+    memory: {
+      list: notExercised,
+      find: notExercised,
+      listDeleted: notExercised,
+      revisions: notExercised,
+      write: notExercised,
+      restore: notExercised,
+    },
     mcp: {
       list: vi.fn(async () => [view()]),
       findById: vi.fn(async (id: string) => {

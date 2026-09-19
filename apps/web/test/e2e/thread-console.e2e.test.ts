@@ -11,6 +11,7 @@ import { createHttpConsoleTransport } from "../../src/transport.ts";
 import {
   runCompleted,
   runStarted,
+  scriptedMemoryTransport,
   textMessage,
   tokenDelta,
   toolCompleted,
@@ -101,7 +102,7 @@ async function mountConsole(
   const session = createSessionController({ transport: auth });
   const transport = createHttpConsoleTransport({ origin: api.url });
   const router = createAppRouter(
-    { auth, session, threads: transport },
+    { auth, session, threads: transport, memory: scriptedMemoryTransport() },
     createMemoryHistory({ initialEntries: [path] }),
   );
   const container = document.createElement("div");

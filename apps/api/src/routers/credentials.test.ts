@@ -136,6 +136,14 @@ function repositoriesWith(database: Queryable, actor: UserActor): UserRepositori
       setDefault: notExercised,
       delete: notExercised,
     },
+    memory: {
+      list: notExercised,
+      find: notExercised,
+      listDeleted: notExercised,
+      revisions: notExercised,
+      write: notExercised,
+      restore: notExercised,
+    },
   };
 }
 

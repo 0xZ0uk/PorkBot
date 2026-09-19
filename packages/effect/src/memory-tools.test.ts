@@ -1,11 +1,11 @@
 import { Effect } from "effect";
-import type { MemoryDocument, MemoryKind, MemoryWriteDecision } from "@porkbot/core";
+import type { MemoryDocument, MemoryKind } from "@porkbot/core";
 import { decideMemoryWrite } from "@porkbot/core";
 import type { MemoryMatch, MemoryProvider, MemorySearchRequest } from "@porkbot/adapter-kit";
 import { describe, expect, it } from "vitest";
 import { NotFoundError } from "./errors.ts";
 import { createMemoryTools, MEMORY_TOOL_NAMES } from "./memory-tools.ts";
-import type { MemoryProposals, MemoryWriteInput } from "./memory-store.ts";
+import type { MemoryProposals, MemoryWriteInput, MemoryWriteOutcome } from "./memory-store.ts";
 import { createToolDispatcher } from "./tool-dispatcher.ts";
 import type {
   ToolCall,
@@ -40,7 +40,7 @@ class InMemoryProposals implements MemoryProposals {
     return document;
   }
 
-  async propose(botId: string, input: MemoryWriteInput): Promise<MemoryWriteDecision> {
+  async propose(botId: string, input: MemoryWriteInput): Promise<MemoryWriteOutcome> {
     this.writes.push(input);
 
     const document = this.documents.get(input.write.documentId);
@@ -58,6 +58,12 @@ class InMemoryProposals implements MemoryProposals {
         content: revision.content,
         revision: revision.revision,
       });
+
+      return {
+        ok: true,
+        action: decision.action,
+        revision: { ...revision, createdAt: new Date().toISOString() },
+      };
     }
 
     return decision;
