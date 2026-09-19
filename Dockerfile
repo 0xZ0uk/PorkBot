@@ -86,6 +86,11 @@ FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /deploy/supervisor ./
+# The snapshot directory the Docker computer provider writes into. It exists in
+# the image so the named volume mounted here inherits the node user's ownership
+# on first use; without it the daemon would create a root-owned volume and the
+# provider could not write a snapshot.
+RUN mkdir -p /var/lib/porkbot/computer-snapshots && chown -R node:node /var/lib/porkbot
 USER node
 EXPOSE 3003
 CMD ["node", "dist/main.js"]

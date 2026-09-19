@@ -132,8 +132,8 @@ export const PROVIDER_INTERFACES: readonly ProviderInterfacePlan[] = [
         name: "createDockerComputerProvider",
         slice: "7.2",
         owner: "@porkbot/adapters",
-        status: "planned",
-        note: "Runs inside the supervisor process only: the provider is the thing that holds the Docker socket, and the supervisor is the only process that may construct it.",
+        status: "shipped",
+        note: "Runs inside the supervisor process only: the provider is the thing that holds the Docker socket, and the supervisor is the only process that may construct it. It speaks the Engine API over that socket, creates the per-computer internal network, bounds CPU, memory, processes and (optionally) disk per bot, parks idle machines and keeps the home volume through stop, destroy and reset.",
       },
       {
         name: "createCloudComputerProvider",

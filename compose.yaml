@@ -150,13 +150,35 @@ services:
       # The key screen capabilities are signed with. Unset refuses screen
       # access entirely; v1.1's screen watch is the surface that will mint one.
       PORKBOT_SCREEN_TOKEN_SECRET: ${PORKBOT_SCREEN_TOKEN_SECRET:-porkbot-screen-local}
+      # Which computer a bot gets, through generic computer settings: the
+      # offline emulator by default, or the Docker provider when the operator
+      # names the image to boot. A Docker selection without an image fails
+      # closed at supervisor boot, not at a bot's first run.
+      PORKBOT_COMPUTER_PROVIDER: ${PORKBOT_COMPUTER_PROVIDER:-offline}
+      PORKBOT_COMPUTER_IMAGE: ${PORKBOT_COMPUTER_IMAGE:-}
+      PORKBOT_COMPUTER_SOCKET: ${PORKBOT_COMPUTER_SOCKET:-/var/run/docker.sock}
+      PORKBOT_COMPUTER_SNAPSHOT_DIR: /var/lib/porkbot/computer-snapshots
+      # A machine whose last command is older than this is parked; the home
+      # volume survives. Zero disables the idle sweep.
+      PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-900000}
+      # One bot's share of the documented host floor (README, "A bot's
+      # computer"): 4 vCPU / 8 GB plus ~2 GB per bot and 50 GB+ of disk. Raise
+      # these only after raising the host.
+      PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
+      PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
+      PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
     volumes:
       # The only place the Docker socket is mounted in the stack. The
       # supervisor owns computer lifecycle; every other process reaches
       # computers through its authenticated surface, which is what keeps a
       # compromised API or worker out of the daemon.
       - /var/run/docker.sock:/var/run/docker.sock
+      # Home snapshots the provider streams out of a computer, on a named
+      # volume so they outlive the supervisor container. The storage seam
+      # (slice 7.5) takes this landing zone over.
+      - computer-snapshots:/var/lib/porkbot/computer-snapshots
 
 volumes:
   postgres-data:
   storage-data:
+  computer-snapshots:
