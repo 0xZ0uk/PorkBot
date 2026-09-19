@@ -240,6 +240,25 @@ export {
 export type { ReclaimDecision, RunReclaimFailure } from "./run-recovery.ts";
 
 export {
+  assessRunLiveness,
+  createRunProgress,
+  isRunStepKind,
+  RUN_LIVENESS_STATES,
+  RUN_STALL_THRESHOLD_SECONDS,
+  RUN_STEP_KINDS,
+} from "./run-liveness.ts";
+export type {
+  RunLiveness,
+  RunLivenessSnapshot,
+  RunLivenessState,
+  RunProgress,
+  RunProgressOptions,
+  RunProgressSnapshot,
+  RunStep,
+  RunStepKind,
+} from "./run-liveness.ts";
+
+export {
   AmbiguousSectionPrecedence,
   BlankMemoryRecord,
   composeSystemPrompt,
@@ -329,3 +348,17 @@ export type {
   EgressHostRejection,
   EgressHostRule,
 } from "./egress-policy.ts";
+
+export {
+  assertComputerNetworkPlan,
+  COMPUTER_NETWORK_PREFIX,
+  computerNetworkPlanProblems,
+  MAX_COMPUTER_NETWORK_NAME_LENGTH,
+  planComputerNetwork,
+  RESERVED_NETWORK_NAMES,
+} from "./computer-network.ts";
+export type {
+  ComputerIdentity,
+  ComputerNetworkPlan,
+  ComputerNetworkPlanProblem,
+} from "./computer-network.ts";

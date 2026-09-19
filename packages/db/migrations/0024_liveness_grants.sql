@@ -1,0 +1,17 @@
+-- hand-edited: role privileges are not modelled by drizzle-kit (the same
+-- reason migrations/0004_database_roles.sql, migrations/0006_run_leases.sql,
+-- migrations/0008_approval_grants.sql, migrations/0009_watchdog_grants.sql,
+-- migrations/0012_routine_grants.sql, migrations/0015_notification_grants.sql,
+-- migrations/0017_credentials_grants.sql, migrations/0019_mcp_grants.sql and
+-- migrations/0021_model_connection_grants.sql are hand-written). Slice 6.10
+-- makes the watchdog's stall detection feed the notification path, and that
+-- path's recipient check joins `space_member` to `notification_preference`
+-- (slice 8.6). Until now only the API's own settings surface read those tables,
+-- so the worker held SELECT on the preference row but not on the membership it
+-- joins:
+--
+--   porkbot_worker  SELECT on `space_member`, so the delivery path can answer
+--                   whether one user of a run's space is a member at all. A
+--                   job never sees roles, invitations or any other column: the
+--                   one query projects `enabled` and nothing else.
+grant select on "space_member" to porkbot_worker;

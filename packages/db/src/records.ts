@@ -1,4 +1,4 @@
-import type { RunStatus } from "@porkbot/core";
+import type { RunStatus, RunStepKind } from "@porkbot/core";
 import type { attemptStatus, messageRole, taskStatus } from "./schema/enums.ts";
 
 /**
@@ -142,6 +142,16 @@ export interface RunRecord {
   readonly leaseExpiresAt: Date | null;
   /** When the operator asked this run to stop, if they did (slice 6.7). */
   readonly stopRequestedAt: Date | null;
+  /** The worker's last lease renewal (slice 6.10). */
+  readonly lastHeartbeatAt: Date | null;
+  /** The last event the run emitted; the stall decision reads this (slice 6.10). */
+  readonly lastProgressAt: Date | null;
+  /** The step the run is on, or `null` while terminal or just claimed. */
+  readonly currentStep: RunStepKind | null;
+  /** The tool in flight or awaiting approval, when the step names one. */
+  readonly currentStepTool: string | null;
+  /** When the watchdog recorded the current stall episode, if it did. */
+  readonly stalledAt: Date | null;
   readonly checkpoint: Record<string, unknown>;
   readonly clientNonce: string;
   readonly sourceMessageId: string | null;
@@ -241,6 +251,8 @@ export const runColumns =
   'task_id as "taskId", user_id as "userId", status::text as "status", "trigger", error, ' +
   'error_code as "errorCode", lease_owner as "leaseOwner", lease_fence as "leaseFence", ' +
   'lease_expires_at as "leaseExpiresAt", stop_requested_at as "stopRequestedAt", ' +
-  'checkpoint, client_nonce as "clientNonce", ' +
+  'last_heartbeat_at as "lastHeartbeatAt", last_progress_at as "lastProgressAt", ' +
+  'current_step as "currentStep", current_step_tool as "currentStepTool", ' +
+  'stalled_at as "stalledAt", checkpoint, client_nonce as "clientNonce", ' +
   'source_message_id as "sourceMessageId", started_at as "startedAt", ' +
   'completed_at as "completedAt", created_at as "createdAt", updated_at as "updatedAt"';

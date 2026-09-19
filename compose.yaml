@@ -90,6 +90,10 @@ services:
       # seam live here, on a named volume the backup tooling can read rather
       # than the container's ephemeral layer.
       PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
+      # Computers are reached through the supervisor's authenticated surface;
+      # this process holds no Docker socket and no provider credential.
+      PORKBOT_SUPERVISOR_URL: http://supervisor:3003
+      PORKBOT_SUPERVISOR_TOKEN: ${PORKBOT_SUPERVISOR_TOKEN:-porkbot-supervisor-local}
     ports:
       - "127.0.0.1:${PORKBOT_API_PORT:-3001}:3001"
     volumes:
@@ -139,6 +143,19 @@ services:
     environment:
       PORT: "3003"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The process credential the API and the worker present to the internal
+      # computer surface. Both sides read it from the environment, and it is a
+      # placeholder here exactly like the local database passwords.
+      PORKBOT_SUPERVISOR_TOKEN: ${PORKBOT_SUPERVISOR_TOKEN:-porkbot-supervisor-local}
+      # The key screen capabilities are signed with. Unset refuses screen
+      # access entirely; v1.1's screen watch is the surface that will mint one.
+      PORKBOT_SCREEN_TOKEN_SECRET: ${PORKBOT_SCREEN_TOKEN_SECRET:-porkbot-screen-local}
+    volumes:
+      # The only place the Docker socket is mounted in the stack. The
+      # supervisor owns computer lifecycle; every other process reaches
+      # computers through its authenticated surface, which is what keeps a
+      # compromised API or worker out of the daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   postgres-data:

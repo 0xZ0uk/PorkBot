@@ -195,6 +195,7 @@ export function createHttpConsoleTransport(
       (await client.threads.list({ botId, limit: defaultThreadPageSize })).threads,
     createThread: (botId) => client.threads.create({ botId }),
     toolResult: (input) => client.threads.toolResult(input),
+    run: (runId) => client.runs.get({ runId }),
 
     transcript: async (threadId) => {
       const messages: Message[] = [];

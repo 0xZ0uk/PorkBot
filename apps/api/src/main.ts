@@ -2,6 +2,7 @@ import process from "node:process";
 import {
   createEnvironmentCredentialStore,
   createHttpMcpServerProvider,
+  createSupervisorComputerProvider,
   InProcessRealtimeFanout,
   LocalStorageProvider,
 } from "@porkbot/adapters";
@@ -78,6 +79,27 @@ if (configuredCallbackUrl === undefined) {
   });
 }
 
+// The computer boundary (slice 7.1): the API talks to the supervisor's
+// authenticated surface and never holds the Docker socket or a provider
+// credential. Without the pair, the computer procedures answer the typed
+// SERVICE_UNAVAILABLE instead of pretending a machine is gone, and the rest of
+// the API is unaffected.
+const supervisorUrl = process.env["PORKBOT_SUPERVISOR_URL"]?.trim();
+const supervisorToken = process.env["PORKBOT_SUPERVISOR_TOKEN"]?.trim();
+const computers =
+  supervisorUrl === undefined ||
+  supervisorUrl === "" ||
+  supervisorToken === undefined ||
+  supervisorToken === ""
+    ? undefined
+    : createSupervisorComputerProvider({ baseUrl: supervisorUrl, token: supervisorToken });
+
+if (computers === undefined) {
+  logger.warn("PORKBOT_SUPERVISOR_URL or PORKBOT_SUPERVISOR_TOKEN is not set", {
+    consequence: "computer procedures will refuse until the supervisor connection is configured",
+  });
+}
+
 const server = createApiServer({
   logger,
   limits,
@@ -85,6 +107,7 @@ const server = createApiServer({
     deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
     realtime: new InProcessRealtimeFanout(),
     storage: new LocalStorageProvider({ root: storageRoot }),
+    ...(computers === undefined ? {} : { computers }),
     mcp: createMcpService({
       provider: createHttpMcpServerProvider(),
       ingress: createIngressStore(database.database),

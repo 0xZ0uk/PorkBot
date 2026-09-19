@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { NotificationEmulator } from "@porkbot/adapters";
 import { createExternalEffectLedger, workerRole } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { connectToSuite, connectionStringForRole, createSuiteDatabase } from "@porkbot/testkit";
@@ -37,6 +38,7 @@ let otherSpaceId = "";
 let userId = "";
 const executions: RunExecution[] = [];
 const behaviors = new Map<string, (execution: RunExecution) => Promise<void>>();
+const notifications = new NotificationEmulator();
 
 beforeAll(async () => {
   suite = await createSuiteDatabase({ suite: "worker_watchdog" });
@@ -57,6 +59,10 @@ beforeAll(async () => {
       if (behavior !== undefined) {
         await behavior(execution);
       }
+    },
+    stallNotification: {
+      provider: notifications,
+      origin: "https://porkbot.example.invalid",
     },
     logger: createLogger({ service: "@porkbot/worker", write: () => {} }),
     pollInterval: 100,
@@ -209,6 +215,15 @@ function required<Value>(value: Value | undefined, what: string): Value {
   }
 
   return value;
+}
+
+async function threadOf(runId: string): Promise<string> {
+  const { rows } = await db().query<{ threadId: string }>(
+    'select thread_id::text as "threadId" from run where id = $1',
+    [runId],
+  );
+
+  return required(rows[0]?.threadId, "the run's thread");
 }
 
 describe("the lease watchdog", () => {
@@ -387,5 +402,51 @@ describe("the lease watchdog", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe("failed");
     expect(rows[0]?.result).toMatchObject({ error: expect.stringContaining("lease expired") });
+  });
+
+  it("finds a live run whose progress stopped and notifies the operator exactly once", async () => {
+    const runId = await insertRun(spaceId, "stall");
+    await db().query(
+      "update run set status = 'running', lease_owner = 'stalled-worker', lease_fence = 1, " +
+        "lease_expires_at = now() + interval '60 seconds', last_heartbeat_at = now(), " +
+        "last_progress_at = now() - interval '400 seconds', current_step = 'working', " +
+        "current_step_tool = 'shell' where id = $1",
+      [runId],
+    );
+    await db().query(
+      "insert into space_member (space_id, user_id, role) values ($1, $2, 'owner')",
+      [spaceId, userId],
+    );
+    await db().query(
+      "insert into notification_preference (space_id, user_id, kind, enabled) " +
+        "values ($1, $2, 'run.stalled', true)",
+      [spaceId, userId],
+    );
+
+    await deliver(leaseWatchdogIdentifier, {});
+
+    const { rows } = await db().query<{ stalled_at: Date | null }>(
+      "select stalled_at from run where id = $1",
+      [runId],
+    );
+    expect(rows[0]?.stalled_at).not.toBeNull();
+
+    const delivered = notifications
+      .deliveries()
+      .filter((notification) => notification.title === "A run has stalled");
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.body).toContain("while running shell");
+    expect(delivered[0]?.url).toBe(
+      `https://porkbot.example.invalid/threads/${await threadOf(runId)}`,
+    );
+
+    // The recorded episode is the exactly-once guard: the next minute's pass
+    // sees the same silence and sends nothing.
+    await deliver(leaseWatchdogIdentifier, {});
+    expect(
+      notifications
+        .deliveries()
+        .filter((notification) => notification.title === "A run has stalled"),
+    ).toHaveLength(1);
   });
 });

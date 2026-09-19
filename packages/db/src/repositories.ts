@@ -53,7 +53,8 @@ import {
   reclaimRun,
   updateClaimedRun,
 } from "./run-leases.ts";
-import type { FencedRunPatch, ReclaimOptions, RunLease } from "./run-leases.ts";
+import type { FencedRunPatch, ReclaimOptions, RunLease, RunProgressStamp } from "./run-leases.ts";
+import { markRunStalled } from "./run-liveness.ts";
 import { insertedRow, isUniqueViolation, requiredRow } from "./rows.ts";
 import { createToolResultReader } from "./tool-call-ledger.ts";
 import type { ToolResultReader } from "./tool-call-ledger.ts";
@@ -387,8 +388,15 @@ export interface SystemRunWriter {
     owner: string,
     previousOwner: string,
   ): Promise<RunRecord | undefined>;
-  heartbeat(id: string, lease: RunLease): Promise<RunRecord>;
+  /** Renews the lease and stamps the caller's progress in the same statement. */
+  heartbeat(id: string, lease: RunLease, progress: RunProgressStamp): Promise<RunRecord>;
   update(id: string, lease: RunLease, patch: FencedRunPatch): Promise<RunRecord>;
+  /**
+   * Records the start of one stall episode (slice 6.10). Undefined when the
+   * run progressed, parked, stopped, lost its lease or was already marked
+   * between the scan and this write, so only one detector notifies.
+   */
+  markStalled(id: string, thresholdSeconds: number): Promise<RunRecord | undefined>;
   /** Closes this fence's own attempt after ownership moved on; true when it did. */
   abandonAttempt(id: string, fence: number, reason: string): Promise<boolean>;
 }
@@ -543,8 +551,10 @@ export function createRepositories(
           reclaimRun(actor, database, id, expectedFence, owner, options),
         adopt: (id, expectedFence, owner, previousOwner) =>
           adoptRun(actor, database, id, expectedFence, owner, previousOwner),
-        heartbeat: (id, lease) => heartbeatRun(actor, database, id, lease),
+        heartbeat: (id, lease, progress) => heartbeatRun(actor, database, id, lease, progress),
         update: (id, lease, patch) => updateClaimedRun(actor, database, id, lease, patch),
+        markStalled: (id, thresholdSeconds) =>
+          markRunStalled(actor, database, id, thresholdSeconds),
         abandonAttempt: (id, fence, reason) => abandonAttempt(actor, database, id, fence, reason),
       },
       messages: createAssistantMessageStore(actor, database),

@@ -159,8 +159,9 @@ export type { HttpNotificationProviderOptions } from "./http-notification.ts";
 // filesystem, bounded shell and scripted browser are reached only through
 // `exec`, exactly as a real container is, so the file, shell and browser tools
 // in @porkbot/effect run unchanged against either. `computer-conformance.ts`
-// is the suite every provider is held to, registered here and by the Docker
-// provider when it lands.
+// is the suite every provider is held to, registered by the emulator and by
+// the supervisor's transport; it imports the test runner lazily so a
+// production image never needs it.
 export { ComputerEmulator, DEFAULT_COMPUTER_HOME } from "./computer-emulator.ts";
 export type {
   ComputerEmulatorOptions,
@@ -169,6 +170,56 @@ export type {
   RecordedBrowserAction,
 } from "./computer-emulator.ts";
 export { ComputerProviderError } from "./computer-errors.ts";
+
+// The computer conformance suite: one set of behaviors every provider must
+// show, whatever it is made of. The emulator runs it directly, the supervisor
+// runs it over its wire, and the Docker provider will run it against a real
+// container (slice 7.2). An implementation that drifts from the seam fails
+// here rather than in the run that depends on it.
+export {
+  computerConformance,
+  CONFORMANCE_HOME,
+  CONFORMANCE_MISSING_PATH,
+  CONFORMANCE_MISSING_URL,
+  CONFORMANCE_PAGE_PATH,
+  CONFORMANCE_PAGE_TEXT,
+  CONFORMANCE_PAGE_TITLE,
+  CONFORMANCE_PAGE_URL,
+  CONFORMANCE_UNSCRIPTED_SELECTOR,
+  parseComputerBrowserResult,
+  quoteShellArgument,
+} from "./computer-conformance.ts";
+export type {
+  ComputerBrowserHarness,
+  ComputerConformanceFactory,
+  ComputerConformanceHarness,
+} from "./computer-conformance.ts";
+
+// The supervisor transport (slice 7.1, PRD decision 20). The supervisor process
+// is the only holder of the Docker socket and the only owner of computer
+// lifecycle; this is how every other process reaches a computer — over one
+// authenticated internal HTTP surface, so a caller holds no
+// Docker socket and no provider credential. The wire constants here are the
+// same ones `apps/supervisor` serves, which is what stops the two halves from
+// drifting.
+export {
+  createSupervisorComputerProvider,
+  isSupervisorErrorBody,
+  parseComputerStatus,
+  supervisorAuthorizationHeader,
+  supervisorBearer,
+  supervisorComputerBasePath,
+  supervisorComputerRoutes,
+  supervisorMaxBodyBytes,
+  supervisorProtocolHeader,
+  supervisorProtocolVersion,
+  supervisorScreenRoutePatterns,
+} from "./supervisor-computer.ts";
+export type {
+  SupervisorComputerProvider,
+  SupervisorComputerProviderOptions,
+  SupervisorErrorBody,
+} from "./supervisor-computer.ts";
 
 // Web access (slices 6.9 and 10.1, PRD decision 30). The interface lives in
 // @porkbot/adapter-kit; this package ships the two implementations the rule

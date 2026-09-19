@@ -28,6 +28,20 @@ export type { SignupAvailability } from "./deployment.ts";
 export { accountMeContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
+// A bot's computer (slice 7.1, PRD decision 20; stories 27 and 29): the
+// operator's reach into the supervisor's lifecycle, scoped by bot id. The
+// state vocabulary mirrors `@porkbot/adapter-kit` and a test pins the two.
+export {
+  computersBootContract,
+  computersRecoverContract,
+  computersResetContract,
+  computersStatusContract,
+  computersStopContract,
+  computerStateSchema,
+  computerViewSchema,
+} from "./computers.ts";
+export type { ComputerStateView, ComputerView } from "./computers.ts";
+
 // Notification preferences (slice 8.6, PRD decision 33; story 35): the
 // operator's switches over `@porkbot/core`'s event vocabulary. The output is
 // every kind with the quiet defaults filled in, so a settings surface renders
@@ -126,12 +140,23 @@ export {
 } from "./threads.ts";
 export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
 
-// Run control (slice 6.7, story 21): the operator's one write into a single
-// run. A stop is recorded as a durable request the worker's live session
-// observes, so the cancellation keeps the session's event sequence and lease
-// release; the answer is the run's state, and a finished run answers it too.
-export { runsStopContract, runStatusSchema, runStopSchema } from "./runs.ts";
-export type { RunStop } from "./runs.ts";
+// Run control (slice 6.7, story 21) and the liveness read (slice 6.10, story
+// 22): the operator's one write into a single run, and the assessment of what
+// it is doing. A stop is recorded as a durable request the worker's live
+// session observes, so the cancellation keeps the session's event sequence and
+// lease release; the answer is the run's state, and a finished run answers it
+// too. `get` answers the persisted liveness the console renders and the
+// notification path consumes.
+export {
+  runsGetContract,
+  runsStopContract,
+  runGetSchema,
+  runLivenessSchema,
+  runLivenessStateSchema,
+  runStatusSchema,
+  runStopSchema,
+} from "./runs.ts";
+export type { RunGet, RunLiveness, RunStop } from "./runs.ts";
 
 // Stored credentials (slices 9.1 and 9.2, PRD decision 10; stories 14 and 15):
 // the list surface answers masked summaries only and `store` takes a value in

@@ -53,7 +53,7 @@ async function createHarness(): Promise<ComputerConformanceHarness> {
   };
 }
 
-computerConformance("ComputerEmulator", createHarness);
+await computerConformance("ComputerEmulator", createHarness);
 
 interface ShellRun {
   readonly exitCode: number;
@@ -225,7 +225,7 @@ describe("the computer emulator shell", () => {
     const computer = { computerId: "computer-1", botId: "bot-1" };
     const first = await emulator.ensure(computer);
 
-    emulator.stop(computer);
+    await emulator.stop(computer);
     await expect(emulator.status(computer)).resolves.toMatchObject({ state: "stopped" });
 
     const failure = await failureFrom(

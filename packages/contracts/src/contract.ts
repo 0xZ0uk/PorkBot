@@ -1,4 +1,11 @@
 import { accountMeContract } from "./account.ts";
+import {
+  computersBootContract,
+  computersRecoverContract,
+  computersResetContract,
+  computersStatusContract,
+  computersStopContract,
+} from "./computers.ts";
 import { credentialsListContract, credentialsStoreContract } from "./credentials.ts";
 import {
   modelConnectionsCreateContract,
@@ -50,7 +57,7 @@ import {
   routinesTestRunContract,
   routinesUpdateContract,
 } from "./routines.ts";
-import { runsStopContract } from "./runs.ts";
+import { runsGetContract, runsStopContract } from "./runs.ts";
 import {
   sectionsCreateContract,
   sectionsDeleteContract,
@@ -98,6 +105,13 @@ export const appContract = {
     avatar: botsAvatarContract,
     clearAvatar: botsClearAvatarContract,
   },
+  computers: {
+    status: computersStatusContract,
+    boot: computersBootContract,
+    stop: computersStopContract,
+    reset: computersResetContract,
+    recover: computersRecoverContract,
+  },
   sections: {
     list: sectionsListContract,
     create: sectionsCreateContract,
@@ -114,6 +128,7 @@ export const appContract = {
     events: threadsEventsContract,
   },
   runs: {
+    get: runsGetContract,
     stop: runsStopContract,
   },
   routines: {

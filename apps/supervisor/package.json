@@ -9,9 +9,14 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
+    "@porkbot/adapters": "workspace:*",
+    "@porkbot/core": "workspace:*",
+    "@porkbot/effect": "workspace:*",
     "@porkbot/health": "workspace:*",
     "@porkbot/logging": "workspace:*"
   },

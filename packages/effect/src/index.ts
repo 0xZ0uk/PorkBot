@@ -11,6 +11,7 @@ export const moduleInfo = {
 export {
   ApprovalStoreError,
   BlockedUrlError,
+  ComputerUnavailableError,
   CredentialMissingError,
   CredentialStoreError,
   CursorRejectedError,
@@ -324,6 +325,28 @@ export type {
   WebhookSignatureCheck,
   WebhookSignatureFailure,
 } from "./webhook-signature.ts";
+
+// Screen capabilities (slice 7.1, PRD decision 20). The reserved frames and
+// input paths are v1.1, but their access rule ships now: a bearer token is
+// HMAC-signed, bound to one computer and one actor, and expires within a
+// bounded lifetime, so the supervisor can verify a screen request without a
+// session store and an API process can mint one without holding provider
+// credentials. An unconfigured key refuses every screen request, which is the
+// correct v1.0 posture.
+export {
+  createScreenCapabilityCodec,
+  DEFAULT_SCREEN_CAPABILITY_TTL_SECONDS,
+  MAX_SCREEN_CAPABILITY_LENGTH,
+  MAX_SCREEN_CAPABILITY_TTL_SECONDS,
+} from "./screen-capability.ts";
+export type {
+  ScreenCapabilityBinding,
+  ScreenCapabilityCheck,
+  ScreenCapabilityCodec,
+  ScreenCapabilityCodecOptions,
+  ScreenCapabilityExpectation,
+  ScreenCapabilityRejection,
+} from "./screen-capability.ts";
 
 // Untrusted ingestion and egress (slice 10.1, PRD decision 30). The egress
 // guard is the allowlist's enforcement edge: an allowlisted host proceeds, any
