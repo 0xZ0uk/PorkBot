@@ -42,6 +42,11 @@
       "reason": "Converts the contract's Zod schemas into JSON Schema for the OpenAPI document (slice 4.1). Pinned exactly because the conversion decides the document's schema output, and it must agree with the validation the same schemas perform at runtime."
     },
     {
+      "name": "@playwright/test",
+      "version": "1.63.0",
+      "reason": "Runs the release-critical browser tier against the built SPA and the offline API emulators (issue #96). Pinned exactly so browser protocol, tracing and screenshot behavior change only with a reviewed E2E update."
+    },
+    {
       "name": "better-auth",
       "version": "1.7.5",
       "reason": "Email/password, sessions and verification for the one auth gate (slice 3.1, PRD decision 8). Pinned exactly because it owns password hashing, session-cookie issuance and origin checks, where an implicit upgrade is a security change nobody reviewed; the identity schema was generated for this library's table shape."

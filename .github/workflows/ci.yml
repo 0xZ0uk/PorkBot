@@ -15,7 +15,8 @@ name: CI
 #                audit is in sync with the code that reads the variables
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  integration tests against the Postgres 18 the local stack boots
-#   e2e          whole-process tests against the built output; the only tier that retries
+#   e2e          real-browser release flows against the built output and offline emulators;
+#                the only tier that retries
 #   desktop      the desktop pipeline: package, sign, and smoke the packaged app under Xvfb
 #   gate         green only when every tier above is green
 #
@@ -292,20 +293,108 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     needs: [build]
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup
-      # Whole-process tests against built output: apps/api's suite covers the
-      # process lifecycle (start, probe, SIGTERM) and apps/web's serves the
-      # static SPA artifact and asserts the shell, its asset references and the
-      # rewrite. This is the only tier that retries (twice, from the e2e
-      # preset), and the shared flake reporter annotates every retried test on
-      # the pull request.
+      - name: Detect UI changes
+        id: ui
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | rg --quiet '^(apps/web/|packages/ui/|packages/tokens/)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      # The browser fixture clones one isolated Postgres suite from this
+      # harness. Mail, model and computer calls stay on their in-process
+      # emulators; the only network the browser can reach is loopback.
+      - name: Start the browser-test Postgres harness
+        timeout-minutes: 5
+        run: |
+          pnpm testkit:start
+          pnpm testkit:migrate
+      # This tier runs the existing whole-process specs and the Playwright
+      # release flow. It is the only tier that retries (twice), and Playwright
+      # retains a trace and screenshot when a browser assertion fails.
       - name: End-to-end tests
-        timeout-minutes: 15
+        id: e2e
+        timeout-minutes: 25
+        env:
+          TESTKIT_HARNESS_STATE: .testkit/harness.json
         run: pnpm test:e2e
+      - name: Require the UI screenshot
+        if: always() && steps.ui.outputs.changed == 'true'
+        run: test -s apps/api/test-results/ui/porkbot-browser.png
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-${{ github.run_id }}
+          path: |
+            apps/api/test-results/playwright/**
+            apps/api/test-results/playwright-report/**
+            apps/api/test-results/ui/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Publish the UI screenshot comment
+        if: >-
+          always() &&
+          github.event_name == 'pull_request' &&
+          steps.ui.outputs.changed == 'true' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          E2E_RESULT: ${{ steps.e2e.outcome }}
+          ARTIFACTS_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const marker = "<!-- porkbot-playwright-screenshots -->";
+            const body = [
+              marker,
+              `The browser E2E tier finished with **${process.env.E2E_RESULT}** for this UI change.`,
+              `[Download the Playwright screenshot, trace and report artifacts](${process.env.ARTIFACTS_URL}).`,
+            ].join("\n\n");
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+      - name: Destroy the browser-test harness
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        run: pnpm testkit:destroy
 
   # The desktop pipeline, on one Linux runner: package the app, sign an
   # ephemeral manifest to prove the signing and verification path, start a real
