@@ -173,6 +173,12 @@ change it without breaking what the boundaries and the CI gate protect.
   materialization of a message's attachments and a tool's artifact record are
   auditable in one place. Checked by: test
   (`packages/db/src/file-store.call-sites.test.ts`).
+- **One module owns the backup ledger.** `packages/db/src/backup-store.ts` is the
+  only shipped code that reads or writes `backup_run`, `backup_canary` or
+  `backup_alert`; the schema defines them and every other path goes through the
+  ledger and status-reader factories, so a run's records, the drill's canary and
+  the alert episodes are auditable in one place. Checked by: test
+  (`packages/db/src/backup-store.call-sites.test.ts`).
 - **One module owns run creation.** `packages/db/src/run-creation.ts` holds
   every run-creation command — message-triggered, routine-triggered and the
   operator's test run — and no other shipped code inserts a `task` or a `run`,
@@ -411,6 +417,10 @@ change it without breaking what the boundaries and the CI gate protect.
   README's single-host floor (4 vCPU / 8 GB plus ~2 GB per bot); raising either
   is a host change a reviewer can see. Checked by: test
   (`packages/testkit/test/deployment.test.ts`) and review.
+- **The backup target and its key envelope are separate.** The sealed envelope
+  defaults to its own directory and its own volume, never a path under the
+  backup destination, so the ciphertext and the key that opens it do not share
+  a store. Checked by: test (`apps/backup/src/config.test.ts`) and review.
 - **A destructive command says so.** `pnpm deploy:down` keeps the volumes
   unless `--volumes` is passed, and `--volumes` announces what it deletes
   before it deletes it. Checked by: test

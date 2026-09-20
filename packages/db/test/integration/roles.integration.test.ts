@@ -369,6 +369,9 @@ describe("the catalog's answer", () => {
       worker_creates_jobs: boolean;
       api_creates_schemas: boolean;
       worker_creates_schemas: boolean;
+      worker_reads_backup_run: boolean;
+      worker_claims_backup_alert: boolean;
+      api_reads_backup_run: boolean;
     }>(
       "select " +
         "has_table_privilege($1, 'public.bot', 'INSERT') as api_inserts_bot, " +
@@ -417,7 +420,12 @@ describe("the catalog's answer", () => {
         `has_schema_privilege($1, '${graphileWorkerSchema}', 'USAGE') as api_reads_jobs, ` +
         `has_schema_privilege($2, '${graphileWorkerSchema}', 'CREATE') as worker_creates_jobs, ` +
         "has_database_privilege($1, current_database(), 'CREATE') as api_creates_schemas, " +
-        "has_database_privilege($2, current_database(), 'CREATE') as worker_creates_schemas",
+        "has_database_privilege($2, current_database(), 'CREATE') as worker_creates_schemas, " +
+        // The backup ledger is deployment-scoped: the worker's watchdog reads
+        // the runs and claims alert episodes, and the API role sees nothing.
+        "has_table_privilege($2, 'public.backup_run', 'SELECT') as worker_reads_backup_run, " +
+        "has_table_privilege($2, 'public.backup_alert', 'INSERT') as worker_claims_backup_alert, " +
+        "has_table_privilege($1, 'public.backup_run', 'SELECT') as api_reads_backup_run",
       [apiRole, workerRole],
     );
 
@@ -466,6 +474,9 @@ describe("the catalog's answer", () => {
       worker_reads_bot_secret: true,
       worker_updates_bot_secret: true,
       worker_deletes_bot_secret: false,
+      worker_reads_backup_run: true,
+      worker_claims_backup_alert: true,
+      api_reads_backup_run: false,
       api_reads_jobs: false,
       worker_creates_jobs: true,
       api_creates_schemas: false,

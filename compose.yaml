@@ -1,6 +1,7 @@
-# The local stack: Postgres, api, worker, web and supervisor on one network,
-# every service with a healthcheck, plus a one-shot `migrate` that applies the
-# schema and the two service roles before the always-on processes start.
+# The local stack: Postgres, api, worker, backup, web and supervisor on one
+# network, every service with a healthcheck, plus a one-shot `migrate` that
+# applies the schema and the two service roles before the always-on processes
+# start.
 # `pnpm stack:up` builds these images and blocks until each healthcheck passes;
 # `pnpm stack:down` removes the containers, the network and the Postgres volume.
 #
@@ -131,6 +132,41 @@ services:
       postgres:
         condition: service_healthy
 
+  backup:
+    <<: *app
+    build:
+      context: .
+      target: backup
+    image: porkbot/backup:local
+    environment:
+      PORT: "3004"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The database owner's connection, not a service role: pg_dump reads the
+      # whole schema, and the drill creates and drops a scratch database. No
+      # other process in this stack holds this credential.
+      DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:-porkbot-local}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # The primary storage the homes are read from, read-only: the snapshot
+      # archives under computer-snapshots/ are every computer's durable home.
+      PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
+      # The encrypted destination and the sealed key envelope, on separate
+      # volumes: a backup target and the key that opens it are never the same
+      # place. The keyring and passphrase are local-stack placeholders exactly
+      # like the database passwords.
+      PORKBOT_BACKUP_DIR: /var/lib/porkbot/backups
+      PORKBOT_BACKUP_ENVELOPE_DIR: /var/lib/porkbot/backup-envelope
+      PORKBOT_BACKUP_KEYS: ${PORKBOT_BACKUP_KEYS:-local:cG9ya2JvdC1iYWNrdXAtbG9jYWwtcGxhY2Vob2xkZXI=}
+      PORKBOT_BACKUP_ACTIVE_KEY: ${PORKBOT_BACKUP_ACTIVE_KEY:-local}
+      PORKBOT_BACKUP_ENVELOPE_PASSPHRASE: ${PORKBOT_BACKUP_ENVELOPE_PASSPHRASE:-porkbot-backup-envelope-local}
+    volumes:
+      - storage-data:/var/lib/porkbot/storage:ro
+      - backup-data:/var/lib/porkbot/backups
+      - backup-envelope:/var/lib/porkbot/backup-envelope
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
   web:
     <<: *app
     build:
@@ -215,3 +251,5 @@ volumes:
   postgres-data:
   storage-data:
   computer-archives:
+  backup-data:
+  backup-envelope:

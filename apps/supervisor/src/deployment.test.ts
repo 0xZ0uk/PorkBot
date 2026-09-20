@@ -76,6 +76,7 @@ describe("the compose deployment", () => {
 
     expect([...services.keys()].sort()).toEqual([
       "api",
+      "backup",
       "migrate",
       "postgres",
       "supervisor",

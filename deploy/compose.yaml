@@ -1,7 +1,7 @@
 # The single-host deployment (slice 12.1, PRD stories 1 and 2, decision 32).
 #
 # This is the production shape of the local stack in the repository-root
-# compose.yaml: the same five always-on processes plus the one-shot migrate,
+# compose.yaml: the same six always-on processes plus the one-shot migrate,
 # with production's teeth instead of a developer's defaults.
 #
 #   - No local placeholder survives. Every secret and every operator choice is
@@ -116,7 +116,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
+          cpus: "0.1"
           memory: 512m
 
   api:
@@ -167,7 +167,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
+          cpus: "0.7"
           memory: 1g
 
   worker:
@@ -198,8 +198,60 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "0.45"
           memory: 1g
+
+  backup:
+    <<: *app
+    build:
+      context: ..
+      target: backup
+    image: porkbot/backup:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    environment:
+      PORT: "3004"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The database owner's connection: pg_dump reads the whole schema and the
+      # drill creates and drops a scratch database. No other process holds it.
+      DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # The primary storage the homes are read from, read-only: the snapshot
+      # archives are every computer's durable home, per COMPUTER_HOME_SYNC.
+      PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
+      # The encrypted destination and the sealed key envelope, on separate
+      # volumes. The envelope is sealed under a generated passphrase and is what
+      # an operator copies off the host; the backup destination is not.
+      PORKBOT_BACKUP_DIR: /var/lib/porkbot/backups
+      PORKBOT_BACKUP_ENVELOPE_DIR: /var/lib/porkbot/backup-envelope
+      PORKBOT_BACKUP_KEYS: ${PORKBOT_BACKUP_KEYS:?}
+      PORKBOT_BACKUP_ACTIVE_KEY: ${PORKBOT_BACKUP_ACTIVE_KEY:?}
+      PORKBOT_BACKUP_ENVELOPE_PASSPHRASE: ${PORKBOT_BACKUP_ENVELOPE_PASSPHRASE:?}
+      # The nightly schedule, the retention window and the drill interval; the
+      # defaults are the documented policy and the env file can override them.
+      PORKBOT_BACKUP_SCHEDULE_HOUR_UTC: ${PORKBOT_BACKUP_SCHEDULE_HOUR_UTC:-3}
+      PORKBOT_BACKUP_SCHEDULE_MINUTE_UTC: ${PORKBOT_BACKUP_SCHEDULE_MINUTE_UTC:-0}
+      PORKBOT_BACKUP_RETENTION_DAYS: ${PORKBOT_BACKUP_RETENTION_DAYS:-30}
+      PORKBOT_BACKUP_DRILL_INTERVAL_DAYS: ${PORKBOT_BACKUP_DRILL_INTERVAL_DAYS:-30}
+      # The off-site target (slice 7.7's S3-compatible adapter). All five or
+      # none: empty keeps the local volume, which a self-hosted deployment that
+      # syncs the host itself may prefer.
+      PORKBOT_BACKUP_S3_ENDPOINT: ${PORKBOT_BACKUP_S3_ENDPOINT:-}
+      PORKBOT_BACKUP_S3_BUCKET: ${PORKBOT_BACKUP_S3_BUCKET:-}
+      PORKBOT_BACKUP_S3_REGION: ${PORKBOT_BACKUP_S3_REGION:-us-east-1}
+      PORKBOT_BACKUP_S3_ACCESS_KEY_ID: ${PORKBOT_BACKUP_S3_ACCESS_KEY_ID:-}
+      PORKBOT_BACKUP_S3_SECRET_ACCESS_KEY: ${PORKBOT_BACKUP_S3_SECRET_ACCESS_KEY:-}
+    volumes:
+      - storage-data:/var/lib/porkbot/storage:ro
+      - backup-data:/var/lib/porkbot/backups
+      - backup-envelope:/var/lib/porkbot/backup-envelope
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256m
 
   web:
     <<: *app
@@ -215,7 +267,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
+          cpus: "0.2"
           memory: 256m
 
   supervisor:
@@ -271,10 +323,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
+          cpus: "0.2"
           memory: 384m
 
 volumes:
   postgres-data:
   storage-data:
   computer-archives:
+  backup-data:
+  backup-envelope:

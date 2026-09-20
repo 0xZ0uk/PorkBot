@@ -549,7 +549,7 @@ describe("the deployment commands", () => {
 
     expect(authSecret).not.toBe("");
     expect(postgresPassword).not.toBe("");
-    expect(printed).toContain("Generated 7 secrets");
+    expect(printed).toContain("Generated 9 secrets");
     expect(printed).not.toContain(authSecret);
     expect(printed).not.toContain(postgresPassword);
   });
@@ -698,11 +698,11 @@ describe("the deployment commands", () => {
       .filter((index) => index >= 0);
 
     expect(pullIndex).toBeGreaterThanOrEqual(0);
-    expect(healthIndexes.length).toBe(8);
+    expect(healthIndexes.length).toBe(10);
     expect(pullIndex).toBeLessThan(healthIndexes[0] ?? Number.POSITIVE_INFINITY);
-    expect(healthIndexes[3] ?? -1).toBeLessThan(migrationIndex);
-    expect(migrationIndex).toBeLessThan(healthIndexes[4] ?? Number.POSITIVE_INFINITY);
-    expect(healthIndexes[7] ?? -1).toBeLessThan(switchIndex);
+    expect(healthIndexes[4] ?? -1).toBeLessThan(migrationIndex);
+    expect(migrationIndex).toBeLessThan(healthIndexes[5] ?? Number.POSITIVE_INFINITY);
+    expect(healthIndexes[9] ?? -1).toBeLessThan(switchIndex);
     expect(dockerCalls[pullIndex]?.options?.env?.["PORKBOT_IMAGE_TAG"]).toBe("nextsha012345");
     expect(dockerCalls[switchIndex]?.args).toEqual(expect.arrayContaining(["--no-deps", "api"]));
     expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_IMAGE_TAG")).toBe(

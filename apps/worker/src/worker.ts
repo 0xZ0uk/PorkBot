@@ -1,8 +1,10 @@
 import { parseCronItems, run } from "graphile-worker";
 import type { CronItem, Runner } from "graphile-worker";
+import type { NotificationProvider } from "@porkbot/adapter-kit";
 import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
+import { backupWatchdogIdentifier, backupWatchdogJob } from "./jobs/backup-watchdog.ts";
 import { leaseWatchdogIdentifier, leaseWatchdogJob } from "./jobs/lease-watchdog.ts";
 import { routineTickIdentifier, routineTickJob } from "./jobs/routine-schedule.ts";
 import { runExecuteJob } from "./jobs/run-execute.ts";
@@ -39,6 +41,19 @@ export const routineSchedule: CronItem = {
   task: routineTickIdentifier,
   match: "* * * * *",
   identifier: "routine-schedule",
+};
+
+/**
+ * The backup watchdog's schedule: every five minutes. The backup process runs
+ * once a night, so a gap is measured in hours; five minutes bounds how long a
+ * failed or stalled run goes unannounced without a check a minute for a fact
+ * that changes a handful of times a week. It is a `CronItem` for the same
+ * reason the others are: the task identifier carries a dot.
+ */
+export const backupWatchdogSchedule: CronItem = {
+  task: backupWatchdogIdentifier,
+  match: "*/5 * * * *",
+  identifier: "backup-watchdog",
 };
 
 /**
@@ -86,6 +101,19 @@ export interface WorkerOptions {
    * states are recorded and logged but nothing is sent.
    */
   readonly runNotifications?: RunNotificationTarget;
+  /**
+   * Where the deployment-health alerts go (slice 12.3): the backup watchdog's
+   * failed, stalled, missed and drill messages. They use the same provider as
+   * the run notifications but no recipient check, because deployment health is
+   * not a per-user preference. Absent, an alert is recorded and logged only.
+   */
+  readonly operatorAlerts?: NotificationProvider;
+  /**
+   * Whether this process schedules the five-minute backup watchdog. Defaults
+   * to true; a suite that drives the watchdog by hand turns it off so its own
+   * fixtures are the only alerts it sees.
+   */
+  readonly scheduleBackupWatchdog?: boolean;
 }
 
 export async function startWorker(options: WorkerOptions): Promise<Runner> {
@@ -96,6 +124,11 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
       defineJob(runExecuteJob(options.executeRun, notifications)),
       defineJob(leaseWatchdogJob(notifications)),
       defineJob(routineTickJob()),
+      defineJob(
+        backupWatchdogJob(
+          options.operatorAlerts === undefined ? {} : { alerts: options.operatorAlerts },
+        ),
+      ),
     ],
     logger: options.logger,
   });
@@ -105,6 +138,7 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
   const cronItems = [
     ...(options.scheduleWatchdog === false ? [] : [leaseWatchdogSchedule]),
     ...(options.scheduleRoutines === false ? [] : [routineSchedule]),
+    ...(options.scheduleBackupWatchdog === false ? [] : [backupWatchdogSchedule]),
   ];
 
   return run({

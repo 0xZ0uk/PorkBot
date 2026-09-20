@@ -35,7 +35,7 @@ export const deploymentEnvFileName = ".env";
 export const defaultProjectName = "porkbot";
 export const defaultWaitSeconds = "300";
 
-const applicationServices = ["api", "worker", "web", "supervisor"] as const;
+const applicationServices = ["api", "worker", "backup", "web", "supervisor"] as const;
 const releaseServices = ["migrate", ...applicationServices] as const;
 
 export interface SpawnOptions {
