@@ -16,6 +16,7 @@ name: CI
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  integration tests against the Postgres 18 the local stack boots
 #   e2e          whole-process tests against the built output; the only tier that retries
+#   desktop      the desktop pipeline: package, sign, and smoke the packaged app under Xvfb
 #   gate         green only when every tier above is green
 #
 # The retry policy, the timeouts and the quarantine ledger are enforced by the
@@ -304,13 +305,106 @@ jobs:
         timeout-minutes: 15
         run: pnpm test:e2e
 
+  # The desktop pipeline, on one Linux runner: package the app, sign an
+  # ephemeral manifest to prove the signing and verification path, start a real
+  # API process on loopback, and walk the packaged app's first-run flow under a
+  # virtual display until the sign-in screen renders. The release workflow runs
+  # the same `release` CLI with the deployment's key and the full platform
+  # list; this tier is where a broken bundle or a proxy regression fails first.
+  desktop:
+    name: desktop
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install the virtual display and Electron's runtime libraries
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
+      - name: Package the desktop for linux-x64
+        timeout-minutes: 15
+        run: >-
+          node packages/testkit/src/release/cli.ts package
+          --targets linux-x64 --out .release
+      # No release key is configured on a pull request, so the tier proves the
+      # signing path with a throwaway key: the artifact digest is signed, and
+      # verification against the public half is the same check a release runs.
+      - name: Sign and verify a CI manifest with an ephemeral key
+        timeout-minutes: 5
+        run: |
+          openssl genpkey -algorithm ed25519 -out "$RUNNER_TEMP/release-key.pem"
+          openssl pkey -in "$RUNNER_TEMP/release-key.pem" -pubout -out "$RUNNER_TEMP/release-key.pub"
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY="$(cat "$RUNNER_TEMP/release-key.pem")" \
+            node packages/testkit/src/release/cli.ts sign \
+              --tag "desktop-v${version}" --repo "$GITHUB_REPOSITORY"
+          node packages/testkit/src/release/cli.ts verify \
+            --public-key-file "$RUNNER_TEMP/release-key.pub"
+      # The local server the packaged app must reach. It is the real API
+      # process from source with a placeholder database: the smoke only asks
+      # the pre-auth paths, which is why it needs no Postgres, and the
+      # placeholder is never dialled.
+      - name: Start a local API process
+        timeout-minutes: 5
+        run: |
+          setsid nohup env \
+            PORT=3199 LOG_LEVEL=info \
+            DATABASE_URL="postgres://porkbot:desktop-smoke-placeholder@127.0.0.1:5432/porkbot" \
+            PORKBOT_STORAGE_DIR="$RUNNER_TEMP/porkbot-desktop-storage" \
+            node apps/api/src/main.ts > "$RUNNER_TEMP/api.log" 2>&1 < /dev/null &
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3199/healthz; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/api.log"
+          exit 1
+      - name: Smoke the packaged app under a virtual display
+        timeout-minutes: 5
+        run: >-
+          xvfb-run --auto-servernum
+          node packages/testkit/src/release/cli.ts smoke
+          --app ".release/PorkBot-linux-x64/PorkBot"
+          --server-url http://127.0.0.1:3199
+      - name: Show the local API log
+        if: failure()
+        run: cat "$RUNNER_TEMP/api.log"
+      - name: Upload the desktop artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop
+          path: |
+            .release/*.tar.gz
+            .release/*.json
+            .release/checksums.txt
+          if-no-files-found: warn
+
   gate:
     name: gate
     # `always()` matters: if this job were skipped when a tier failed, the
     # required check would never report and the pull request would hang instead
     # of failing.
     if: always()
-    needs: [format, lint, typecheck, build, quarantine, dependencies, env, unit, integration, e2e]
+    needs:
+      [
+        format,
+        lint,
+        typecheck,
+        build,
+        quarantine,
+        dependencies,
+        env,
+        unit,
+        integration,
+        e2e,
+        desktop,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -329,6 +423,7 @@ jobs:
             echo "| unit | ${{ needs.unit.result }} |"
             echo "| integration | ${{ needs.integration.result }} |"
             echo "| e2e | ${{ needs.e2e.result }} |"
+            echo "| desktop | ${{ needs.desktop.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Fail unless every tier passed
         # `skipped` counts as a failure: typecheck, unit and e2e are skipped when

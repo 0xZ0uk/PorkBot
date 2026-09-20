@@ -44,6 +44,10 @@ pnpm deploy:status    # show the deployment's services, states and ports
 pnpm deploy:logs      # follow the deployment's logs
 pnpm deploy:exec      # run a command in a running service
 pnpm deploy:down      # stop the deployment (volumes kept unless --volumes)
+pnpm release:bump     # write the next desktop version into apps/desktop/package.json
+pnpm desktop:package  # package the desktop app for each target platform
+pnpm desktop:smoke    # start a packaged app and walk its first-run flow
+pnpm release:notes    # print release notes generated from the git log
 pnpm testkit:start    # boot the harness Postgres container, record its state
 pnpm testkit:migrate  # apply SQL migrations to the harness template database
 pnpm testkit:snapshot # clone the template into a fresh suite database
@@ -275,6 +279,48 @@ active release running; a failed switch attempts to restore it.
   never attempts to reverse migrations. If the older image is incompatible with
   that schema, restore a compatible database backup separately before retrying.
   Backups are slice 12.3 and the operator runbooks are 12.7.
+
+## Desktop releases
+
+`apps/desktop` ships as one artifact per platform, and a release is a tag, a
+GitHub Release that is never overwritten, and a signed `update-<platform>-<arch>.json`
+whose digest names the artifact's exact bytes. The `desktop` CI tier runs the
+same pipeline on every pull request — package for linux-x64, sign with a
+throwaway key, verify, then start the packaged app under Xvfb against a real
+API process on loopback until the sign-in screen renders — and the `Release`
+workflow does it for real from a manual dispatch. No step needs a maintainer's
+machine. The full runbook is in [`docs/release.md`](docs/release.md).
+
+```sh
+pnpm release:bump patch           # in a pull request: 0.0.0 -> 0.0.1
+pnpm desktop:package -- --targets linux-x64 --out .release
+pnpm desktop:smoke -- --app .release/PorkBot-linux-x64/PorkBot \
+  --server-url http://127.0.0.1:3001
+```
+
+(The `--` before a script's flags keeps pnpm from reading them as its own;
+`pnpm release:bump patch` needs none because the bump keyword is positional.)
+
+- **One command per step.** `packages/testkit/src/release/cli.ts` is the whole
+  pipeline: `bump` writes the version, `package` stages the production
+  dependency closure and the web client with @electron/packager, `sign` signs
+  each artifact's SHA-512 into the manifest the app verifies, `verify` re-hashes
+  every artifact and checks every signature against the pinned public key, and
+  `smoke` drives the packaged app's own first-run flow through the Chrome
+  DevTools Protocol. The artifact name carries the version, the platform and
+  the git commit (`PorkBot-0.2.0-linux-x64-3f9c2a1b0d4e.tar.gz`), and
+  `build-manifest.json` records the full commit, the Electron version and every
+  digest.
+- **The key is a deployment secret.** `PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY` (a
+  GitHub Actions secret) signs; the public half is the value the app pins as
+  `PORKBOT_DESKTOP_UPDATE_PUBLIC_KEY`. The workflow refuses to publish without
+  them, and the desktop's own suite fails if the release's canonical signing
+  bytes and the app's verified bytes drift apart.
+- **OS code signing is the operator's.** The Ed25519 manifest is the trust
+  boundary the app enforces; Apple notarization and Windows Authenticode are
+  deployment certificates the project does not hold, so the macOS and Windows
+  artifacts are unsigned by the OS and a downloading operator decides whether
+  to trust the publisher. Linux artifacts run as extracted.
 
 ## Environment configuration
 

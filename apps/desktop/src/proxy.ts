@@ -24,6 +24,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createStaticHandler } from "@porkbot/web";
 import {
   applyContentSecurityNonce,
@@ -349,7 +350,10 @@ export function createAppServer(options: AppServerOptions): AppServer {
       return;
     }
 
-    const body = Readable.fromWeb(upstream.body);
+    // `fetch` types a response body with whichever `ReadableStream` is in
+    // scope — the DOM's in a test program that loads it, Node's otherwise —
+    // and `Readable.fromWeb` takes Node's. The bytes are the same either way.
+    const body = Readable.fromWeb(upstream.body as NodeReadableStream);
 
     body.on("error", () => response.destroy());
     body.pipe(response);

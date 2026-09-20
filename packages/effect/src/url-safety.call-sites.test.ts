@@ -97,6 +97,22 @@ const sameOriginTransports: ReadonlyMap<string, SameOriginTransport> = new Map([
       mustDial: "options.feedUrl",
     },
   ],
+  [
+    "packages/testkit/src/release/cdp.ts",
+    {
+      reason:
+        "the packaged-app smoke test reads the DevTools target list of the app it just launched, from the loopback address the app itself printed on stderr; the address is generated per run by Electron and is never a URL from user content or a third party",
+      mustDial: "options.listUrl",
+    },
+  ],
+  [
+    "packages/testkit/src/release/smoke.ts",
+    {
+      reason:
+        "the smoke test checks the server address the CI job or developer passed on the command line before it starts the packaged app, and hands that same address to the app's own setup form; the module refuses anything but loopback HTTP, so it is a local health check and never a dial to a user-supplied URL, and the app's proxy is what dials a remote server thereafter",
+      mustDial: "options.serverUrl",
+    },
+  ],
 ]);
 
 const fetchCall = /(?<!safe)\bfetch\s*\(/g;
