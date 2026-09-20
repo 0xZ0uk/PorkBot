@@ -349,6 +349,32 @@ change it without breaking what the boundaries and the CI gate protect.
   dependency is named in the pull request's Dependencies section with why it is
   needed. Checked by: review and `.github/pull_request_template.md`.
 
+### Deployment
+
+- **One env file, generated secrets.** `deploy/.env` is the deployment's only
+  environment file; `pnpm deploy:setup` renders it from
+  `deploy/porkbot.env.example` and generates every secret from the register in
+  `packages/testkit/src/deployment/secrets.ts`, so no key is hand-invented, and
+  re-running setup keeps a live deployment's existing values instead of
+  re-keying it. Checked by: test
+  (`packages/testkit/test/deployment.test.ts`) and review.
+- **The template, the required set and the compose file are one fact.** Every
+  value `deploy/compose.yaml` refuses to default (`${NAME:?}`) has a generated
+  or operator plan in the register and a sentinel in the template, and every
+  value in the template is referenced by the compose file; a pulled image in
+  the deployment names a digest registered in `dependencies.json`. Checked by:
+  test (`packages/testkit/test/deployment.test.ts`) and the `dependencies` CI
+  tier.
+- **The stack's ceilings plus one bot fit the documented floor.** The
+  per-service CPU and memory limits and the per-bot settings stay inside the
+  README's single-host floor (4 vCPU / 8 GB plus ~2 GB per bot); raising either
+  is a host change a reviewer can see. Checked by: test
+  (`packages/testkit/test/deployment.test.ts`) and review.
+- **A destructive command says so.** `pnpm deploy:down` keeps the volumes
+  unless `--volumes` is passed, and `--volumes` announces what it deletes
+  before it deletes it. Checked by: test
+  (`packages/testkit/test/deployment.test.ts`).
+
 ### Pull requests
 
 - **Why, What, How tested — in words.** Use
