@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import path from "node:path";
@@ -42,6 +42,38 @@ export interface StaticServerOptions {
   readonly root: string;
 }
 
+/**
+ * The one SPA host contract, as a handler a second server can mount. The web
+ * image calls it behind the health listener; the desktop wraps it beside the
+ * API proxy (slice 11.6), so "the same rewrite a deployment serves" is the same
+ * code rather than two files that claim to agree.
+ */
+export interface StaticHandler {
+  /** Answers the request from the client directory; always writes a response. */
+  handle(request: IncomingMessage, response: ServerResponse): Promise<void>;
+}
+
+export interface StaticHandlerOptions extends StaticServerOptions {
+  /**
+   * Headers every served file carries. The desktop passes its content security
+   * policy here, so the shell is hardened by the host that hands it out rather
+   * than by a second hook someone can forget.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * Rewrites a served HTML document and adds response headers for it. The
+   * desktop uses it to stamp a fresh content-security nonce onto the shell it
+   * hands out (slice 11.6); the web image streams files untouched.
+   */
+  readonly document?: (html: string) => StaticDocument;
+}
+
+/** A transformed HTML response: the body and the headers it needs. */
+export interface StaticDocument {
+  readonly body: string;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
 function contentTypeFor(file: string): string {
   return contentTypes[path.extname(file).toLowerCase()] ?? "application/octet-stream";
 }
@@ -69,8 +101,14 @@ async function isFile(file: string): Promise<boolean> {
   }
 }
 
-function streamFile(response: ServerResponse, file: string, head = false): void {
+function streamFile(
+  response: ServerResponse,
+  file: string,
+  headers: Readonly<Record<string, string>>,
+  head = false,
+): void {
   response.writeHead(200, {
+    ...headers,
     "content-type": contentTypeFor(file),
     "cache-control": "no-cache",
   });
@@ -89,19 +127,51 @@ function streamFile(response: ServerResponse, file: string, head = false): void 
   stream.pipe(response);
 }
 
-export function createStaticServer(options: StaticServerOptions): Server {
+/** Reads, transforms and writes one HTML file; used only when `document` is set. */
+async function transformFile(
+  response: ServerResponse,
+  file: string,
+  headers: Readonly<Record<string, string>>,
+  transform: (html: string) => StaticDocument,
+  head: boolean,
+): Promise<void> {
+  const transformed = transform(await readFile(file, "utf8"));
+
+  response.writeHead(200, {
+    ...headers,
+    ...transformed.headers,
+    "content-type": contentTypeFor(file),
+    "cache-control": "no-cache",
+  });
+
+  if (head) {
+    response.end();
+    return;
+  }
+
+  response.end(transformed.body);
+}
+
+export function createStaticHandler(options: StaticHandlerOptions): StaticHandler {
   const root = path.resolve(options.root);
   const shell = path.join(root, shellFileName);
-  const health = createHealthListener({ service: serviceName });
+  const headers = options.headers ?? {};
+  const transform = options.document;
 
-  return createServer((request: IncomingMessage, response: ServerResponse) => {
-    void (async () => {
-      if (health(request, response)) {
-        return;
-      }
+  /** Streams a file, or transforms it first when it is HTML and a transform is set. */
+  async function send(file: string, response: ServerResponse, head: boolean): Promise<void> {
+    if (transform !== undefined && contentTypeFor(file) === "text/html; charset=utf-8") {
+      await transformFile(response, file, headers, transform, head);
+      return;
+    }
 
+    streamFile(response, file, headers, head);
+  }
+
+  return {
+    handle: async (request, response) => {
       if (request.method !== "GET" && request.method !== "HEAD") {
-        response.writeHead(405, { allow: "GET, HEAD" });
+        response.writeHead(405, { ...headers, allow: "GET, HEAD" });
         response.end();
         return;
       }
@@ -112,7 +182,7 @@ export function createStaticServer(options: StaticServerOptions): Server {
       try {
         pathname = decodeURIComponent(url.pathname);
       } catch {
-        response.writeHead(400, { "content-type": "application/json" });
+        response.writeHead(400, { ...headers, "content-type": "application/json" });
         response.end(JSON.stringify({ error: "bad_request" }));
         return;
       }
@@ -125,7 +195,7 @@ export function createStaticServer(options: StaticServerOptions): Server {
       // A path that escapes the root is not a client route, whatever it looks
       // like: it is refused rather than answered with the shell.
       if (requested === undefined) {
-        response.writeHead(404, { "content-type": "application/json" });
+        response.writeHead(404, { ...headers, "content-type": "application/json" });
         response.end(JSON.stringify({ error: "not_found" }));
         return;
       }
@@ -133,7 +203,7 @@ export function createStaticServer(options: StaticServerOptions): Server {
       const head = request.method === "HEAD";
 
       if (await isFile(requested)) {
-        streamFile(response, requested, head);
+        await send(requested, response, head);
         return;
       }
 
@@ -141,12 +211,27 @@ export function createStaticServer(options: StaticServerOptions): Server {
       // missing file. Serving the shell for the latter would turn a broken
       // bundle reference into a blank page with a 200.
       if (path.extname(pathname) !== "" || !(await isFile(shell))) {
-        response.writeHead(404, { "content-type": "application/json" });
+        response.writeHead(404, { ...headers, "content-type": "application/json" });
         response.end(JSON.stringify({ error: "not_found" }));
         return;
       }
 
-      streamFile(response, shell, head);
+      await send(shell, response, head);
+    },
+  };
+}
+
+export function createStaticServer(options: StaticServerOptions): Server {
+  const handler = createStaticHandler(options);
+  const health = createHealthListener({ service: serviceName });
+
+  return createServer((request: IncomingMessage, response: ServerResponse) => {
+    void (async () => {
+      if (health(request, response)) {
+        return;
+      }
+
+      await handler.handle(request, response);
     })().catch(() => {
       if (!response.headersSent) {
         response.writeHead(500, { "content-type": "application/json" });

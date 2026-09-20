@@ -6,10 +6,11 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 import { authGateConfigsFor } from "./auth-gate.js";
 import { boundaryConfigsFor } from "./module-boundaries.js";
+import {
+  allSourceFiles as allFiles,
+  typescriptSourceFiles as sourceFiles,
+} from "./source-files.js";
 import { uiColorConfigsFor } from "./ui-colors.js";
-
-const sourceFiles = ["**/*.ts", "**/*.tsx"];
-const allFiles = [...sourceFiles, "**/*.js", "**/*.mjs", "**/*.cjs"];
 
 // typescript-eslint's configs are not file-scoped. Scoping them to the
 // TypeScript sources keeps the parser and the TS rule set off plain JS, where

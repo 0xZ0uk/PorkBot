@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/host/index.d.ts",
+      "default": "./dist/host/index.js"
+    }
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build && tsc -p tsconfig.build.json",
