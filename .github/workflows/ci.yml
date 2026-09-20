@@ -13,6 +13,8 @@ name: CI
 #                lockfile delta is written to the job summary on a pull request
 #   env          every .env.schema loads under the committed APP_ENV=ci fixtures and every
 #                audit is in sync with the code that reads the variables
+#   posture      the license, contributing, security and template files hold, and the full
+#                history carries no provider-shaped secret or personal data
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  integration tests against the Postgres 18 the local stack boots
 #   e2e          real-browser release flows against the built output and offline emulators;
@@ -133,6 +135,26 @@ jobs:
       - name: Check environment schemas
         timeout-minutes: 5
         run: pnpm env:check
+
+  # Public-launch posture. Like the dependency policy this reads files and git
+  # objects and no toolchain, but the audit covers every published commit and
+  # blob, so it is the one job that fetches the full history. Findings are
+  # annotations on this step and never quote a matched value: the output is
+  # public.
+  posture:
+    name: posture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Audit the posture files and the published history
+        timeout-minutes: 5
+        run: node packages/testkit/src/posture/cli.ts check
 
   # The build job populates the turbo cache that typecheck, unit, e2e and
   # integration then restore, which is why they wait for it rather than racing it.
@@ -500,6 +522,7 @@ jobs:
         quarantine,
         dependencies,
         env,
+        posture,
         unit,
         integration,
         e2e,
@@ -520,6 +543,7 @@ jobs:
             echo "| quarantine | ${{ needs.quarantine.result }} |"
             echo "| dependencies | ${{ needs.dependencies.result }} |"
             echo "| env | ${{ needs.env.result }} |"
+            echo "| posture | ${{ needs.posture.result }} |"
             echo "| unit | ${{ needs.unit.result }} |"
             echo "| integration | ${{ needs.integration.result }} |"
             echo "| e2e | ${{ needs.e2e.result }} |"

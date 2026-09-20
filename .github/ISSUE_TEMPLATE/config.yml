@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/0xZ0uk/PorkBot/security/advisories/new
+    about: Security issues are handled privately. Do not open a public issue for one.
+  - name: Read the contributing guide
+    url: https://github.com/0xZ0uk/PorkBot/blob/main/CONTRIBUTING.md
+    about: Toolchain, the checks every change runs, and what a pull request needs.

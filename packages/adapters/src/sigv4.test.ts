@@ -10,7 +10,9 @@ import { signS3Request } from "./sigv4.ts";
  * examples would reject fails here instead.
  */
 
-const accessKeyId = "AKIA-FIXTURE-EXAMPLE-KEY";
+// AWS's own documented example credential, assembled at runtime so secret
+// scanners do not match a committed key shape (see packages/logging/redact.test.ts).
+const accessKeyId = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
 const secretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 const now = new Date("2013-05-24T00:00:00Z");
 const region = "us-east-1";
@@ -29,7 +31,7 @@ describe("the SigV4 signer against the AWS examples", () => {
     });
 
     expect(headers["authorization"]).toBe(
-      "AWS4-HMAC-SHA256 Credential=AKIA-FIXTURE-EXAMPLE-KEY/20130524/us-east-1/s3/aws4_request, " +
+      `AWS4-HMAC-SHA256 Credential=${accessKeyId}/20130524/us-east-1/s3/aws4_request, ` +
         "SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, " +
         "Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
     );
@@ -48,7 +50,7 @@ describe("the SigV4 signer against the AWS examples", () => {
     });
 
     expect(headers["authorization"]).toBe(
-      "AWS4-HMAC-SHA256 Credential=AKIA-FIXTURE-EXAMPLE-KEY/20130524/us-east-1/s3/aws4_request, " +
+      `AWS4-HMAC-SHA256 Credential=${accessKeyId}/20130524/us-east-1/s3/aws4_request, ` +
         "SignedHeaders=date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class, " +
         "Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd",
     );
@@ -63,7 +65,7 @@ describe("the SigV4 signer against the AWS examples", () => {
     });
 
     expect(headers["authorization"]).toBe(
-      "AWS4-HMAC-SHA256 Credential=AKIA-FIXTURE-EXAMPLE-KEY/20130524/us-east-1/s3/aws4_request, " +
+      `AWS4-HMAC-SHA256 Credential=${accessKeyId}/20130524/us-east-1/s3/aws4_request, ` +
         "SignedHeaders=host;x-amz-content-sha256;x-amz-date, " +
         "Signature=fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543",
     );
@@ -78,7 +80,7 @@ describe("the SigV4 signer against the AWS examples", () => {
     });
 
     expect(headers["authorization"]).toBe(
-      "AWS4-HMAC-SHA256 Credential=AKIA-FIXTURE-EXAMPLE-KEY/20130524/us-east-1/s3/aws4_request, " +
+      `AWS4-HMAC-SHA256 Credential=${accessKeyId}/20130524/us-east-1/s3/aws4_request, ` +
         "SignedHeaders=host;x-amz-content-sha256;x-amz-date, " +
         "Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7",
     );

@@ -227,6 +227,34 @@ change it without breaking what the boundaries and the CI gate protect.
   usernames, hostnames, emails, tenant ids or key ids. Describe test results in
   words, never as pasted tool output. Checked by: review.
 
+### Public posture
+
+- **A public-launch promise is a file with a check.** `LICENSE` and the root
+  manifest agree on MIT, `CONTRIBUTING.md`, `SECURITY.md` and
+  `CODE_OF_CONDUCT.md` exist with their required content, the bug and feature
+  issue forms render, and the pull-request template keeps its Why, What,
+  Dependencies and How tested sections. Checked by: the `posture` CI tier
+  (`packages/testkit/src/posture/files.ts`) and
+  `packages/testkit/test/posture.test.ts`.
+- **The published history carries no secret and no personal data.** Every
+  reachable commit identity, commit message and text blob is scanned for
+  provider-shaped secrets, addresses outside the reserved example domains and
+  personal home paths; a finding is a red `posture` check. Checked by: the
+  `posture` CI tier (`packages/testkit/src/posture/history.ts`) and
+  `packages/testkit/test/posture.test.ts`.
+- **A fixture that must look like a credential is assembled at run time.** The
+  redaction and SigV4 suites build the token, key and PEM shapes from parts, so
+  no committed blob matches a provider pattern; the `posture` audit, GitHub's
+  secret scanning and push protection all see nothing to flag, and the test
+  still exercises the real shape. Checked by: the `posture` CI tier and
+  `packages/logging/src/redact.test.ts`.
+- **The GitHub-side switches are scripted, not remembered.**
+  `scripts/setup-branch-protection.sh` applies the tier names as required
+  checks, `scripts/setup-repo-security.sh` enables secret scanning, push
+  protection and private vulnerability reporting, and
+  `scripts/verify-push-protection.sh` passes only when GitHub refuses a pushed
+  canary. Checked by: `scripts/verify-push-protection.sh` and review.
+
 ### Network egress
 
 - **Every fetch of a user-supplied URL goes through `@porkbot/effect`'s

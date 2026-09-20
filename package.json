@@ -1,6 +1,7 @@
 {
   "name": "porkbot",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@10.34.4",
   "engines": {
     "node": ">=24.0.0 <25.0.0",
@@ -40,6 +41,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "posture:check": "node packages/testkit/src/posture/cli.ts check",
     "quarantine:check": "node packages/testkit/src/quarantine/cli.ts check",
     "release:bump": "node packages/testkit/src/release/cli.ts bump",
     "release:notes": "node packages/testkit/src/release/cli.ts notes",

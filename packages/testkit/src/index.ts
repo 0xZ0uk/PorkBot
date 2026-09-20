@@ -119,3 +119,23 @@ export {
   startCaddyProxy,
 } from "./proxy/caddy.ts";
 export type { CaddyProxyOptions, RunningCaddyProxy } from "./proxy/caddy.ts";
+
+// Public-launch posture (slice 12.8). The file half asserts what a stranger can
+// read in LICENSE, CONTRIBUTING, SECURITY, the conduct file, the issue forms
+// and the pull-request template; the history half scans every published ref for
+// provider-shaped secrets, personal identities and commit prose that should not
+// be public. The GitHub-side switches a file cannot express live in
+// scripts/setup-repo-security.sh; the CLI in src/posture/cli.ts runs the audit
+// as its own CI tier.
+export { checkPostureFiles, POSTURE_FILE_RULES } from "./posture/files.ts";
+export { publishedRefs, scanHistory } from "./posture/history.ts";
+export type { BlobRecord, CommitRecord, HistoryScan, HistoryStats } from "./posture/history.ts";
+export { checkPosture } from "./posture/policy.ts";
+export type { PostureReport, PostureStats } from "./posture/policy.ts";
+export {
+  CONTENT_PERSONAL_DATA_RULES,
+  PROSE_PERSONAL_DATA_RULES,
+  SECRET_PATTERNS,
+} from "./posture/patterns.ts";
+export type { PersonalDataRule, SecretPattern } from "./posture/patterns.ts";
+export type { PostureFinding } from "./posture/finding.ts";

@@ -2,7 +2,9 @@
 Write the three sections below in words. Do not paste tool output, logs, or
 screenshots of a terminal: describe what you ran and what it proved. Never
 include secrets, personal or machine identifiers, local paths, usernames,
-hostnames, or account ids. See AGENTS.md for the rules this template enforces.
+hostnames, or account ids. See AGENTS.md for the rules this template enforces
+and CONTRIBUTING.md for how a change is built and tested. A vulnerability goes
+through SECURITY.md's private reporting, never through a public pull request.
 -->
 
 ## Why

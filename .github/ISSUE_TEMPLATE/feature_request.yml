@@ -1,0 +1,61 @@
+name: Feature request
+description: Propose a capability or a change in behaviour.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PorkBot is built against a [product plan](https://github.com/0xZ0uk/PorkBot/issues/1)
+        and a parity ledger; a proposal that names the problem first is much
+        easier to place. Security issues go through
+        [SECURITY.md](https://github.com/0xZ0uk/PorkBot/blob/main/SECURITY.md),
+        not this form.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can you not do today, and what does it cost you? Describe the situation, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behaviour you want, including what a good outcome looks like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or another design you weighed and rejected.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the product does this touch?
+      options:
+        - API and transport
+        - Worker and runs
+        - Computers and the supervisor
+        - Memory, routines and notifications
+        - Web or desktop UI
+        - Deployment and operations
+        - Documentation
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: This request contains no secrets, credentials or personal data.
+          required: true
