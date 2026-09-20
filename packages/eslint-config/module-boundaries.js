@@ -18,6 +18,8 @@
 // letting every package's vitest config call the shared tier presets. Both are
 // enforced: the production rule does not apply to test paths, and the test rule
 // does not apply to anything else.
+import { typescriptSourceFiles } from "./source-files.js";
+
 export const workspacePackages = {
   "@porkbot/core": {
     role: "pure domain: rules, state machine, reducer, policies",
@@ -170,7 +172,16 @@ export const workspacePackages = {
   },
   "@porkbot/desktop": {
     role: "Electron client of the same API",
-    imports: ["@porkbot/contracts", "@porkbot/core", "@porkbot/tokens", "@porkbot/ui"],
+    // The desktop packages the web build's `dist/client` and serves it through
+    // the same static handler the web image runs, so "one client build, one
+    // host contract" is an import rather than a copy (slice 11.6).
+    imports: [
+      "@porkbot/contracts",
+      "@porkbot/core",
+      "@porkbot/tokens",
+      "@porkbot/ui",
+      "@porkbot/web",
+    ],
     testImports: ["@porkbot/testkit"],
   },
   "@porkbot/www": {
@@ -357,7 +368,7 @@ export function boundaryConfigsFor(packageName) {
   const configs = [
     {
       name: `porkbot/boundaries/${packageName}`,
-      files: ["**/*.ts", "**/*.tsx"],
+      files: typescriptSourceFiles,
       ignores: testFilePatterns,
       rules: {
         "no-restricted-imports": [

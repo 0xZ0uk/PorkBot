@@ -17,6 +17,7 @@ import {
 import type {
   BackoffPolicy,
   FileMessageBlock,
+  RunEvent,
   RunSnapshot,
   ThreadSnapshot,
   ToolCallSnapshot,
@@ -121,6 +122,14 @@ export interface ThreadConsoleOptions {
   readonly threadId: string;
   /** How often the active run's liveness is re-read; defaults to five seconds. */
   readonly livenessIntervalMs?: number;
+  /**
+   * Called for every frame the reducer accepted, before it is rendered. The
+   * desktop wrapper is the caller (slice 11.6): it forwards the run's own
+   * lifecycle frames across the preload bridge, so the tray and the native
+   * notification see the runs the console already reduced rather than parsing
+   * the stream a second time.
+   */
+  readonly onRunEvent?: (event: RunEvent) => void;
   /** Test seams, passed through to the contracts' reconnect loop. */
   readonly policy?: BackoffPolicy | undefined;
   readonly random?: (() => number) | undefined;
@@ -352,7 +361,8 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
         }
 
         snapshot = reduced.snapshot;
-        setState({ entries: mergeTranscript(allMessages(), snapshot) });
+        options.onRunEvent?.(event);
+        setState({ entries: mergeTranscript(transcript, snapshot) });
         syncLiveness();
       }
     } catch (error) {

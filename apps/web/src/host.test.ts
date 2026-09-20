@@ -1,9 +1,10 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createStaticServer, shellFileName, serviceName } from "./host.ts";
+import { createStaticHandler, createStaticServer, shellFileName, serviceName } from "./host.ts";
 
 /**
  * The static host, against a fixture that mirrors the real artifact: a shell
@@ -89,5 +90,51 @@ describe("the static host", () => {
 
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("GET, HEAD");
+  });
+});
+
+describe("the document seam", () => {
+  /**
+   * The desktop mounts the same handler with a `document` transform so the
+   * shell it hands out carries a fresh content-security nonce (slice 11.6);
+   * the web image passes no transform and streams files untouched.
+   */
+  it("rewrites an HTML document and adds its headers, and leaves assets alone", async () => {
+    const handler = createStaticHandler({
+      root,
+      document: (html) => ({
+        body: html.replace("</title>", '</title><meta name="nonce" content="n1" />'),
+        headers: { "content-security-policy": "script-src 'nonce-n1'" },
+      }),
+    });
+    const transformed = createServer((request, response) => {
+      void handler.handle(request, response);
+    });
+
+    await new Promise<void>((resolve) => transformed.listen(0, "127.0.0.1", resolve));
+
+    const address = transformed.address();
+
+    if (address === null || typeof address === "string") {
+      throw new Error("expected a TCP address");
+    }
+
+    const origin = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const shell = await fetch(`${origin}/some/client/route`);
+
+      expect(await shell.text()).toContain('content="n1"');
+      expect(shell.headers.get("content-security-policy")).toBe("script-src 'nonce-n1'");
+
+      const asset = await fetch(`${origin}/assets/index-abc123.js`);
+
+      expect(await asset.text()).toBe("export {};\n");
+      expect(asset.headers.get("content-security-policy")).toBeNull();
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        transformed.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 });
