@@ -9,6 +9,8 @@
  * belong in.
  */
 
+import { typescriptSourceFiles } from "./source-files.js";
+
 export const uiSurfacePackages = [
   "@porkbot/ui",
   "@porkbot/web",
@@ -45,7 +47,7 @@ export function uiColorConfigsFor(packageName) {
   return [
     {
       name: `porkbot/ui-colors/${packageName}`,
-      files: ["**/*.ts", "**/*.tsx"],
+      files: typescriptSourceFiles,
       rules: {
         "no-restricted-syntax": ["error", ...colorSelectors(packageName)],
       },

@@ -10,6 +10,8 @@
  * `fixtures/api-raw-implement.ts` and stays silent on a gated router.
  */
 
+import { typescriptSourceFiles } from "./source-files.js";
+
 export function authGateConfigsFor(packageName) {
   if (packageName !== "@porkbot/api") {
     return [];
@@ -18,7 +20,7 @@ export function authGateConfigsFor(packageName) {
   return [
     {
       name: "porkbot/auth-gate/@porkbot/api",
-      files: ["**/*.ts", "**/*.tsx"],
+      files: typescriptSourceFiles,
       // The gate itself is the one file that may call `implement(...)`.
       ignores: ["**/src/gate.ts", "src/gate.ts"],
       rules: {
