@@ -675,6 +675,96 @@ describe("the deployment commands", () => {
     expect(calls.some((call) => call.args.includes("--file"))).toBe(true);
   });
 
+  it("upgrade pulls, health-checks before migrating, then switches and records the prior tag", () => {
+    const { root, envFile } = workspace();
+    const initial = contextFor(root);
+
+    expect(runDeploy(["up", "--origin", testOrigin], initial.context)).toBe(0);
+
+    const upgrade = contextFor(root, {
+      results: (_command, args) => (args.includes("inspect") ? { stdout: "healthy\n" } : undefined),
+    });
+
+    expect(runDeploy(["upgrade", "--tag", "nextsha012345"], upgrade.context)).toBe(0);
+
+    const dockerCalls = upgrade.calls.filter((call) => call.command === "docker");
+    const pullIndex = dockerCalls.findIndex((call) => call.args.includes("pull"));
+    const migrationIndex = dockerCalls.findIndex(
+      (call) => call.args.includes("run") && call.args.includes("migrate"),
+    );
+    const switchIndex = dockerCalls.findIndex((call) => call.args.includes("up"));
+    const healthIndexes = dockerCalls
+      .map((call, index) => (call.args.includes("inspect") ? index : -1))
+      .filter((index) => index >= 0);
+
+    expect(pullIndex).toBeGreaterThanOrEqual(0);
+    expect(healthIndexes.length).toBe(8);
+    expect(pullIndex).toBeLessThan(healthIndexes[0] ?? Number.POSITIVE_INFINITY);
+    expect(healthIndexes[3] ?? -1).toBeLessThan(migrationIndex);
+    expect(migrationIndex).toBeLessThan(healthIndexes[4] ?? Number.POSITIVE_INFINITY);
+    expect(healthIndexes[7] ?? -1).toBeLessThan(switchIndex);
+    expect(dockerCalls[pullIndex]?.options?.env?.["PORKBOT_IMAGE_TAG"]).toBe("nextsha012345");
+    expect(dockerCalls[switchIndex]?.args).toEqual(expect.arrayContaining(["--no-deps", "api"]));
+    expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_IMAGE_TAG")).toBe(
+      "nextsha012345",
+    );
+    expect(readFileSync(path.join(path.dirname(envFile), ".release-state"), "utf8")).toContain(
+      "previous=testsha012345",
+    );
+  });
+
+  it("leaves the active release alone when the target migration fails", () => {
+    const { root, envFile } = workspace();
+    const initial = contextFor(root);
+
+    expect(runDeploy(["up", "--origin", testOrigin], initial.context)).toBe(0);
+
+    const upgrade = contextFor(root, {
+      results: (_command, args) => {
+        if (args.includes("inspect")) {
+          return { stdout: "healthy\n" };
+        }
+
+        return args.includes("run") && args.includes("migrate")
+          ? { status: 1, stderr: "migration refused" }
+          : undefined;
+      },
+    });
+
+    expect(runDeploy(["upgrade", "--tag", "brokensha0123"], upgrade.context)).toBe(1);
+    expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_IMAGE_TAG")).toBe(
+      "testsha012345",
+    );
+    expect(upgrade.calls.some((call) => call.args.includes("up"))).toBe(false);
+    expect(upgrade.err.join("\n")).toMatch(/active release testsha012345 remains running/);
+  });
+
+  it("rolls back the recorded tag without running migrations and states the schema limit", () => {
+    const { root, envFile } = workspace();
+    const initial = contextFor(root);
+
+    expect(runDeploy(["up", "--origin", testOrigin], initial.context)).toBe(0);
+
+    const upgrade = contextFor(root, {
+      results: (_command, args) => (args.includes("inspect") ? { stdout: "healthy\n" } : undefined),
+    });
+    expect(runDeploy(["upgrade", "--tag", "nextsha012345"], upgrade.context)).toBe(0);
+
+    const rollback = contextFor(root);
+
+    expect(runDeploy(["rollback"], rollback.context)).toBe(0);
+    expect(rollback.out.join("\n")).toContain("does not reverse migrations");
+    expect(
+      rollback.calls.some((call) => call.args.includes("run") && call.args.includes("migrate")),
+    ).toBe(false);
+    expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_IMAGE_TAG")).toBe(
+      "testsha012345",
+    );
+    expect(readFileSync(path.join(path.dirname(envFile), ".release-state"), "utf8")).toContain(
+      "previous=nextsha012345",
+    );
+  });
+
   it("up refuses to start on an invalid env file without touching Docker", () => {
     const { root, envFile } = workspace();
     const first = contextFor(root);
