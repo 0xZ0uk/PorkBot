@@ -43,6 +43,17 @@ export interface RunEventSink {
   append(event: RunEvent): Promise<void>;
 }
 
+/**
+ * The read half of the run's event stream: the durable rows a rerun replays on
+ * startup, oldest first. `afterSeq` is exclusive, exactly like the client
+ * subscription's cursor, so the same walk serves a reconnect and a conversation
+ * rebuild. `@porkbot/db` implements it; the rows are the same bytes the live
+ * stream carried.
+ */
+export interface RunEventReader {
+  listAfter(threadId: string, afterSeq: number, limit: number): Promise<readonly RunEvent[]>;
+}
+
 export interface RunEventRecorderOptions {
   /** Wall-clock milliseconds; defaults to `Date.now`. */
   readonly clock?: () => number;

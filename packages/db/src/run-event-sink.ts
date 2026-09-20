@@ -1,5 +1,6 @@
 import { NotFoundError } from "@porkbot/effect";
-import type { RunEventSink } from "@porkbot/effect";
+import type { RunEventReader, RunEventSink } from "@porkbot/effect";
+import { storedRunEvent } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import type { SystemActor } from "./actor.ts";
 import type { Queryable } from "./queryable.ts";
@@ -75,4 +76,29 @@ function payloadJson(event: RunEvent): string {
   delete payload["type"];
 
   return JSON.stringify(payload);
+}
+
+/**
+ * The read half a rerun reads its thread's history through: the durable rows
+ * after a position, reconstructed as the events they were stored from. The
+ * read is scoped to the actor's space with the same `exists` guard every other
+ * transcript read uses, so a foreign or unknown thread yields no rows rather
+ * than confirming it exists. The worker replays a conversation with it, and the
+ * reconstruction is `storedRunEvent` — the same function the API's subscription
+ * frames with, so a replay cannot disagree with the live stream.
+ */
+export function createRunEventReader(actor: SystemActor, database: Queryable): RunEventReader {
+  return {
+    async listAfter(threadId, afterSeq, limit): Promise<readonly RunEvent[]> {
+      const { rows } = await database.query<EventRecord>(
+        `select ${eventColumns} from event ` +
+          "where thread_id = $1 and seq > $2 and exists (" +
+          "select 1 from thread t where t.id = event.thread_id and t.space_id = $3) " +
+          "order by seq asc limit $4",
+        [threadId, afterSeq, actor.spaceId, limit],
+      );
+
+      return rows.map((row) => storedRunEvent(row));
+    },
+  };
 }

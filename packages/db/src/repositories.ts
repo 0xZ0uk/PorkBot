@@ -11,9 +11,12 @@ import type {
   McpRunServers,
   McpServers,
   MemoryDocuments,
+  MemoryProposals,
   NotificationPreferences,
   NotificationRecipients,
   RunCommandSource,
+  RunEventReader,
+  RunEventSink,
   UsageRecorder,
 } from "@porkbot/effect";
 import type { Actor, SystemActor, UserActor } from "./actor.ts";
@@ -30,6 +33,7 @@ import type {
   MessageReader,
   RunMessageReader,
   SteeringMessageWriter,
+  ThreadTranscriptReader,
 } from "./messages.ts";
 import type { Queryable } from "./queryable.ts";
 import type { CredentialKeyring } from "./credential-cipher.ts";
@@ -37,6 +41,7 @@ import { createBotSecretStore } from "./bot-secret-store.ts";
 import { createEncryptedCredentialStore } from "./encrypted-credential-store.ts";
 import { createApprovalStore } from "./approval-store.ts";
 import { createComputerLeaseStore } from "./computer-leases.ts";
+import { createRunEventReader, createRunEventSink } from "./run-event-sink.ts";
 import { createComputerSnapshotStore } from "./computer-snapshots.ts";
 import type { ComputerSnapshots } from "./computer-snapshots.ts";
 import { createFileStore, createRunFileStore } from "./file-store.ts";
@@ -455,7 +460,21 @@ export interface SystemRepositories {
   readonly threads: ThreadReader;
   readonly runs: RunReader & SystemRunWriter;
   /** The run's own output: the assistant messages it produced. */
-  readonly messages: AssistantMessageWriter & RunMessageReader;
+  readonly messages: AssistantMessageWriter & RunMessageReader & ThreadTranscriptReader;
+  /**
+   * The run's durable event stream, write and read (slice 5.6): the sink every
+   * session appends through, and the replay a new run rebuilds its conversation
+   * from. Both are the actor's space's stream; the rows are the transcript's
+   * assistant turns, because the event vocabulary is where they are recorded.
+   */
+  readonly events: RunEventSink & RunEventReader;
+  /**
+   * The run's half of the memory lane (slice 8.2): the scoped read the prompt
+   * is composed from and the proposals an agent may make. The operator's
+   * revision and restore commands stay on the user scope, so a job cannot
+   * delete or rewrite what a person recorded deliberately.
+   */
+  readonly memory: MemoryProposals;
   /**
    * The live run's command source (slice 6.7): the steering rows it claims
    * and the stop mark it observes. The pump beside the session reads it; the
@@ -663,7 +682,14 @@ export function createRepositories(
       messages: {
         ...createAssistantMessageStore(actor, database),
         ...createRunMessageReader(actor, database),
+        listForThread: (threadId, page) =>
+          readMessages(actor, database).listForThread(threadId, page),
       },
+      events: {
+        ...createRunEventSink(actor, database),
+        ...createRunEventReader(actor, database),
+      },
+      memory: createMemoryStore(actor, database),
       commands: createRunCommandSource(actor, database),
       routines: createRoutineStore(actor, database),
       notifications: createNotificationStore(actor, database),

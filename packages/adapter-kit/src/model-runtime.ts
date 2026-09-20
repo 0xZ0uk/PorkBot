@@ -44,11 +44,31 @@ export interface ModelProbeResult {
   readonly streaming: boolean;
 }
 
+/**
+ * One completed tool call an assistant turn requested. `arguments` is the
+ * decoded JSON object, not the wire's raw string: adapters own their dialect,
+ * and a consumer that had to parse a vendor's argument text would be a second
+ * interpretation of the same stream.
+ */
+export interface ModelToolCall {
+  readonly callId: string;
+  readonly name: string;
+  readonly arguments: unknown;
+}
+
 export interface ModelMessage {
   readonly role: "system" | "user" | "assistant" | "tool";
   readonly content: string;
   /** Which tool call a `tool` message answers; absent for every other role. */
   readonly toolCallId?: string;
+  /**
+   * An assistant turn's completed tool calls, in the order the model requested
+   * them. A `tool` message answers exactly one of these by `toolCallId`, so a
+   * history that replays tool use carries both halves; a request that drops the
+   * calls leaves the endpoint a result with no parent and is refused rather
+   * than guessed at.
+   */
+  readonly toolCalls?: readonly ModelToolCall[];
 }
 
 /**

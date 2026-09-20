@@ -118,6 +118,9 @@ function cloneMessage(message: ModelMessage): ModelMessage {
     role: message.role,
     content: message.content,
     ...(message.toolCallId === undefined ? {} : { toolCallId: message.toolCallId }),
+    ...(message.toolCalls === undefined
+      ? {}
+      : { toolCalls: message.toolCalls.map((call) => structuredClone(call)) }),
   };
 }
 
@@ -135,6 +138,43 @@ function copyScript(script: ModelEmulatorScript): ModelEmulatorScript {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseToolCalls(value: unknown): ModelMessage["toolCalls"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const calls: { callId: string; name: string; arguments: unknown }[] = [];
+
+  for (const candidate of value) {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate["id"] !== "string" ||
+      candidate["type"] !== "function" ||
+      !isRecord(candidate["function"]) ||
+      typeof candidate["function"]["name"] !== "string" ||
+      typeof candidate["function"]["arguments"] !== "string"
+    ) {
+      return undefined;
+    }
+
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(candidate["function"]["arguments"]) as unknown;
+    } catch {
+      return undefined;
+    }
+
+    calls.push({ callId: candidate["id"], name: candidate["function"]["name"], arguments: parsed });
+  }
+
+  return calls;
 }
 
 function parseMessages(value: unknown): ModelMessage[] | undefined {
@@ -165,10 +205,17 @@ function parseMessages(value: unknown): ModelMessage[] | undefined {
       return undefined;
     }
 
+    const toolCalls = parseToolCalls(candidate["tool_calls"]);
+
+    if (candidate["tool_calls"] !== undefined && toolCalls === undefined) {
+      return undefined;
+    }
+
     messages.push({
       role,
       content,
       ...(toolCallId === undefined ? {} : { toolCallId }),
+      ...(toolCalls === undefined ? {} : { toolCalls }),
     });
   }
 

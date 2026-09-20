@@ -116,8 +116,26 @@ now registers against a real container; `createComputerTools` turns `exec` into
 the model's `shell`, `file_read`, `file_write`, `file_list` and `browser` tools
 with their content labelled at the ingestion boundary; and the offline runtime
 executes tool steps through the dispatcher, so a full run does real work with no
-key, network or daemon. The live model launch that fills the worker's work seam
-waits on the stream bridge from Pi's agent loop to the model runtime.
+key, network or daemon.
+
+The live model launch lands with slice 6.11. The worker's work seam is no
+longer a stub: `apps/worker/src/live-run.ts` resolves the run's bot, its
+thread's conversation, the bot's model connection and its memory lane through
+the job's repositories, composes the system prompt with `composeRunPrompt`, and
+drives the live agent loop behind the shipped `RunSession` seam. The
+conversation a new run continues is rebuilt from the durable event stream by
+the same reducer the console uses (`apps/worker/src/run-conversation.ts`), so
+the assistant turns the operator read are the turns the next prompt carries;
+the operator's steering rows and stop mark reach the live session through the
+command pump; and every event the session emits is recorded once, through the
+shared recorder, into the `event` sink the SSE subscription replays. The bridge
+in `@porkbot/adapters` turns Pi's agent loop onto `ModelRuntimeProvider` — one
+`StreamFn` over the operator's own connection and credential — so no vendor
+type crosses the seam, and the message ids an event carries are read as
+`(run, message)` by the reducer, so a second run in a thread cannot fold its
+answer into the first. The offline suite drives the whole path over the
+loopback model wire with no key and no network: a message, a streamed reply, a
+steer, a stop, and the settlement each produces.
 
 The supervisor boundary lands with slice 7.1, and the Docker provider with slice
 7.2. `apps/supervisor` is the only compose service the Docker socket is mounted

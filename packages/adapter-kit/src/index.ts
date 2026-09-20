@@ -54,6 +54,7 @@ export type {
   ModelProbeResult,
   ModelRuntimeProvider,
   ModelStreamEvent,
+  ModelToolCall,
   ModelToolDefinition,
   ModelTurnRequest,
 } from "./model-runtime.ts";

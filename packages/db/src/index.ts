@@ -158,6 +158,7 @@ export type {
   NewSteeringMessage,
   RunMessageReader,
   SteeringMessageWriter,
+  ThreadTranscriptReader,
 } from "./messages.ts";
 
 // The durable half of routines (slice 8.4, PRD decision 22): the schedule
@@ -291,10 +292,12 @@ export type { ToolCallResult, ToolResultReader } from "./tool-call-ledger.ts";
 
 // The durable half of the run's event stream (slice 5.6): `createRunEventSink`
 // appends the recorder's events to the `event` table in one scoped statement,
-// advancing the thread's sequence counter with the row. Subscriptions replay
-// these rows; this is what makes a tool-call timeline survive a reload. The
-// seam it implements is declared in `@porkbot/effect`.
-export { createRunEventSink } from "./run-event-sink.ts";
+// advancing the thread's sequence counter with the row, and
+// `createRunEventReader` replays them after a position so a rerun rebuilds the
+// conversation it continues. Subscriptions replay these rows; this is what
+// makes a tool-call timeline survive a reload. The seams they implement are
+// declared in `@porkbot/effect`.
+export { createRunEventReader, createRunEventSink } from "./run-event-sink.ts";
 
 // The durable half of the approval gate (slice 5.7, PRD decision 13): the
 // `approval` rows keyed by `(run_id, call_id)`, opened by a job and voted on by

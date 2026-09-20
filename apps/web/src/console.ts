@@ -475,7 +475,14 @@ export function mergeTranscript(
   messages: readonly Message[],
   snapshot: ThreadSnapshot,
 ): TranscriptEntry[] {
-  const reduced = new Map(snapshot.messages.map((message) => [message.id, message]));
+  // A message's identity is `(runId, id)`: a run's assistant messages are
+  // numbered by the provider session that produced them, so the same id in two
+  // runs of one thread names two turns. Keying by the id alone would render a
+  // later run's answer as the earlier one's.
+  const messageKey = (runId: string | null, id: string): string => `${runId ?? ""}\u0000${id}`;
+  const reduced = new Map(
+    snapshot.messages.map((message) => [messageKey(message.runId, message.id), message]),
+  );
   const rendered: TranscriptMessageEntry[] = [];
   const owners: (string | null)[] = [];
   const seen = new Set<string>();
@@ -486,8 +493,8 @@ export function mergeTranscript(
   }
 
   for (const message of messages) {
-    seen.add(message.id);
-    const live = reduced.get(message.id);
+    seen.add(messageKey(message.runId, message.id));
+    const live = reduced.get(messageKey(message.runId, message.id));
 
     pushMessage(
       {
@@ -503,7 +510,7 @@ export function mergeTranscript(
   }
 
   for (const message of snapshot.messages) {
-    if (seen.has(message.id)) {
+    if (seen.has(messageKey(message.runId, message.id))) {
       continue;
     }
 
