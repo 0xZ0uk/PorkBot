@@ -80,6 +80,11 @@ notification through the E8 provider. The nightly workflow runs the sweep in an
 `if: always()` step, so a night that crashed before teardown costs the next
 night one cleanup instead of a growing bill.
 
+One canary at a time, per supervisor: the sweep claims every machine carrying
+the canary bot id, so two runs racing on the same provider would destroy each
+other's machine. The workflow serialises its runs with a concurrency group; an
+operator running the CLI by hand should not start it beside a nightly run.
+
 ## The cloud budget
 
 A billable kind does not run until an operator states both numbers, and the

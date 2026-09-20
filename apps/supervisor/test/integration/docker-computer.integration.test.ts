@@ -239,6 +239,45 @@ describe("the Docker provider against the real daemon", () => {
     }
   });
 
+  it("restores over a running machine without losing the isolation boundary", async () => {
+    const daemonProvider = await providerUnderTest();
+    const computer = {
+      computerId: `dockersuite-restore-${suffix}`,
+      botId: `dockersuite-bot-${suffix}`,
+    };
+
+    created.push(computer);
+
+    try {
+      await daemonProvider.ensure(computer);
+      await daemonProvider.exec({
+        computer,
+        command: "printf 'kept' > /home/agent/kept.txt",
+        timeoutMs: 60_000,
+      });
+      const snapshot = await daemonProvider.snapshot(computer);
+
+      // Restore replaces the running machine; the provider removes it (and
+      // with it the network) before the replacement is created, so the
+      // boundary has to be planned again or the replacement cannot attach.
+      const restored = await daemonProvider.restore(computer, snapshot);
+
+      expect(restored.state).toBe("running");
+      const kept = await daemonProvider.exec({
+        computer,
+        command: "cat /home/agent/kept.txt",
+        timeoutMs: 60_000,
+      });
+
+      expect(kept.stdout).toBe("kept");
+      expect(dockerOrThrow(["network", "inspect", planComputerNetwork(computer).name])).toContain(
+        planComputerNetwork(computer).name,
+      );
+    } finally {
+      await daemonProvider.destroy(computer).catch(() => undefined);
+    }
+  });
+
   it("resets to a clean machine without deleting the agent home", async () => {
     const daemonProvider = await providerUnderTest();
     const computer = {
