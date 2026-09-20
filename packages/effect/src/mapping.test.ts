@@ -11,6 +11,7 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidComputerPathError,
   InvalidMessageError,
   InvalidOAuthStateError,
   InvalidRoutineScheduleError,
@@ -130,6 +131,11 @@ const samples = {
     error: new ComputerUnavailableError("timed_out", "the supervisor did not answer"),
     code: "SERVICE_UNAVAILABLE",
     status: 503,
+  },
+  InvalidComputerPathError: {
+    error: new InvalidComputerPathError("/etc/passwd"),
+    code: "BAD_REQUEST",
+    status: 400,
   },
   InvalidOAuthStateError: {
     error: new InvalidOAuthStateError("unknown_or_used"),

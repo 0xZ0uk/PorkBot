@@ -315,11 +315,12 @@ export function createHttpUsageTransport(options: HttpAuthTransportOptions = {})
 }
 
 /**
- * The computer settings screen's API surface (slice 9.4): the bot's stored
+ * The computer screen's API surface (slices 9.4 and 11.4): the bot's stored
  * selection, the deployment's provider list and readiness answers, the
- * machine's state, and the snapshot pair that moves files across a switch. It
- * is the same derived client narrowed to the procedures the controller calls,
- * so the screen never sees a wire shape it invented.
+ * machine's state, the lifecycle verbs, its terminal and file views, and the
+ * snapshot pair that moves files across a switch. It is the same derived
+ * client narrowed to the procedures the controller calls, so the screen never
+ * sees a wire shape it invented.
  */
 export function createHttpComputerTransport(
   options: HttpAuthTransportOptions = {},
@@ -340,6 +341,18 @@ export function createHttpComputerTransport(
     setProvider: (input) => client.bots.update({ id: input.botId, computerProvider: input.kind }),
     snapshot: (input) => client.computers.snapshot({ botId: input.botId }),
     restore: (input) => client.computers.restore(input),
+    boot: (input) => client.computers.boot({ botId: input.botId }),
+    stop: (input) => client.computers.stop({ botId: input.botId }),
+    reset: (input) => client.computers.reset({ botId: input.botId }),
+    recover: (input) => client.computers.recover({ botId: input.botId }),
+    terminal: (input) => client.computers.terminal(input),
+    files: (input) =>
+      client.computers.files(
+        input.path === undefined
+          ? { botId: input.botId }
+          : { botId: input.botId, path: input.path },
+      ),
+    file: (input) => client.computers.file(input),
   };
 }
 

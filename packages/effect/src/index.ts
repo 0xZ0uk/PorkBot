@@ -18,6 +18,7 @@ export {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidComputerPathError,
   InvalidMessageError,
   InvalidOAuthStateError,
   InvalidRoutineScheduleError,
@@ -155,6 +156,7 @@ export {
   MAX_COMPUTER_PATH_LENGTH,
   MAX_FILE_WRITE_BYTES,
   MAX_SHELL_COMMAND_LENGTH,
+  quoteShellArgument,
 } from "./computer-tools.ts";
 export type { ComputerToolOptions } from "./computer-tools.ts";
 

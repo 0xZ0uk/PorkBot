@@ -258,6 +258,57 @@ function repositoriesFor(actor: UserActor): UserRepositories {
 let configuredKinds: readonly string[] = ["offline", "daytona"];
 let unavailableKind: string | null = null;
 
+/**
+ * The scripted machine's exec answers, keyed by the command the API composed:
+ * the two listings the file view runs, a `cat` for a read, and the echo a
+ * terminal command would produce. A command naming "missing" fails the way the
+ * shell would, so the refusal paths are exercised over the same wire.
+ */
+function execResult(command: string): {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+} {
+  if (command.includes("missing")) {
+    return {
+      exitCode: command.startsWith("cat ") ? 1 : 2,
+      stdout: "",
+      stderr: `the machine has no "missing" path\n`,
+    };
+  }
+
+  if (command.startsWith("fail")) {
+    return { exitCode: 1, stdout: "", stderr: "boom\n" };
+  }
+
+  if (command.startsWith("ls -1")) {
+    // A file target makes `ls` print the path it was given, which is how the
+    // service tells "not a directory" from an entries listing.
+    return command.includes("notes.md")
+      ? { exitCode: 0, stdout: "/home/agent/notes.md\n", stderr: "" }
+      : { exitCode: 0, stdout: "notes.md\nprojects\n", stderr: "" };
+  }
+
+  if (command.startsWith("ls -l")) {
+    return {
+      exitCode: 0,
+      stdout: [
+        "total 4",
+        "-rw-r--r-- 1 agent agent 12 1970-01-01 00:00 notes.md",
+        "drwxr-xr-x 1 agent agent 0 1970-01-01 00:00 projects",
+        "",
+      ].join("\n"),
+      stderr: "",
+    };
+  }
+
+  if (command.startsWith("cat ")) {
+    return { exitCode: 0, stdout: "# Notes\n", stderr: "" };
+  }
+
+  return { exitCode: 0, stdout: `ran: ${command}\n`, stderr: "" };
+}
+
 /** The supervisor's wire, scripted: every answer is the client's own vocabulary. */
 const supervisorServer: Server = createServer(
   (request: IncomingMessage, response: ServerResponse) => {
@@ -318,6 +369,15 @@ const supervisorServer: Server = createServer(
             },
           }),
         );
+        return;
+      }
+
+      if ((request.url ?? "").endsWith("/exec")) {
+        const body = raw === "" ? {} : (JSON.parse(raw) as { command?: string });
+        const result = execResult(body.command ?? "");
+
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ result }));
         return;
       }
 
@@ -712,5 +772,146 @@ describe("the snapshot surface", () => {
       code: "NOT_FOUND",
     });
     expect(recorded).toEqual([]);
+  });
+});
+
+/**
+ * The operator's terminal and file views (slice 11.4, PRD story 27). Both
+ * reach the machine through the supervisor's exec seam, with the computer
+ * reference built from the actor-scoped bot row: a bot outside the space is the
+ * typed `NOT_FOUND` before the supervisor is dialed, the file view's path is
+ * confined to the home, and the machine's own listing comes back as entries.
+ */
+describe("the terminal and file views", () => {
+  it("runs one operator command through the supervisor with the machine's own timeout", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.terminal({ botId: assignedBotId, command: "echo hi" }),
+    ).resolves.toEqual({ exitCode: 0, stdout: "ran: echo hi\n", stderr: "", truncated: false });
+
+    expect(recorded).toEqual([
+      {
+        path: "/v1/computers/exec",
+        body: {
+          computer: { computerId, botId: assignedBotId },
+          command: "echo hi",
+          timeoutMs: 60_000,
+        },
+      },
+    ]);
+  });
+
+  it("lists a directory of the home as the machine answered it", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(client().computers.files({ botId: assignedBotId })).resolves.toEqual({
+      path: "",
+      entries: [
+        { name: "notes.md", kind: "file", sizeBytes: 12 },
+        { name: "projects", kind: "directory", sizeBytes: 0 },
+      ],
+    });
+
+    // Both listings are dialed with the home as the target, and nothing else.
+    expect(recorded.map((request) => request.path)).toEqual([
+      "/v1/computers/exec",
+      "/v1/computers/exec",
+    ]);
+  });
+
+  it("reads one file of the home, bounded by the contract", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.file({ botId: assignedBotId, path: "notes.md" }),
+    ).resolves.toEqual({ path: "notes.md", content: "# Notes\n", truncated: false });
+
+    expect(recorded).toEqual([
+      {
+        path: "/v1/computers/exec",
+        body: {
+          computer: { computerId, botId: assignedBotId },
+          command: `cat -- '/home/agent/notes.md'`,
+          timeoutMs: 60_000,
+        },
+      },
+    ]);
+  });
+
+  it("refuses a path outside the home before the supervisor is dialed", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.files({ botId: assignedBotId, path: "../etc" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      client().computers.file({ botId: assignedBotId, path: "/etc/passwd" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(recorded).toEqual([]);
+  });
+
+  it("answers a path the machine cannot list or read as not found", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.files({ botId: assignedBotId, path: "missing" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      client().computers.file({ botId: assignedBotId, path: "missing.md" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("refuses to list a file as if it were a directory", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.files({ botId: assignedBotId, path: "notes.md" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("returns a failing command's exit code instead of throwing", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.terminal({ botId: assignedBotId, command: "fail now" }),
+    ).resolves.toEqual({ exitCode: 1, stdout: "", stderr: "boom\n", truncated: false });
+  });
+
+  it("answers a bot outside the actor's space as not found without dialing", async () => {
+    sessionActor = owner;
+    recorded.length = 0;
+
+    await expect(
+      client().computers.terminal({ botId: "someone-elses-bot", command: "ls" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(client().computers.files({ botId: "someone-elses-bot" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(recorded).toEqual([]);
+  });
+
+  it("translates a classified exec refusal into the contract's service unavailable", async () => {
+    sessionActor = owner;
+    failNextWith = { status: 429, kind: "rate_limited", message: "the daemon is busy" };
+
+    await expect(
+      client().computers.terminal({ botId: assignedBotId, command: "ls" }),
+    ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  });
+
+  it("refuses a terminal command without a session", async () => {
+    sessionActor = null;
+
+    await expect(
+      client().computers.terminal({ botId: assignedBotId, command: "ls" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
