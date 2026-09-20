@@ -10,8 +10,8 @@ describe("Button", () => {
     expect(html).toContain("Launch");
   });
 
-  it("uses the accent colour for the primary tone", () => {
+  it("draws the primary tone from the palette's primary property", () => {
     const html = renderToStaticMarkup(<Button tone="primary">Launch</Button>);
-    expect(html).toContain(colors.accent);
+    expect(html).toContain(colors.primary);
   });
 });

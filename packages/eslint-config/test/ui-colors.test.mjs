@@ -38,11 +38,12 @@ async function lint(fixture, packageName) {
 // The AGENTS.md UI rule is lint-enforced, so it is proven the same way the
 // boundary rules are: a fixture that must fail and a fixture that must pass.
 describe("UI colour rule", () => {
-  // The fixture's hex sits on line 5 and its rgb() on line 6; which line is
-  // flagged is what distinguishes the two selectors.
+  // The fixture's hex sits on line 5, its rgb() on line 6 and its oklch() on
+  // line 7; which line is flagged is what distinguishes the selectors.
   it.each([
     ["hex", 5],
     ["rgb()", 6],
+    ["oklch()", 7],
   ])("rejects a hardcoded %s colour in a UI surface", async (_label, line) => {
     const messages = await lint("ui-hardcoded-color.ts", "@porkbot/ui");
     const matched = messages.some(

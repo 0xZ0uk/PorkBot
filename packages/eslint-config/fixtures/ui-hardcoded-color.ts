@@ -4,4 +4,5 @@
 export const card = {
   background: "#16161d",
   borderColor: "rgb(42, 42, 53)",
+  shadowColor: "oklch(0.6231 0.1880 259.8145)",
 };

@@ -23,11 +23,16 @@ credential exchange posts to Better Auth's routes under `/api/auth` (slice 12.1
 mounts the handler), the session cookie stays `HttpOnly` and JavaScript never
 reads it, and `deployment.status` decides whether sign-in offers registration.
 
-Colour and type come from `@porkbot/tokens`: `theme.ts` turns the semantic
-tokens into `--pb-*` custom properties inlined into the shell's first paint, and
-the surfaces and stylesheet name only those properties. The lint rule in
-`@porkbot/eslint-config` fails a hardcoded colour in `@porkbot/web`, so a theme
-change stays one file. The screens are labelled and keyboard-reachable: labels
+Colour and type come from `@porkbot/tokens`, which holds the shadcn theme in
+its light and dark modes: `theme.ts` turns the palette into `--pb-*` custom
+properties inlined into the shell's first paint, the light values on `:root`
+and the dark ones behind `prefers-color-scheme`, so the first paint follows the
+system with no script. Inter and JetBrains Mono are self-hosted through the
+bundle, so the desktop's offline build needs no network for type. The surfaces
+and stylesheet name only those properties, and the lint rule in
+`@porkbot/eslint-config` fails a hardcoded colour — hex, `rgb()`, `hsl()` or
+`oklch()` — in `@porkbot/web`, so a theme change stays one file. The screens
+are labelled and keyboard-reachable: labels
 bind to inputs, the refusal is a `role="alert"` that takes focus, and a skip
 link leads to the focused `#main`. The e2e tier builds the artifact, serves it
 with the static host and asserts the shell's asset references exist, the

@@ -1,5 +1,5 @@
 import { avatarContentTypes, maxAvatarBytes } from "@porkbot/contracts";
-import { colors } from "@porkbot/tokens";
+import { srgbPrimary } from "@porkbot/tokens";
 import { Button } from "@porkbot/ui";
 import { useState } from "react";
 import type { AvatarContentType, Bot, BotSection, ComputerView } from "@porkbot/contracts";
@@ -30,7 +30,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
           title: "",
           description: "",
           instructions: "",
-          color: colors.accent,
+          color: srgbPrimary,
           sectionId: "",
           computerProvider: "",
         }

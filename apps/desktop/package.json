@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@porkbot/core": "workspace:*",
+    "@porkbot/tokens": "workspace:*",
     "@porkbot/web": "workspace:*"
   },
   "devDependencies": {
