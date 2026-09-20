@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import type { StorageProvider } from "@porkbot/adapter-kit";
-import { fileDownloadPath } from "@porkbot/effect";
+import { fileDownloadPath } from "@porkbot/contracts";
 import type { ArtifactRecorder } from "@porkbot/effect";
 import type { RunFileStore } from "./file-store.ts";
 

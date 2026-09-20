@@ -22,12 +22,25 @@ export interface ScriptedSubscription {
   readonly lastEventId: string | undefined;
 }
 
+/** An upload the scripted API accepted, as the composer's XHR sent it. */
+export interface ScriptedUpload {
+  readonly id: string;
+  readonly threadId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly body: Buffer;
+}
+
 export interface ScriptedThreadApi {
   /** The origin, e.g. `http://127.0.0.1:41234`, suitable for a transport. */
   readonly url: string;
   readonly rpcUrl: string;
   /** Every subscribe, in order: how a resume is observable. */
   readonly subscriptions: ScriptedSubscription[];
+  /** Every upload the raw route accepted, in order. */
+  readonly uploads: ScriptedUpload[];
+  /** Every `threads.send` input, in order: the nonce and ids are observable. */
+  readonly sends: readonly unknown[];
   /** Appends a run event and wakes every open stream. */
   push(event: RunEvent): void;
   /** Destroys every open event stream, the way a dropped connection looks. */
@@ -46,15 +59,32 @@ export interface ScriptedThreadApiOptions {
   readonly toolResults?: Readonly<
     Record<string, { readonly tool: string; readonly result: unknown }>
   >;
+  /**
+   * Stored bytes the download route serves for ids that are not uploads —
+   * the artifacts a tool event's `downloadPath` points at.
+   */
+  readonly files?: Readonly<
+    Record<
+      string,
+      { readonly filename: string; readonly contentType: string; readonly body: string }
+    >
+  >;
 }
 
 export async function startScriptedThreadApi(
   options: ScriptedThreadApiOptions,
 ): Promise<ScriptedThreadApi> {
   const timeline = [...(options.events ?? [])];
+  // The transcript a reload reads: the scripted rows plus every message the
+  // send route answered, so a second mount sees what persistence would serve.
+  const messages: Message[] = [...(options.messages ?? [])];
   const subscriptions: ScriptedSubscription[] = [];
+  const uploads: ScriptedUpload[] = [];
+  const sends: unknown[] = [];
   const waiters = new Set<() => void>();
   const streams = new Set<ServerResponse>();
+  let nextFile = 0;
+  let nextMessage = 0;
 
   function wake(): void {
     for (const waiter of waiters) {
@@ -84,9 +114,17 @@ export async function startScriptedThreadApi(
     return match?.[1] === undefined ? 0 : Number(match[1]);
   }
 
+  // jsdom's XHR honours the same-origin policy the way a browser does, so the
+  // scripted API answers CORS the way the deployment's one origin makes
+  // unnecessary in production: any origin may call these routes.
+  function cors(response: ServerResponse): void {
+    response.setHeader("access-control-allow-origin", "*");
+  }
+
   function writeJson(response: ServerResponse, value: unknown): void {
     const body = JSON.stringify({ json: value });
 
+    cors(response);
     response.writeHead(200, {
       "content-type": "application/json",
       "content-length": Buffer.byteLength(body),
@@ -98,6 +136,7 @@ export async function startScriptedThreadApi(
   function writeError(response: ServerResponse, status: number, code: string): void {
     const body = JSON.stringify({ defined: true, code, status, message: code });
 
+    cors(response);
     response.writeHead(status, {
       "content-type": "application/json",
       "content-length": Buffer.byteLength(body),
@@ -123,6 +162,131 @@ export async function startScriptedThreadApi(
     return typeof parsed === "object" && parsed !== null
       ? (parsed as { json?: unknown }).json
       : undefined;
+  }
+
+  async function readRawBody(request: IncomingMessage): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of request) {
+      chunks.push(chunk as Buffer);
+    }
+
+    return Buffer.concat(chunks);
+  }
+
+  function fileId(sequence: number): string {
+    return `01900000-0000-7000-8000-${String(sequence).padStart(12, "0")}`;
+  }
+
+  /** The raw upload route's half of the contract: name in the query, type in the header. */
+  async function uploadAttachment(
+    request: IncomingMessage,
+    response: ServerResponse,
+    url: URL,
+  ): Promise<void> {
+    const body = await readRawBody(request);
+    const filename = url.searchParams.get("filename") ?? "";
+    const contentType = request.headers["content-type"] ?? "application/octet-stream";
+    const match = /^\/threads\/([^/]+)\/attachments$/.exec(url.pathname);
+
+    if (match?.[1] !== options.threadId || filename === "") {
+      writeError(response, 404, "NOT_FOUND");
+      return;
+    }
+
+    nextFile += 1;
+    const uploaded: ScriptedUpload = {
+      id: fileId(nextFile),
+      threadId: options.threadId,
+      filename,
+      contentType,
+      body,
+    };
+    uploads.push(uploaded);
+
+    const answer = JSON.stringify({
+      id: uploaded.id,
+      filename: uploaded.filename,
+      contentType: uploaded.contentType,
+      sizeBytes: uploaded.body.byteLength,
+    });
+
+    cors(response);
+    response.writeHead(201, {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(answer),
+    });
+    response.end(answer);
+  }
+
+  /** The send procedure: the message is persisted and joins the transcript a reload reads. */
+  function sendMessage(response: ServerResponse, input: unknown): void {
+    const record = (typeof input === "object" && input !== null ? input : {}) as Record<
+      string,
+      unknown
+    >;
+
+    if (record["threadId"] !== options.threadId) {
+      writeError(response, 404, "NOT_FOUND");
+      return;
+    }
+
+    sends.push(input);
+    nextMessage += 1;
+
+    const attachmentIds = Array.isArray(record["attachmentIds"])
+      ? (record["attachmentIds"] as string[])
+      : [];
+    const files = attachmentIds.flatMap((id) => {
+      const upload = uploads.find((candidate) => candidate.id === id);
+
+      return upload === undefined
+        ? []
+        : [
+            {
+              type: "file" as const,
+              attachmentId: upload.id,
+              filename: upload.filename,
+              contentType: upload.contentType,
+              sizeBytes: upload.body.byteLength,
+            },
+          ];
+    });
+    const message: Message = {
+      id: fileId(0x1000 + nextMessage),
+      threadId: options.threadId,
+      seq: messages.length,
+      role: "user",
+      blocks: [{ type: "text", text: String(record["text"] ?? "") }, ...files],
+      runId: `run-${String(nextMessage)}`,
+      createdAt: "2026-01-02T00:00:00.000Z",
+    };
+
+    messages.push(message);
+    writeJson(response, { action: "start_run", message, runId: message.runId });
+  }
+
+  /** The download route: uploads and scripted artifacts share the one id space. */
+  function downloadFile(response: ServerResponse, url: URL): void {
+    const match = /^\/files\/([^/]+)$/.exec(url.pathname);
+    const id = match?.[1];
+    const upload = uploads.find((candidate) => candidate.id === id);
+    const scripted = id === undefined ? undefined : options.files?.[id];
+    const body = upload?.body ?? (scripted === undefined ? undefined : Buffer.from(scripted.body));
+
+    if (body === undefined) {
+      cors(response);
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "not_found" }));
+      return;
+    }
+
+    cors(response);
+    response.writeHead(200, {
+      "content-type": upload?.contentType ?? scripted?.contentType ?? "application/octet-stream",
+      "content-length": body.byteLength,
+    });
+    response.end(body);
   }
 
   async function streamEvents(
@@ -173,7 +337,34 @@ export async function startScriptedThreadApi(
   }
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+
+    // The upload's non-simple content type triggers a preflight in a real
+    // browser context; answer it so the XHR proceeds.
+    if (request.method === "OPTIONS") {
+      cors(response);
+      response.writeHead(204, {
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "content-type",
+      });
+      response.end();
+      return;
+    }
+
+    // The stored-file routes are plain HTTP outside the RPC envelope: bytes in
+    // and bytes out, never the `{json: …}` wrapper.
+    if (request.method === "GET" && url.pathname.startsWith("/files/")) {
+      downloadFile(response, url);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname.endsWith("/attachments")) {
+      await uploadAttachment(request, response, url);
+      return;
+    }
+
     if (request.method !== "POST") {
+      cors(response);
       response.writeHead(405, { allow: "POST" });
       response.end();
       return;
@@ -181,9 +372,12 @@ export async function startScriptedThreadApi(
 
     const input = await readBody(request);
 
-    switch (request.url) {
+    switch (url.pathname) {
       case "/rpc/threads/messages":
-        writeJson(response, { messages: options.messages ?? [], nextSeq: null });
+        writeJson(response, { messages, nextSeq: null });
+        return;
+      case "/rpc/threads/send":
+        sendMessage(response, input);
         return;
       case "/rpc/threads/toolResult": {
         const stored =
@@ -232,6 +426,8 @@ export async function startScriptedThreadApi(
     url,
     rpcUrl: `${url}/rpc`,
     subscriptions,
+    uploads,
+    sends,
 
     push: (event) => {
       timeline.push(event);

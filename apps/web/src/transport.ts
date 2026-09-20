@@ -1,6 +1,22 @@
-import { ORPCError, createApiClient, defaultThreadPageSize, maxPageSize } from "@porkbot/contracts";
-import type { Approval, Bot, Message, Thread, UsageBot } from "@porkbot/contracts";
+import {
+  ORPCError,
+  attachmentUploadPath,
+  createApiClient,
+  defaultThreadPageSize,
+  maxPageSize,
+  uploadedAttachmentSchema,
+} from "@porkbot/contracts";
+import type {
+  Approval,
+  Bot,
+  Message,
+  Thread,
+  UploadedAttachment,
+  UsageBot,
+} from "@porkbot/contracts";
 import type { BotsTransport } from "./bots.ts";
+import { AttachmentUploadError } from "./composer.ts";
+import type { ComposerTransport } from "./composer.ts";
 import { AuthRefusal } from "./session.ts";
 import type { ComputerTransport } from "./computer.ts";
 import type { ConnectionsTransport } from "./connections.ts";
@@ -159,7 +175,7 @@ export function createHttpAuthTransport(options: HttpAuthTransportOptions = {}):
  * the five methods the screens need, so a test can hand the router a fake and
  * the screens never see a wire shape they invented.
  */
-export interface ConsoleTransport extends ThreadConsoleTransport {
+export interface ConsoleTransport extends ThreadConsoleTransport, ComposerTransport {
   /** The actor's active bots, in the contract's order. */
   listBots(): Promise<readonly Bot[]>;
   /** One bot's most recently active threads, newest first. */
@@ -202,10 +218,63 @@ export interface ApprovalTransport {
  */
 const maxTranscriptPages = 10;
 
+/**
+ * One attachment upload over `XMLHttpRequest`: the raw route takes the bytes
+ * as the request body with the name in the query, and `fetch` cannot report
+ * upload progress, so the composer's per-file progress needs the one client
+ * that can. The route answers plain JSON — the stored row or an `error`
+ * object — rather than the RPC envelope, so a refusal is wrapped with the
+ * status it carried for the composer to phrase, and the 201 answer is parsed
+ * through the contract's schema rather than trusted.
+ */
+function uploadAttachment(base: string): ComposerTransport["uploadAttachment"] {
+  return (input) =>
+    new Promise<UploadedAttachment>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      const url = `${base}${attachmentUploadPath(input.threadId)}?filename=${encodeURIComponent(input.filename)}`;
+
+      request.open("POST", url);
+      request.setRequestHeader("content-type", input.contentType);
+      request.upload.onprogress = (event) => {
+        input.onProgress?.(event.loaded, event.lengthComputable ? event.total : input.body.size);
+      };
+      request.onload = () => {
+        if (request.status === 201) {
+          try {
+            const body: unknown = JSON.parse(request.responseText);
+            resolve(uploadedAttachmentSchema.parse(body));
+          } catch {
+            reject(new AttachmentUploadError(null, "The upload's answer could not be read."));
+          }
+
+          return;
+        }
+
+        reject(
+          new AttachmentUploadError(
+            request.status,
+            `The upload was refused with status ${String(request.status)}.`,
+          ),
+        );
+      };
+      request.onerror = () => {
+        reject(new AttachmentUploadError(null, "The upload could not reach the server."));
+      };
+      request.onabort = () => {
+        reject(new AttachmentUploadError(null, "The upload was cancelled."));
+      };
+      input.signal?.addEventListener("abort", () => {
+        request.abort();
+      });
+      request.send(input.body);
+    });
+}
+
 export function createHttpConsoleTransport(
   options: HttpAuthTransportOptions = {},
 ): ConsoleTransport {
   const client = createApiClient({ url: resolveRpcUrl(options) });
+  const base = options.origin ?? "";
 
   return {
     listBots: async () => (await client.bots.list({ scope: "active" })).bots,
@@ -214,6 +283,8 @@ export function createHttpConsoleTransport(
     createThread: (botId) => client.threads.create({ botId }),
     toolResult: (input) => client.threads.toolResult(input),
     run: (runId) => client.runs.get({ runId }),
+    send: (input) => client.threads.send({ ...input, attachmentIds: [...input.attachmentIds] }),
+    uploadAttachment: uploadAttachment(base),
 
     transcript: async (threadId) => {
       const messages: Message[] = [];

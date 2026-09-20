@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { attachmentFileName, contentTypeForFileName } from "@porkbot/core";
 import { NotFoundError } from "@porkbot/effect";
+import type { UploadedAttachment } from "@porkbot/contracts";
 import type { StorageProvider } from "@porkbot/adapter-kit";
 import type { StoredFile, UserRepositories } from "@porkbot/db";
 
@@ -22,23 +23,6 @@ import type { StoredFile, UserRepositories } from "@porkbot/db";
  * this path: the row is the index, the storage key the address, and the kind
  * never changes how the bytes are served.
  */
-
-/** The path an attachment is uploaded to; Hono's parameter syntax. */
-export const attachmentUploadPath = "/threads/:threadId/attachments";
-/** The same path as the limits register names it. */
-export const attachmentUploadRulePath = attachmentUploadPath;
-/** The path a stored file is downloaded from. */
-export const fileDownloadPath = "/files/:fileId";
-/** The same path as the limits register names it. */
-export const fileDownloadRulePath = fileDownloadPath;
-
-/** What an upload answers; the send addresses `id`. */
-export interface UploadedAttachment {
-  readonly id: string;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly sizeBytes: number;
-}
 
 /** A stored file with its bytes, ready to become an HTTP response body. */
 export interface DownloadableFile extends StoredFile {
