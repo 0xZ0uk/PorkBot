@@ -99,8 +99,8 @@ protocol, so a package can only use what it declares.
 ## Local stack
 
 `docker compose` (repository-root `compose.yaml`) brings up the whole product:
-Postgres 18, `api`, `worker`, `backup`, `web` and `supervisor`, each with a
-healthcheck. One command starts it and waits:
+Postgres 18, `api`, `worker`, `backup`, `web`, `proxy` and `supervisor`, each
+with a healthcheck. One command starts it and waits:
 
 ```sh
 pnpm stack:up      # build, start, wait for every healthcheck
@@ -115,16 +115,20 @@ prints the recent logs. `stack:down` removes the containers, the network and the
 Postgres volume, so a shut down and a re-run leave nothing behind.
 
 - **No key, no vendor, no egress.** The processes ship no provider endpoint or
-  credential, and the only images pulled are Node and Postgres; provider calls
-  are replaced by offline emulators as the adapter slices land (5.4, 6.9, 7.3).
-  The stack runs offline.
-- **Ports.** `web` on 3000, `api` on 3001, Postgres on 5432, all published on
-  loopback only; `worker` and `supervisor` answer only inside the compose
-  network. Override the published ports with `PORKBOT_WEB_PORT`,
-  `PORKBOT_API_PORT`, `PORKBOT_POSTGRES_PORT`, and the health wait budget with
+  credential, and the only images pulled are Node, Postgres and the reverse
+  proxy; provider calls are replaced by offline emulators as the adapter slices
+  land (5.4, 6.9, 7.3). The stack runs offline.
+- **Ports.** `web` on 3000, `api` on 3001, Postgres on 5432 and `proxy` on
+  8080, all published on loopback only; `worker` and `supervisor` answer only
+  inside the compose network. Override the published ports with
+  `PORKBOT_WEB_PORT`, `PORKBOT_API_PORT`, `PORKBOT_POSTGRES_PORT`,
+  `PORKBOT_REVERSE_PROXY_PORT`, and the health wait budget with
   `PORKBOT_STACK_WAIT_SECONDS`. The two database-role passwords default to local
   placeholders and are overridable with `PORKBOT_API_DB_PASSWORD` and
-  `PORKBOT_WORKER_DB_PASSWORD`.
+  `PORKBOT_WORKER_DB_PASSWORD`. The proxy serves the same `deploy/Caddyfile`
+  the deployment runs, on a plain-HTTP loopback origin, so `stack:up` parses
+  and healthchecks the shipped config; `http://localhost:8080` is one origin
+  for the SPA, the API, the streams and `/healthz/stream`.
 - **One socket, one owner.** The Docker socket is mounted into `supervisor`
   and nowhere else; `api` and `worker` reach computers through the supervisor
   with `PORKBOT_SUPERVISOR_URL` and `PORKBOT_SUPERVISOR_TOKEN`, both defaulting
@@ -188,17 +192,18 @@ runtime image. Every process answers `/livez` and `/readyz`: liveness means the
 process can answer, while readiness includes the dependency checks needed to
 receive work. `/healthz` remains as a legacy liveness alias, and
 `packages/health` is the shared implementation; `apps/api` keeps its own
-request-aware surface.
+request-aware surface and adds `/healthz/stream`, the timed probe the
+reverse-proxy runbook uses (`docs/reverse-proxy.md`).
 
 ## Single-host deployment
 
 `deploy/compose.yaml` is the production shape of the local stack: the same
-Postgres 18, one-shot `migrate`, `api`, `worker`, `web` and `supervisor`, with
-none of a developer's defaults left in it. Every secret and every operator
-choice is read through `${NAME:?}`, so Compose itself refuses a stack whose
-environment is incomplete, and every process exposes `/livez` plus `/readyz`,
-which is the dependency-aware probe the container healthcheck asks. On a host
-that has never run it:
+Postgres 18, one-shot `migrate`, `api`, `worker`, `web`, `proxy` and
+`supervisor`, with none of a developer's defaults left in it. Every secret and
+every operator choice is read through `${NAME:?}`, so Compose itself refuses a
+stack whose environment is incomplete, and every process exposes `/livez` plus
+`/readyz`, which is the dependency-aware probe the container healthcheck asks.
+On a host that has never run it:
 
 ```sh
 pnpm install
@@ -245,11 +250,22 @@ active release running; a failed switch attempts to restore it.
   across roles, a database password that is not URL-safe for its connection
   string, a keyring key that is not 32 bytes or whose active id is missing, an
   unresolved template sentinel, an origin that is not an absolute https origin
-  outside loopback, an image tag of `latest`, a partial mail/proxy/webhook
-  configuration, and a real computer provider without the settings it boots
-  from. The processes keep their own boot checks on top: the API refuses a
-  partial auth pair or a missing storage root, the logger refuses an unknown
-  level, and the supervisor refuses a computer provider it cannot construct.
+  outside loopback or that names a port the proxy does not publish, an image
+  tag of `latest`, a partial mail/proxy/webhook configuration, and a real
+  computer provider without the settings it boots from. The processes keep
+  their own boot checks on top: the API refuses a partial auth pair or a
+  missing storage root, the logger refuses an unknown level, and the supervisor
+  refuses a computer provider it cannot construct.
+- **The one public origin.** `proxy` runs the pinned Caddy image with the
+  committed `deploy/Caddyfile`: it terminates HTTPS for the origin `deploy:up`
+  was given, serves the SPA from `web`, the API and its streams from `api`, and
+  is the only service that publishes a public port (`80` and `443` on
+  `PORKBOT_BIND_ADDRESS`). The API and web ports stay on loopback. The config
+  disables response buffering on the API path and caps client reads and idle
+  connections, so a token stream crosses it frame by frame;
+  `docs/reverse-proxy.md` is the contract and the runbook for when it does not.
+  A proxy that cannot reach the API answers unhealthy, and Caddy keeps its
+  certificates in the `caddy-data` volume across restarts.
 - **Resource floors and per-bot sizing.** The host floor is 4 vCPU / 8 GB for
   the stack, plus roughly 2 GB and 50 GB+ of disk per bot, with 50 GB+ more for
   images (PRD decision 32; "A bot's computer" above). The stack's ceilings fit
@@ -263,12 +279,13 @@ active release running; a failed switch attempts to restore it.
   | worker             | 0.45        | 1 GB           |
   | backup             | 0.25        | 256 MB         |
   | web                | 0.2         | 256 MB         |
+  | proxy              | 0.1         | 128 MB         |
   | supervisor         | 0.2         | 384 MB         |
 
-  Summed, the stack's ceilings are 2.9 vCPU and about 5.4 GB, so the base host
+  Summed, the stack's ceilings are 3.0 vCPU and about 5.5 GB, so the base host
   runs the stack and one bot at its default `PORKBOT_COMPUTER_CPUS` (1) and
-  `PORKBOT_COMPUTER_MEMORY_MB` (2048) with roughly 0.6 GB of memory left for the
-  OS and the Docker daemon. Each additional bot adds its own ~2 GB and
+  `PORKBOT_COMPUTER_MEMORY_MB` (2048) with roughly 0.5 GB of memory left for
+  the OS and the Docker daemon. Each additional bot adds its own ~2 GB and
   `PORKBOT_COMPUTER_DISK_MB` (10240), so the floor for N bots is
   4 vCPU / (8 + 2N) GB and (50 + 50N) GB+ of disk. Raise the ceilings in
   `deploy/compose.yaml` only after raising the host; the per-bot settings live
@@ -279,12 +296,15 @@ active release running; a failed switch attempts to restore it.
   `pnpm deploy:exec -- postgres psql -U porkbot` runs a command in a running
   service; `pnpm deploy:down` stops and removes the containers and network
   while keeping the volumes, and `pnpm deploy:down --volumes` also deletes
-  Postgres data, bot storage and archives after saying so. The published ports
-  bind to `PORKBOT_BIND_ADDRESS`, loopback by default: HTTPS on one origin is
-  the reverse-proxy contract (slice 12.2), and until that is configured the
-  stack is reached over an SSH tunnel. Postgres is never published;
-  `deploy:exec` is the way in. `deploy:exec -- backup node dist/cli.js status`
-  reports the backup ledger and the envelope, and
+  Postgres data, bot storage, computer archives, the backup destination and
+  envelope, and the proxy's certificates after saying so; the certificates are
+  obtained again on the next boot. The proxy publishes
+  `PORKBOT_BIND_ADDRESS:80` and `:443` — set it to `0.0.0.0` (or the host's
+  public address) on a host reachable from the internet, and point DNS at the
+  host before `deploy:up` so Caddy can obtain a certificate. Postgres is never
+  published and the API and web answer on loopback only; `deploy:exec` is the
+  way in. `deploy:exec -- backup node dist/cli.js status` reports the backup
+  ledger and the envelope, and
   `deploy:exec -- backup node dist/cli.js restore --latest --database <name>`
   is the recovery path (`docs/backups.md`). `pnpm deploy:upgrade --tag <git-sha>`
   is the one-command release path; it records the prior tag in the adjacent
@@ -2014,10 +2034,11 @@ in the prerendered HTML, an unknown route is rewritten to the shell and a
 missing asset stays a 404.
 
 Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
-stack — Postgres 18, the migrate one-shot, api, worker, backup, web and
-supervisor — and waits for every healthcheck, and the same command is what CI's integration tier
-runs; the testkit harness attaches to the stack's Postgres for the suite clones,
-so integration tests run against the production major. The structured logger,
+stack — Postgres 18, the migrate one-shot, api, worker, backup, web, the
+reverse proxy and supervisor — and waits for every healthcheck, and the same
+command is what CI's integration tier runs; the testkit harness attaches to the
+stack's Postgres for the suite clones, so integration tests run against the
+production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
 unchanged. `apps/desktop` is the connect-only Electron shell (slice 11.6) and
 `apps/www` is still a placeholder the remaining M10 surface slices replace with

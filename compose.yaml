@@ -1,5 +1,5 @@
-# The local stack: Postgres, api, worker, backup, web and supervisor on one
-# network, every service with a healthcheck, plus a one-shot `migrate` that
+# The local stack: Postgres, api, worker, backup, web, proxy and supervisor on
+# one network, every service with a healthcheck, plus a one-shot `migrate` that
 # applies the schema and the two service roles before the always-on processes
 # start.
 # `pnpm stack:up` builds these images and blocks until each healthcheck passes;
@@ -7,8 +7,8 @@
 #
 # Nothing here needs a key, a hosted provider or network egress at run time: no
 # provider endpoint is configured, and the only images pulled are the
-# digest-pinned Node and Postgres images registered in dependencies.json. The
-# provider emulators replace vendor calls as their slices land.
+# digest-pinned Node, Postgres and Caddy images registered in dependencies.json.
+# The provider emulators replace vendor calls as their slices land.
 #
 # Host ports bind to loopback and are overridable so the stack can run beside
 # another Postgres or dev server: PORKBOT_POSTGRES_PORT, PORKBOT_API_PORT,
@@ -179,6 +179,41 @@ services:
     ports:
       - "127.0.0.1:${PORKBOT_WEB_PORT:-3000}:3000"
 
+  proxy:
+    # The production reverse proxy (slice 12.2) in its local shape: the same
+    # deploy/Caddyfile, one loopback origin serving the SPA, the API and the
+    # streams over plain HTTP. `pnpm stack:up` waits on its healthcheck, so
+    # the shipped config is parsed and driven on every stack boot.
+    <<: *app
+    image: caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e
+    environment:
+      PORKBOT_SITE_ADDRESS: http://localhost:8080
+      PORKBOT_API_UPSTREAM: http://api:3001
+      PORKBOT_WEB_UPSTREAM: http://web:3000
+    ports:
+      - "127.0.0.1:${PORKBOT_REVERSE_PROXY_PORT:-8080}:8080"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      # Through the proxy to the API's probe: config loaded, route works.
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8899/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 128m
+
   supervisor:
     <<: *app
     build:
@@ -253,3 +288,5 @@ volumes:
   computer-archives:
   backup-data:
   backup-envelope:
+  caddy-data:
+  caddy-config:

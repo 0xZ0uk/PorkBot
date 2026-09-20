@@ -121,6 +121,17 @@ describe("the http surface", () => {
     expect(body.service).toBe(serviceName);
   });
 
+  it("mounts the streaming probe beside it, frames apart", async () => {
+    const response = await fetch(`${baseUrl}/healthz/stream`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+
+    const body = await response.text();
+
+    expect([...body.matchAll(/^id: (\d+)$/gm)].map((match) => match[1])).toEqual(["1", "2", "3"]);
+  });
+
   it("keeps liveness separate from dependency readiness", async () => {
     let dependencyUp = false;
     const dependencyApp = createApiApp({

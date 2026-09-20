@@ -228,6 +228,7 @@ describe("the route list", () => {
     // fallback.
     expect(routes.map((route) => `${route.method} ${route.path}`)).toEqual([
       "GET /healthz",
+      "GET /healthz/stream",
       "GET /livez",
       "GET /readyz",
       "GET /oauth/mcp/callback",

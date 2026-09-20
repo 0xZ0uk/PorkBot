@@ -1211,20 +1211,20 @@ function runUp(context: DeploymentContext, options: DeployOptions): number {
   );
   context.out(state.stdout.trimEnd());
 
-  const bind = values.get("PORKBOT_BIND_ADDRESS")?.trim() ?? "127.0.0.1";
   const webPort = values.get("PORKBOT_WEB_PORT")?.trim() ?? "3000";
   const apiPort = values.get("PORKBOT_API_PORT")?.trim() ?? "3001";
+  const origin = values.get("PORKBOT_AUTH_ORIGIN")?.trim() ?? "";
 
   context.out(
     [
       "",
       "The stack is up and healthy.",
-      `  web  http://${bind}:${webPort}`,
-      `  api  http://${bind}:${apiPort}/healthz`,
+      `  origin  ${origin} (the reverse proxy; see deploy/Caddyfile)`,
+      `  web     http://127.0.0.1:${webPort} (loopback only, for local inspection)`,
+      `  api     http://127.0.0.1:${apiPort}/healthz (loopback only)`,
       "",
-      "Ports bind to " +
-        bind +
-        "; the public origin and HTTPS are the reverse-proxy contract (slice 12.2).",
+      "The proxy is the public origin. If it answers without a certificate yet, check that DNS " +
+        "points at this host and read `pnpm deploy:logs proxy`.",
       "Follow the logs with `pnpm deploy:logs`, stop it with `pnpm deploy:down`.",
     ].join("\n"),
   );

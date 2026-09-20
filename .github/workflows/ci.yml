@@ -221,7 +221,9 @@ jobs:
           TESTKIT_HARNESS_STATE: .testkit/harness.json
         run: pnpm test:integration
       # Exercise the production deployment commands against a second Compose
-      # project while the local stack is still running.
+      # project while the local stack is still running. The deployment's
+      # ingress is the reverse proxy on loopback :80, so the origin names no
+      # port; the web and API ports stay apart from the local stack's.
       - name: Exercise upgrade and rollback against deployment Compose
         timeout-minutes: 15
         env:
@@ -235,7 +237,7 @@ jobs:
           upgrade_tag="upgrade-${GITHUB_SHA}"
 
           pnpm deploy:setup \
-            --origin http://127.0.0.1:3100 \
+            --origin http://127.0.0.1 \
             --tag "$base_tag" \
             --env-path "$deploy_env"
 

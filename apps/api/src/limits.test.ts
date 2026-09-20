@@ -20,9 +20,10 @@ import {
 describe("the route register", () => {
   const rules = routeRules("/rpc");
 
-  it("names the health probe, the whole RPC surface, the webhook ingress, the callback and the file routes", () => {
+  it("names the health probes, the whole RPC surface, the webhook ingress, the callback and the file routes", () => {
     expect(rules).toEqual([
       { method: "GET", path: "/healthz", family: "probe" },
+      { method: "GET", path: "/healthz/stream", family: "probe" },
       { method: "GET", path: "/livez", family: "probe" },
       { method: "GET", path: "/readyz", family: "probe" },
       { method: "ALL", path: "/rpc/*", family: "rpc" },
@@ -39,11 +40,13 @@ describe("the route register", () => {
     expect(routeRuleFor(rules, "POST", "/rpc")?.family).toBe("rpc");
   });
 
-  it("matches the probe on GET only", () => {
+  it("matches the probes on GET only", () => {
     expect(routeRuleFor(rules, "GET", "/healthz")?.family).toBe("probe");
+    expect(routeRuleFor(rules, "GET", "/healthz/stream")?.family).toBe("probe");
     expect(routeRuleFor(rules, "GET", "/livez")?.family).toBe("probe");
     expect(routeRuleFor(rules, "GET", "/readyz")?.family).toBe("probe");
     expect(routeRuleFor(rules, "POST", "/healthz")).toBeUndefined();
+    expect(routeRuleFor(rules, "POST", "/healthz/stream")).toBeUndefined();
   });
 
   it("matches the webhook ingress by prefix, so a source name is not enumerated", () => {

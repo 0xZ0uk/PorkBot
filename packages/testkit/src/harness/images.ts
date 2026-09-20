@@ -1,5 +1,5 @@
 /**
- * The container images the harness runs, pinned by digest.
+ * The container images the testkit runs, pinned by digest.
  *
  * A tag is a moving target: `postgres:18` is whatever the registry served the
  * day the tier ran, which makes a red integration result impossible to
@@ -17,3 +17,11 @@ export const postgresImageDigest =
   "sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280";
 
 export const postgresImage = `postgres:${productionPostgresMajor}@${postgresImageDigest}`;
+
+/**
+ * The reverse proxy the deployment ships (slice 12.2). The integration suite
+ * boots this exact image with `deploy/Caddyfile`, so the config the operator
+ * runs is the config the suite drives.
+ */
+export const caddyImage =
+  "caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e";
