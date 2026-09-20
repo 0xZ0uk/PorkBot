@@ -5,7 +5,8 @@ import {
   createHttpNotificationProvider,
   NotificationEmulator,
 } from "@porkbot/adapters";
-import { createHealthServer, healthPath } from "@porkbot/health";
+import { openDatabase, queryable } from "@porkbot/db";
+import { createHealthServer, livenessPath } from "@porkbot/health";
 import { createLogger } from "@porkbot/logging";
 import type { Runner } from "graphile-worker";
 import { moduleInfo } from "./index.ts";
@@ -15,8 +16,8 @@ import type { RunNotificationTarget } from "./run-notifications.ts";
 import { startWorker } from "./worker.ts";
 
 /**
- * The worker process: the health probe every always-on service answers, and
- * the Graphile runner over the job registry.
+ * The worker process: separate liveness and dependency-readiness probes for
+ * every always-on service, and the Graphile runner over the job registry.
  *
  * `DATABASE_URL` is the worker's own role's connection (`porkbot_worker`),
  * not the API's; the database decides what the process may read and write, and
@@ -37,6 +38,12 @@ if (connectionString === undefined || connectionString.length === 0) {
   logger.error("DATABASE_URL is not set; the worker has no queue to run", {});
   process.exit(1);
 }
+
+// Graphile owns the queue connection. This small process-scoped handle is only
+// the readiness probe, so a lost database flips `/readyz` without taking down
+// `/livez` or making the worker guess from the runner's in-memory state.
+const readinessDatabase = openDatabase(connectionString);
+let workerReady = false;
 
 /**
  * The run-liveness notification target (slices 6.10 and 8.7): the E8 provider
@@ -133,7 +140,29 @@ const verifiedRunExecutor: RunExecutor = createRunExecutor({
     }),
 });
 
-let runner: Runner;
+let runner: Runner | undefined;
+
+const server = createHealthServer({
+  service: moduleInfo.name,
+  readiness: async () => {
+    if (!workerReady) {
+      return false;
+    }
+
+    try {
+      await queryable(readinessDatabase).query("select 1");
+      return true;
+    } catch {
+      return false;
+    }
+  },
+});
+
+server.listen(requestedPort, () => {
+  const address = server.address();
+  const port = address !== null && typeof address === "object" ? address.port : requestedPort;
+  logger.info("worker listening", { port, path: livenessPath });
+});
 
 try {
   runner = await startWorker({
@@ -142,18 +171,11 @@ try {
     runNotifications: notificationTarget,
     logger,
   });
+  workerReady = true;
 } catch (error) {
   logger.error("worker failed to start", { error });
   process.exit(1);
 }
-
-const server = createHealthServer({ service: moduleInfo.name });
-
-server.listen(requestedPort, () => {
-  const address = server.address();
-  const port = address !== null && typeof address === "object" ? address.port : requestedPort;
-  logger.info("worker listening", { port, path: healthPath });
-});
 
 let stopping = false;
 
@@ -165,9 +187,13 @@ function shutdown(signal: string): void {
   stopping = true;
   logger.info("worker stopping", { signal });
 
-  void runner.stop(`received ${signal}`).finally(() => {
-    server.close(() => process.exit(0));
-  });
+  void (runner === undefined ? Promise.resolve() : runner.stop(`received ${signal}`)).finally(
+    () => {
+      void readinessDatabase.close().finally(() => {
+        server.close(() => process.exit(0));
+      });
+    },
+  );
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));

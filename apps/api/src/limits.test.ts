@@ -23,6 +23,8 @@ describe("the route register", () => {
   it("names the health probe, the whole RPC surface, the webhook ingress, the callback and the file routes", () => {
     expect(rules).toEqual([
       { method: "GET", path: "/healthz", family: "probe" },
+      { method: "GET", path: "/livez", family: "probe" },
+      { method: "GET", path: "/readyz", family: "probe" },
       { method: "ALL", path: "/rpc/*", family: "rpc" },
       { method: "POST", path: "/webhooks/*", family: "webhook" },
       { method: "GET", path: "/oauth/mcp/callback", family: "webhook" },
@@ -39,6 +41,8 @@ describe("the route register", () => {
 
   it("matches the probe on GET only", () => {
     expect(routeRuleFor(rules, "GET", "/healthz")?.family).toBe("probe");
+    expect(routeRuleFor(rules, "GET", "/livez")?.family).toBe("probe");
+    expect(routeRuleFor(rules, "GET", "/readyz")?.family).toBe("probe");
     expect(routeRuleFor(rules, "POST", "/healthz")).toBeUndefined();
   });
 

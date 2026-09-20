@@ -132,7 +132,7 @@ function up() {
       "",
       "The stack is up and healthy:",
       `  web       http://127.0.0.1:${webPort}`,
-      `  api       http://127.0.0.1:${apiPort}/healthz`,
+      `  api       http://127.0.0.1:${apiPort}/readyz`,
       `  postgres  127.0.0.1:${postgresPort}`,
       "",
       "Follow the logs with `pnpm stack:logs`, stop it with `pnpm stack:down`.",

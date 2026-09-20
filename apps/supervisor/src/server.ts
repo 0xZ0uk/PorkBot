@@ -21,7 +21,8 @@ import {
 } from "@porkbot/adapters";
 import { timingSafeEqualBytes } from "@porkbot/effect";
 import type { ScreenCapabilityCodec } from "@porkbot/effect";
-import { createHealthListener } from "@porkbot/health";
+import { createHealthListener, createReadinessListener } from "@porkbot/health";
+import type { ReadinessCheck } from "@porkbot/health";
 import type { Logger } from "@porkbot/logging";
 import type { ComputerLifecycle } from "./computer-lifecycle.ts";
 
@@ -97,6 +98,8 @@ export interface SupervisorServerOptions {
   readonly screenTokens?: ScreenCapabilityCodec | undefined;
   readonly logger: Logger;
   readonly serviceName: string;
+  /** Dependency check used by `/readyz`; failures never change `/livez`. */
+  readonly readiness?: ReadinessCheck;
   /** Overridable for tests. */
   readonly maxBodyBytes?: number | undefined;
   readonly maxExecTimeoutMs?: number | undefined;
@@ -515,6 +518,10 @@ export function createSupervisorServer(options: SupervisorServerOptions): Server
   const maxBodyBytes = options.maxBodyBytes ?? wireMaxBodyBytes;
   const maxExecTimeoutMs = options.maxExecTimeoutMs ?? supervisorMaxExecTimeoutMs;
   const health = createHealthListener({ service: options.serviceName });
+  const readiness = createReadinessListener({
+    service: options.serviceName,
+    ...(options.readiness === undefined ? {} : { readiness: options.readiness }),
+  });
   const framesPattern = screenRouteMatcher(supervisorScreenRoutePatterns.frames);
   const inputPattern = screenRouteMatcher(supervisorScreenRoutePatterns.input);
 
@@ -778,6 +785,10 @@ export function createSupervisorServer(options: SupervisorServerOptions): Server
 
     try {
       if (health(request, response)) {
+        return;
+      }
+
+      if (await readiness(request, response)) {
         return;
       }
 
