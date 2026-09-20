@@ -147,7 +147,7 @@ describe("the Docker computer provider lifecycle", () => {
     });
   });
 
-  it("removes the container on destroy and keeps the home for reset", async () => {
+  it("removes the container and its network on destroy and keeps the home for reset", async () => {
     const daemon = await emulator();
     const provider = providerOver(daemon);
     await provider.ensure(computer);
@@ -163,6 +163,10 @@ describe("the Docker computer provider lifecycle", () => {
 
     expect(failure.kind).toBe("gone");
     expect([...daemon.volumes().values()][0]?.get("/home/agent/kept.txt")).toBe("kept");
+    // The isolation network ends with the machine: the daemon's subnet pools
+    // are finite, and a network that outlived its computer is a boot failure
+    // waiting for the next one.
+    expect(daemon.networks()).toEqual([]);
   });
 
   it("lists every machine it holds and forgets the ones it destroyed", async () => {

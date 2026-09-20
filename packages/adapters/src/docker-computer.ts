@@ -784,6 +784,17 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
       await engine
         .removeContainer(machine.instanceId, { force: true }, requestTimeoutMs)
         .catch((error: unknown) => failure(error, "container"));
+
+      // The per-computer network ends with the machine. `stop` parks and keeps
+      // it, so a parked computer comes back on the same isolation plan; a
+      // destroyed one is over, and the daemon's subnet pools are finite — a
+      // destroy that left its network behind eventually refuses the next boot
+      // with "all predefined address pools have been fully subnetted". The
+      // home volume is deliberately not removed here: it is the durable lane
+      // that `stop`/`ensure`, `reset` and the backup snapshots rely on.
+      await engine
+        .removeNetwork(planFor(computer).name, requestTimeoutMs)
+        .catch((error: unknown) => failure(error, "network"));
     },
 
     async ready(machine: ComputerMachine, computer: ComputerRef, budgetMs: number) {

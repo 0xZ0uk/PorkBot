@@ -123,13 +123,14 @@ are readable without opening a log.
 ## What "orphaned" means
 
 The provider seam's enumerable resource is a machine, and the sweep's claim is
-the canary bot id, so a canary night cannot touch a user's machine. A Docker
-home volume and the per-computer network are deliberately not swept: `destroy`
-removes the machine while the home survives by design (the durable lane behind
-`stop`/`ensure`, `reset` and the backup snapshots), and the network is the
-computer's stable isolation plan, adopted again by the next `ensure`. A cloud
-sandbox is the machine, so the sweep removes everything the cloud canary
-created.
+the canary bot id, so a canary night cannot touch a user's machine. Destroying
+a Docker machine also removes its per-computer isolation network, so a night of
+canaries cannot exhaust the daemon's subnet pools — the destroy path is where
+that leak lived, and it is fixed there rather than papered over by a sweep. A
+Docker home volume is deliberately not swept: `destroy` keeps it by design (the
+durable lane behind `stop`/`ensure`, `reset` and the backup snapshots), and the
+backup retention policy owns what happens to it. A cloud sandbox is the
+machine, so the sweep removes everything the cloud canary created.
 
 ## Where the pieces live
 
