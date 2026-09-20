@@ -15,6 +15,8 @@ name: CI
 #                audit is in sync with the code that reads the variables
 #   posture      the license, contributing, security and template files hold, and the full
 #                history carries no provider-shaped secret or personal data
+#   docs         doc links resolve, and the environment reference matches the schemas
+#                and the deployment template
 #   unit         unit tests with coverage; thresholds gate @porkbot/core and @porkbot/db
 #   integration  integration tests against the Postgres 18 the local stack boots
 #   e2e          real-browser release flows against the built output and offline emulators;
@@ -155,6 +157,23 @@ jobs:
       - name: Audit the posture files and the published history
         timeout-minutes: 5
         run: node packages/testkit/src/posture/cli.ts check
+
+  # Documentation staleness. Like quarantine and dependencies this tier reads
+  # files and no toolchain, so a rotted link or an environment name nothing
+  # declares is a red check by name instead of a surprise for a reader. The
+  # same check runs in the unit tier through packages/testkit/test/docs.test.ts.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Check links and the environment reference
+        timeout-minutes: 2
+        run: node packages/testkit/src/docs/cli.ts check
 
   # The build job populates the turbo cache that typecheck, unit, e2e and
   # integration then restore, which is why they wait for it rather than racing it.
@@ -523,6 +542,7 @@ jobs:
         dependencies,
         env,
         posture,
+        docs,
         unit,
         integration,
         e2e,
@@ -544,6 +564,7 @@ jobs:
             echo "| dependencies | ${{ needs.dependencies.result }} |"
             echo "| env | ${{ needs.env.result }} |"
             echo "| posture | ${{ needs.posture.result }} |"
+            echo "| docs | ${{ needs.docs.result }} |"
             echo "| unit | ${{ needs.unit.result }} |"
             echo "| integration | ${{ needs.integration.result }} |"
             echo "| e2e | ${{ needs.e2e.result }} |"

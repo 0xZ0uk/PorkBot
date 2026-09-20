@@ -40,7 +40,7 @@ fi
 
 # Every tier job plus the aggregate gate. Every one of these must be green; the
 # gate additionally turns "one tier was skipped" into a failure.
-checks=(format lint typecheck build quarantine dependencies env posture unit integration e2e desktop gate)
+checks=(format lint typecheck build quarantine dependencies env posture docs unit integration e2e desktop gate)
 
 for check in "${checks[@]}"; do
   # Job ids in the workflow are `name: <check>` with the two-space job indent.
