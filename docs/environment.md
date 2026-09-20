@@ -218,6 +218,27 @@ them by hand only when running a process outside the stack.
 | `TESTKIT_POSTGRES_IMAGE`             | optional | the pinned production major | Overrides the harness Postgres image; it must be the production major.                                                           |
 | `PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY` | optional | —                           | Secret. The Ed25519 private key a desktop release signs with; a GitHub Actions secret, read by the release CLI. Never committed. |
 
+## The nightly canary's workflow
+
+The live-provider canary (slice 12.6) is configured on the repository, not in
+the deployment: the nightly workflow reads these as GitHub repository variables
+and Actions secrets and maps them onto the generic supervisor and notification
+names. The CLI itself reads `PORKBOT_SUPERVISOR_URL`,
+`PORKBOT_SUPERVISOR_TOKEN`, `PORKBOT_NOTIFICATION_WEBHOOK_URL` and
+`PORKBOT_NOTIFICATION_WEBHOOK_KEY`, so an operator can run the same canary by
+hand against any deployment.
+
+| Variable                        | Required | Default              | Notes                                                                                                                               |
+| ------------------------------- | -------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `PORKBOT_CANARY_OWNER`          | optional | the repository owner | The assignee a canary failure's issue is assigned to. A repository variable.                                                        |
+| `PORKBOT_CANARY_BUDGET_USD`     | optional | —                    | The cloud canary's stated monthly budget in US dollars; without it the billable kind reports a visible skip. A repository variable. |
+| `PORKBOT_CANARY_USD_PER_MINUTE` | optional | —                    | The provider's stated rate; the per-run ceiling is the budget divided across the nightly runs. A repository variable.               |
+| `PORKBOT_CANARY_WEBHOOK_URL`    | optional | —                    | The E8 webhook a canary failure is delivered to; unset keeps the offline emulator and the error log. An Actions secret.             |
+| `PORKBOT_CANARY_WEBHOOK_KEY`    | optional | —                    | Secret. The canary webhook's credential. An Actions secret.                                                                         |
+| `PORKBOT_CANARY_CLOUD_ENDPOINT` | optional | —                    | The cloud provider's control-plane endpoint; with the token and image it enables the cloud job. A repository variable.              |
+| `PORKBOT_CANARY_CLOUD_IMAGE`    | optional | —                    | The machine image the cloud canary boots. A repository variable.                                                                    |
+| `PORKBOT_CANARY_CLOUD_TOKEN`    | optional | —                    | Secret. The cloud provider's control-plane token; without it the cloud job reports a skip. An Actions secret.                       |
+
 ## Values a computer's sandbox receives
 
 The computer provider injects these into the credential-proxy sidecar when the
@@ -252,6 +273,7 @@ source name.
 | `apps/desktop/.env.schema`      | the update feed and pinned public key                                                                               |
 | `packages/db/.env.schema`       | the two service-role passwords                                                                                      |
 | `packages/adapters/.env.schema` | the credential-proxy sidecar's injected values                                                                      |
+| `packages/canary/.env.schema`   | the supervisor connection and the failure-notification webhook the canary shares with the worker                    |
 
 `deploy/porkbot.env.example` is the deployment template, and the `docs` CI tier
 compares this document against the schemas and the template in both directions.
