@@ -14,8 +14,8 @@ A bot's computer is one interface — `ComputerProvider` — with three shipped
 implementations. The supervisor owns lifecycle and is the only process that
 constructs a provider and the only one that holds the Docker socket. The API
 and worker dial the supervisor; a sandbox reaches neither another bot's machine
-nor a service on the host. The design record is the README's "A bot's
-computer" section.
+nor a service on the host. The design record is
+[the computer architecture record](architecture/computers.md).
 
 ## The three kinds
 

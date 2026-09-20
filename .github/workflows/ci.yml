@@ -238,9 +238,10 @@ jobs:
       - uses: ./.github/actions/setup
       # The same command a developer runs. It builds the app images, starts
       # Postgres, api, worker, web and supervisor, and blocks on `--wait` until
-      # every healthcheck passes, so a stack that starts here is the one the
-      # README documents. Every image it builds from or runs is pinned by digest
-      # in dependencies.json, which the `dependencies` tier checks.
+      # every healthcheck passes, so a stack that starts here is the one
+      # `docs/architecture/operations.md` documents. Every image it builds from
+      # or runs is pinned by digest in dependencies.json, which the
+      # `dependencies` tier checks.
       - name: Start the local stack
         timeout-minutes: 25
         run: pnpm stack:up

@@ -31,7 +31,9 @@ compose` fails loudly too. The file is mode 0600 and git-ignored.
 - **The stack sets some process variables itself**, so the operator never puts
   them in `deploy/.env`. They are listed separately below.
 - **Local development** uses git-ignored `.env.local` files through `varlock
-run`; the README's "Environment configuration" section is the local path.
+run`; [the environment configuration
+  record](architecture/development.md#environment-configuration) is the local
+  path.
 
 **Required** in the tables means the deployment refuses to start without a
 value: either the compose file's `${NAME:?}` set or a process boot check. The

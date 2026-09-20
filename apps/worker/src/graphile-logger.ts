@@ -4,7 +4,8 @@ import type { Logger } from "@porkbot/logging";
 /**
  * Graphile's log lines, written by `@porkbot/logging`.
  *
- * `packages/logging` is the only writer of logs (README, Logging): it produces
+ * `packages/logging` is the only writer of logs (the Logging section of
+ * `docs/architecture/development.md`): it produces
  * one redacted JSON object per line, and nothing else in the workspace calls
  * `console`. Graphile Worker otherwise defaults to the console, so its runner
  * gets a `Logger` whose factory folds Graphile's scope — worker id, task,

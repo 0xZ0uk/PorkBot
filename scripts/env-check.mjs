@@ -78,7 +78,7 @@ for (const packageDir of schemaPackages) {
 if (failures.length > 0) {
   process.stderr.write(
     `\n${failures.length} environment check(s) failed. Run the same command locally with ` +
-      "`pnpm env:check`, and see README.md (Environment configuration) for the layout.\n",
+      "`pnpm env:check`, and see docs/architecture/development.md (Environment configuration) for the layout.\n",
   );
   process.exit(1);
 }

@@ -31,8 +31,8 @@ import { webhookRulePath } from "./webhooks.ts";
  * Limits live in process memory on purpose: v1.0 is a single host with one API
  * process (PRD decision 32), so a shared store would add a dependency the
  * topology does not have. Every limit is configurable through
- * `limitsFromEnvironment`, and the README documents the variables and
- * defaults.
+ * `limitsFromEnvironment`, and `docs/architecture/transport.md` documents the
+ * variables and defaults.
  */
 
 /** The route families a policy can be attached to. */

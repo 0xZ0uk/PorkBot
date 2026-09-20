@@ -163,9 +163,9 @@ describe("deployment register and template", () => {
         Number(memory?.[1] ?? 0) * (memory?.[2] === "g" ? memoryThresholds.g : memoryThresholds.m);
     }
 
-    // README "Single-host deployment": 4 vCPU / 8 GB is the base host, and the
-    // default per-bot settings are 1 vCPU / 2048 MB. The stack plus one bot has
-    // to fit with room for the OS and the daemon or the floor is a lie.
+    // The single-host record: 4 vCPU / 8 GB is the base host, and the default
+    // per-bot settings are 1 vCPU / 2048 MB. The stack plus one bot has to fit
+    // with room for the OS and the daemon or the floor is a lie.
     expect(totalCpus + 1).toBeLessThanOrEqual(4);
     expect(totalMemoryBytes + 2 * memoryThresholds.g).toBeLessThanOrEqual(8 * memoryThresholds.g);
   });
