@@ -21,9 +21,9 @@ import type {
  * The two halves are deliberate. `account.me` and `deployment.status` are
  * contract procedures, so the shell consumes them through the derived client
  * and never sees a wire shape it invented. Sign-in, sign-up and sign-out are
- * the auth library's own routes: the API mounts its handler under
- * `/api/auth` (slice 12.1 wires the process), and this module is the client
- * half of that mount — no second session protocol, and the cookie stays
+ * the auth library's own routes: the API composes its handler through
+ * `createOperatorAuth` and mounts it under `/api/auth`, and this module is the
+ * client half of that mount — no second session protocol, and the cookie stays
  * `HttpOnly` and untouched by this code.
  *
  * The default paths are same-origin, which is the deployment's shape: one TLS
