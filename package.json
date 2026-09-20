@@ -37,6 +37,7 @@
     "deploy:up": "node packages/testkit/src/deployment/cli.ts up",
     "deploy:upgrade": "node packages/testkit/src/deployment/cli.ts upgrade",
     "dev": "turbo run dev",
+    "docs:check": "node packages/testkit/src/docs/cli.ts check",
     "env:check": "node scripts/env-check.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

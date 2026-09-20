@@ -30,6 +30,7 @@ pnpm test:e2e         # end-to-end tests (the only tier that retries)
 pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
 pnpm dependencies:check # validate dependencies.json, manifests, lockfile and image digests
 pnpm dependencies:diff  # print the lockfile delta against origin/main
+pnpm docs:check       # check doc links and the environment reference against the schemas
 pnpm env:check        # load every .env.schema and audit it against the code
 pnpm posture:check    # audit the posture files and the published history for leaks
 pnpm stack:up         # build the local stack, start it, wait for every healthcheck
@@ -64,6 +65,24 @@ pnpm format:check     # verify formatting (CI runs this)
 `pnpm typecheck`, `pnpm test`, `pnpm test:coverage` and `pnpm test:integration`
 build the workspace dependencies they need first, so a clean checkout only needs
 `pnpm install` followed by any single command.
+
+## Documentation
+
+The operator-facing set, checked for staleness by the `docs` CI tier:
+
+| Document                                               | What it is for                                                          |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| [`docs/self-host.md`](docs/self-host.md)               | Install and run a single-host deployment, first sign-in to first run    |
+| [`docs/environment.md`](docs/environment.md)           | Every environment variable, with its default and whether it is required |
+| [`docs/runbook.md`](docs/runbook.md)                   | Dead disk, stuck run, rotated key, failed upgrade, restore              |
+| [`docs/backups.md`](docs/backups.md)                   | The backup process, the envelope and the recovery path                  |
+| [`docs/computers.md`](docs/computers.md)               | Choosing and configuring a computer provider, sizing and snapshots      |
+| [`docs/security.md`](docs/security.md)                 | The trust boundary and the non-goals                                    |
+| [`docs/reverse-proxy.md`](docs/reverse-proxy.md)       | The one-origin contract and the streaming runbook                       |
+| [`docs/credential-proxy.md`](docs/credential-proxy.md) | Why credentials never enter a sandbox                                   |
+| [`docs/bot-secrets.md`](docs/bot-secrets.md)           | The bot-secret flow and its trust posture                               |
+| [`docs/desktop.md`](docs/desktop.md)                   | The desktop shell: hardening, tray, signed updates                      |
+| [`docs/release.md`](docs/release.md)                   | Building, signing and publishing desktop artifacts                      |
 
 ## Layout
 
@@ -163,15 +182,16 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   unset means no proxy runs. Grants are written only by the supervisor, through
   the daemon's archive API, onto the sidecar's own layer — no bind, no shared
   volume, removed with the sidecar when the machine parks; a run's grant is
-  revoked when the run ends and expires at the run's lease end regardless. `docs/credential-proxy.md` describes the boundary and what the
-  deferred screen-takeover work inherits from it.
+  revoked when the run ends and expires at the run's lease end regardless.
+  [`docs/credential-proxy.md`](docs/credential-proxy.md) describes the boundary
+  and what the deferred screen-takeover work inherits from it.
 - **Backups are local and encrypted by default.** `backup` reads the snapshot
   archives through the storage seam (`storage-data`, read-only), writes
   AES-256-GCM objects to the `backup-data` volume and the sealed key envelope
   to `backup-envelope`, and runs the restore drill into a scratch database on
   the stack's Postgres. The local keyring and passphrase are placeholders like
   the database passwords; a deployment generates real ones and configures
-  `PORKBOT_BACKUP_S3_*` for off-site storage. `docs/backups.md` is the runbook,
+  `PORKBOT_BACKUP_S3_*` for off-site storage. [`docs/backups.md`](docs/backups.md) is the runbook,
   including the recovery path from the envelope.
 - **CI runs the same command.** The integration tier starts the stack with
   `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
@@ -194,9 +214,13 @@ process can answer, while readiness includes the dependency checks needed to
 receive work. `/healthz` remains as a legacy liveness alias, and
 `packages/health` is the shared implementation; `apps/api` keeps its own
 request-aware surface and adds `/healthz/stream`, the timed probe the
-reverse-proxy runbook uses (`docs/reverse-proxy.md`).
+reverse-proxy runbook uses ([`docs/reverse-proxy.md`](docs/reverse-proxy.md)).
 
 ## Single-host deployment
+
+The task-oriented walkthrough — host preparation, the first sign-in, the first
+model connection and the first run — is
+[`docs/self-host.md`](docs/self-host.md); this section is the design record.
 
 `deploy/compose.yaml` is the production shape of the local stack: the same
 Postgres 18, one-shot `migrate`, `api`, `worker`, `web`, `proxy` and
@@ -264,7 +288,7 @@ active release running; a failed switch attempts to restore it.
   `PORKBOT_BIND_ADDRESS`). The API and web ports stay on loopback. The config
   disables response buffering on the API path and caps client reads and idle
   connections, so a token stream crosses it frame by frame;
-  `docs/reverse-proxy.md` is the contract and the runbook for when it does not.
+  [`docs/reverse-proxy.md`](docs/reverse-proxy.md) is the contract and the runbook for when it does not.
   A proxy that cannot reach the API answers unhealthy, and Caddy keeps its
   certificates in the `caddy-data` volume across restarts.
 - **Resource floors and per-bot sizing.** The host floor is 4 vCPU / 8 GB for
@@ -307,13 +331,14 @@ active release running; a failed switch attempts to restore it.
   way in. `deploy:exec -- backup node dist/cli.js status` reports the backup
   ledger and the envelope, and
   `deploy:exec -- backup node dist/cli.js restore --latest --database <name>`
-  is the recovery path (`docs/backups.md`). `pnpm deploy:upgrade --tag <git-sha>`
+  is the recovery path ([`docs/backups.md`](docs/backups.md)). `pnpm deploy:upgrade --tag <git-sha>`
   is the one-command release path; it records the prior tag in the adjacent
   ignored release state so `pnpm deploy:rollback` can redeploy it. Rollback is
   not a schema rollback: it runs the previous image against the newer schema
   and never attempts to reverse migrations. If the older image is incompatible
   with that schema, restore a compatible database backup separately before
-  retrying, and the operator runbooks are 12.7.
+  retrying, and the operator runbooks are in
+  [`docs/runbook.md`](docs/runbook.md).
 
 ## Desktop releases
 
@@ -358,6 +383,10 @@ pnpm desktop:smoke -- --app .release/PorkBot-linux-x64/PorkBot \
   to trust the publisher. Linux artifacts run as extracted.
 
 ## Environment configuration
+
+The operator-facing reference — every variable with its default and whether the
+stack refuses to start without it — is
+[`docs/environment.md`](docs/environment.md).
 
 Every variable an entrypoint reads is declared in a `.env.schema` next to it
 ([varlock](https://varlock.dev), pinned in `dependencies.json`). The root
@@ -540,6 +569,9 @@ on Postgres, reads the rows back through the actor-scoped repository, and
 resolves the artifact to the full result.
 
 ## A bot's computer
+
+[`docs/computers.md`](docs/computers.md) is the operator's guide: choosing and
+configuring a provider, sizing it against the host floor, and snapshots.
 
 A run's machine is one interface away from any provider: `ComputerProvider` in
 `packages/adapter-kit` declares `ensure`, `status`, `stop`, `list`, `exec`,
@@ -1467,7 +1499,7 @@ archive the same way, prunes what the retention window has passed, and then
 restores the dump it just wrote into a scratch database and compares the canary
 it reads back. The schedule, the retention window and the drill interval live in
 `@porkbot/core`'s `backup-policy.ts` and are re-stated with the recovery path in
-`docs/backups.md`.
+[`docs/backups.md`](docs/backups.md).
 
 - **Encrypted at rest, two layers.** Objects are chunked AES-256-GCM with an
   authenticated terminal record, so a truncated or reordered object fails
@@ -1731,6 +1763,7 @@ with a name instead of a step index buried in one long log.
 - `dependencies` — the pin register, manifests, lockfile integrity and image digests agree
 - `env` — every `.env.schema` loads under the CI fixtures and every audit is in sync
 - `posture` — the license, contributing, security and template files hold, and no published commit carries a secret or personal data
+- `docs` — every link resolves and the environment reference matches the schemas and the template
 - `unit` — unit tests with coverage
 - `integration` — the tests that need a real Postgres, against the local stack the job starts
 - `e2e` — real-browser release flows against the built output and offline emulators
@@ -2264,7 +2297,7 @@ mis-signed, tampered, non-HTTPS or older manifest and stages nothing until the
 artifact's bytes hash to the signed digest, and a build with no feed configured
 checks nothing. The "run here" topology stays deferred (issue #180, PRD open
 question 1): the app runs no supervisor, computer or worker, and
-`docs/desktop.md` states it. The unit tier covers the hardening call sites, the
+[`docs/desktop.md`](docs/desktop.md) states it. The unit tier covers the hardening call sites, the
 proxy over real HTTP, the update refusals and the tray; the screens are
 captured under `docs/screenshots/`.
 

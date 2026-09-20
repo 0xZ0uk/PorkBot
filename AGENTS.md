@@ -202,6 +202,18 @@ change it without breaking what the boundaries and the CI gate protect.
   device-local encrypted `.env.local`, never from a committed file. Checked by:
   the `env` CI tier (`scripts/env-check.mjs`) and review.
 
+### Documentation
+
+- **The operator docs are checked, not trusted.** Every `PORKBOT_*` or
+  `TESTKIT_*` name in the repository's markdown (the root files and
+  `docs/**/*.md`) is declared in a `.env.schema`, in
+  `deploy/porkbot.env.example` or in the check's override and runtime
+  registers; every schema and template variable appears in `docs/environment.md`
+  with a default and a required/optional answer; and every relative link,
+  backticked `docs/*.md` reference and heading anchor resolves. Checked by: the
+  `docs` CI tier (`packages/testkit/src/docs/cli.ts`) and
+  `packages/testkit/test/docs.test.ts`.
+
 ### Secrets and public-safe text
 
 - **Never commit a secret.** No `.env` files, keys, tokens, private URLs or real
