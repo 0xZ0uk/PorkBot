@@ -445,6 +445,21 @@ const exemptTables: readonly { readonly table: string; readonly reason: string }
     table: "webhook_delivery",
     reason: "deployment-global ingress dedupe keyed by (source, delivery_id); not tenant data",
   },
+  {
+    table: "backup_run",
+    reason:
+      "deployment-global backup ledger; a backup covers the whole database, so there is no space predicate to probe, and no actor seam reaches it",
+  },
+  {
+    table: "backup_canary",
+    reason:
+      "deployment-global restore-drill canary; written by the backup process as the database owner and read back from a scratch database, never through an actor",
+  },
+  {
+    table: "backup_alert",
+    reason:
+      "deployment-global alert episode claim, written by the worker's backup watchdog through its own restricted role; not tenant data",
+  },
 ];
 
 describe("the authorization matrix", () => {

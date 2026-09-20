@@ -143,6 +143,18 @@ export const workspacePackages = {
     ],
     testImports: ["@porkbot/testkit"],
   },
+  "@porkbot/backup": {
+    role: "nightly encrypted backups and the scheduled restore drill",
+    imports: [
+      "@porkbot/adapter-kit",
+      "@porkbot/adapters",
+      "@porkbot/core",
+      "@porkbot/db",
+      "@porkbot/health",
+      "@porkbot/logging",
+    ],
+    testImports: ["@porkbot/testkit"],
+  },
   "@porkbot/supervisor": {
     role: "the Docker socket holder and owner of computer lifecycle",
     imports: [

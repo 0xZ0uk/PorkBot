@@ -169,6 +169,10 @@ try {
     connectionString,
     executeRun: verifiedRunExecutor,
     runNotifications: notificationTarget,
+    // Deployment-health alerts ride the same provider but skip the
+    // per-user preference check: a missed backup is not a notification
+    // category an operator opts into.
+    operatorAlerts: notificationTarget.provider,
     logger,
   });
   workerReady = true;

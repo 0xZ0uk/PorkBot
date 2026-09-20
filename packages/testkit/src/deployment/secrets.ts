@@ -29,7 +29,7 @@ export type DeploymentValueKind =
   | "generated-password"
   /** A generated 32-byte base64url token or signing key. */
   | "generated-token"
-  /** A generated `k1:<base64 32-byte key>` credential keyring. */
+  /** A generated `k1:<base64 32-byte key>` keyring (credentials or backups). */
   | "generated-keyring"
   /** The proxy capability token, generated only when the proxy is enabled. */
   | "generated-proxy-token"
@@ -127,6 +127,18 @@ export const deploymentValuePlans: readonly DeploymentValuePlan[] = [
     sentinel: generatedKeyringSentinel,
     kind: "generated-keyring",
     why: "the AES-256 keyring that encrypts stored credentials at rest",
+  },
+  {
+    key: "PORKBOT_BACKUP_KEYS",
+    sentinel: generatedKeyringSentinel,
+    kind: "generated-keyring",
+    why: "the AES-256 keyring that encrypts backups at rest",
+  },
+  {
+    key: "PORKBOT_BACKUP_ENVELOPE_PASSPHRASE",
+    sentinel: generatedSecretSentinel,
+    kind: "generated-token",
+    why: "seals the backup key envelope an operator keeps off the host",
   },
   {
     key: "PORKBOT_AUTH_ORIGIN",

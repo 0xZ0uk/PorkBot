@@ -84,7 +84,7 @@ describe("the single-host deployment definition", () => {
       expect(setup.stdout, `${plan.key}'s value must not be printed`).not.toContain(value);
     }
 
-    expect(setup.stdout).toContain("Generated 7 secrets");
+    expect(setup.stdout).toContain("Generated 9 secrets");
 
     const check = runCli(["check", "--env-path", envPath, "--compose"]);
 

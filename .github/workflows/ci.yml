@@ -239,7 +239,7 @@ jobs:
             --tag "$base_tag" \
             --env-path "$deploy_env"
 
-          for service in api worker web supervisor migrate; do
+          for service in api worker backup web supervisor migrate; do
             docker image tag "porkbot/${service}:local" "porkbot/${service}:${base_tag}"
             docker image tag "porkbot/${service}:local" "porkbot/${service}:${upgrade_tag}"
           done

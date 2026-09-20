@@ -41,6 +41,9 @@ export const requiredDeploymentKeys: readonly string[] = [
   "PORKBOT_SCREEN_TOKEN_SECRET",
   "PORKBOT_CREDENTIAL_KEYS",
   "PORKBOT_CREDENTIAL_ACTIVE_KEY",
+  "PORKBOT_BACKUP_KEYS",
+  "PORKBOT_BACKUP_ACTIVE_KEY",
+  "PORKBOT_BACKUP_ENVELOPE_PASSPHRASE",
   "PORKBOT_COMPUTER_PROVIDER",
 ];
 
@@ -53,6 +56,7 @@ export const secretDeploymentKeys: readonly string[] = [
   "PORKBOT_SUPERVISOR_TOKEN",
   "PORKBOT_SCREEN_TOKEN_SECRET",
   "PORKBOT_PROXY_TOKEN_SECRET",
+  "PORKBOT_BACKUP_ENVELOPE_PASSPHRASE",
 ];
 
 /** Passwords spliced into `postgres://` URLs must not need escaping. */
@@ -182,14 +186,20 @@ function integerProblem(raw: string, minimum: number): string | undefined {
 }
 
 /**
- * Validates the keyring the way the credentials module does: `id:base64key`
- * entries whose keys decode to exactly 32 bytes, no duplicate ids, and an
- * active id that names one of them.
+ * Validates a keyring the way its module does: `id:base64key` entries whose
+ * keys decode to exactly 32 bytes, no duplicate ids, and an active id that
+ * names one of them. The credential keyring and the backup keyring have the
+ * same shape and different material, so both are checked, each under its own
+ * variable names.
  */
-function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] {
+function keyringProblemsFor(
+  env: ReadonlyMap<string, string>,
+  keysKey: string,
+  activeKey: string,
+): DeploymentProblem[] {
   const problems: DeploymentProblem[] = [];
-  const keyring = trimmed(env, "PORKBOT_CREDENTIAL_KEYS").value;
-  const active = trimmed(env, "PORKBOT_CREDENTIAL_ACTIVE_KEY").value;
+  const keyring = trimmed(env, keysKey).value;
+  const active = trimmed(env, activeKey).value;
 
   if (keyring === "") {
     return problems;
@@ -203,7 +213,7 @@ function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] 
   if (entries.length === 0) {
     return [
       {
-        key: "PORKBOT_CREDENTIAL_KEYS",
+        key: keysKey,
         message: "must declare at least one id:base64key entry",
       },
     ];
@@ -217,7 +227,7 @@ function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] 
 
     if (separator <= 0 || separator === entry.length - 1) {
       problems.push({
-        key: "PORKBOT_CREDENTIAL_KEYS",
+        key: keysKey,
         message: `${label} must be id:base64key`,
       });
       return;
@@ -228,7 +238,7 @@ function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] 
 
     if (!credentialKeyIdPattern.test(id)) {
       problems.push({
-        key: "PORKBOT_CREDENTIAL_KEYS",
+        key: keysKey,
         message: `${label} has id ${JSON.stringify(id)}, which must match ${credentialKeyIdPattern.source}`,
       });
       return;
@@ -236,7 +246,7 @@ function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] 
 
     if (ids.has(id)) {
       problems.push({
-        key: "PORKBOT_CREDENTIAL_KEYS",
+        key: keysKey,
         message: `id "${id}" appears twice; a duplicate id makes decryption depend on parse order`,
       });
       return;
@@ -251,7 +261,7 @@ function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] 
 
     if (decoded.length !== 32 || !canonical) {
       problems.push({
-        key: "PORKBOT_CREDENTIAL_KEYS",
+        key: keysKey,
         message:
           `key "${id}" must be a base64 32-byte key (openssl rand -base64 32); ` +
           `it decoded to ${String(decoded.length)} bytes`,
@@ -261,8 +271,8 @@ function keyringProblems(env: ReadonlyMap<string, string>): DeploymentProblem[] 
 
   if (active !== "" && !ids.has(active)) {
     problems.push({
-      key: "PORKBOT_CREDENTIAL_ACTIVE_KEY",
-      message: `"${active}" does not name a key in PORKBOT_CREDENTIAL_KEYS`,
+      key: activeKey,
+      message: `"${active}" does not name a key in ${keysKey}`,
     });
   }
 
@@ -348,7 +358,10 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
     seenSecretValues.set(value, key);
   }
 
-  problems.push(...keyringProblems(env));
+  problems.push(
+    ...keyringProblemsFor(env, "PORKBOT_CREDENTIAL_KEYS", "PORKBOT_CREDENTIAL_ACTIVE_KEY"),
+    ...keyringProblemsFor(env, "PORKBOT_BACKUP_KEYS", "PORKBOT_BACKUP_ACTIVE_KEY"),
+  );
 
   for (const key of ["PORKBOT_AUTH_ORIGIN", "PORKBOT_WEB_ORIGIN"]) {
     const value = valueOf(key);
@@ -519,6 +532,61 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
       problems.push({
         key,
         message: "must be set together with the other credential-proxy settings",
+      });
+    }
+  }
+
+  const backupHour = valueOf("PORKBOT_BACKUP_SCHEDULE_HOUR_UTC");
+
+  if (
+    backupHour !== "" &&
+    !(integerProblem(backupHour, 0) === undefined && Number(backupHour) <= 23)
+  ) {
+    problems.push({
+      key: "PORKBOT_BACKUP_SCHEDULE_HOUR_UTC",
+      message: "must be an hour 0-23 in UTC",
+    });
+  }
+
+  const backupMinute = valueOf("PORKBOT_BACKUP_SCHEDULE_MINUTE_UTC");
+
+  if (
+    backupMinute !== "" &&
+    !(integerProblem(backupMinute, 0) === undefined && Number(backupMinute) <= 59)
+  ) {
+    problems.push({
+      key: "PORKBOT_BACKUP_SCHEDULE_MINUTE_UTC",
+      message: "must be a minute 0-59",
+    });
+  }
+
+  for (const key of ["PORKBOT_BACKUP_RETENTION_DAYS", "PORKBOT_BACKUP_DRILL_INTERVAL_DAYS"]) {
+    const value = valueOf(key);
+
+    if (value === "") {
+      continue;
+    }
+
+    const problem = integerProblem(value, 1);
+
+    if (problem !== undefined) {
+      problems.push({ key, message: problem });
+    }
+  }
+
+  const backupS3 = [
+    "PORKBOT_BACKUP_S3_ENDPOINT",
+    "PORKBOT_BACKUP_S3_BUCKET",
+    "PORKBOT_BACKUP_S3_ACCESS_KEY_ID",
+    "PORKBOT_BACKUP_S3_SECRET_ACCESS_KEY",
+  ];
+  const backupS3Configured = backupS3.filter((key) => valueOf(key) !== "").length;
+
+  if (backupS3Configured !== 0 && backupS3Configured !== backupS3.length) {
+    for (const key of backupS3) {
+      problems.push({
+        key,
+        message: "must be set together with the other backup S3 settings",
       });
     }
   }

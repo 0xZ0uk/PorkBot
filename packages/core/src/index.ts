@@ -439,3 +439,35 @@ export type {
   ComputerNetworkPlan,
   ComputerNetworkPlanProblem,
 } from "./computer-network.ts";
+
+export {
+  BACKUP_ALERT_KINDS,
+  BACKUP_ENVELOPE_VERSION,
+  BACKUP_OBJECT_PREFIX,
+  BACKUP_RUN_STATUSES,
+  BackupEnvelopeError,
+  backupEnvelopeAad,
+  backupHomesKey,
+  backupPostgresKey,
+  backupRunIdFromKey,
+  decideBackupAlerts,
+  DEFAULT_BACKUP_SCHEDULE,
+  isBackupDue,
+  isDrillDue,
+  nextBackupAt,
+  parseBackupKeyEnvelope,
+  selectExpiredBackupKeys,
+} from "./backup-policy.ts";
+export type {
+  BackupAlert,
+  BackupAlertInput,
+  BackupAlertKind,
+  BackupAlertRun,
+  BackupEnvelopeKdf,
+  BackupKeyEnvelope,
+  BackupObjectAge,
+  BackupRunStatus,
+  DrillDueInput,
+  NightlyBackupSchedule,
+  RetentionInput,
+} from "./backup-policy.ts";
