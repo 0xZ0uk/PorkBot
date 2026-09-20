@@ -141,6 +141,10 @@ describe("settled-run notifications", () => {
 
     expect(emulator.size).toBe(1);
     expect(world.claimed).toEqual(["run-1"]);
+    expect(world.lines.find((line) => line["msg"] === "run notification answered")).toMatchObject({
+      runId: "run-1",
+      correlationId: "run-1",
+    });
   });
 
   it("announces a failed run with the failure sentence, never its error text", async () => {
@@ -224,8 +228,12 @@ describe("settled-run notifications", () => {
     ).resolves.toBeUndefined();
 
     expect(emulator.size).toBe(0);
-    expect(world.lines.some((line) => line["msg"] === "could not claim a run notification")).toBe(
-      true,
+    expect(world.lines).toContainEqual(
+      expect.objectContaining({
+        msg: "could not claim a run notification",
+        runId: "run-1",
+        correlationId: "run-1",
+      }),
     );
   });
 
@@ -242,13 +250,14 @@ describe("settled-run notifications", () => {
       notifySettledRun(runRecord({ status: "completed" }), world.context(emulator)),
     ).resolves.toBeUndefined();
 
-    expect(
-      world.lines.some(
-        (line) =>
-          line["msg"] === "could not deliver a run notification" &&
-          line["kind"] === "run.completed",
-      ),
-    ).toBe(true);
+    expect(world.lines).toContainEqual(
+      expect.objectContaining({
+        msg: "could not deliver a run notification",
+        kind: "run.completed",
+        runId: "run-1",
+        correlationId: "run-1",
+      }),
+    );
   });
 });
 

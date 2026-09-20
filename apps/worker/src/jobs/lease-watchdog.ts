@@ -208,10 +208,12 @@ async function releaseStaleComputers(
 
     if (cleared) {
       released += 1;
-      context.logger.info("lease watchdog released a stale computer lease", {
-        runId: lease.runId,
-        fence: lease.fence,
-      });
+      context.logger
+        .child({ runId: lease.runId })
+        .info("lease watchdog released a stale computer lease", {
+          runId: lease.runId,
+          fence: lease.fence,
+        });
     }
   }
 

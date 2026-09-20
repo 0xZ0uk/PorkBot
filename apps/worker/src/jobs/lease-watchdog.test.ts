@@ -596,9 +596,13 @@ describe("the watchdog's stall pass", () => {
     expect(fake.computerReleases).toEqual([
       { spaceId: "space-1", botId: "bot-1", runId: "run-1", owner: "dead-worker", fence: 3 },
     ]);
-    expect(
-      fake.lines.some((line) => line["msg"] === "lease watchdog released a stale computer lease"),
-    ).toBe(true);
+    expect(fake.lines).toContainEqual(
+      expect.objectContaining({
+        msg: "lease watchdog released a stale computer lease",
+        runId: "run-1",
+        correlationId: "run-1",
+      }),
+    );
     expect(fake.lines.at(-1)).toMatchObject({ computersReleased: 1 });
   });
 

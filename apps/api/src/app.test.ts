@@ -121,6 +121,26 @@ describe("the http surface", () => {
     expect(body.service).toBe(serviceName);
   });
 
+  it("keeps liveness separate from dependency readiness", async () => {
+    let dependencyUp = false;
+    const dependencyApp = createApiApp({
+      services,
+      logger,
+      readiness: () => dependencyUp,
+    });
+
+    expect((await dependencyApp.request("/livez")).status).toBe(200);
+
+    const notReady = await dependencyApp.request("/readyz");
+    expect(notReady.status).toBe(503);
+    expect(await notReady.json()).toEqual({ status: "not_ready", service: serviceName });
+
+    dependencyUp = true;
+    const ready = await dependencyApp.request("/readyz");
+    expect(ready.status).toBe(200);
+    expect(await ready.json()).toEqual({ status: "ready", service: serviceName });
+  });
+
   it("answers unknown routes with 404", async () => {
     const response = await fetch(`${baseUrl}/unknown`);
 

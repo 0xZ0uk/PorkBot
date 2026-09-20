@@ -47,6 +47,20 @@ const lifecycle = createComputerLifecycle({
   idleTimeoutMs: selection.idleTimeoutMs,
 });
 
+/** The supervisor remains live while its provider is unavailable, but is not ready to receive work. */
+const readiness = async (): Promise<boolean> => {
+  if (serviceToken === "") {
+    return false;
+  }
+
+  try {
+    await selection.provider.validate();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const server = createSupervisorServer({
   lifecycle,
   providers: {
@@ -58,6 +72,7 @@ const server = createSupervisorServer({
   screenTokens: screenSecret === "" ? undefined : createScreenCapabilityCodec(screenSecret),
   logger,
   serviceName: moduleInfo.name,
+  readiness,
 });
 
 if (serviceToken === "") {
