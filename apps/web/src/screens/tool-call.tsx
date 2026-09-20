@@ -1,3 +1,4 @@
+import { fileDownloadPath } from "@porkbot/contracts";
 import type { ToolCallSnapshot } from "@porkbot/core";
 import { Button } from "@porkbot/ui";
 import { useState } from "react";
@@ -21,9 +22,11 @@ import { useState } from "react";
  *
  * A file-producing tool (slice 7.6) records its output through the storage
  * seam and answers with a download pointer; when the inline result carries
- * one, the row offers the file by name. The pointer is validated before it
- * becomes an anchor — the result is `unknown` on the wire — so a malformed
- * value renders nothing rather than a broken link.
+ * one, the row offers the file by name. The result is untrusted tool output,
+ * so the row rebuilds the link from the artifact's id through the contract's
+ * path builder instead of trusting a path it carries — a `//host` value would
+ * otherwise render as a trusted external link — and a shape this build does
+ * not recognise renders nothing rather than a broken link.
  */
 
 export interface ToolCallEntryProps {
@@ -195,9 +198,13 @@ function recordedArtifact(
   }
 
   const record = value as Record<string, unknown>;
+  const id = record["id"];
   const filename = record["filename"];
   const sizeBytes = record["sizeBytes"];
-  const downloadPath = record["downloadPath"];
+
+  if (typeof id !== "string" || !isStoredFileId(id)) {
+    return undefined;
+  }
 
   if (typeof filename !== "string" || filename === "") {
     return undefined;
@@ -207,11 +214,12 @@ function recordedArtifact(
     return undefined;
   }
 
-  if (typeof downloadPath !== "string" || !downloadPath.startsWith("/")) {
-    return undefined;
-  }
+  return { filename, sizeBytes, downloadPath: fileDownloadPath(id) };
+}
 
-  return { filename, sizeBytes, downloadPath };
+/** A stored-file id: the UUID the row's route resolves. */
+function isStoredFileId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 /**
