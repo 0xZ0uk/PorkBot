@@ -40,7 +40,7 @@ fi
 
 # Every tier job plus the aggregate gate. Every one of these must be green; the
 # gate additionally turns "one tier was skipped" into a failure.
-checks=(format lint typecheck build quarantine dependencies env unit integration e2e desktop gate)
+checks=(format lint typecheck build quarantine dependencies env posture unit integration e2e desktop gate)
 
 for check in "${checks[@]}"; do
   # Job ids in the workflow are `name: <check>` with the two-space job indent.
@@ -67,6 +67,10 @@ payload="$(
           dismiss_stale_reviews: true,
         },
         restrictions: null,
+        // An unresolved review thread blocks the merge button: the pr-watch
+        // completion gate and this setting are the same rule, enforced in two
+        // places.
+        required_conversation_resolution: true,
         allow_force_pushes: false,
         allow_deletions: false,
       }),
@@ -89,21 +93,11 @@ if ! gh api -X PUT "repos/$repo/branches/$branch/protection" --input - <<<"$payl
 
 error: GitHub refused the branch protection update.
 
-If the response above was HTTP 403 "Upgrade to GitHub Pro or make this repository
-public to enable this feature", the repository is private on a free plan, and
-GitHub does not offer branch protection or rulesets there. Pick one:
-
-  - make the repository public (its description already calls it open source), or
-  - upgrade the account to GitHub Pro,
-
-and re-run this script. Until then, no tier is enforced by GitHub: merging a red
-pull request is prevented by convention (and, from slice 1.7, by the pr-watch
-skill) rather than by the platform.
-
-That is the accepted position today: this repository stays private on the free
-plan and convention is the enforcement. A 403 here is the expected outcome, not a
-failure to chase — until the repository goes public, at which point this script
-is the whole switch.
+On a public repository on the free plan this call succeeds; a 403 means the
+token lacks repository admin rights, or the repository cannot protect branches
+(for example a private repository on the free plan). Until it is applied,
+merging a red pull request is prevented only by convention and the pr-watch
+skill rather than by the platform.
 MESSAGE
   exit 1
 fi

@@ -31,6 +31,7 @@ pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
 pnpm dependencies:check # validate dependencies.json, manifests, lockfile and image digests
 pnpm dependencies:diff  # print the lockfile delta against origin/main
 pnpm env:check        # load every .env.schema and audit it against the code
+pnpm posture:check    # audit the posture files and the published history for leaks
 pnpm stack:up         # build the local stack, start it, wait for every healthcheck
 pnpm stack:logs       # follow the stack's logs
 pnpm stack:status     # show the stack's services, states and ports
@@ -1729,6 +1730,7 @@ with a name instead of a step index buried in one long log.
 - `quarantine` — `quarantine.json` is valid and nothing in it has expired
 - `dependencies` — the pin register, manifests, lockfile integrity and image digests agree
 - `env` — every `.env.schema` loads under the CI fixtures and every audit is in sync
+- `posture` — the license, contributing, security and template files hold, and no published commit carries a secret or personal data
 - `unit` — unit tests with coverage
 - `integration` — the tests that need a real Postgres, against the local stack the job starts
 - `e2e` — real-browser release flows against the built output and offline emulators
@@ -1894,8 +1896,6 @@ refuses to load — when:
 
 ### Coverage
 
-### Coverage
-
 Coverage is measured by the unit tier. Thresholds live in a package's own
 `vitest.config.ts`, and only packages whose correctness is decided by their own
 code are gated:
@@ -1940,17 +1940,51 @@ scripts/setup-branch-protection.sh --dry-run   # print the payload
 scripts/setup-branch-protection.sh             # apply
 ```
 
-> **Deliberately not applied — an accepted trade-off, not an oversight.** This
-> repository is private on GitHub's free plan, where GitHub refuses branch
-> protection _and_ rulesets outright (`HTTP 403: Upgrade to GitHub Pro or make
-this repository public to enable this feature`). The decision for now is to
-> stay private on the free plan, so a red pull request is blocked by convention
-> and by the reviewer — and, from slice 1.7, by the pr-watch skill — rather than
-> by the platform.
->
-> The script above is therefore the unexercised half of this slice: written,
-> dry-run verified and drift-guarded. Applying it later is one command, and
-> making the repository public is enough to make that command work.
+The payload requires the pull request itself, dismisses stale reviews, requires
+conversation resolution, and forbids force pushes and deletions; a directly
+pushed commit cannot reach `main` once the script has run. The review count is
+zero by design: this is a single-operator repository, so requiring one approval
+would mean nobody can merge their own branch, and the review that matters — the
+bots on the head SHA, and the pr-watch merge check — is enforced by the pull
+request rather than by a count.
+
+The GitHub-side settings that are not a file are applied by
+`scripts/setup-branch-protection.sh` together with
+`scripts/setup-repo-security.sh`, which turns on secret scanning, push
+protection and private vulnerability reporting, and
+`scripts/verify-push-protection.sh`, which pushes a canary built to be detected
+and passes only when GitHub refuses it:
+
+```sh
+scripts/setup-branch-protection.sh --dry-run   # print the payload
+scripts/setup-branch-protection.sh             # apply
+scripts/setup-repo-security.sh                 # secret scanning and private reporting
+scripts/verify-push-protection.sh              # prove push protection blocks a canary
+```
+
+The `posture` tier is the file-side half: it reads `LICENSE`, `CONTRIBUTING.md`,
+`SECURITY.md`, `CODE_OF_CONDUCT.md` and the templates, and it walks every
+reachable commit and blob for provider-shaped secrets and personal data.
+Findings never quote the matched value, because this tier's output is public.
+
+## License and participation
+
+PorkBot is released under the [MIT License](LICENSE). By contributing you agree
+that your contribution is licensed under the same terms.
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — the toolchain, the checks every change
+  runs, and what a pull request needs.
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — the behaviour expected in every
+  space this project touches.
+- [AGENTS.md](AGENTS.md) — the rules the code itself holds to.
+
+The `posture` CI tier keeps these honest: it fails when one of the files is
+missing, when `LICENSE` and the manifest disagree, or when a published commit
+carries a provider-shaped secret, a personal email identity or a personal home
+path. `scripts/setup-repo-security.sh` and `scripts/verify-push-protection.sh`
+cover the settings and the enforcement that live on GitHub rather than in a
+file.
 
 ## Status
 

@@ -1,0 +1,70 @@
+name: Bug report
+description: Something in PorkBot is broken, crashes, or disagrees with the documentation.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Before you submit:
+
+        - **Security issues go through private reporting, not this form.** See
+          [SECURITY.md](https://github.com/0xZ0uk/PorkBot/blob/main/SECURITY.md).
+        - **Redact everything.** No API keys, tokens, `.env` values, tenant or
+          key ids, real hostnames, account emails or personal data. Replace them
+          with obvious placeholders such as `sk-example` or `owner@example.invalid`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The behaviour you observed, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest sequence of steps that shows the bug. Include the exact command or click path.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: A release version, or the commit SHA you built from.
+      placeholder: "v1.0.0 or 1a2b3c4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How it runs
+      description: Pick the shape closest to yours.
+      options:
+        - Single-host deployment (deploy/compose.yaml)
+        - Local stack (pnpm stack:up)
+        - Desktop app
+        - Development server (pnpm dev)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste only the lines that matter, after redacting secrets, ids and hostnames.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have not included secrets, credentials or personal data in this report.
+          required: true
