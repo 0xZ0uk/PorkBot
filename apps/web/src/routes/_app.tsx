@@ -63,7 +63,7 @@ function AppLayout() {
         </h1>
         <div className="app-header-actions">
           <Link to="/approvals">Approvals</Link>
-          <Link to="/settings/connections">Connections</Link>
+          <Link to="/settings">Settings</Link>
           <Button
             onClick={() => {
               void signOut();

@@ -415,6 +415,9 @@ beforeAll(async () => {
         async status() {
           return { kind: "open" } as const;
         },
+        async ownership() {
+          return { kind: "configured", ownerEmail: null } as const;
+        },
       },
       realtime: new InProcessRealtimeFanout(),
       computers: createSupervisorComputerProvider({
@@ -636,6 +639,9 @@ describe("the computer provider selection surface", () => {
         deployment: {
           async status() {
             return { kind: "open" } as const;
+          },
+          async ownership() {
+            return { kind: "configured", ownerEmail: null } as const;
           },
         },
         realtime: new InProcessRealtimeFanout(),

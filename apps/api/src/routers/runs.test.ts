@@ -202,6 +202,9 @@ const services: ApiServices = {
     async status() {
       return { kind: "open" } as const;
     },
+    async ownership() {
+      return { kind: "configured", ownerEmail: null } as const;
+    },
   },
   realtime: new InProcessRealtimeFanout(),
 };
