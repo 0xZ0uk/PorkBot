@@ -267,9 +267,20 @@ export function createComposer(options: ComposerOptions): Composer {
     publish();
   }
 
-  function upload(staged: StagedFile): void {
+  function upload(key: string): void {
+    const staged = files.find((file) => file.key === key);
+
+    if (staged === undefined) {
+      return;
+    }
+
+    // The abort handle is written through the same replace as every other
+    // transition, so the object in `files` always carries the controller the
+    // in-flight request listens to.
     const abort = new AbortController();
-    staged.abort = abort;
+
+    replaceFile(key, (file) => ({ ...file, abort }));
+
     const contentType =
       staged.input.contentType.trim() === ""
         ? contentTypeForFileName(staged.input.filename)
@@ -282,7 +293,7 @@ export function createComposer(options: ComposerOptions): Composer {
         contentType,
         body: staged.input.body,
         onProgress: (sentBytes, totalBytes) => {
-          replaceFile(staged.key, (file) => ({
+          replaceFile(key, (file) => ({
             ...file,
             progress: totalBytes > 0 ? Math.min(1, sentBytes / totalBytes) : file.progress,
           }));
@@ -292,11 +303,11 @@ export function createComposer(options: ComposerOptions): Composer {
       .then((uploaded) => {
         // A file removed mid-flight is gone from the list; its resolution
         // writes nowhere and the stored object stays unreferenced.
-        if (!files.some((file) => file.key === staged.key)) {
+        if (!files.some((file) => file.key === key)) {
           return;
         }
 
-        replaceFile(staged.key, (file) => ({
+        replaceFile(key, (file) => ({
           ...file,
           filename: uploaded.filename,
           contentType: uploaded.contentType,
@@ -308,11 +319,11 @@ export function createComposer(options: ComposerOptions): Composer {
         }));
       })
       .catch((failure: unknown) => {
-        if (!files.some((file) => file.key === staged.key)) {
+        if (!files.some((file) => file.key === key)) {
           return;
         }
 
-        replaceFile(staged.key, (file) => ({
+        replaceFile(key, (file) => ({
           ...file,
           status: "failed",
           detail: uploadFailure(failure),
@@ -377,7 +388,7 @@ export function createComposer(options: ComposerOptions): Composer {
         files = [...files, file];
 
         if (refusal === null) {
-          upload(file);
+          upload(file.key);
         }
       }
 
@@ -408,11 +419,13 @@ export function createComposer(options: ComposerOptions): Composer {
         return;
       }
 
-      file.status = "uploading";
-      file.progress = 0;
-      file.detail = null;
-      upload(file);
-      publish();
+      replaceFile(key, (staged) => ({
+        ...staged,
+        status: "uploading",
+        progress: 0,
+        detail: null,
+      }));
+      upload(key);
     },
 
     send: () => {

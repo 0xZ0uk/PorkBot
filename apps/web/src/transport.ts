@@ -263,10 +263,12 @@ function uploadAttachment(base: string): ComposerTransport["uploadAttachment"] {
       request.onabort = () => {
         reject(new AttachmentUploadError(null, "The upload was cancelled."));
       };
-      input.signal?.addEventListener("abort", () => {
-        request.abort();
-      });
+      input.signal?.addEventListener("abort", () => request.abort(), { once: true });
       request.send(input.body);
+
+      if (input.signal?.aborted === true) {
+        request.abort();
+      }
     });
 }
 
