@@ -189,6 +189,24 @@ DATABASE_URL` prints a value, and `varlock encrypt --file .env.local`
   reads no environment variables and is not wrapped. `varlock scan` checks the
   tracked tree for a resolved sensitive value that leaked into plaintext, so a
   secret caught by a schema is still caught when it is copied into a file.
+- **Signing in locally.** `PORKBOT_AUTH_SECRET` and `PORKBOT_AUTH_ORIGIN` are
+  all-or-nothing: with both set the API mounts Better Auth at `/api/auth/*` and
+  resolves the session cookie the gate reads; with neither it boots fail-closed
+  and every authenticated procedure answers its typed 401; with one it refuses
+  to boot. They are declared in `apps/api/.env.schema`, so local values go in
+  `apps/api/.env.local` — the root `.env.local` is for the values the root
+  schema owns. The web dev server proxies the API's paths to port 3001
+  (`apps/web/vite.config.ts`), so the SPA and the API share one origin and
+  `PORKBOT_AUTH_ORIGIN` is that origin — `http://localhost:5173` for `pnpm dev`.
+  Signup stays closed until the deployment's settings row opens it, so run
+  `insert into deployment_settings (signups_enabled, admin_email) values (true,
+'<the operator email>')` against the database — through the stack's Postgres
+  (`docker compose exec postgres psql -U porkbot -d porkbot`) or any `psql`
+  with `DATABASE_URL` — and the sign-up screen admits that email as the owner.
+  Optional mail for reset and verification is the `PORKBOT_MAIL_ENDPOINT`,
+  `PORKBOT_MAIL_FROM` and `PORKBOT_MAIL_KEY` trio, also all-or-nothing; unset,
+  sign-in and sign-out still work and mail is refused as a typed
+  configuration error.
 - **CI.** `pnpm env:check` loads every schema with `APP_ENV=ci` and the
   committed `.env.ci` fixtures — obvious fakes, never secrets — because the
   tier must prove required items resolve without a deployment's environment.
@@ -808,10 +826,13 @@ to account for every public procedure. Public procedures today are exactly
 `deployment.status`.
 
 The gate's dependencies are injected: tests compose a fake session resolver and
-fake repositories, and the process' fail-closed default answers "no session" so
-every authenticated procedure is a typed 401 until the operator auth
-configuration (secret, public origin, mail and the API's connection checkout)
-is wired in a later slice.
+fake repositories, and the process builds the real ones in
+`apps/api/src/operator-auth.ts` from `PORKBOT_AUTH_SECRET` and
+`PORKBOT_AUTH_ORIGIN` — Better Auth's handler for the mount, `createActorResolver`
+for the session read, and `bootstrapSignup` for the membership a registration
+gets. With those variables absent the fail-closed default stands and every
+authenticated procedure is a typed 401; the composition and its signup half are
+driven against a real Postgres in `apps/api/test/integration`.
 
 ## Bots, sections and avatars
 

@@ -5,7 +5,7 @@ import { createApiClient } from "@porkbot/contracts";
 import type { AppClient } from "@porkbot/contracts";
 import { createLogger, redactedPlaceholder } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
-import { createApiApp, serviceName } from "./app.ts";
+import { authBasePath, createApiApp, serviceName } from "./app.ts";
 import type { ApiServices } from "./app.ts";
 import { createApiServer } from "./server.ts";
 import type { DeploymentStatus } from "./services/deployment.ts";
@@ -215,6 +215,40 @@ describe("the http surface", () => {
       path: "/test/explode",
     });
     expect(await requestRecordFor("req-boom")).toMatchObject({ level: "error", status: 500 });
+  });
+});
+
+describe("the operator auth mount", () => {
+  it("serves every method under /api/auth/* through the injected handler", async () => {
+    const paths: string[] = [];
+    const app = createApiApp({
+      services,
+      logger,
+      authHandler: async (request) => {
+        const url = new URL(request.url);
+        paths.push(`${request.method} ${url.pathname}`);
+
+        return new Response("handled", { status: 200 });
+      },
+    });
+
+    const signIn = await app.request(`${authBasePath}/sign-in/email`, { method: "POST" });
+    const session = await app.request(`${authBasePath}/get-session`);
+
+    expect(signIn.status).toBe(200);
+    expect(session.status).toBe(200);
+    expect(paths).toEqual([
+      `POST ${authBasePath}/sign-in/email`,
+      `GET ${authBasePath}/get-session`,
+    ]);
+  });
+
+  it("leaves the prefix unmounted when no handler is configured", async () => {
+    const app = createApiApp({ services, logger });
+    const response = await app.request(`${authBasePath}/sign-in/email`, { method: "POST" });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
   });
 });
 
