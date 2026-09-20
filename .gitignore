@@ -22,6 +22,9 @@ dist
 out
 *.tsbuildinfo
 
+# Desktop packages and release artifacts
+.release
+
 # Local agent worktrees
 .worktrees
 .opencode

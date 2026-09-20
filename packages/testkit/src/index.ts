@@ -57,6 +57,20 @@ export type {
 } from "./quarantine/ledger.ts";
 export { findRepoRoot, isInside, workspaceMarker } from "./paths.ts";
 
+// The release pipeline (slice 11.7). The commands live in src/release/cli.ts;
+// the signing half is exported here because apps/desktop's release-contract
+// suite imports `updateSigningPayload` and fails when the release's canonical
+// bytes and the app's verified bytes drift apart. The private key never crosses
+// this boundary: callers pass it in, and nothing returns it.
+export {
+  parseReleaseManifest,
+  publicKeyPem,
+  signReleaseManifest,
+  updateSigningPayload,
+  verifyReleaseManifest,
+} from "./release/signing.ts";
+export type { ReleaseUpdateManifest } from "./release/signing.ts";
+
 // Dependency provenance. The register, the manifests, the lockfile and every
 // image reference are checked by `checkRepository`, which the `dependencies`
 // CI tier runs before the install; `dependencies.json` is the register itself.

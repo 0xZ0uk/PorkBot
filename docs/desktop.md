@@ -124,6 +124,10 @@ A build with no feed configured reports `not_configured` and checks nothing.
 The operator is asked before a verified artifact is opened with the OS handler;
 silent install-and-relaunch is not part of the self-hosted build.
 
+The pipeline that produces the artifact and this manifest — version bumping,
+packaging, signing, verification, the packaged-app smoke test and the release
+workflow — is [`docs/release.md`](release.md).
+
 ## Running it
 
 ```sh

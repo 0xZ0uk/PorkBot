@@ -61,7 +61,9 @@ function scriptedFetch(options: {
       });
     }
 
-    return new Response(options.artifact ?? artifactBytes, { status: 200 });
+    // A `Uint8Array`, because `BodyInit` in a program that loads the DOM lib
+    // does not name `Buffer` even though it is one.
+    return new Response(new Uint8Array(options.artifact ?? artifactBytes), { status: 200 });
   };
 
   return { requests, fetch: perform as typeof fetch };
