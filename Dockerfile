@@ -36,6 +36,7 @@ RUN pnpm deploy --filter @porkbot/api --prod --legacy /deploy/api
 RUN pnpm deploy --filter @porkbot/worker --prod --legacy /deploy/worker
 RUN pnpm deploy --filter @porkbot/web --prod --legacy /deploy/web
 RUN pnpm deploy --filter @porkbot/supervisor --prod --legacy /deploy/supervisor
+RUN pnpm deploy --filter @porkbot/backup --prod --legacy /deploy/backup
 
 FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api
 
@@ -80,6 +81,30 @@ COPY --from=build /deploy/web ./
 USER node
 EXPOSE 3000
 CMD ["node", "dist/host/main.js"]
+
+# The backup process is the one image built on the pinned Postgres image
+# rather than the Node one, because `pg_dump` and `pg_restore` are the server's
+# own major and a client older than its server refuses to dump it. Copying the
+# Node binary from the same digest the other stages use keeps the app runtime
+# identical; both images are Debian bookworm, so the binary's libraries are the
+# ones already present. Nothing else from the Node image is needed — the app is
+# deployed by `pnpm deploy` like every other service.
+FROM postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280 AS backup
+
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+
+ENV NODE_ENV=production
+ENV PATH="/usr/lib/postgresql/18/bin:${PATH}"
+WORKDIR /app
+COPY --from=build /deploy/backup ./
+# The backup and envelope roots exist in the image owned by the runtime user,
+# so fresh named volumes inherit writable mounts; the envelope lives on its own
+# volume so a backup destination and the key that opens it are never the same
+# place.
+RUN mkdir -p /var/lib/porkbot/backups /var/lib/porkbot/backup-envelope && chown -R postgres:postgres /var/lib/porkbot
+USER postgres
+EXPOSE 3004
+CMD ["node", "dist/main.js"]
 
 FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS supervisor
 

@@ -11,6 +11,7 @@
  * table without being restated.
  */
 export { primaryKeyId, timestamps } from "./columns.ts";
+export { backupAlert, backupAlertKind, backupCanary, backupRun, backupStatus } from "./backups.ts";
 export { account, session, user, verification } from "./identity.ts";
 export { deploymentSettings, space, spaceMember, spaceMemberRole } from "./tenancy.ts";
 export { botSection, bot } from "./bots.ts";

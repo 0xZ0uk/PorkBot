@@ -400,3 +400,22 @@ export type {
   CredentialKeyringEntry,
   CredentialKeyringInput,
 } from "./credential-cipher.ts";
+
+// The backup ledger (slice 12.3, PRD story 5): the run rows, the canary every
+// dump carries and the alert episodes the worker's watchdog claims. This module
+// is the only shipped code that names the three tables, and the call-site suite
+// beside it proves that. The factory splits by capability rather than actor,
+// because a backup covers the whole database and has no space to scope: the
+// backup process writes through `createBackupLedger` over the database owner's
+// connection, and the worker reads and claims through `createBackupStatusReader`
+// over its own restricted role.
+export { createBackupLedger, createBackupStatusReader, readCanaryToken } from "./backup-store.ts";
+export type {
+  BackupLedger,
+  BackupRunRecord,
+  BackupStatus,
+  BackupStatusReader,
+  BeginBackupRun,
+  SettleBackupDrill,
+  SettleBackupRun,
+} from "./backup-store.ts";

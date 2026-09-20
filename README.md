@@ -71,6 +71,7 @@ apps/
   api/         HTTP and streaming surface over the domain
   worker/      always-on background worker, durable jobs
   supervisor/  Docker socket owner and the only owner of computer lifecycle
+  backup/      nightly encrypted backups and the scheduled restore drill
   web/         static SPA surface
   desktop/     Electron client of the same API
   www/         public landing and documentation site
@@ -98,8 +99,8 @@ protocol, so a package can only use what it declares.
 ## Local stack
 
 `docker compose` (repository-root `compose.yaml`) brings up the whole product:
-Postgres 18, `api`, `worker`, `web` and `supervisor`, each with a healthcheck.
-One command starts it and waits:
+Postgres 18, `api`, `worker`, `backup`, `web` and `supervisor`, each with a
+healthcheck. One command starts it and waits:
 
 ```sh
 pnpm stack:up      # build, start, wait for every healthcheck
@@ -159,6 +160,14 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   volume, removed with the sidecar when the machine parks; a run's grant is
   revoked when the run ends and expires at the run's lease end regardless. `docs/credential-proxy.md` describes the boundary and what the
   deferred screen-takeover work inherits from it.
+- **Backups are local and encrypted by default.** `backup` reads the snapshot
+  archives through the storage seam (`storage-data`, read-only), writes
+  AES-256-GCM objects to the `backup-data` volume and the sealed key envelope
+  to `backup-envelope`, and runs the restore drill into a scratch database on
+  the stack's Postgres. The local keyring and passphrase are placeholders like
+  the database passwords; a deployment generates real ones and configures
+  `PORKBOT_BACKUP_S3_*` for off-site storage. `docs/backups.md` is the runbook,
+  including the recovery path from the envelope.
 - **CI runs the same command.** The integration tier starts the stack with
   `pnpm stack:up`, attaches the testkit harness to the stack's Postgres instead
   of booting its own container, runs the integration suites against it, and
@@ -167,9 +176,10 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
 - **One migrate, then the always-on processes.** The `migrate` one-shot applies
   the committed journal, creates the two service roles and sets their passwords;
   `api` and `worker` wait on `service_completed_successfully` and then connect as
-  their own roles. The five processes are the point — the api serves the
+  their own roles. The six processes are the point — the api serves the
   contract's procedures, the worker runs the queue, the supervisor owns computer
-  lifecycle — and story 44 is one command that starts the real topology: a later
+  lifecycle, the backup process owns the encrypted nightly backup and its
+  drill — and story 44 is one command that starts the real topology: a later
   slice replaces a process's body, never its place in the stack.
 
 Each service image builds from the root `Dockerfile`; the shared build stage
@@ -248,15 +258,16 @@ active release running; a failed switch attempts to restore it.
   | service            | CPU ceiling | memory ceiling |
   | ------------------ | ----------- | -------------- |
   | postgres           | 1.0         | 2 GB           |
-  | migrate (one-shot) | 0.25        | 512 MB         |
-  | api                | 0.75        | 1 GB           |
-  | worker             | 0.5         | 1 GB           |
-  | web                | 0.25        | 256 MB         |
-  | supervisor         | 0.25        | 384 MB         |
+  | migrate (one-shot) | 0.1         | 512 MB         |
+  | api                | 0.7         | 1 GB           |
+  | worker             | 0.45        | 1 GB           |
+  | backup             | 0.25        | 256 MB         |
+  | web                | 0.2         | 256 MB         |
+  | supervisor         | 0.2         | 384 MB         |
 
-  Summed, the stack's ceilings are 3.0 vCPU and about 5.1 GB, so the base host
+  Summed, the stack's ceilings are 2.9 vCPU and about 5.4 GB, so the base host
   runs the stack and one bot at its default `PORKBOT_COMPUTER_CPUS` (1) and
-  `PORKBOT_COMPUTER_MEMORY_MB` (2048) with roughly 1 GB of memory left for the
+  `PORKBOT_COMPUTER_MEMORY_MB` (2048) with roughly 0.6 GB of memory left for the
   OS and the Docker daemon. Each additional bot adds its own ~2 GB and
   `PORKBOT_COMPUTER_DISK_MB` (10240), so the floor for N bots is
   4 vCPU / (8 + 2N) GB and (50 + 50N) GB+ of disk. Raise the ceilings in
@@ -272,13 +283,16 @@ active release running; a failed switch attempts to restore it.
   bind to `PORKBOT_BIND_ADDRESS`, loopback by default: HTTPS on one origin is
   the reverse-proxy contract (slice 12.2), and until that is configured the
   stack is reached over an SSH tunnel. Postgres is never published;
-  `deploy:exec` is the way in. `pnpm deploy:upgrade --tag <git-sha>` is the
-  one-command release path; it records the prior tag in the adjacent ignored
-  release state so `pnpm deploy:rollback` can redeploy it. Rollback is not a
-  schema rollback: it runs the previous image against the newer schema and
-  never attempts to reverse migrations. If the older image is incompatible with
-  that schema, restore a compatible database backup separately before retrying.
-  Backups are slice 12.3 and the operator runbooks are 12.7.
+  `deploy:exec` is the way in. `deploy:exec -- backup node dist/cli.js status`
+  reports the backup ledger and the envelope, and
+  `deploy:exec -- backup node dist/cli.js restore --latest --database <name>`
+  is the recovery path (`docs/backups.md`). `pnpm deploy:upgrade --tag <git-sha>`
+  is the one-command release path; it records the prior tag in the adjacent
+  ignored release state so `pnpm deploy:rollback` can redeploy it. Rollback is
+  not a schema rollback: it runs the previous image against the newer schema
+  and never attempts to reverse migrations. If the older image is incompatible
+  with that schema, restore a compatible database backup separately before
+  retrying, and the operator runbooks are 12.7.
 
 ## Desktop releases
 
@@ -1420,6 +1434,41 @@ through the generic environment credential store under
 origin links are built from; unset, it falls back to loopback with a warning,
 because a link the operator cannot open is worth saying out loud.
 
+## Backups and restore drills
+
+`apps/backup` (slice 12.3, PRD story 5) is the deployment's backup process: a
+sixth always-on service that holds the database owner's connection and nothing
+else. It runs under `pnpm stack:up` and `pnpm deploy:up`; it deliberately has
+no `pnpm dev` entry, because it refuses to boot without a keyring and a
+destination and a developer's `pnpm dev` should not inherit that requirement. Every night it writes a canary row, streams `pg_dump` output through the
+AES-256-GCM archive into the storage seam, copies every `computer-snapshots/`
+archive the same way, prunes what the retention window has passed, and then
+restores the dump it just wrote into a scratch database and compares the canary
+it reads back. The schedule, the retention window and the drill interval live in
+`@porkbot/core`'s `backup-policy.ts` and are re-stated with the recovery path in
+`docs/backups.md`.
+
+- **Encrypted at rest, two layers.** Objects are chunked AES-256-GCM with an
+  authenticated terminal record, so a truncated or reordered object fails
+  before its plaintext is trusted; the keyring itself is sealed under the
+  operator's passphrase into an envelope written to a separate volume. The
+  backup keyring is independent material from the credential keyring.
+- **The key envelope is the recovery artifact.** It is useless without the
+  passphrase, which is never stored, so the operator can keep it in a password
+  manager; `restore --latest --database <name>` opens it when the environment
+  keyring is gone, restores, and proves the data reads back.
+- **Homes go through the seam.** The snapshot archives are the durable copy of
+  every computer's home — Docker volume, cloud sandbox or the supervisor's
+  delegate — and `COMPUTER_HOME_SYNC` states each provider's story; the offline
+  emulator's home is explicitly not backed up.
+- **Failure is loud.** Every run settles in `backup_run` with a closed
+  `error_code`; the worker's five-minute watchdog alerts on a failed or stalled
+  run, a success gap past 36 hours, or a drill that failed or has not run
+  within 45 days, once per episode.
+- **One module owns the ledger.** `packages/db/src/backup-store.ts` is the only
+  shipped code that names `backup_run`, `backup_canary` or `backup_alert`, and
+  `backup-store.call-sites.test.ts` proves it.
+
 ## URL safety
 
 Every fetch of a user-supplied URL — an MCP server, an OpenAPI document, a model
@@ -1965,8 +2014,8 @@ in the prerendered HTML, an unknown route is rewritten to the shell and a
 missing asset stays a 404.
 
 Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
-stack — Postgres 18, the migrate one-shot, api, worker, web and supervisor — and
-waits for every healthcheck, and the same command is what CI's integration tier
+stack — Postgres 18, the migrate one-shot, api, worker, backup, web and
+supervisor — and waits for every healthcheck, and the same command is what CI's integration tier
 runs; the testkit harness attaches to the stack's Postgres for the suite clones,
 so integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are

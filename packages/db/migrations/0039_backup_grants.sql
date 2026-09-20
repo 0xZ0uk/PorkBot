@@ -1,0 +1,24 @@
+-- hand-edited: role privileges are not modelled by drizzle-kit (the same
+-- reason migrations/0004_database_roles.sql, migrations/0006_run_leases.sql,
+-- migrations/0008_approval_grants.sql, migrations/0009_watchdog_grants.sql,
+-- migrations/0012_routine_grants.sql, migrations/0015_notification_grants.sql,
+-- migrations/0017_credentials_grants.sql, migrations/0019_mcp_grants.sql,
+-- migrations/0021_model_connection_grants.sql, migrations/0024_liveness_grants.sql,
+-- migrations/0028_computer_lease_grants.sql, migrations/0031_computer_snapshot_grants.sql,
+-- migrations/0033_stored_file_grants.sql and migrations/0037_bot_secret_grants.sql
+-- are hand-written). Slice 12.3 adds the deployment-scoped backup ledger, and
+-- the worker's backup watchdog is the one domain process that reads it:
+--
+--   porkbot_worker  SELECT on `backup_run`, so the watchdog can answer whether
+--                   the newest run failed, stalled or has gone stale without
+--                   holding the dump credential the backup process uses. It
+--                   also owns the episode claim: SELECT and UPDATE for the
+--                   `on conflict (kind) do update` upsert, and INSERT for the
+--                   first alert of each kind. It can never write a run.
+--
+-- The backup process itself connects as the database owner (the same role the
+-- migration runner uses), because pg_dump and pg_restore need read access to
+-- every table; the API role is deliberately given nothing here — backups are an
+-- operator concern, not a session's.
+grant select on "backup_run" to porkbot_worker;--> statement-breakpoint
+grant select, insert, update on "backup_alert" to porkbot_worker;
