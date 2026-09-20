@@ -25,7 +25,7 @@ export type { ProcedureAccess, ProcedureMeta, RateLimitedData } from "./access.t
 export { deploymentStatusContract, signupAvailabilitySchema } from "./deployment.ts";
 export type { SignupAvailability } from "./deployment.ts";
 
-export { accountMeContract, memberRoleSchema } from "./account.ts";
+export { accountMeContract, accountOwnershipContract, memberRoleSchema } from "./account.ts";
 export type { MemberRole } from "./account.ts";
 
 // Approval UX (slice 10.3, PRD story 40): the durable pending request list,
@@ -252,6 +252,17 @@ export {
   mcpToolSchema,
 } from "./mcp-servers.ts";
 export type { McpGrant, McpServerDetail, McpServerSummary, McpTool } from "./mcp-servers.ts";
+
+// A bot's stored secrets (slice 9.6): names, destinations and statuses. The
+// settings surface renders these; no shape here carries a value, so a client
+// cannot be handed one to show.
+export {
+  botSecretAuthSchema,
+  botSecretOriginSchema,
+  botSecretSchema,
+  botSecretStatusSchema,
+} from "./bot-secrets.ts";
+export type { BotSecretAuthView, BotSecretView } from "./bot-secrets.ts";
 
 // The client: a type derived from the contract plus the factory that builds it.
 export { createApiClient } from "./client.ts";

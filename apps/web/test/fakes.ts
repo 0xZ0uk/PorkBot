@@ -5,15 +5,22 @@ import { colors } from "@porkbot/tokens";
 import type {
   Bot,
   BotSection,
+  BotSecretAuthView,
+  BotSecretView,
   ComputerProvidersView,
   ComputerSnapshotView,
   ComputerView,
   Credential,
+  McpGrant,
+  McpServerDetail,
+  McpServerSummary,
+  MemberRole,
   MemoryDocumentView,
   MemoryRevisionView,
   Message,
   ModelConnection,
   ModelProbe,
+  NotificationPreference,
   RunGet,
   Thread,
   ThreadEventsCallOptions,
@@ -21,10 +28,16 @@ import type {
   UsageBot,
   UsageTotalsView,
 } from "@porkbot/contracts";
+import { NOTIFICATION_KINDS } from "@porkbot/core";
+import type { NotificationKind } from "@porkbot/core";
 import type { BotsTransport } from "../src/bots.ts";
 import type { ComputerTransport } from "../src/computer.ts";
 import type { ConnectionsTransport } from "../src/connections.ts";
+import type { McpTransport } from "../src/mcp.ts";
 import type { MemoryTransport } from "../src/memory.ts";
+import type { NotificationsTransport } from "../src/notifications.ts";
+import type { OwnershipTransport } from "../src/ownership.ts";
+import type { SecretsTransport } from "../src/secrets.ts";
 import type { ConsoleTransport, UsageTransport } from "../src/transport.ts";
 
 /**
@@ -627,21 +640,35 @@ export function fakeUsage(overrides: Partial<UsageBot> = {}): UsageBot {
 
 export interface ScriptedUsageTransportOptions {
   readonly usage?: UsageBot;
+  /** A per-bot answer, taking precedence over `usage`. */
+  readonly byBot?: Readonly<Record<string, UsageBot>>;
   /** Throws from `forBot`, for the refusal path. */
   readonly failure?: unknown;
+}
+
+/** The windows every read asked for, so a settings test can prove a re-read. */
+export interface ScriptedUsageTransport extends UsageTransport {
+  readonly windows: number[];
 }
 
 /** The usage screen's transport fake: one bot's answer, or a thrown refusal. */
 export function scriptedUsageTransport(
   options: ScriptedUsageTransportOptions = {},
-): UsageTransport {
+): ScriptedUsageTransport {
+  const windows: number[] = [];
+
   return {
-    forBot: async (botId) => {
+    windows,
+    forBot: async (botId, days) => {
+      if (days !== undefined) {
+        windows.push(days);
+      }
+
       if (options.failure !== undefined) {
         throw options.failure;
       }
 
-      return options.usage ?? fakeUsage({ botId });
+      return options.byBot?.[botId] ?? options.usage ?? fakeUsage({ botId });
     },
   };
 }
@@ -885,6 +912,345 @@ export function scriptedComputerTransport(
       computer = { assigned: true, state: "running", instanceId: "i-1" };
 
       return computer;
+    },
+  };
+}
+
+/** One discovered MCP tool as the detail answers it. */
+export function fakeMcpTool(overrides: Partial<McpServerDetail["tools"][number]> = {}) {
+  return {
+    name: "search",
+    description: "Search the fixture corpus.",
+    parameters: {},
+    ...overrides,
+  };
+}
+
+/** One installed MCP server as the list answers it. */
+export function fakeMcpServer(overrides: Partial<McpServerSummary> = {}): McpServerSummary {
+  return {
+    id: "server-1",
+    name: "Fixture server",
+    url: "https://mcp.example.invalid/mcp",
+    auth: "none",
+    status: "ready",
+    lastError: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    toolCount: 1,
+    ...overrides,
+  };
+}
+
+/** One installed MCP server with its tools, as the detail answers it. */
+export function fakeMcpServerDetail(overrides: Partial<McpServerDetail> = {}): McpServerDetail {
+  const server = fakeMcpServer(overrides);
+
+  return {
+    id: server.id,
+    name: server.name,
+    url: server.url,
+    auth: server.auth,
+    status: server.status,
+    lastError: server.lastError,
+    createdAt: server.createdAt,
+    updatedAt: server.updatedAt,
+    tools: [fakeMcpTool()],
+    ...overrides,
+  };
+}
+
+export interface ScriptedMcpTransportOptions {
+  readonly servers?: readonly McpServerDetail[];
+  readonly bots?: readonly Bot[];
+  /** Live grants by server id; defaults to none. */
+  readonly grants?: Readonly<Record<string, readonly string[]>>;
+  /** The consent URL an OAuth install answers; `null` for a direct install. */
+  readonly authorizationUrl?: string | null;
+  readonly listFailure?: unknown;
+  readonly writeFailure?: unknown;
+}
+
+/** The MCP surface's transport fake: an in-memory registry the writes move. */
+export interface ScriptedMcpTransport extends McpTransport {
+  readonly calls: string[];
+  readonly servers: readonly McpServerSummary[];
+}
+
+export function scriptedMcpTransport(
+  options: ScriptedMcpTransportOptions = {},
+): ScriptedMcpTransport {
+  let servers = [...(options.servers ?? [])];
+  const grants = new Map<string, Set<string>>(
+    Object.entries(options.grants ?? {}).map(([id, botIds]) => [id, new Set(botIds)]),
+  );
+  const calls: string[] = [];
+
+  function listGuard(): void {
+    if (options.listFailure !== undefined) {
+      throw options.listFailure;
+    }
+  }
+
+  function writeGuard(): void {
+    if (options.writeFailure !== undefined) {
+      throw options.writeFailure;
+    }
+  }
+
+  function summary(server: McpServerDetail): McpServerSummary {
+    const { tools, ...rest } = server;
+
+    return { ...rest, toolCount: tools.length };
+  }
+
+  return {
+    calls,
+
+    get servers() {
+      return servers.map(summary);
+    },
+
+    list: async () => {
+      listGuard();
+      calls.push("list");
+
+      return servers.map(summary);
+    },
+    listBots: async () => options.bots ?? [fakeBot("bot-1", "Ada")],
+    get: async (id) => {
+      const server = servers.find((candidate) => candidate.id === id);
+
+      if (server === undefined) {
+        throw new Error(`no server ${id}`);
+      }
+
+      calls.push("get");
+
+      return server;
+    },
+    install: async (input) => {
+      writeGuard();
+      const authorizationUrl = options.authorizationUrl ?? null;
+      const server: McpServerDetail = {
+        id: `server-${String(servers.length + 1)}`,
+        name: input.name,
+        url: input.url,
+        auth: input.auth,
+        status: authorizationUrl === null ? "ready" : "pending_authorization",
+        lastError: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        tools: [fakeMcpTool()],
+      };
+
+      servers = [...servers, server];
+      calls.push("create");
+
+      return { server, authorizationUrl };
+    },
+    remove: async (id) => {
+      writeGuard();
+      servers = servers.filter((server) => server.id !== id);
+      grants.delete(id);
+      calls.push("remove");
+    },
+    grants: async (id) => {
+      if (!servers.some((server) => server.id === id)) {
+        throw new Error(`no server ${id}`);
+      }
+
+      return [...(grants.get(id) ?? new Set<string>())].map<McpGrant>((botId) => ({
+        botId,
+        revokedAt: null,
+      }));
+    },
+    grant: async (id, botId) => {
+      writeGuard();
+      const live = grants.get(id) ?? new Set<string>();
+
+      live.add(botId);
+      grants.set(id, live);
+      calls.push("grant");
+    },
+    revoke: async (id, botId) => {
+      writeGuard();
+      grants.get(id)?.delete(botId);
+      calls.push("revoke");
+    },
+  };
+}
+
+/** One bot secret as the list answers it. */
+export function fakeBotSecret(overrides: Partial<BotSecretView> = {}): BotSecretView {
+  return {
+    name: "api_token",
+    status: "stored",
+    origin: "https://api.example.invalid",
+    auth: { type: "bearer" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** The bearer/header/basic union with plausible field defaults. */
+export function fakeSecretAuth(type: BotSecretAuthView["type"] = "bearer"): BotSecretAuthView {
+  switch (type) {
+    case "bearer":
+      return { type: "bearer" };
+    case "header":
+      return { type: "header", name: "x-api-key" };
+    case "basic":
+      return { type: "basic", username: "operator" };
+  }
+}
+
+export interface ScriptedSecretsTransportOptions {
+  readonly bots?: readonly Bot[];
+  /** Starting rows by bot id. */
+  readonly secrets?: Readonly<Record<string, readonly BotSecretView[]>>;
+  readonly listFailure?: unknown;
+  readonly writeFailure?: unknown;
+}
+
+/** The secrets surface's transport fake: an in-memory store the writes move. */
+export interface ScriptedSecretsTransport extends SecretsTransport {
+  readonly calls: string[];
+}
+
+export function scriptedSecretsTransport(
+  options: ScriptedSecretsTransportOptions = {},
+): ScriptedSecretsTransport {
+  const bots = options.bots ?? [fakeBot("bot-1", "Ada")];
+  const rows = new Map<string, BotSecretView[]>(
+    Object.entries(options.secrets ?? {}).map(([botId, secrets]) => [botId, [...secrets]]),
+  );
+  const calls: string[] = [];
+
+  function listGuard(): void {
+    if (options.listFailure !== undefined) {
+      throw options.listFailure;
+    }
+  }
+
+  return {
+    calls,
+    listBots: async () => {
+      listGuard();
+
+      return bots;
+    },
+    listSecrets: async (botId) => {
+      listGuard();
+
+      return rows.get(botId) ?? [];
+    },
+    store: async (input) => {
+      if (options.writeFailure !== undefined) {
+        throw options.writeFailure;
+      }
+
+      const row: BotSecretView = {
+        name: input.name,
+        status: "stored",
+        origin: input.origin,
+        auth: input.auth,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      const existing = rows.get(input.botId) ?? [];
+
+      rows.set(input.botId, [...existing.filter((secret) => secret.name !== row.name), row]);
+      calls.push("store");
+
+      return row;
+    },
+    forget: async (input) => {
+      if (options.writeFailure !== undefined) {
+        throw options.writeFailure;
+      }
+
+      const existing = rows.get(input.botId) ?? [];
+      const row = existing.find((secret) => secret.name === input.name);
+
+      if (row === undefined) {
+        calls.push("forget");
+
+        return { removed: false };
+      }
+
+      rows.set(
+        input.botId,
+        existing.map((secret) =>
+          secret.name === input.name ? { ...secret, status: "forgotten" } : secret,
+        ),
+      );
+      calls.push("forget");
+
+      return { removed: true };
+    },
+  };
+}
+
+export interface ScriptedNotificationsTransportOptions {
+  /** The stored set; absent kinds default off, as the server's quiet default. */
+  readonly enabled?: readonly NotificationKind[];
+  readonly readFailure?: unknown;
+  readonly writeFailure?: unknown;
+}
+
+/** The notification switches' transport fake: a set the writes move. */
+export function scriptedNotificationsTransport(
+  options: ScriptedNotificationsTransportOptions = {},
+): NotificationsTransport {
+  let enabled = new Set(options.enabled ?? []);
+
+  function view(): readonly NotificationPreference[] {
+    return NOTIFICATION_KINDS.map((kind) => ({ kind, enabled: enabled.has(kind) }));
+  }
+
+  return {
+    preferences: async () => {
+      if (options.readFailure !== undefined) {
+        throw options.readFailure;
+      }
+
+      return view();
+    },
+    setPreference: async (input) => {
+      if (options.writeFailure !== undefined) {
+        throw options.writeFailure;
+      }
+
+      enabled = new Set(enabled);
+
+      if (input.enabled) {
+        enabled.add(input.kind);
+      } else {
+        enabled.delete(input.kind);
+      }
+
+      return view();
+    },
+  };
+}
+
+/** The account surface's transport fake: one ownership answer. */
+export function scriptedOwnershipTransport(
+  ownership: { readonly role: MemberRole; readonly ownerEmail: string | null } = {
+    role: "owner",
+    ownerEmail: "owner@example.invalid",
+  },
+  failure?: unknown,
+): OwnershipTransport {
+  return {
+    ownership: async () => {
+      if (failure !== undefined) {
+        throw failure;
+      }
+
+      return ownership;
     },
   };
 }

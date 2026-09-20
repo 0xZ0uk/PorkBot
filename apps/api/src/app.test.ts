@@ -27,6 +27,9 @@ const services: ApiServices = {
 
       return result as DeploymentStatus;
     },
+    async ownership() {
+      return { kind: "configured", ownerEmail: null } as const;
+    },
   },
   realtime: new InProcessRealtimeFanout(),
 };

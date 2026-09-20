@@ -16,7 +16,7 @@ import type { Logger } from "@porkbot/logging";
 import { serviceName } from "../app.ts";
 import type { ApiServices } from "../app.ts";
 import { createApiServer } from "../server.ts";
-import type { DeploymentStatus } from "../services/deployment.ts";
+import type { DeploymentOwnership, DeploymentStatus } from "../services/deployment.ts";
 
 /**
  * The routines router over the real transport: a stub repository stands in for
@@ -37,6 +37,9 @@ const services: ApiServices = {
   deployment: {
     async status(): Promise<DeploymentStatus> {
       return { kind: "open" };
+    },
+    async ownership(): Promise<DeploymentOwnership> {
+      return { kind: "configured", ownerEmail: null };
     },
   },
   realtime: new InProcessRealtimeFanout(),

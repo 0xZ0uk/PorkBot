@@ -55,6 +55,7 @@ describe("procedure access", () => {
     expect(procedures.map(({ path }) => path)).toEqual([
       "deployment.status",
       "account.me",
+      "account.ownership",
       "notifications.preferences",
       "notifications.setPreference",
       "approvals.list",

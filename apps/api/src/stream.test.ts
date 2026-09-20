@@ -42,6 +42,9 @@ const services: ApiServices = {
     async status(): Promise<DeploymentStatus> {
       return { kind: "open" };
     },
+    async ownership() {
+      return { kind: "configured", ownerEmail: null } as const;
+    },
   },
   realtime: fanout,
 };
