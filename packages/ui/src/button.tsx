@@ -18,8 +18,16 @@ export function Button({
 }: ButtonProps) {
   const palette =
     tone === "primary"
-      ? { background: colors.accent, color: colors.onAccent, borderColor: colors.accent }
-      : { background: colors.surface, color: colors.text, borderColor: colors.border };
+      ? {
+          background: colors.primary,
+          color: colors.primaryForeground,
+          borderColor: colors.primary,
+        }
+      : {
+          background: colors.secondary,
+          color: colors.secondaryForeground,
+          borderColor: colors.border,
+        };
 
   return (
     <button

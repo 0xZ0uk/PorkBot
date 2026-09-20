@@ -358,8 +358,9 @@ change it without breaking what the boundaries and the CI gate protect.
 
 ### UI
 
-- **Colours come from `@porkbot/tokens`.** No hardcoded hex, `rgb()` or `hsl()`
-  colour in a surface; use the semantic tokens so a theme change stays one file.
+- **Colours come from `@porkbot/tokens`.** No hardcoded hex, `rgb()`, `hsl()`
+  or `oklch()` colour in a surface; use the semantic tokens so a theme change
+  stays one file.
   Checked by: lint (`no-restricted-syntax` colour selector, proven by
   `packages/eslint-config/fixtures/ui-hardcoded-color.ts`).
 - **Reuse the design system before writing chrome.** Prefer an existing

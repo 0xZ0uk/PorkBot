@@ -19,7 +19,7 @@ export const uiSurfacePackages = [
 ];
 
 const hexColor = /#[0-9a-fA-F]{3,8}\b/;
-const functionalColor = /\b(?:rgb|rgba|hsl|hsla)\(/;
+const functionalColor = /\b(?:rgb|rgba|hsl|hsla|oklch|oklab)\(/;
 
 function colorSelectors(packageName) {
   const message =

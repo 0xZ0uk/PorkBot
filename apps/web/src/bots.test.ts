@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { colors } from "@porkbot/tokens";
+import { srgbPrimary } from "@porkbot/tokens";
 import { fakeThread } from "../test/fakes.ts";
 import { formToWriteInput, latestActivity, readComputerHealth, validateBotForm } from "./bots.ts";
 import type { BotFormValues } from "./bots.ts";
@@ -9,7 +9,7 @@ const valid: BotFormValues = {
   title: "Researcher",
   description: "Finds the useful detail.",
   instructions: "Be precise.",
-  color: colors.accent,
+  color: srgbPrimary,
   sectionId: "",
   computerProvider: " docker ",
 };
