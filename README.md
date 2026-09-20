@@ -33,6 +33,9 @@ pnpm dependencies:diff  # print the lockfile delta against origin/main
 pnpm docs:check       # check doc links and the environment reference against the schemas
 pnpm env:check        # load every .env.schema and audit it against the code
 pnpm posture:check    # audit the posture files and the published history for leaks
+pnpm canary:run       # run the live-provider canary against a supervisor (real Docker or cloud)
+pnpm canary:sweep     # destroy every canary machine a crashed run left behind
+pnpm canary:notify    # deliver one operator notification through the E8 provider
 pnpm stack:up         # build the local stack, start it, wait for every healthcheck
 pnpm stack:logs       # follow the stack's logs
 pnpm stack:status     # show the stack's services, states and ports
@@ -108,6 +111,7 @@ packages/
   logging/      JSON logs, levels, correlation ids, redaction
   health/       health endpoints for always-on processes
   testkit/      tier presets, quarantine ledger, flake reporter, Postgres-per-suite harness CLI
+  canary/       scheduled live-provider canary: budget, run, teardown, orphan sweep
   eslint-config/     internal: shared ESLint flat config
   typescript-config/ internal: shared tsconfig bases
 ```
@@ -1521,6 +1525,40 @@ it reads back. The schedule, the retention window and the drill interval live in
 - **One module owns the ledger.** `packages/db/src/backup-store.ts` is the only
   shipped code that names `backup_run`, `backup_canary` or `backup_alert`, and
   `backup-store.call-sites.test.ts` proves it.
+
+## Live-provider canaries
+
+`packages/canary` (slice 12.6, PRD testing decisions) is the one check that
+leaves the emulators. `.github/workflows/canary.yml` runs it nightly — and on
+dispatch — against a supervisor started with the provider under test: a real
+Docker daemon on the runner, and the real cloud provider when its repository
+variables and secret are configured. Each run drives the supervisor's HTTP
+surface, so the canary proves the boundary a self-hoster runs rather than an
+in-process adapter. The same runner is exercised against real Docker on every
+pull request by the integration tier, and against the offline emulator in the
+unit tier.
+
+- **Boot, run, tool call, teardown — verified.** The runner sweeps leftovers,
+  boots a machine with a fresh run id, writes a token through a command, reads
+  it back the way a tool call does, destroys the machine, and asserts the
+  provider reports it gone and no longer lists it. Teardown runs on every path,
+  including a failed step and a run past its ceiling.
+- **The cloud canary has a stated budget.** A billable kind does not run until
+  `PORKBOT_CANARY_BUDGET_USD` and `PORKBOT_CANARY_USD_PER_MINUTE` are set; the
+  per-run ceiling is the month divided across 31 nights, the run is aborted
+  past it, and the estimated spend is recorded. A missing budget is a visible
+  skip, not a silent pass.
+- **A failure notifies and has an owner.** The failure goes through the E8
+  notification provider with the run URL as the link to logs, and the job opens
+  or comments on an issue assigned to `PORKBOT_CANARY_OWNER`. The workflow is
+  not a required check, so a provider outage never blocks a merge.
+- **Orphans are swept.** Every run lists the provider's machines and destroys
+  the ones carrying the canary bot id, before it runs and again in an
+  `if: always()` workflow step. A canary machine has no user behind it, so the
+  sweep can never touch a bot's computer.
+
+The budget arithmetic, the step-by-step contract and the operator commands are
+in `docs/canaries.md`.
 
 ## URL safety
 

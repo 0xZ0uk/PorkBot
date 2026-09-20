@@ -1,0 +1,212 @@
+name: Nightly live-provider canary
+
+# The scheduled half of slice 12.6: one canary per provider topology, against a
+# real Docker daemon and the real cloud provider, with the same runner the
+# integration tier exercises against real Docker on every pull request.
+#
+# This workflow is deliberately not a required status check and has no gate
+# job: a provider outage is an operational fact, not a reason to block a merge.
+# A failure is made visible and owned two ways — an issue assigned to
+# PORKBOT_CANARY_OWNER (the repository owner by default) and the E8
+# notification provider when a webhook is configured — and the run's URL is the
+# link to the logs.
+#
+# The cloud half runs only when it is configured: the
+# PORKBOT_CANARY_CLOUD_TOKEN secret plus the PORKBOT_CANARY_CLOUD_ENDPOINT and
+# PORKBOT_CANARY_CLOUD_IMAGE variables. It also needs a stated budget
+# (PORKBOT_CANARY_BUDGET_USD and PORKBOT_CANARY_USD_PER_MINUTE); without one the
+# canary reports a skip instead of spending money, because an unbounded cloud
+# canary is the thing the budget exists to prevent. See docs/canaries.md.
+#
+# Both halves sweep every canary machine the provider still holds before they
+# run and again when the job is done, so a night that crashes before teardown
+# costs the next night one cleanup instead of a growing bill.
+
+on:
+  schedule:
+    # Off the hour, in UTC; GitHub may delay a scheduled run, which is fine —
+    # the canary is a nightly fact, not a deadline.
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: canary-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  canary:
+    name: canary (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: docker
+          - provider: cloud
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Resolve the provider configuration
+        id: config
+        env:
+          CLOUD_TOKEN: ${{ secrets.PORKBOT_CANARY_CLOUD_TOKEN }}
+          CLOUD_ENDPOINT: ${{ vars.PORKBOT_CANARY_CLOUD_ENDPOINT }}
+          CLOUD_IMAGE: ${{ vars.PORKBOT_CANARY_CLOUD_IMAGE }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ matrix.provider }}" = "docker" ]; then
+            image="$(node -p 'require("./dependencies.json").images.find((entry) => entry.name === "node").reference')"
+            {
+              echo "PORKBOT_COMPUTER_PROVIDER=docker"
+              echo "PORKBOT_COMPUTER_IMAGE=$image"
+            } >> "$GITHUB_ENV"
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "${CLOUD_TOKEN:-}" ] || [ -z "${CLOUD_ENDPOINT:-}" ] || [ -z "${CLOUD_IMAGE:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "PORKBOT_COMPUTER_PROVIDER=daytona"
+            echo "PORKBOT_COMPUTER_ENDPOINT=$CLOUD_ENDPOINT"
+            echo "PORKBOT_COMPUTER_TOKEN=$CLOUD_TOKEN"
+            echo "PORKBOT_COMPUTER_IMAGE=$CLOUD_IMAGE"
+          } >> "$GITHUB_ENV"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Say the cloud canary is not configured
+        if: steps.config.outputs.configured != 'true'
+        run: |
+          echo "::warning title=canary::the cloud canary is not configured; set the PORKBOT_CANARY_CLOUD_TOKEN secret and the PORKBOT_CANARY_CLOUD_ENDPOINT and PORKBOT_CANARY_CLOUD_IMAGE variables to enable it"
+
+      # The canary and the supervisor it drives run from source against the
+      # built workspace packages, the same way every other tier does.
+      - name: Build the workspace
+        if: steps.config.outputs.configured == 'true'
+        run: pnpm build
+
+      - name: Start the supervisor
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/canary-storage" "$RUNNER_TEMP/canary-archives"
+          {
+            echo "PORKBOT_SUPERVISOR_URL=http://127.0.0.1:3003"
+            echo "PORKBOT_SUPERVISOR_TOKEN=canary-supervisor-token"
+            echo "PORKBOT_STORAGE_DIR=$RUNNER_TEMP/canary-storage"
+            echo "PORKBOT_COMPUTER_ARCHIVE_DIR=$RUNNER_TEMP/canary-archives"
+          } >> "$GITHUB_ENV"
+          setsid nohup node apps/supervisor/src/main.ts > "$RUNNER_TEMP/supervisor.log" 2>&1 < /dev/null &
+
+      - name: Wait for the supervisor
+        id: ready
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3003/readyz > /dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error title=canary::the supervisor did not become ready"
+          tail -n 50 "$RUNNER_TEMP/supervisor.log"
+          exit 1
+
+      - name: Run the canary
+        id: canary
+        if: steps.config.outputs.configured == 'true'
+        env:
+          BUDGET_USD: ${{ matrix.provider == 'cloud' && vars.PORKBOT_CANARY_BUDGET_USD || '' }}
+          USD_PER_MINUTE: ${{ matrix.provider == 'cloud' && vars.PORKBOT_CANARY_USD_PER_MINUTE || '' }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          report="$RUNNER_TEMP/canary.json"
+          # A cold machine image is pulled during boot inside the provider's own
+          # budget, so the transport budget is wider than a warm call's.
+          args=(run --report "$report" --logs-url "$run_url" --request-timeout-ms 240000)
+
+          if [ "${{ matrix.provider }}" = "cloud" ]; then
+            # Every kind this job exercises is billable, and the stated budget
+            # is what lets it run at all.
+            args+=(--billable all --budget-usd "${BUDGET_USD:-}" --usd-per-minute "${USD_PER_MINUTE:-}")
+          fi
+
+          node packages/canary/src/cli.ts "${args[@]}"
+
+          if [ "$(jq -r '.reports[0].status' "$report")" = "skipped" ]; then
+            echo "::warning title=canary::the ${{ matrix.provider }} canary was skipped: $(jq -r '.reports[0].skipReason' "$report")"
+          fi
+
+      - name: Sweep any canary machine left behind
+        if: always() && steps.ready.outcome == 'success'
+        run: node packages/canary/src/cli.ts sweep
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "### Live-provider canary (${{ matrix.provider }})"
+            echo ""
+            if [ -f "$RUNNER_TEMP/canary.json" ]; then
+              echo '```json'
+              jq . "$RUNNER_TEMP/canary.json"
+              echo '```'
+            else
+              echo "The canary did not run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The owner-facing half of a red night: the E8 provider carries the
+      # failure and the run URL, and the issue is where an owner is assigned and
+      # the history accumulates. Both are best-effort against the canary's own
+      # result, which is already the failing step.
+      - name: Notify the owner
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ vars.PORKBOT_CANARY_OWNER || github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PORKBOT_NOTIFICATION_WEBHOOK_URL: ${{ secrets.PORKBOT_CANARY_WEBHOOK_URL }}
+          PORKBOT_NOTIFICATION_WEBHOOK_KEY: ${{ secrets.PORKBOT_CANARY_WEBHOOK_KEY }}
+        run: |
+          set -euo pipefail
+          title="Nightly live-provider canary failed: ${{ matrix.provider }}"
+          report="$RUNNER_TEMP/canary.json"
+          step="before the canary ran"
+          reason="the supervisor or the canary process did not finish"
+
+          if [ -f "$report" ] && [ "$(jq -r '.reports[0].status' "$report")" = "failed" ]; then
+            step="$(jq -r '.reports[0].failure.step // "unknown"' "$report")"
+            reason="$(jq -r '.reports[0].failure.kind // "unknown"' "$report")"
+          elif [ -f "$report" ]; then
+            step="after the canary ran"
+            reason="the orphan sweep did not finish"
+          fi
+
+          body="The ${{ matrix.provider }} canary failed at ${step} (${reason}). Logs: ${RUN_URL}"
+
+          node packages/canary/src/cli.ts notify --title "$title" --body "$body" --url "$RUN_URL" || true
+
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body" --assignee "$OWNER"
+          fi

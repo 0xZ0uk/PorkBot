@@ -21,6 +21,9 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "canary:notify": "node packages/canary/src/cli.ts notify",
+    "canary:run": "node packages/canary/src/cli.ts run",
+    "canary:sweep": "node packages/canary/src/cli.ts sweep",
     "db:generate": "pnpm --filter @porkbot/db db:generate",
     "db:migrate": "pnpm --filter @porkbot/db db:migrate",
     "dependencies:check": "node packages/testkit/src/dependencies/cli.ts check",

@@ -103,6 +103,15 @@ export const workspacePackages = {
       "@porkbot/logging",
     ],
   },
+  "@porkbot/canary": {
+    role: "scheduled live-provider canary: real-provider boot, tool call and teardown",
+    // The canary is the one tool that reaches a real provider by construction:
+    // it drives the supervisor's client half and delivers a failure through the
+    // notification seam. The edge is narrow on purpose — no db, no effect, no
+    // framework — so a canary cannot grow a second product inside itself.
+    imports: ["@porkbot/adapter-kit", "@porkbot/adapters"],
+    testImports: ["@porkbot/testkit"],
+  },
   "@porkbot/tokens": {
     role: "design tokens",
     imports: [],
