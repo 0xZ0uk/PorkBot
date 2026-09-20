@@ -22,6 +22,11 @@ export interface UseComputerResult {
   readonly confirm: ComputerController["confirm"];
   readonly snapshot: ComputerController["snapshot"];
   readonly restore: ComputerController["restore"];
+  readonly lifecycle: ComputerController["lifecycle"];
+  readonly run: ComputerController["run"];
+  readonly openDirectory: ComputerController["openDirectory"];
+  readonly openFile: ComputerController["openFile"];
+  readonly openParent: ComputerController["openParent"];
 }
 
 export function useComputer(options: UseComputerOptions): UseComputerResult {
@@ -45,5 +50,10 @@ export function useComputer(options: UseComputerOptions): UseComputerResult {
     confirm: controller.confirm,
     snapshot: controller.snapshot,
     restore: controller.restore,
+    lifecycle: controller.lifecycle,
+    run: controller.run,
+    openDirectory: controller.openDirectory,
+    openFile: controller.openFile,
+    openParent: controller.openParent,
   };
 }

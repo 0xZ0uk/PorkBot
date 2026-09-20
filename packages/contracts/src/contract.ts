@@ -2,6 +2,8 @@ import { accountMeContract, accountOwnershipContract } from "./account.ts";
 import { approvalsDecideContract, approvalsListContract } from "./approvals.ts";
 import {
   computersBootContract,
+  computersFileContract,
+  computersFilesContract,
   computersProvidersContract,
   computersRecoverContract,
   computersResetContract,
@@ -10,6 +12,7 @@ import {
   computersSnapshotsContract,
   computersStatusContract,
   computersStopContract,
+  computersTerminalContract,
 } from "./computers.ts";
 import {
   credentialsListContract,
@@ -140,6 +143,9 @@ export const appContract = {
     snapshot: computersSnapshotContract,
     snapshots: computersSnapshotsContract,
     restore: computersRestoreContract,
+    terminal: computersTerminalContract,
+    files: computersFilesContract,
+    file: computersFileContract,
   },
   sections: {
     list: sectionsListContract,

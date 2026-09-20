@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type {
   Bot,
+  ComputerFileEntryView,
   ComputerProvidersView,
   ComputerSnapshotView,
   ComputerView,
@@ -12,10 +13,13 @@ import type {
  * server that speaks oRPC's RPC wire by hand, on port 0, with no supervisor,
  * no key and no database.
  *
- * The server holds the bot's stored selection, the deployment's provider list
- * and one machine in memory and applies the same decisions the real services
- * do: a provider write moves the bot row, a capture appends a snapshot, and a
- * restore brings the machine back running. A kind the scripted deployment
+ * The server holds the bot's stored selection, the deployment's provider list,
+ * one machine and one small home in memory, and applies the same decisions the
+ * real services do: a provider write moves the bot row, a capture appends a
+ * snapshot, a restore brings the machine back running, each lifecycle verb
+ * leaves the machine in the state its name promises, a terminal command is
+ * echoed, and the home's listing and file bytes come back through the same
+ * procedures the supervisor's exec seam backs. A kind the scripted deployment
  * reports unavailable is refused when a write names it, with the real API's
  * oRPC envelope, so the screen's refusal path is exercised over a socket.
  */
@@ -49,6 +53,46 @@ export async function startScriptedComputerApi(
   };
   let snapshots = [...(options.snapshots ?? [])];
   const calls: string[] = [];
+
+  /** The machine's home: one small tree the file view can walk. */
+  const home: Readonly<Record<string, string>> = {
+    "notes.md": "# Notes\n",
+    "projects/readme.md": "hello\n",
+  };
+
+  /** The entries one home-relative directory holds, derived from the file map. */
+  function entriesOf(path: string): ComputerFileEntryView[] {
+    const prefix = path === "" ? "" : `${path}/`;
+    const names = new Map<string, ComputerFileEntryView>();
+
+    for (const [filePath, content] of Object.entries(home)) {
+      if (!filePath.startsWith(prefix)) {
+        continue;
+      }
+
+      const remainder = filePath.slice(prefix.length);
+
+      if (remainder === "" || remainder.includes("/")) {
+        continue;
+      }
+
+      names.set(remainder, { name: remainder, kind: "file", sizeBytes: content.length });
+    }
+
+    const directories = new Set(
+      Object.keys(home)
+        .filter(
+          (filePath) => filePath.startsWith(prefix) && filePath.slice(prefix.length).includes("/"),
+        )
+        .map((filePath) => filePath.slice(prefix.length).split("/", 1)[0] ?? ""),
+    );
+
+    for (const name of directories) {
+      names.set(name, { name, kind: "directory", sizeBytes: 0 });
+    }
+
+    return [...names.values()].sort((left, right) => (left.name < right.name ? -1 : 1));
+  }
 
   function writeJson(response: ServerResponse, value: unknown): void {
     const body = JSON.stringify({ json: value });
@@ -112,6 +156,47 @@ export async function startScriptedComputerApi(
       case "computers/restore":
         computer = { assigned: true, state: "running", instanceId: "restored-1" };
         return computer;
+      case "computers/boot":
+        computer = { assigned: true, state: "running", instanceId: "booted-1" };
+        return computer;
+      case "computers/stop":
+        computer = { assigned: true, state: "stopped" };
+        return computer;
+      case "computers/reset":
+        computer = { assigned: true, state: "running", instanceId: "reset-1" };
+        return computer;
+      case "computers/recover":
+        computer = { assigned: true, state: "running", instanceId: "recovered-1" };
+        return computer;
+      case "computers/files": {
+        const path =
+          typeof input === "object" && input !== null && "path" in input
+            ? ((input as { path?: string }).path ?? "")
+            : "";
+
+        return { path, entries: entriesOf(path) };
+      }
+      case "computers/file": {
+        const path =
+          typeof input === "object" && input !== null && "path" in input
+            ? ((input as { path?: string }).path ?? "")
+            : "";
+        const content = home[path];
+
+        return content === undefined
+          ? undefined
+          : { path, content, truncated: content.length > 64 };
+      }
+      case "computers/terminal": {
+        const command =
+          typeof input === "object" && input !== null && "command" in input
+            ? ((input as { command?: string }).command ?? "")
+            : "";
+
+        return command.includes("fail")
+          ? { exitCode: 1, stdout: "", stderr: "the command failed\n", truncated: false }
+          : { exitCode: 0, stdout: `ran: ${command}\n`, stderr: "", truncated: false };
+      }
       case "bots/update": {
         const kind =
           typeof input === "object" && input !== null && "computerProvider" in input
@@ -146,7 +231,14 @@ export async function startScriptedComputerApi(
     const input = await readBody(request);
     const value = handle(input, path);
 
-    if (path === "bots/update" && value === undefined) {
+    if (value === undefined) {
+      // A missing file is the contract's typed NOT_FOUND; every other absent
+      // answer this script can give is the refused provider write.
+      if (path === "computers/file") {
+        writeError(response, 404, "NOT_FOUND");
+        return;
+      }
+
       writeError(response, 503, "SERVICE_UNAVAILABLE");
       return;
     }

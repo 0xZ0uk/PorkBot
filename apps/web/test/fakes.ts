@@ -7,8 +7,11 @@ import type {
   BotSection,
   BotSecretAuthView,
   BotSecretView,
+  ComputerDirectoryView,
+  ComputerFileEntryView,
   ComputerProvidersView,
   ComputerSnapshotView,
+  ComputerTerminalView,
   ComputerView,
   Credential,
   McpGrant,
@@ -25,6 +28,8 @@ import type {
   Thread,
   ThreadEventsCallOptions,
   ThreadEventsProcedure,
+  ThreadsSendResult,
+  UploadedAttachment,
   UsageBot,
   UsageTotalsView,
 } from "@porkbot/contracts";
@@ -158,13 +163,34 @@ export interface ScriptedThreadTransportOptions {
    * disappears between polls.
    */
   readonly runs?: Readonly<Record<string, RunGet>> | (() => Readonly<Record<string, RunGet>>);
+  /**
+   * The composer's send seam. The default throws, so a console test that
+   * never sends stays honest; a composer test installs the answer or the
+   * refusal it wants and reads `sendCalls` for what the send carried.
+   */
+  readonly send?: (input: Parameters<ConsoleTransport["send"]>[0]) => Promise<ThreadsSendResult>;
+  /**
+   * The composer's upload seam. The default throws for the same reason; the
+   * input carries the test's `onProgress` and `signal` verbatim, so a fake
+   * drives progress and observes aborts the way the XHR would.
+   */
+  readonly uploadAttachment?: (
+    input: Parameters<ConsoleTransport["uploadAttachment"]>[0],
+  ) => Promise<UploadedAttachment>;
 }
 
 export function scriptedThreadTransport(
   options: ScriptedThreadTransportOptions = {},
-): ConsoleTransport & { readonly transcriptCalls: string[]; readonly runCalls: string[] } {
+): ConsoleTransport & {
+  readonly transcriptCalls: string[];
+  readonly runCalls: string[];
+  readonly sendCalls: Parameters<ConsoleTransport["send"]>[0][];
+  readonly uploadCalls: Parameters<ConsoleTransport["uploadAttachment"]>[0][];
+} {
   const transcriptCalls: string[] = [];
   const runCalls: string[] = [];
+  const sendCalls: Parameters<ConsoleTransport["send"]>[0][] = [];
+  const uploadCalls: Parameters<ConsoleTransport["uploadAttachment"]>[0][] = [];
   const notExercised = (): never => {
     throw new Error("not exercised by this test");
   };
@@ -172,6 +198,8 @@ export function scriptedThreadTransport(
   return {
     transcriptCalls,
     runCalls,
+    sendCalls,
+    uploadCalls,
 
     async transcript(threadId) {
       transcriptCalls.push(threadId);
@@ -222,6 +250,20 @@ export function scriptedThreadTransport(
       }
 
       return stored;
+    },
+
+    async send(input) {
+      sendCalls.push(input);
+      const send = options.send ?? notExercised;
+
+      return send(input);
+    },
+
+    async uploadAttachment(input) {
+      uploadCalls.push(input);
+      const upload = options.uploadAttachment ?? notExercised;
+
+      return upload(input);
     },
   };
 }
@@ -854,18 +896,26 @@ export interface ScriptedComputerTransportOptions {
   readonly providers?: ComputerProvidersView;
   readonly computer?: ComputerView;
   readonly snapshots?: readonly ComputerSnapshotView[];
+  /** The directory listings the machine answers, keyed by home-relative path. */
+  readonly directories?: Readonly<Record<string, readonly ComputerFileEntryView[]>>;
+  /** The file contents the machine answers, keyed by home-relative path. */
+  readonly files?: Readonly<Record<string, string>>;
   /** Throws from the load, for the refusal path. */
   readonly listFailure?: unknown;
   /** Throws from every write, for the write-refusal path. */
   readonly writeFailure?: unknown;
+  /** Throws from the terminal and file reads, for their refusal paths. */
+  readonly browseFailure?: unknown;
 }
 
 /**
- * The computer settings screen's transport fake. It applies the decisions the
- * durable reads and writes have: setting a provider moves the bot row, a
- * capture appends a snapshot, and a restore reports the machine running — so a
- * controller or screen test observes state change the way a reload after the
- * real write would show it.
+ * The computer screen's transport fake. It applies the decisions the durable
+ * reads and writes have: setting a provider moves the bot row, a capture
+ * appends a snapshot, a restore reports the machine running, a lifecycle verb
+ * moves the machine to the state it would leave behind, a terminal command is
+ * echoed back, and the file view answers the listings and files the fixture
+ * declares — so a controller or screen test observes state change the way a
+ * reload after the real write would show it.
  */
 export function scriptedComputerTransport(
   options: ScriptedComputerTransportOptions = {},
@@ -881,6 +931,12 @@ export function scriptedComputerTransport(
   function writeGuard(): void {
     if (options.writeFailure !== undefined) {
       throw options.writeFailure;
+    }
+  }
+
+  function browseGuard(): void {
+    if (options.browseFailure !== undefined) {
+      throw options.browseFailure;
     }
   }
 
@@ -912,6 +968,46 @@ export function scriptedComputerTransport(
       computer = { assigned: true, state: "running", instanceId: "i-1" };
 
       return computer;
+    },
+    boot: async () => {
+      writeGuard();
+      computer = { assigned: true, state: "running", instanceId: "i-1" };
+
+      return computer;
+    },
+    stop: async () => {
+      writeGuard();
+      computer = { assigned: true, state: "stopped" };
+
+      return computer;
+    },
+    reset: async () => {
+      writeGuard();
+      computer = { assigned: true, state: "running", instanceId: "reset-1" };
+
+      return computer;
+    },
+    recover: async () => {
+      writeGuard();
+      computer = { assigned: true, state: "running", instanceId: "recovered-1" };
+
+      return computer;
+    },
+    terminal: async ({ command }): Promise<ComputerTerminalView> => {
+      browseGuard();
+
+      return { exitCode: 0, stdout: `ran: ${command}\n`, stderr: "", truncated: false };
+    },
+    files: async ({ path }): Promise<ComputerDirectoryView> => {
+      browseGuard();
+
+      return { path: path ?? "", entries: [...(options.directories?.[path ?? ""] ?? [])] };
+    },
+    file: async ({ path }) => {
+      browseGuard();
+      const content = options.files?.[path] ?? "";
+
+      return { path, content, truncated: false };
     },
   };
 }

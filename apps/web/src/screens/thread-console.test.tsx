@@ -23,8 +23,22 @@ const base: ThreadConsoleState = {
   threadId: "thread-1",
   status: "ready",
   entries: [
-    { kind: "message", id: "message-0", role: "user", text: "do it", streaming: false },
-    { kind: "message", id: "message-1", role: "assistant", text: "Hello", streaming: true },
+    {
+      kind: "message",
+      id: "message-0",
+      role: "user",
+      text: "do it",
+      attachments: [],
+      streaming: false,
+    },
+    {
+      kind: "message",
+      id: "message-1",
+      role: "assistant",
+      text: "Hello",
+      attachments: [],
+      streaming: true,
+    },
   ],
   refusal: null,
   connection: "live",
@@ -39,9 +53,23 @@ function withCall(callSnapshot: ToolCallSnapshot): ThreadConsoleState {
   return {
     ...base,
     entries: [
-      { kind: "message", id: "message-0", role: "user", text: "audit it", streaming: false },
+      {
+        kind: "message",
+        id: "message-0",
+        role: "user",
+        text: "audit it",
+        attachments: [],
+        streaming: false,
+      },
       { kind: "tool", id: `tool:run-1:${callSnapshot.callId}`, runId: "run-1", call: callSnapshot },
-      { kind: "message", id: "message-1", role: "assistant", text: "Done", streaming: false },
+      {
+        kind: "message",
+        id: "message-1",
+        role: "assistant",
+        text: "Done",
+        attachments: [],
+        streaming: false,
+      },
     ],
   };
 }
@@ -211,7 +239,7 @@ describe("the tool-call timeline", () => {
     expect(container.querySelector(".tool-call-duration")?.textContent).toBe("2.5 s");
   });
 
-  it("offers a produced file by name when the result carries a download pointer", async () => {
+  it("offers a produced file by name, rebuilding the link from the artifact id", async () => {
     await render(
       <ThreadConsoleScreen
         state={withCall(
@@ -224,11 +252,13 @@ describe("the tool-call timeline", () => {
               path: "reports/summary.md",
               bytes: 2_048,
               artifact: {
-                id: "artifact-1",
+                id: "01900000-0000-7000-8000-00000000a1f0",
                 filename: "summary.md",
                 contentType: "text/markdown",
                 sizeBytes: 2_048,
-                downloadPath: "/files/artifact-1",
+                // Untrusted tool output: the row must ignore this and derive
+                // the path from the id, so a hostile value cannot render.
+                downloadPath: "//evil.example/phish",
               },
             },
           }),
@@ -239,7 +269,7 @@ describe("the tool-call timeline", () => {
 
     const link = container.querySelector("a.tool-call-download");
 
-    expect(link?.getAttribute("href")).toBe("/files/artifact-1");
+    expect(link?.getAttribute("href")).toBe("/files/01900000-0000-7000-8000-00000000a1f0");
     expect(link?.textContent).toBe("Download summary.md (2.0 KiB)");
   });
 
@@ -251,7 +281,12 @@ describe("the tool-call timeline", () => {
             status: "completed",
             result: {
               ok: true,
-              artifact: { filename: "summary.md", downloadPath: "javascript:x" },
+              artifact: {
+                id: "not-a-uuid",
+                filename: "summary.md",
+                sizeBytes: 2_048,
+                downloadPath: "/files/not-a-uuid",
+              },
             },
           }),
         )}

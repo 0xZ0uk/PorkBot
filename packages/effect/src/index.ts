@@ -18,6 +18,7 @@ export {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidComputerPathError,
   InvalidMessageError,
   InvalidOAuthStateError,
   InvalidRoutineScheduleError,
@@ -155,6 +156,7 @@ export {
   MAX_COMPUTER_PATH_LENGTH,
   MAX_FILE_WRITE_BYTES,
   MAX_SHELL_COMMAND_LENGTH,
+  quoteShellArgument,
 } from "./computer-tools.ts";
 export type { ComputerToolOptions } from "./computer-tools.ts";
 
@@ -162,8 +164,8 @@ export type { ComputerToolOptions } from "./computer-tools.ts";
 // the bytes through one door, and the implementation — storage plus the run's
 // file store — answers the pointer a tool result and a download link carry.
 // The tool layer never learns a storage key or a space; the path every stored
-// file is downloaded from is derived from its id, never from its location.
-export { fileDownloadPath } from "./artifact-recorder.ts";
+// file is downloaded from is `fileDownloadPath` in @porkbot/contracts, derived
+// from its id, never from its location.
 export type {
   ArtifactRecorder,
   ArtifactRecordRequest,

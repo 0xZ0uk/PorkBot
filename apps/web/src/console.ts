@@ -10,10 +10,17 @@ import {
   createThreadSnapshot,
   isActiveStatus,
   isTerminalStatus,
+  messageFiles,
   messageText,
   reduceRunEvent,
 } from "@porkbot/core";
-import type { BackoffPolicy, RunSnapshot, ThreadSnapshot, ToolCallSnapshot } from "@porkbot/core";
+import type {
+  BackoffPolicy,
+  FileMessageBlock,
+  RunSnapshot,
+  ThreadSnapshot,
+  ToolCallSnapshot,
+} from "@porkbot/core";
 
 /**
  * The thread console: one thread's transcript, read live (story 18) and
@@ -76,6 +83,13 @@ export interface TranscriptMessageEntry {
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly text: string;
+  /**
+   * The stored files the message's blocks carry (slice 7.6). Only the
+   * transcript row knows them — a steering message that arrived as a
+   * `run.steered` event has text alone until the next mount — so a live frame
+   * and a replay render the same chips.
+   */
+  readonly attachments: readonly FileMessageBlock[];
   /** True while the run is still appending tokens to this message. */
   readonly streaming: boolean;
 }
@@ -123,6 +137,15 @@ export interface ThreadConsole {
   stop(): void;
   /** Restarts from an empty snapshot: the reload path, offered after a refusal. */
   retry(): void;
+  /**
+   * Folds a message the operator's send just persisted into the view. The
+   * event vocabulary does not carry the message that starts a run, so without
+   * this the sender's own turn would appear only on the next mount; a steer is
+   * folded the same way, and its `run.steered` frame is then a replay the
+   * merge already dedupes. A message id already known — a nonce replay — is a
+   * no-op.
+   */
+  noteSent(message: Message): void;
 }
 
 /**
@@ -162,6 +185,10 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
   const listeners = new Set<() => void>();
   let snapshot = createThreadSnapshot(threadId);
   let transcript: readonly Message[] = [];
+  // Messages this console's own sends persisted: rows the transcript fetch may
+  // have started before, so they merge beside it until a reload reads them
+  // back as transcript.
+  let sentMessages: readonly Message[] = [];
   let state: ThreadConsoleState = {
     threadId,
     status: "loading",
@@ -288,7 +315,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     }
 
     transcript = fetched;
-    setState({ status: "ready", entries: mergeTranscript(transcript, snapshot) });
+    setState({ status: "ready", entries: mergeTranscript(allMessages(), snapshot) });
     syncLiveness();
 
     try {
@@ -325,7 +352,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
         }
 
         snapshot = reduced.snapshot;
-        setState({ entries: mergeTranscript(transcript, snapshot) });
+        setState({ entries: mergeTranscript(allMessages(), snapshot) });
         syncLiveness();
       }
     } catch (error) {
@@ -347,6 +374,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     controller = new AbortController();
     snapshot = createThreadSnapshot(threadId);
     transcript = [];
+    sentMessages = [];
     stopLiveness();
 
     setState({
@@ -357,6 +385,16 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       liveness: null,
     });
     void run(generation, controller);
+  }
+
+  /**
+   * The message list the merge renders: the fetched transcript plus the sends
+   * this console persisted after it. A send the fetch already saw — a replay
+   * of a row it read — is dropped here rather than rendered twice.
+   */
+  function allMessages(): readonly Message[] {
+    const known = new Set(transcript.map((message) => message.id));
+    return [...transcript, ...sentMessages.filter((message) => !known.has(message.id))];
   }
 
   return {
@@ -391,6 +429,18 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       generation += 1;
       controller?.abort();
       begin();
+    },
+
+    noteSent: (message) => {
+      if (
+        sentMessages.some((sent) => sent.id === message.id) ||
+        transcript.some((persisted) => persisted.id === message.id)
+      ) {
+        return;
+      }
+
+      sentMessages = [...sentMessages, message];
+      setState({ entries: mergeTranscript(allMessages(), snapshot) });
     },
   };
 }
@@ -435,6 +485,7 @@ export function mergeTranscript(
         id: message.id,
         role: message.role,
         text: live === undefined ? (messageText(message.blocks) ?? "") : live.text,
+        attachments: messageFiles(message.blocks) ?? [],
         streaming: live !== undefined && !live.complete,
       },
       message.runId,
@@ -452,6 +503,7 @@ export function mergeTranscript(
         id: message.id,
         role: message.role,
         text: message.text,
+        attachments: [],
         streaming: !message.complete,
       },
       message.runId,

@@ -9,11 +9,12 @@ import { ComputerScreen } from "./computer.tsx";
 import { fakeBot, fakeProvider, fakeSnapshot } from "../../test/fakes.ts";
 
 /**
- * The computer settings screen in a real DOM: the provider list reads each
- * kind's readiness answer, an unavailable kind is a disabled radio rather than
- * a selection that fails later, the switch confirmation states what does not
- * move and offers the snapshot path, and the snapshots section makes a
- * restore a confirmation of its own.
+ * The computer screen in a real DOM: the provider list reads each kind's
+ * readiness answer, an unavailable kind is a disabled radio rather than a
+ * selection that fails later, the switch confirmation states what does not
+ * move and offers the snapshot path, the lifecycle controls enable exactly the
+ * verbs the machine's state allows, reset arms a confirmation that names what
+ * is lost, the terminal submits commands, and the file view navigates.
  *
  * The fixture is the state a loaded controller would hand over, so no network
  * and no controller is involved — the screen is a function of its props.
@@ -35,6 +36,8 @@ function state(overrides: Partial<ComputerState> = {}): ComputerState {
     candidate: null,
     pending: null,
     notice: null,
+    terminal: { pending: false, entries: [] },
+    files: { path: null, entries: [], preview: null, pending: false, refusal: null },
     ...overrides,
   };
 }
@@ -48,7 +51,20 @@ function screenProps(state: ComputerState) {
     onConfirm: vi.fn(async () => undefined),
     onSnapshot: vi.fn(async () => undefined),
     onRestore: vi.fn(async () => undefined),
+    onLifecycle: vi.fn(async () => undefined),
+    onRun: vi.fn(async () => undefined),
+    onOpenDirectory: vi.fn(async () => undefined),
+    onOpenFile: vi.fn(async () => undefined),
+    onOpenParent: vi.fn(async () => undefined),
   };
+}
+
+/** Sets a controlled input's value the way React's onChange reads it. */
+function setValue(input: Element, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 let container: HTMLDivElement;
@@ -202,5 +218,185 @@ describe("the snapshots section", () => {
     await render(<ComputerScreen {...screenProps(state())} />);
 
     expect(container.textContent).toContain("No snapshots yet.");
+  });
+});
+
+describe("the machine controls", () => {
+  it("enables exactly the verbs the machine's state allows", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(state({ computer: { assigned: true, state: "stopped" } }))}
+      />,
+    );
+
+    expect(buttonWith("Start").disabled).toBe(false);
+    expect(buttonWith("Stop").disabled).toBe(true);
+    expect(buttonWith("Reset").disabled).toBe(false);
+    expect(buttonWith("Recover").disabled).toBe(false);
+  });
+
+  it("disables start on a running machine and every lifecycle verb with no machine", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(state({ computer: { assigned: true, state: "running" } }))}
+      />,
+    );
+
+    expect(buttonWith("Start").disabled).toBe(true);
+    expect(buttonWith("Stop").disabled).toBe(false);
+
+    await render(<ComputerScreen {...screenProps(state())} />);
+
+    for (const label of ["Start", "Stop", "Reset", "Recover"]) {
+      expect(buttonWith(label).disabled).toBe(true);
+    }
+  });
+
+  it("arms a reset confirmation that names what is lost and runs the verb", async () => {
+    const props = screenProps(
+      state({ computer: { assigned: true, state: "running" }, snapshots: [fakeSnapshot()] }),
+    );
+    await render(<ComputerScreen {...props} />);
+
+    await act(async () => {
+      buttonWith("Reset").click();
+    });
+
+    expect(container.textContent).toContain("Snapshots are kept");
+
+    await act(async () => {
+      buttonWith("Reset the machine").click();
+    });
+    expect(props.onLifecycle).toHaveBeenCalledWith("reset");
+  });
+
+  it("says the machine is not running rather than offering a dead terminal", async () => {
+    await render(<ComputerScreen {...screenProps(state())} />);
+
+    expect(container.textContent).toContain("Start the machine to use its terminal and files.");
+    expect(container.querySelector(".terminal")).toBeNull();
+  });
+});
+
+describe("the terminal", () => {
+  it("submits the typed command and renders the machine's answer", async () => {
+    const props = screenProps(
+      state({
+        computer: { assigned: true, state: "running" },
+        terminal: {
+          pending: false,
+          entries: [
+            { command: "echo hi", exitCode: 0, stdout: "hi\n", stderr: "", truncated: false },
+            { command: "nope", exitCode: 1, stdout: "", stderr: "not found\n", truncated: false },
+          ],
+        },
+      }),
+    );
+    await render(<ComputerScreen {...props} />);
+
+    expect(container.textContent).toContain("$ echo hi");
+    expect(container.textContent).toContain("not found");
+    expect(container.textContent).toContain("Exit code 1");
+
+    const input = container.querySelector<HTMLInputElement>(".terminal-form input");
+    const form = container.querySelector<HTMLFormElement>(".terminal-form");
+    expect(input).not.toBeNull();
+    expect(form).not.toBeNull();
+
+    await act(async () => {
+      setValue(input as HTMLInputElement, "ls");
+    });
+    await act(async () => {
+      form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(props.onRun).toHaveBeenCalledWith("ls");
+  });
+
+  it("says there is nothing to show before the first command", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(state({ computer: { assigned: true, state: "running" } }))}
+      />,
+    );
+
+    expect(container.textContent).toContain("No commands run yet.");
+  });
+});
+
+describe("the file view", () => {
+  const entries = [
+    { name: "notes.md", kind: "file" as const, sizeBytes: 12 },
+    { name: "projects", kind: "directory" as const, sizeBytes: 0 },
+  ];
+
+  it("lists the home, opens a directory, and previews a file", async () => {
+    const props = screenProps(
+      state({
+        computer: { assigned: true, state: "running" },
+        files: { path: "", entries, preview: null, pending: false, refusal: null },
+      }),
+    );
+    await render(<ComputerScreen {...props} />);
+
+    expect(container.textContent).toContain("Home");
+    expect(buttonWith("Up").disabled).toBe(true);
+
+    await act(async () => {
+      buttonWith("projects/").click();
+    });
+    expect(props.onOpenDirectory).toHaveBeenCalledWith(entries[1]);
+
+    await act(async () => {
+      buttonWith("notes.md").click();
+    });
+    expect(props.onOpenFile).toHaveBeenCalledWith(entries[0]);
+  });
+
+  it("renders a preview, its truncation, and the up control inside a directory", async () => {
+    const props = screenProps(
+      state({
+        computer: { assigned: true, state: "running" },
+        files: {
+          path: "projects",
+          entries: [{ name: "readme.md", kind: "file", sizeBytes: 5 }],
+          preview: { path: "projects/readme.md", content: "hello", truncated: true },
+          pending: false,
+          refusal: null,
+        },
+      }),
+    );
+    await render(<ComputerScreen {...props} />);
+
+    expect(container.textContent).toContain("/projects");
+    expect(container.textContent).toContain("hello");
+    expect(container.textContent).toContain("Only the first part of the file is shown.");
+
+    await act(async () => {
+      buttonWith("Up").click();
+    });
+    expect(props.onOpenParent).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a refused browse beside the previous listing", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(
+          state({
+            computer: { assigned: true, state: "running" },
+            files: {
+              path: "",
+              entries,
+              preview: null,
+              pending: false,
+              refusal: "That directory could not be listed.",
+            },
+          }),
+        )}
+      />,
+    );
+
+    expect(container.textContent).toContain("That directory could not be listed.");
+    expect(container.textContent).toContain("projects/");
   });
 });

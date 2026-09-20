@@ -10,6 +10,7 @@ import {
   CursorRejectedError,
   DeploymentSettingsConflictError,
   GateTimeoutError,
+  InvalidComputerPathError,
   InvalidMessageError,
   InvalidOAuthStateError,
   InvalidRoutineScheduleError,
@@ -179,6 +180,12 @@ export const errorMappings = {
     message: "The computer service could not be reached.",
     matches: (error: unknown): error is ComputerUnavailableError =>
       error instanceof ComputerUnavailableError,
+  },
+  InvalidComputerPathError: {
+    code: "BAD_REQUEST",
+    message: "That path is outside the bot's home directory.",
+    matches: (error: unknown): error is InvalidComputerPathError =>
+      error instanceof InvalidComputerPathError,
   },
   InvalidOAuthStateError: {
     code: "BAD_REQUEST",

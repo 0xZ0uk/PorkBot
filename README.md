@@ -1926,6 +1926,28 @@ drives the read, the switch and the capture-switch-restore path against a
 scripted API over a real socket, and the screen is captured under
 `docs/screenshots/`.
 
+The computer screen lands with slice 11.4. `/bots/$botId/computer` is now the
+operator's whole view of a machine: its state and the supervisor's four
+lifecycle verbs, a terminal that runs one command at a time and renders its
+exit code, stdout and stderr, a file view that lists the bot's home and reads
+one file from it, the provider choice from slice 9.4, and the snapshot pair
+that moves files across a provider change. `computers.terminal`,
+`computers.files` and `computers.file` are new procedures over the same
+supervisor `exec` seam the model's `shell` and `file_*` tools use: the bot is
+resolved in the actor's space before the supervisor is dialed, and the file
+view is confined to the home — an outside read is a dangerous class, so the
+browser refuses it with the contract's typed `BAD_REQUEST` while the terminal
+stays the operator's way to the rest of the machine. Reset warns that the
+machine and its home are destroyed and keeps the snapshots that can bring the
+files back, and a stopped machine disables the terminal and file view rather
+than letting a command answer a supervisor refusal. Screen watch and takeover
+stay deferred (story 28): the `frames()`/`input()` seam and the
+capability-gated supervisor paths are documented where they are declared, and
+no screen surface ships. The controller, screen and e2e tiers cover the read,
+the lifecycle verbs, the terminal, the file walk and the reload; the e2e drives
+a scripted API over a real socket and the screen is captured under
+`docs/screenshots/`.
+
 The thread console lands with slice 6.6: `threads.events` streams into the
 console controller, which folds each frame through the core reducer and renders
 the transcript, the tokens as they arrive, and one connection-status line; a
