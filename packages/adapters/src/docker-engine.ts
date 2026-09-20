@@ -178,6 +178,12 @@ export interface DockerEngine {
     alias?: string,
     budgetMs?: number,
   ): Promise<void>;
+  /**
+   * Removes a network this provider created. Idempotent: a network that is
+   * already gone is the answer destroy wants, and a network still holding
+   * endpoints is the daemon's refusal, which surfaces as the failure it is.
+   */
+  removeNetwork(name: string, budgetMs?: number): Promise<void>;
   listContainers(
     labels: Readonly<Record<string, string>>,
     budgetMs?: number,
@@ -632,6 +638,15 @@ export function createDockerEngine(options: DockerEngineOptions = {}): DockerEng
         // idempotent answer. A 404 still fails — a missing network or
         // container is not something to quietly skip.
         accept: [403],
+      }).then(({ response }) => response.resume());
+    },
+
+    async removeNetwork(name, budgetMs = requestTimeoutMs) {
+      await send({
+        method: "DELETE",
+        path: `/networks/${encodeURIComponent(name)}`,
+        budgetMs,
+        accept: [404],
       }).then(({ response }) => response.resume());
     },
 

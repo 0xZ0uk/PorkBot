@@ -451,6 +451,33 @@ export class DockerEngineEmulator {
       return;
     }
 
+    if (method === "DELETE" && segments.length === 2) {
+      const name = decodeURIComponent(segments[1] ?? "");
+      const network = this.#networks.get(name);
+
+      if (network === undefined) {
+        dockerError(response, 404, `network ${name} not found`);
+        return;
+      }
+
+      // The daemon refuses a network that still has endpoints, and the
+      // emulator keeps that honest: a provider that removes the machine before
+      // the network sees the refusal here rather than only against Docker.
+      const attached = [...this.#containers.values()].some((container) =>
+        container.networks.has(name),
+      );
+
+      if (attached) {
+        dockerError(response, 403, `network ${name} has active endpoints`);
+        return;
+      }
+
+      this.#networks.delete(name);
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+
     if (method === "POST" && url.pathname === "/networks/create") {
       const record = body as
         { Name?: unknown; Driver?: unknown; Internal?: unknown; Options?: unknown } | undefined;

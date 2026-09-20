@@ -15,7 +15,7 @@ import { planComputerNetwork } from "@porkbot/core";
 import { findRepoRoot } from "@porkbot/testkit";
 import { afterAll, describe, expect, it } from "vitest";
 import { createComputerLifecycle } from "../../src/computer-lifecycle.ts";
-import { dockerOrThrow, dockerQuietly } from "./docker.ts";
+import { docker, dockerOrThrow, dockerQuietly } from "./docker.ts";
 
 /**
  * The Docker provider against the real daemon (slice 7.2 acceptance).
@@ -210,6 +210,32 @@ describe("the Docker provider against the real daemon", () => {
       );
     } finally {
       await daemonProvider.destroy(computer).catch(() => undefined);
+    }
+  });
+
+  it("removes the computer's isolated network on destroy", async () => {
+    const daemonProvider = await providerUnderTest();
+    const computer = {
+      computerId: `dockersuite-network-${suffix}`,
+      botId: `dockersuite-bot-${suffix}`,
+    };
+    const network = planComputerNetwork(computer).name;
+
+    created.push(computer);
+
+    try {
+      await daemonProvider.ensure(computer);
+
+      expect(dockerOrThrow(["network", "inspect", network])).toContain(network);
+
+      await daemonProvider.destroy(computer);
+
+      // The daemon's subnet pools are finite; a network that outlived its
+      // computer would eventually refuse the next boot.
+      expect(docker(["network", "inspect", network]).status).not.toBe(0);
+    } finally {
+      await daemonProvider.destroy(computer).catch(() => undefined);
+      dockerQuietly(["network", "rm", network]);
     }
   });
 
