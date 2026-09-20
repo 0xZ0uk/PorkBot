@@ -1,0 +1,144 @@
+name: Release
+
+# The desktop release, from GitHub's runners and nothing else. The version is
+# merged first (a `release:bump` pull request), then this workflow is
+# dispatched: it refuses a version the manifest does not declare, packages one
+# artifact per platform, signs each artifact's SHA-512 with the release's
+# Ed25519 key into the update manifest the app verifies, verifies its own
+# output, generates the release notes from the commit log, and creates a GitHub
+# Release at the dispatched commit. A release that already exists is never
+# overwritten, so an artifact URL and its signed digest keep naming one build.
+#
+# Configure once, in the repository settings:
+#
+#   secret   PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY  the Ed25519 release key, PEM
+#   variable PORKBOT_DESKTOP_UPDATE_PUBLIC_KEY   its public half, the value the
+#                                                desktop app pins and verifies
+#
+# Generate the pair with:
+#
+#   openssl genpkey -algorithm ed25519 -out release-key.pem
+#   openssl pkey -in release-key.pem -pubout
+#
+# The private half never leaves the secret; the public half is not a secret and
+# is printed here so a build can pin it. A missing key fails the run before
+# anything is packaged: an unsigned release is not a release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop version already merged into apps/desktop/package.json, e.g. 0.2.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Build, sign and verify, but publish no release"
+        required: false
+        type: boolean
+        default: true
+
+# The tag and the release are written with the workflow's own token; nothing
+# else in the workflow needs write access.
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+  TURBO_CACHE_DIR: .turbo/cache
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The version reaches every step through the environment, never through
+    # `${{ }}` inside a `run:` body: an input is interpolated before the shell
+    # parses the line, so a quoted `${{ inputs.version }}` is not quoted.
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The release notes read the whole history back to the previous tag.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      # The version is the release's identity and the app pins it, so the
+      # manifest and the input must agree before a tag exists. The same check
+      # refuses a tag that already exists, because a release is immutable.
+      - name: Verify the merged version and a free tag
+        timeout-minutes: 5
+        run: node packages/testkit/src/release/cli.ts check-version --version "$VERSION"
+      - name: Build the workspace
+        timeout-minutes: 20
+        run: pnpm build
+      - name: Package one artifact per platform
+        timeout-minutes: 30
+        run: >-
+          node packages/testkit/src/release/cli.ts package
+          --version "$VERSION"
+          --targets linux-x64,darwin-arm64,win32-x64
+          --out .release
+      - name: Sign each artifact digest with the release key
+        timeout-minutes: 5
+        env:
+          PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY: ${{ secrets.PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY }}
+        run: >-
+          node packages/testkit/src/release/cli.ts sign
+          --tag "desktop-v$VERSION"
+          --repo "$GITHUB_REPOSITORY"
+      # Verification is part of the pipeline, not a step a person remembers:
+      # every artifact's bytes are re-hashed and every manifest must verify
+      # against the key the app pins, or nothing is published.
+      - name: Verify every artifact and manifest
+        timeout-minutes: 5
+        env:
+          PORKBOT_DESKTOP_UPDATE_PUBLIC_KEY: ${{ vars.PORKBOT_DESKTOP_UPDATE_PUBLIC_KEY }}
+        run: node packages/testkit/src/release/cli.ts verify
+      - name: Generate the release notes from the commit log
+        timeout-minutes: 5
+        run: >-
+          node packages/testkit/src/release/cli.ts notes
+          --version "$VERSION" > .release/RELEASE_NOTES.md
+      - name: Upload the artifacts for a dry run
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-v${{ inputs.version }}
+          path: |
+            .release/*.tar.gz
+            .release/*.json
+            .release/checksums.txt
+            .release/RELEASE_NOTES.md
+          if-no-files-found: error
+      # `gh release create` would fail on an existing tag anyway; checking
+      # first turns the failure into the sentence that explains why.
+      - name: Refuse to overwrite an existing release
+        if: ${{ !inputs.dry_run }}
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "desktop-v$VERSION" >/dev/null 2>&1; then
+            echo "::error::desktop-v$VERSION already exists; a release and its artifacts are immutable."
+            exit 1
+          fi
+      # The tag is created at the commit this run checked out, so the release,
+      # its artifacts and the signed manifest all name one git SHA.
+      - name: Create the release
+        if: ${{ !inputs.dry_run }}
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "desktop-v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "PorkBot desktop v$VERSION" \
+            --notes-file .release/RELEASE_NOTES.md \
+            .release/*.tar.gz \
+            .release/build-manifest.json \
+            .release/update-*.json \
+            .release/checksums.txt

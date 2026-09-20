@@ -28,6 +28,7 @@
     "vitest": "5.0.1"
   },
   "dependencies": {
+    "@electron/packager": "20.3.0",
     "pg": "8.23.0"
   }
 }

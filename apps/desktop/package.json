@@ -1,7 +1,10 @@
 {
   "name": "@porkbot/desktop",
+  "productName": "PorkBot",
   "version": "0.0.0",
   "private": true,
+  "description": "The connect-only desktop client of a PorkBot server.",
+  "author": "PorkBot contributors",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {

@@ -348,6 +348,26 @@ change it without breaking what the boundaries and the CI gate protect.
   parsing the stream a second time. Checked by: review and
   `apps/desktop/src/proxy.test.ts`.
 
+### Releases
+
+- **An artifact names its version, platform and commit, and its digest is
+  signed.** `packages/testkit/src/release/cli.ts` is the whole pipeline; the
+  name carries the commit, `build-manifest.json` records the full commit and
+  every digest, and `sign` writes the Ed25519 manifest the app trusts. Checked by:
+  test (`packages/testkit/test/release-artifact.test.ts`,
+  `packages/testkit/test/release-signing.test.ts`) and review.
+- **The release and the app agree on the bytes that are signed.** The canonical
+  payload is one contract with two implementations, and the desktop's suite
+  signs with the release helper and verifies through the app's own code, so a
+  drift fails CI rather than shipping an update every client refuses. Checked by:
+  test (`apps/desktop/src/release-contract.test.ts`).
+- **A release is built and published from CI, and never overwritten.**
+  `.github/workflows/release.yml` packages every platform, verifies its own
+  signatures, and refuses a tag or release that already exists; the `desktop`
+  CI tier runs the same packaging and smoke path on every pull request, so the
+  pipeline is proven before it is trusted. Checked by: the `desktop` CI tier
+  (`packages/testkit/src/release/cli.ts`) and review.
+
 ### Dependencies
 
 - **Version choices live in `dependencies.json`.** The register is the only
