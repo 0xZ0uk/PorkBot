@@ -1523,7 +1523,10 @@ resume path (`thread-console.e2e.test.ts`), mounts the memory screen over a
 scripted memory API to prove a correction survives a reload
 (`memory.e2e.test.ts`), and mounts the connections screen over a scripted
 connections API to prove a create, a revoke and a probe through the real wire
-(`connections.e2e.test.ts`).
+(`connections.e2e.test.ts`). The API package's Playwright spec adds the
+release-level browser pass against that built artifact and the real API,
+including approval, steering, stop and durable reload replay, with the
+provider seams held by offline emulators.
 
 ## Thread console
 
@@ -1659,7 +1662,7 @@ with a name instead of a step index buried in one long log.
 - `env` — every `.env.schema` loads under the CI fixtures and every audit is in sync
 - `unit` — unit tests with coverage
 - `integration` — the tests that need a real Postgres, against the local stack the job starts
-- `e2e` — whole-process tests against the built output
+- `e2e` — real-browser release flows against the built output and offline emulators
 - `gate` — green only when every tier above is green
 
 `format`, `lint` and `build` run in parallel. `typecheck`, `unit`, `e2e` and
@@ -1678,9 +1681,16 @@ skips itself when the runtime is missing is worse than no tier, so a missing
 Docker daemon (and no `TESTKIT_DATABASE_URL`) fails the suite rather than
 skipping it.
 
-The e2e tier carries the placeholder spec later slices replace. The job exists
-now so the wiring is proven on its own rather than introduced alongside new
-tests. It is the only tier that retries.
+The e2e tier starts the testkit's Postgres harness, serves the built SPA beside
+the real API server, and drives the release flow in Chrome through Playwright.
+The fixture covers authentication, bot and routine creation, memory correction,
+computer lifecycle and terminal use, a tool call with durable approval, live
+steering and stop, then reload replay. Mail, model and computer seams use the
+offline emulators, and the browser fixture refuses non-loopback requests. The
+job uploads traces and screenshots on every result; when a pull request changes
+`apps/web`, `packages/ui` or `packages/tokens`, it requires the browser screenshot
+and publishes a sticky artifact link on the pull request. It is the only tier
+that retries.
 
 ### Postgres-per-suite harness
 

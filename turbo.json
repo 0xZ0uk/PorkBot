@@ -49,6 +49,12 @@
     },
     "test:e2e": {
       "dependsOn": ["build"],
+      "passThroughEnv": [
+        "DOCKER_HOST",
+        "TESTKIT_DATABASE_URL",
+        "TESTKIT_HARNESS_STATE",
+        "TESTKIT_POSTGRES_IMAGE"
+      ],
       "outputs": []
     },
     "dev": {

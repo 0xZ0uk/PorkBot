@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts && playwright test --config playwright.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
@@ -30,6 +30,7 @@
     "hono": "4.13.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@porkbot/eslint-config": "workspace:*",
     "@porkbot/testkit": "workspace:*",
     "@porkbot/typescript-config": "workspace:*",
