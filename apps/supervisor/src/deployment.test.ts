@@ -79,6 +79,7 @@ describe("the compose deployment", () => {
       "backup",
       "migrate",
       "postgres",
+      "proxy",
       "supervisor",
       "web",
       "worker",

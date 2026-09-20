@@ -21,6 +21,8 @@ import {
   composeVariables,
 } from "../src/deployment/compose.ts";
 import { parseEnvFile, renderDeploymentEnv } from "../src/deployment/env-file.ts";
+import { caddyImage } from "../src/harness/images.ts";
+import { caddyProbePort } from "../src/proxy/caddy.ts";
 import {
   deploymentValuePlans,
   generateDeploymentSecrets,
@@ -34,6 +36,7 @@ const deployDirectory = path.join(repoRoot, "deploy");
 const templateText = readFileSync(path.join(deployDirectory, "porkbot.env.example"), "utf8");
 const deployComposeText = readFileSync(path.join(deployDirectory, "compose.yaml"), "utf8");
 const localComposeText = readFileSync(path.join(repoRoot, "compose.yaml"), "utf8");
+const caddyfileText = readFileSync(path.join(deployDirectory, "Caddyfile"), "utf8");
 
 const testOrigin = "https://bots.example.com";
 
@@ -194,6 +197,111 @@ describe("deployment register and template", () => {
   it("tags images with the release variable instead of a fixed tag", () => {
     expect(deployComposeText).toMatch(/image: porkbot\/api:\$\{PORKBOT_IMAGE_TAG:\?/);
     expect(deployComposeText).not.toMatch(/image:\s*\S+:local\b/);
+  });
+});
+
+/**
+ * The proxy contract, asserted from the shipped config (slice 12.2). The
+ * integration suite in apps/api proves the behaviour against the real image;
+ * these tests fail first, and by name, when an edit drops a directive that is
+ * the reason the file exists.
+ */
+describe("the reverse proxy config", () => {
+  const apiRoute = /@api path[\s\S]*?\n\t\}/.exec(caddyfileText)?.[0] ?? "";
+
+  it("serves one origin, with the API mounts routed before the SPA", () => {
+    expect(caddyfileText).toMatch(/^\{\$PORKBOT_SITE_ADDRESS:/m);
+
+    for (const mount of [
+      "/healthz",
+      "/healthz/*",
+      "/livez",
+      "/readyz",
+      "/rpc/*",
+      "/api/*",
+      "/files/*",
+      "/oauth/*",
+      "/webhooks/*",
+      "/threads/*/attachments",
+    ]) {
+      expect(apiRoute, `${mount} must route to the API`).toContain(mount);
+    }
+
+    expect(apiRoute).toContain("reverse_proxy {$PORKBOT_API_UPSTREAM:api:3001}");
+    // The SPA is the fallback, not a mount of its own.
+    expect(caddyfileText).toContain("reverse_proxy {$PORKBOT_WEB_UPSTREAM:web:3000}");
+  });
+
+  it("disables response buffering on the API route", () => {
+    // `-1` is Caddy's low-latency mode; without it a small stream sits in the
+    // response buffer until something fills or closes it, which for a token
+    // stream is never.
+    expect(apiRoute).toMatch(/flush_interval -1/);
+    // A positive flush interval or an explicit response buffer would undo it,
+    // and `encode` brings its own buffer to the same listener.
+    expect(caddyfileText).not.toMatch(/flush_interval\s+[0-9]/);
+    expect(caddyfileText).not.toMatch(/response_buffers/);
+    expect(caddyfileText).not.toMatch(/^\s*encode\b/m);
+  });
+
+  it("caps client reads and idle connections but not the response", () => {
+    const timeouts = /\n\tservers \{[\s\S]*?\n\t\}/.exec(caddyfileText)?.[0] ?? "";
+
+    expect(timeouts).toContain("read_header 10s");
+    expect(timeouts).toContain("read_body 5m");
+    expect(timeouts).toContain("idle 5m");
+    // A server-level `write` timeout bounds a whole response; a token stream
+    // is expected to stay open, so the cap is deliberately absent.
+    expect(timeouts).not.toMatch(/write\s/);
+    // The API's response headers are awaited under a bound; its frames are
+    // not, because they are the stream.
+    expect(apiRoute).toContain("dial_timeout 5s");
+    expect(apiRoute).toContain("response_header_timeout 30s");
+  });
+
+  it("leaves every request header, and so Last-Event-ID, to the API", () => {
+    // No header operation means Caddy passes them through untouched; a
+    // `header_up -Last-Event-ID` or a rewritten cookie would resume the wrong
+    // stream or drop the session, so any header rule has to be a deliberate,
+    // reviewed edit to this test.
+    expect(caddyfileText).not.toMatch(/^\s*header(?:_up|_down)?\s/m);
+  });
+
+  it("answers the container healthcheck on a loopback listener", () => {
+    const probe =
+      new RegExp(`http://127\\.0\\.0\\.1:${String(caddyProbePort)} \\{[\\s\\S]*?\\n\\}`).exec(
+        caddyfileText,
+      )?.[0] ?? "";
+
+    expect(probe).toContain("handle /healthz");
+    expect(probe).toContain("reverse_proxy {$PORKBOT_API_UPSTREAM:api:3001}");
+  });
+
+  it("runs the proxy from the image the register and the harness share", () => {
+    for (const composeText of [deployComposeText, localComposeText]) {
+      const block = composeServiceBlock(composeText, "proxy") ?? "";
+
+      expect(block).toContain(`image: ${caddyImage}`);
+    }
+
+    expect(caddyImage).not.toContain(":latest");
+    expect(caddyImage).toMatch(/@sha256:[a-f0-9]{64}$/);
+  });
+
+  it("publishes the public ports only on the proxy", () => {
+    const proxy = composeServiceBlock(deployComposeText, "proxy") ?? "";
+
+    expect(proxy).toContain(":80:80");
+    expect(proxy).toContain(":443:443");
+    expect(proxy).toContain(`http://127.0.0.1:${String(caddyProbePort)}/healthz`);
+
+    for (const service of ["api", "web"]) {
+      const block = composeServiceBlock(deployComposeText, service) ?? "";
+
+      expect(block, `${service} must not be published beyond loopback`).toMatch(
+        /- "127\.0\.0\.1:\$\{PORKBOT_[A-Z_]+_PORT/,
+      );
+    }
   });
 });
 
@@ -385,6 +493,28 @@ describe("validating the deployment env file", () => {
     );
 
     expect(pathed.join("\n")).toMatch(/PORKBOT_WEB_ORIGIN: must be an origin with no path/);
+  });
+
+  it("refuses an origin on a port the proxy does not publish", () => {
+    const publicHost = problemsFor((values) =>
+      values.set("PORKBOT_AUTH_ORIGIN", "https://bots.example.com:8443"),
+    );
+
+    expect(publicHost.join("\n")).toMatch(
+      /PORKBOT_AUTH_ORIGIN: must not name port 8443; the reverse proxy publishes 80 and 443/,
+    );
+
+    // Loopback is where an http origin is allowed, and the proxy still owns
+    // the port there: it binds what the site address names and publishes 80
+    // and 443, so `http://localhost:8080` would be unreachable outside the
+    // proxy container.
+    const loopback = problemsFor((values) =>
+      values.set("PORKBOT_AUTH_ORIGIN", "http://localhost:8080"),
+    );
+
+    expect(loopback.join("\n")).toMatch(
+      /PORKBOT_AUTH_ORIGIN: must not name port 8080; the reverse proxy publishes 80 and 443/,
+    );
   });
 
   it("refuses an image tag of latest", () => {

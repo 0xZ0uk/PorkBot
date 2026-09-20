@@ -79,6 +79,11 @@
   ],
   "images": [
     {
+      "name": "caddy",
+      "reference": "caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e",
+      "reason": "The reverse proxy that terminates the one public origin (PRD decision 32, slice 12.2). Pinned by the digest its version tag was published under because it owns TLS termination, header forwarding and response flushing: a moving image would silently change whether token streaming works, and the integration suite drives this exact image against the shipped deploy/Caddyfile."
+    },
+    {
       "name": "node",
       "reference": "node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553",
       "reason": "The build and runtime base for every stage of the root Dockerfile. The tag carries the exact Node version from .nvmrc, which pnpm's devEngines check refuses to substitute, and the digest keeps the stack on the image it was built and tested with."

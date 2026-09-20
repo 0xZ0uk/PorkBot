@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { rateLimitedErrorMessage } from "@porkbot/contracts";
 import { MAX_ATTACHMENT_BYTES } from "@porkbot/core";
 import type { UserActor } from "@porkbot/db";
-import { healthPath, livenessPath, readinessPath } from "@porkbot/health";
+import { healthPath, healthStreamPath, livenessPath, readinessPath } from "@porkbot/health";
 import { attachmentUploadRoutePath, fileDownloadRoutePath } from "@porkbot/contracts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import { webhookRulePath } from "./webhooks.ts";
@@ -59,6 +59,9 @@ export interface RouteRule {
 export function routeRules(rpcPath: string): readonly RouteRule[] {
   return [
     { method: "GET", path: healthPath, family: "probe" },
+    // The streaming half of the probe (slice 12.2) draws the same budget: an
+    // operator's proxy check must not compete with anonymous product traffic.
+    { method: "GET", path: healthStreamPath, family: "probe" },
     { method: "GET", path: livenessPath, family: "probe" },
     { method: "GET", path: readinessPath, family: "probe" },
     { method: "ALL", path: `${rpcPath}/*`, family: "rpc" },

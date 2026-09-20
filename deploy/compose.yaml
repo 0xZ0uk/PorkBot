@@ -20,9 +20,13 @@
 #     bot. Raise the ceilings here only after raising the host.
 #   - Container logs are rotated, so a long-lived host does not fill its disk
 #     with one chatty process.
-#   - The web and API ports bind to PORKBOT_BIND_ADDRESS (loopback by default).
-#     HTTPS and the one public origin are the reverse-proxy contract, slice
-#     12.2; until then the operator reaches the stack through a tunnel.
+#   - The proxy terminates HTTPS for the one public origin (slice 12.2) and is
+#     the only service that publishes a public port: the SPA, the API and the
+#     streaming subscriptions all enter through it. Its config is
+#     deploy/Caddyfile, and its healthcheck answers only when that config
+#     loaded and the API route in it works.
+#   - The web and API ports are published on loopback only, for an operator's
+#     own inspection; PORKBOT_BIND_ADDRESS governs the proxy's public ports.
 #
 # `pnpm deploy:up` renders the env file when it is missing, validates it, runs
 # `docker compose up --build --wait` with this file and reports readiness per
@@ -116,6 +120,8 @@ services:
     deploy:
       resources:
         limits:
+          # The one-shot applies SQL and exits; 0.1 vCPU is plenty, and the
+          # rest of the CPU ceiling goes to the proxy below.
           cpus: "0.1"
           memory: 512m
 
@@ -154,9 +160,9 @@ services:
       PORKBOT_MAIL_FROM: ${PORKBOT_MAIL_FROM:-}
       PORKBOT_MAIL_KEY: ${PORKBOT_MAIL_KEY:-}
     ports:
-      # Loopback by default; the reverse proxy (slice 12.2) is the supported
-      # way to reach this from outside the host.
-      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:${PORKBOT_API_PORT:-3001}:3001"
+      # Loopback only. The reverse proxy is the way in from outside; this
+      # mapping stays for an operator's own curl against the process.
+      - "127.0.0.1:${PORKBOT_API_PORT:-3001}:3001"
     volumes:
       - storage-data:/var/lib/porkbot/storage
     depends_on:
@@ -263,12 +269,64 @@ services:
       PORT: "3000"
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:${PORKBOT_WEB_PORT:-3000}:3000"
+      # Loopback only, like the API's: the proxy is the public surface.
+      - "127.0.0.1:${PORKBOT_WEB_PORT:-3000}:3000"
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: 256m
+
+  proxy:
+    <<: *app
+    # The one origin (slice 12.2). Caddy terminates TLS for
+    # PORKBOT_AUTH_ORIGIN automatically, passes requests to the API or the
+    # SPA by path, and streams responses without buffering; deploy/Caddyfile
+    # is that contract and the only place it is written down.
+    image: caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e
+    environment:
+      # The site Caddy serves and obtains a certificate for. It is the same
+      # public origin sessions, links and the MCP callback are bound to.
+      PORKBOT_SITE_ADDRESS: ${PORKBOT_AUTH_ORIGIN:?}
+      PORKBOT_API_UPSTREAM: http://api:3001
+      PORKBOT_WEB_UPSTREAM: http://web:3000
+    ports:
+      # The public surface. PORKBOT_BIND_ADDRESS must name the interface the
+      # host is reachable on (0.0.0.0, or the host's public address);
+      # automatic HTTPS cannot answer a challenge it never receives.
+      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:80:80"
+      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:443:443"
+      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:443:443/udp"
+    volumes:
+      # The shipped config, read-only, plus Caddy's own state: the
+      # certificates (so a restart does not re-issue them) and its runtime
+      # config. `deploy:down --volumes` deletes them; they are re-issued.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    # Replaces the anchor's process probe with the proxy's own: a loopback
+    # listener that answers only when the config loaded and the API route in
+    # it works, so a broken proxy-to-API path shows up as an unhealthy
+    # service in `pnpm deploy:status`.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8899/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          # Caddy is small: it owns TLS and request routing, not work. The
+          # freed 0.15 vCPU (the one-shot migrate went to 0.1) keeps the
+          # stack's ceilings plus one bot inside the documented floor.
+          cpus: "0.1"
+          memory: 128m
 
   supervisor:
     <<: *app
@@ -332,3 +390,8 @@ volumes:
   computer-archives:
   backup-data:
   backup-envelope:
+  # Caddy's certificate store and runtime config. Kept so a restart does not
+  # re-issue certificates; `deploy:down --volumes` removes them and Caddy
+  # obtains them again on the next boot.
+  caddy-data:
+  caddy-config:

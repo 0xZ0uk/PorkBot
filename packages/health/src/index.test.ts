@@ -3,7 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createHealthListener,
   createHealthServer,
+  createHealthStreamProbe,
   healthPath,
+  healthStreamFrameCount,
+  healthStreamFrameIntervalMs,
+  healthStreamPath,
   livenessPath,
   readinessPath,
 } from "./index.ts";
@@ -154,5 +158,115 @@ describe("the health server", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+});
+
+/** The `id: n` and `data:` lines of every frame in a probe body, in order. */
+function framesOf(body: string): { id: string; data: string }[] {
+  return body
+    .split("\n\n")
+    .filter((frame) => frame.trim() !== "")
+    .map((frame) => {
+      const lines = frame.split("\n");
+      const id = lines.find((line) => line.startsWith("id: "))?.slice(4) ?? "";
+      const data = lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "";
+
+      return { id, data };
+    });
+}
+
+describe("the health stream probe", () => {
+  const probe = createHealthStreamProbe({ intervalMs: 40 });
+
+  it("numbers its frames and says what each one is", async () => {
+    const response = probe(new Request(`http://127.0.0.1${healthStreamPath}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+
+    const frames = framesOf(await response.text());
+
+    expect(frames).toHaveLength(healthStreamFrameCount);
+    expect(frames.map((frame) => frame.id)).toEqual(["1", "2", "3"]);
+    expect(frames.map((frame) => JSON.parse(frame.data))).toEqual([
+      { probe: 1 },
+      { probe: 2 },
+      { probe: 3 },
+    ]);
+  });
+
+  it("opens a gap between frames so a buffered response is visible", async () => {
+    const response = probe(new Request(`http://127.0.0.1${healthStreamPath}`));
+    const reader = response.body?.getReader();
+
+    if (reader === undefined) {
+      throw new Error("the probe answered without a body");
+    }
+
+    const arrivals: number[] = [];
+    const decoder = new TextDecoder();
+    let text = "";
+
+    for (;;) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      text += decoder.decode(value, { stream: true });
+
+      // Count the frames in everything read so far, so a frame split across
+      // two chunks is still one arrival.
+      const seen = [...text.matchAll(/id: \d+/g)].length;
+
+      while (arrivals.length < seen) {
+        arrivals.push(Date.now());
+      }
+    }
+
+    expect(arrivals).toHaveLength(healthStreamFrameCount);
+    // The shipped gap is what the runbook tells an operator to look for; this
+    // probe uses a shorter one so the unit suite stays quick, and the real
+    // interval is asserted as the default it is.
+    expect(healthStreamFrameIntervalMs).toBe(250);
+    expect((arrivals.at(-1) ?? 0) - (arrivals[0] ?? 0)).toBeGreaterThanOrEqual(40);
+  });
+
+  it("resumes after the frame Last-Event-ID names", async () => {
+    const response = probe(
+      new Request(`http://127.0.0.1${healthStreamPath}`, {
+        headers: { "last-event-id": "2" },
+      }),
+    );
+    const frames = framesOf(await response.text());
+
+    expect(frames.map((frame) => frame.id)).toEqual(["3"]);
+  });
+
+  it("answers a cursor past the end with no frames", async () => {
+    const response = probe(
+      new Request(`http://127.0.0.1${healthStreamPath}`, {
+        headers: { "last-event-id": String(healthStreamFrameCount) },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("");
+  });
+
+  it("refuses a malformed cursor instead of replaying the stream", async () => {
+    const response = probe(
+      new Request(`http://127.0.0.1${healthStreamPath}`, {
+        headers: { "last-event-id": "not-a-number" },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "bad_request",
+      message: "Last-Event-ID must be a frame number",
+    });
   });
 });

@@ -105,3 +105,17 @@ export type { MigrationFile, MigrationReport } from "./harness/migrations.ts";
 // this.
 export { connectToSuite, connectionStringForRole } from "./harness/client.ts";
 export type { ConnectToSuiteOptions, SuiteClient } from "./harness/client.ts";
+
+// The reverse proxy, booted with the config the deployment ships (slice 12.2).
+// A suite starts it on a loopback origin and drives the real origin through it:
+// the integration suite in apps/api proves streaming, resume, cookies and the
+// one-origin routing against the same deploy/Caddyfile an operator runs, and
+// `caddyImage` is the digest the `dependencies` tier pins to.
+export { caddyImage } from "./harness/images.ts";
+export {
+  caddyProbePort,
+  hostGatewayAddress,
+  proxyConfigPath,
+  startCaddyProxy,
+} from "./proxy/caddy.ts";
+export type { CaddyProxyOptions, RunningCaddyProxy } from "./proxy/caddy.ts";

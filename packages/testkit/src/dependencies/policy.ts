@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import path from "node:path";
-import { postgresImage } from "../harness/images.ts";
+import { caddyImage, postgresImage } from "../harness/images.ts";
 import { discoverImageReferences, validateImageReferences } from "./image-refs.ts";
 import { packageEntryKey, parseLockfile, stripPeerSuffix } from "./lockfile.ts";
 import type { ParsedLockfile } from "./lockfile.ts";
@@ -220,25 +220,40 @@ export function validateLockfileProvenance(lockfile: ParsedLockfile): string[] {
   return errors;
 }
 
-function validateHarnessImage(register: DependencyRegister): string[] {
-  const registered = register.images.find((image) => image.name === "postgres");
+/**
+ * The images this package boots are the images the register names. The harness
+ * boots Postgres; the reverse-proxy suite boots Caddy; both constants live in
+ * `../harness/images.ts`, and neither may drift from `dependencies.json`.
+ */
+const testkitImages: readonly { name: string; reference: string; what: string }[] = [
+  { name: "postgres", reference: postgresImage, what: "the testkit harness boots" },
+  { name: "caddy", reference: caddyImage, what: "the reverse-proxy suite runs" },
+];
 
-  if (registered === undefined) {
-    return [
-      "dependencies.json has no image named postgres, but the testkit harness boots one; " +
-        "register the digest-pinned reference.",
-    ];
+function validateTestkitImages(register: DependencyRegister): string[] {
+  const errors: string[] = [];
+
+  for (const image of testkitImages) {
+    const registered = register.images.find((candidate) => candidate.name === image.name);
+
+    if (registered === undefined) {
+      errors.push(
+        `dependencies.json has no image named ${image.name}, but ${image.what} one; ` +
+          "register the digest-pinned reference.",
+      );
+      continue;
+    }
+
+    if (registered.reference !== image.reference) {
+      errors.push(
+        `${image.what} ${image.reference}, but dependencies.json registers ` +
+          `${registered.reference} for ${image.name}. Update both together, so the tier runs the ` +
+          "image the register names.",
+      );
+    }
   }
 
-  if (registered.reference !== postgresImage) {
-    return [
-      `the testkit harness boots ${postgresImage}, but dependencies.json registers ` +
-        `${registered.reference} for postgres. Update both together, so the tier runs the image ` +
-        "the register names.",
-    ];
-  }
-
-  return [];
+  return errors;
 }
 
 export function checkRepository(repoRoot: string): RepositoryCheck {
@@ -257,7 +272,7 @@ export function checkRepository(repoRoot: string): RepositoryCheck {
   const discovered = discoverImageReferences(repoRoot);
   errors.push(...discovered.errors);
   errors.push(...validateImageReferences(register, discovered.references));
-  errors.push(...validateHarnessImage(register));
+  errors.push(...validateTestkitImages(register));
 
   return { errors, register };
 }

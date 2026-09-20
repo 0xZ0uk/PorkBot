@@ -136,6 +136,13 @@ function originProblem(raw: string): string | undefined {
     return "must be an origin with no path, query or fragment";
   }
 
+  // The proxy publishes 80 and 443 and nothing else; the WHATWG URL parser
+  // drops a default port, so a non-empty one is a port Caddy would bind
+  // inside the container and the host would never forward.
+  if (url.port !== "") {
+    return `must not name port ${url.port}; the reverse proxy publishes 80 and 443`;
+  }
+
   if (url.protocol === "http:" && !loopbackHosts.has(url.hostname)) {
     return "must be https outside loopback; a cookie origin over plain http is a session leak";
   }

@@ -14,8 +14,10 @@ import {
 } from "@porkbot/effect";
 import {
   checkReadiness,
+  createHealthStreamProbe,
   healthPath,
   healthPayload,
+  healthStreamPath,
   livenessPath,
   readinessPath,
 } from "@porkbot/health";
@@ -212,6 +214,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   const resolveActor = options.resolveActor ?? noSession;
   const repositoriesFor = options.repositoriesFor ?? refuseRepositories;
   const clientKey = options.clientKey ?? (() => "unknown");
+  const healthStreamProbe = createHealthStreamProbe();
   const threadEvents = createThreadEventsService({
     realtime: options.services.realtime,
     cursors: createCursorCodec(options.cursorSecret),
@@ -300,6 +303,13 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
       modules: [coreModule.name, contractsModule.name, loggingModule.name],
     }),
   );
+
+  // The streaming half of the probe (slice 12.2): frames a declared interval
+  // apart, so an operator can tell an origin that streams from a proxy that
+  // buffers the whole response and delivers it in one piece. Public like the
+  // JSON probe, and it draws the probe budget for the same reason.
+  app.get(healthStreamPath, (context) => healthStreamProbe(context.req.raw));
+
   app.get(livenessPath, (context) => context.json(healthPayload(serviceName, "ok")));
   app.get(readinessPath, async (context) => {
     const ready = await checkReadiness(options.readiness);
