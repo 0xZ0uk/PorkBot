@@ -710,4 +710,36 @@ describe("the console's sent messages", () => {
 
     console.stop();
   });
+
+  it("hands every accepted frame to the desktop bridge hook", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({ events: events.procedure });
+    const forwarded: RunEvent[] = [];
+    const console = createThreadConsole({
+      transport,
+      threadId,
+      policy: pinnedPolicy,
+      sleep: async () => undefined,
+      onRunEvent: (event) => forwarded.push(event),
+    });
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+    events.push(tokenDelta(threadId, runId, 2, messageId, "Hi"));
+    events.push(runCompleted(threadId, runId, 3, messageId));
+
+    await until(() => forwarded.length === 3, "the forwarded frames");
+
+    // The hook sees what the reducer accepted, in order; whether a frame is
+    // worth forwarding is the bridge's decision, not the console's.
+    expect(forwarded.map((event) => event.type)).toEqual([
+      "run.started",
+      "token.delta",
+      "run.completed",
+    ]);
+
+    console.stop();
+  });
 });

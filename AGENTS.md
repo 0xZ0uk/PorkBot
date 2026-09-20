@@ -327,6 +327,27 @@ change it without breaking what the boundaries and the CI gate protect.
   disclosure over persistent explanation or status chrome, and quote any new
   user-facing copy in the PR with why it is necessary. Checked by: review.
 
+### Desktop
+
+- **The desktop window is hardened once, and the source is checked.** Every
+  window is built through `hardenWebPreferences` and asserted by `assertHardened`
+  in `apps/desktop/src/hardening.ts`; the flags, the nonce-based content
+  security policy, the single-function preload bridge and the preload channel
+  literal are asserted by a test that walks the shipped tree, so a window that
+  relaxes a flag fails CI rather than review. Checked by: test
+  (`apps/desktop/src/hardening.test.ts`).
+- **An update is verified before it is written.** The feed's manifest must carry
+  a signature that verifies against the pinned key and the artifact's bytes must
+  hash to the signed digest; `apps/desktop/src/update-controller.ts` is the only
+  code that fetches or stages an update, and a build with no feed configured
+  checks nothing. Checked by: test
+  (`apps/desktop/src/update-controller.test.ts`, `apps/desktop/src/updates.test.ts`).
+- **The desktop re-implements no screen.** It packages `apps/web/dist/client`,
+  serves it through `@porkbot/web`'s static handler beside the API proxy, and
+  the renderer forwards run lifecycle frames it already reduced rather than
+  parsing the stream a second time. Checked by: review and
+  `apps/desktop/src/proxy.test.ts`.
+
 ### Dependencies
 
 - **Version choices live in `dependencies.json`.** The register is the only
