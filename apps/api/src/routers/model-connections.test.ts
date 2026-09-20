@@ -7,6 +7,7 @@ import {
 import type { ModelEmulatorScript } from "@porkbot/adapters";
 import { createApiClient, ORPCError } from "@porkbot/contracts";
 import { NameConflictError, NotFoundError } from "@porkbot/effect";
+import type { SafeFetch } from "@porkbot/effect";
 import { createCredentialKeyring, createEncryptedCredentialStore } from "@porkbot/db";
 import type {
   ModelConnectionPatch,
@@ -297,6 +298,15 @@ function repositoriesFor(actor: UserActor): UserRepositories {
 const lines: string[] = [];
 const logger = createLogger({ service: serviceName, write: (line) => lines.push(line) });
 
+/**
+ * The process's fetch, named as the transport seam expects it. The DOM lib
+ * arrives with vitest's optional jsdom types (the tier presets pull
+ * `vitest/config`, and this package's integration suite imports the harness),
+ * and its merged `fetch` overloads do not satisfy the seam's Node-shaped
+ * `SafeFetch`; this is still the Node implementation at run time.
+ */
+const fetchImpl = globalThis.fetch as SafeFetch;
+
 const services: ApiServices = {
   deployment: {
     async status() {
@@ -305,7 +315,7 @@ const services: ApiServices = {
   },
   realtime: new InProcessRealtimeFanout(),
   modelRuntime: (credentials) =>
-    createOpenAiCompatibleModelRuntime({ credentials, fetch: globalThis.fetch }),
+    createOpenAiCompatibleModelRuntime({ credentials, fetch: fetchImpl }),
 };
 
 const server = createApiServer({
@@ -345,7 +355,7 @@ afterEach(async () => {
 });
 
 async function startEmulator(script: ModelEmulatorScript): Promise<ModelEmulator> {
-  const emulator = await ModelEmulator.start(script, globalThis.fetch);
+  const emulator = await ModelEmulator.start(script, fetchImpl);
   openEmulators.push(emulator);
   return emulator;
 }

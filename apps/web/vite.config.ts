@@ -28,4 +28,21 @@ export default defineConfig({
   // bind and `127.0.0.1` for the fetch — inside a container it does — and the
   // build then dies with ECONNREFUSED before writing the shell.
   preview: { host: "127.0.0.1" },
+  // The SPA dials its own origin for `/rpc` and `/api/auth`, which is the
+  // deployment's shape: one TLS origin serves the SPA and the API (PRD
+  // decision 32). In development that origin is this server, so the paths the
+  // API owns are proxied to the API's `dev` process (port 3001, the same
+  // default `apps/api/src/main.ts` listens on). `PORKBOT_AUTH_ORIGIN` must name
+  // this origin — the default is http://localhost:5173 — because Better Auth
+  // trusts it and sets the session cookie for it. The attachment upload is a
+  // regex so a console URL (`/threads/<id>`) still resolves to the SPA.
+  server: {
+    proxy: {
+      "/rpc": "http://127.0.0.1:3001",
+      "/api": "http://127.0.0.1:3001",
+      "/files": "http://127.0.0.1:3001",
+      "/oauth": "http://127.0.0.1:3001",
+      "^/threads/[^/]+/attachments$": "http://127.0.0.1:3001",
+    },
+  },
 });

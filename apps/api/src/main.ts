@@ -14,10 +14,12 @@ import {
   queryable,
   readDeploymentSettings,
 } from "@porkbot/db";
-import type { CredentialKeyring } from "@porkbot/db";
+import type { CredentialKeyring, UserActor } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { createApiServer, moduleInfo } from "./index.ts";
 import { limitsFromEnvironment } from "./limits.ts";
+import { operatorAuthFromEnvironment } from "./operator-auth.ts";
+import type { OperatorAuth } from "./operator-auth.ts";
 import type { LimitsConfig } from "./limits.ts";
 import { createDeploymentStatusService } from "./services/deployment.ts";
 import { createMcpService, mcpCallbackPath } from "./services/mcp.ts";
@@ -64,6 +66,23 @@ const database = openDatabase(connectionString);
 // still serves everything that does not touch a secret.
 const credentialKeys = readCredentialKeys();
 
+// The operator auth configuration (slices 3.1 and 3.2): secret and public
+// origin are all-or-nothing. Both mount Better Auth at `/api/auth/*` and the
+// session resolver the gate calls; neither leaves the process exactly as it
+// was, with every authenticated procedure answering its typed 401; one without
+// the other fails boot rather than guessing.
+let operatorAuth: OperatorAuth | null;
+
+try {
+  operatorAuth = operatorAuthFromEnvironment(process.env, {
+    database: database.database,
+    logger,
+  });
+} catch (error) {
+  logger.error("the operator auth configuration is invalid", { error });
+  process.exit(1);
+}
+
 // The OAuth callback's absolute URL. A self-hosted deployment reaches its own
 // API on loopback unless the operator names a public origin; the value is what
 // the authorization server redirects the browser back to, so an unset value is
@@ -103,6 +122,18 @@ if (computers === undefined) {
 const server = createApiServer({
   logger,
   limits,
+  // The session read and the actor-scoped repositories are supplied together:
+  // a resolver without a data scope could only ever answer 500, and the
+  // default pair refuses rather than pretending. With auth unconfigured both
+  // stay at the app's fail-closed defaults.
+  ...(operatorAuth === null
+    ? {}
+    : {
+        authHandler: operatorAuth.handler,
+        resolveActor: operatorAuth.resolveActor,
+        repositoriesFor: (actor: UserActor) =>
+          createRepositories(actor, queryable(database), { credentialKeys }),
+      }),
   services: {
     deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
     realtime: new InProcessRealtimeFanout(),

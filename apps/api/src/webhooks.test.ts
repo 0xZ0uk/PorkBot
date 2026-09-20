@@ -351,7 +351,11 @@ describe("the mounted surface", () => {
           ? {}
           : { [webhookDeliveryHeader]: request.deliveryId }),
       },
-      body: request.body,
+      // The DOM lib arrives with vitest's optional jsdom types (the tier
+      // presets pull `vitest/config`, and this package's integration suite
+      // imports the harness), and its `BodyInit` is narrower than the bytes
+      // the ingress actually takes; the encoded body is ArrayBuffer-backed.
+      body: request.body as Uint8Array<ArrayBuffer>,
     });
   }
 

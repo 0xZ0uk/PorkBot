@@ -68,6 +68,13 @@ export const serviceName = "@porkbot/api";
 export const rpcPath = "/rpc";
 
 /**
+ * The path Better Auth's handler is mounted on. It is the library's default
+ * and the path the web client's `authBasePath` names, so a sign-in request
+ * that leaves the SPA arrives here unchanged.
+ */
+export const authBasePath = "/api/auth";
+
+/**
  * The services a router may delegate to. The app takes them as an argument so
  * `main.ts` is the composition root and a test can hand in a fake for the one
  * service under test without a database or a network.
@@ -124,6 +131,17 @@ export interface ApiAppOptions {
   readonly logger?: Logger;
   /** Request id factory used when the client did not supply one. */
   readonly generateRequestId?: () => string;
+  /**
+   * The operator auth handler (slices 3.1 and 3.2), from
+   * `createOperatorAuth`: Better Auth's own request handler for `/api/auth/*`.
+   * The route is mounted only when a handler is configured, so a process
+   * without operator auth configuration has no sign-in surface at all rather
+   * than one that cannot resolve a session. The prefix draws the limiter's
+   * fallback (anonymous) budget, which is the posture a sign-in endpoint
+   * should have: the middleware registered above caps its body and rate before
+   * the library sees it.
+   */
+  readonly authHandler?: (request: Request) => Promise<Response>;
   /**
    * The one session read the gate composes (slice 3.2), from
    * `createActorResolver` in `@porkbot/auth`. The default answers "no session",
@@ -279,6 +297,16 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
       modules: [coreModule.name, contractsModule.name, loggingModule.name],
     }),
   );
+
+  // The operator auth surface (slice 3.1). Every method and every path under
+  // the prefix belongs to Better Auth, so the whole subtree is handed to its
+  // handler; the session cookie it sets is HttpOnly and the origin check it
+  // applies is configured beside it in `createAuth`.
+  const authHandler = options.authHandler;
+
+  if (authHandler !== undefined) {
+    app.all(`${authBasePath}/*`, (context) => authHandler(context.req.raw));
+  }
 
   // The OAuth callback (slice 9.5). It arrives in the operator's browser with
   // no session of its own, so the one-time state is the capability: the service
