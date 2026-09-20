@@ -15,9 +15,9 @@
 #     The only pulled image is Postgres, pinned by the digest registered in
 #     dependencies.json.
 #   - Every service declares CPU and memory ceilings (deploy.resources.limits),
-#     and the README's "Single-host deployment" section does the arithmetic
-#     against the host floor: 4 vCPU / 8 GB plus ~2 GB and 50 GB+ of disk per
-#     bot. Raise the ceilings here only after raising the host.
+#     and `docs/architecture/operations.md` (Single-host deployment) does the
+#     arithmetic against the host floor: 4 vCPU / 8 GB plus ~2 GB and 50 GB+ of
+#     disk per bot. Raise the ceilings here only after raising the host.
 #   - Container logs are rotated, so a long-lived host does not fill its disk
 #     with one chatty process.
 #   - The proxy terminates HTTPS for the one public origin (slice 12.2) and is
@@ -363,8 +363,9 @@ services:
       # Snapshot storage and staging, on the same seam the API writes through.
       PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
       PORKBOT_COMPUTER_ARCHIVE_DIR: /var/lib/porkbot/computer-archives
-      # One bot's share of the host floor (README, "A bot's computer" and
-      # "Single-host deployment"): raise these only after raising the host.
+      # One bot's share of the host floor (`docs/architecture/computers.md` and
+      # `docs/architecture/operations.md`): raise these only after raising the
+      # host.
       PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
       PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
       PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}

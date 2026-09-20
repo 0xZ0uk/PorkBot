@@ -11,9 +11,9 @@ PRD story 2; decision 32. The acceptance criteria this document supports:
 - every command named here exists in the README's entry points, and every value
   is described in the environment reference.
 
-This is the task-oriented path. The README describes why the pieces exist; this
-document says what to type. Commands run from the checkout root unless a step
-says otherwise.
+This is the task-oriented path. The [architecture record](architecture/index.md)
+describes why the pieces exist; this document says what to type. Commands run
+from the checkout root unless a step says otherwise.
 
 ## What you are installing
 
@@ -34,18 +34,19 @@ containers on the same machine.
 
 `api` and `worker` never see the Docker socket or a provider credential: they
 reach computers through the supervisor's authenticated surface. The reverse
-proxy is the only service that publishes a port; the README's "Single-host
-deployment" section is the design record and [the reverse proxy
-contract](reverse-proxy.md) is the contract it keeps.
+proxy is the only service that publishes a port; the [single-host deployment
+record](architecture/operations.md#single-host-deployment) is the design record
+and [the reverse proxy contract](reverse-proxy.md) is the contract it keeps.
 
 ## The host
 
 The supported shape is one Linux host with Docker Engine and the Compose v2
 plugin. The floor is **4 vCPU / 8 GB of memory** for the stack and one bot, plus
 **roughly 2 GB and 50 GB+ of disk per additional bot**, plus **50 GB+ for the
-machine images** a real computer provider boots. The README's "Single-host
-deployment" section shows the arithmetic against the per-service ceilings; the
-per-bot settings are `PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB` and
+machine images** a real computer provider boots. The [single-host deployment
+record](architecture/operations.md#single-host-deployment) shows the arithmetic
+against the per-service ceilings; the per-bot settings are
+`PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB` and
 `PORKBOT_COMPUTER_DISK_MB`.
 
 On the host you need:
