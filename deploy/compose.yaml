@@ -26,9 +26,12 @@
 #
 # `pnpm deploy:up` renders the env file when it is missing, validates it, runs
 # `docker compose up --build --wait` with this file and reports readiness per
-# service; `pnpm deploy:status`, `deploy:logs` and `deploy:down` wrap the
-# matching compose commands. `pnpm deploy:check` validates the env file without
-# touching Docker.
+# service; `pnpm deploy:upgrade` preflights a pulled release in disposable
+# containers, runs its migration only after that preflight is healthy, and then
+# switches the application services; `pnpm deploy:rollback` redeploys the
+# recorded prior image without reversing migrations. `pnpm deploy:status`,
+# `deploy:logs` and `deploy:down` wrap the matching compose commands.
+# `pnpm deploy:check` validates the env file without touching Docker.
 
 name: porkbot
 

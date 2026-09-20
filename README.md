@@ -38,6 +38,8 @@ pnpm stack:down       # stop the stack; remove containers, network and volumes
 pnpm deploy:setup     # render deploy/.env from the template, generating every secret
 pnpm deploy:check     # validate deploy/.env without touching Docker
 pnpm deploy:up        # setup if needed, validate, build, start and wait for the stack
+pnpm deploy:upgrade --tag <git-sha>  # pull, preflight, migrate and switch to a release
+pnpm deploy:rollback  # redeploy the last release against the current schema
 pnpm deploy:status    # show the deployment's services, states and ports
 pnpm deploy:logs      # follow the deployment's logs
 pnpm deploy:exec      # run a command in a running service
@@ -195,7 +197,13 @@ app images from the root `Dockerfile`, starts the stack, waits on compose's
 health and ports. A service that never becomes healthy fails the command,
 prints the per-service state and the recent logs, and leaves nothing half-up.
 `--tag <tag>` names the release the images are tagged with; the default is the
-checkout's git SHA, so nothing is tagged `:latest`.
+checkout's git SHA, so nothing is tagged `:latest`. An upgrade keeps the active
+stack serving while it pulls the target images, starts disposable candidate
+containers without published ports, and waits for their healthchecks. It then
+runs the target release's migration image against the live database, checks the
+candidates again, and only then switches the four application services. A
+failed candidate check or migration removes those candidates and leaves the
+active release running; a failed switch attempts to restore it.
 
 - **The one env file.** `deploy/.env` is the single file (mode 0600,
   git-ignored). `pnpm deploy:setup` renders it from the committed
@@ -260,8 +268,13 @@ checkout's git SHA, so nothing is tagged `:latest`.
   bind to `PORKBOT_BIND_ADDRESS`, loopback by default: HTTPS on one origin is
   the reverse-proxy contract (slice 12.2), and until that is configured the
   stack is reached over an SSH tunnel. Postgres is never published;
-  `deploy:exec` is the way in. Upgrade and rollback are slice 12.4, backups
-  12.3, and the operator runbooks 12.7.
+  `deploy:exec` is the way in. `pnpm deploy:upgrade --tag <git-sha>` is the
+  one-command release path; it records the prior tag in the adjacent ignored
+  release state so `pnpm deploy:rollback` can redeploy it. Rollback is not a
+  schema rollback: it runs the previous image against the newer schema and
+  never attempts to reverse migrations. If the older image is incompatible with
+  that schema, restore a compatible database backup separately before retrying.
+  Backups are slice 12.3 and the operator runbooks are 12.7.
 
 ## Environment configuration
 
