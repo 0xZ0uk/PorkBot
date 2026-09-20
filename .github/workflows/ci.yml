@@ -353,10 +353,13 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | rg --quiet '^(apps/web/|packages/ui/|packages/tokens/)'; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
+          # git's own pathspec diff, not a pipe through a tool the runner may
+          # not have: ripgrep is not on the image, so the old command read
+          # every UI change as none and the screenshot gate never fired.
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- apps/web packages/ui packages/tokens; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
       # The browser fixture clones one isolated Postgres suite from this
       # harness. Mail, model and computer calls stay on their in-process
