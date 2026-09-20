@@ -219,6 +219,60 @@ jobs:
           # container, which is what the measured per-suite cost documents.
           TESTKIT_HARNESS_STATE: .testkit/harness.json
         run: pnpm test:integration
+      # Exercise the production deployment commands against a second Compose
+      # project while the local stack is still running.
+      - name: Exercise upgrade and rollback against deployment Compose
+        timeout-minutes: 15
+        env:
+          PORKBOT_DEPLOY_PROJECT: porkbot-deployment-ci
+          PORKBOT_API_PORT: "3101"
+          PORKBOT_WEB_PORT: "3100"
+          PORKBOT_DEPLOY_WAIT_SECONDS: "180"
+        run: |
+          deploy_env="$RUNNER_TEMP/porkbot-deployment.env"
+          base_tag="base-${GITHUB_SHA}"
+          upgrade_tag="upgrade-${GITHUB_SHA}"
+
+          pnpm deploy:setup \
+            --origin http://127.0.0.1:3100 \
+            --tag "$base_tag" \
+            --env-path "$deploy_env"
+
+          for service in api worker web supervisor migrate; do
+            docker image tag "porkbot/${service}:local" "porkbot/${service}:${base_tag}"
+            docker image tag "porkbot/${service}:local" "porkbot/${service}:${upgrade_tag}"
+          done
+
+          compose=(docker compose
+            --project-name "$PORKBOT_DEPLOY_PROJECT"
+            --file deploy/compose.yaml
+            --env-file "$deploy_env")
+
+          "${compose[@]}" up --detach --no-build --wait --wait-timeout "$PORKBOT_DEPLOY_WAIT_SECONDS"
+          schema_before="$("${compose[@]}" exec -T postgres psql -U porkbot -d porkbot -Atc 'select count(*) from drizzle.__drizzle_migrations')"
+
+          pnpm deploy:upgrade \
+            --env-path "$deploy_env" \
+            --tag "$upgrade_tag" \
+            --wait-timeout "$PORKBOT_DEPLOY_WAIT_SECONDS"
+
+          schema_after_upgrade="$("${compose[@]}" exec -T postgres psql -U porkbot -d porkbot -Atc 'select count(*) from drizzle.__drizzle_migrations')"
+          test "$schema_after_upgrade" -ge "$schema_before"
+
+          pnpm deploy:rollback \
+            --env-path "$deploy_env" \
+            --wait-timeout "$PORKBOT_DEPLOY_WAIT_SECONDS"
+
+          schema_after_rollback="$("${compose[@]}" exec -T postgres psql -U porkbot -d porkbot -Atc 'select count(*) from drizzle.__drizzle_migrations')"
+          test "$schema_after_rollback" = "$schema_after_upgrade"
+      # Cleanup is best effort and cannot hide a failed deployment check.
+      - name: Stop deployment smoke stack
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          PORKBOT_DEPLOY_PROJECT: porkbot-deployment-ci
+        run: pnpm deploy:down
       # `always()` and `continue-on-error` together: cleanup runs even when the
       # tier is red, and a cleanup failure can never change the tier's result.
       - name: Destroy the testkit harness

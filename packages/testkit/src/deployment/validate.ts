@@ -71,6 +71,11 @@ const credentialKeyIdPattern = /^[A-Za-z0-9_-]{1,32}$/;
 const providerKinds = new Set(["offline", "docker", "daytona"]);
 const logLevels = new Set(["debug", "info", "warn", "error"]);
 
+/** Release tags are immutable names, never a moving `latest` pointer. */
+export function isDeploymentImageTag(value: string): boolean {
+  return imageTagPattern.test(value) && value.toLowerCase() !== "latest";
+}
+
 /**
  * Values that read as a decision nobody made: the local stack's placeholders
  * and the obvious filler. Exact matches only, so a random secret that happens
@@ -418,7 +423,7 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
         key: "PORKBOT_IMAGE_TAG",
         message: "must not be `latest`; images are tagged with the release they were built from",
       });
-    } else if (!imageTagPattern.test(imageTag)) {
+    } else if (!isDeploymentImageTag(imageTag)) {
       problems.push({
         key: "PORKBOT_IMAGE_TAG",
         message: "must be a Docker tag: letters, digits, dots, underscores and hyphens",
