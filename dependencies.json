@@ -47,6 +47,11 @@
       "reason": "The orchestration layer (PRD decision 12): provider services and their layers, retries, timeouts, resource safety, structured concurrency and typed error channels. Pinned exactly because its Cause, Layer and Context semantics are the error-mapping and lifetime contract every later service is written against; the major is chosen deliberately (3.x stable, not the 4.x release candidate)."
     },
     {
+      "name": "electron",
+      "version": "44.4.3",
+      "reason": "The desktop shell itself (slice 11.6, PRD story 36): the process that hosts the packaged web build, the tray, native notifications and the signed-update check. Pinned exactly because the major decides the hardening defaults the desktop's call-site test asserts and the update artifact it accepts, so an implicit upgrade would move the sandbox, the context-isolation boundary and the release contract underfoot."
+    },
+    {
       "name": "graphile-worker",
       "version": "0.18.0",
       "reason": "The durable job runner the worker boots (slice 6.1, PRD decision 17): job locking, retries and its own queue schema in Postgres. Pinned exactly because it migrates that schema at boot, so an implicit upgrade would silently change the queue's tables and job semantics on the production database."

@@ -73,6 +73,30 @@ const sameOriginTransports: ReadonlyMap<string, SameOriginTransport> = new Map([
       mustDial: "options.socketPath",
     },
   ],
+  [
+    "apps/desktop/src/proxy.ts",
+    {
+      reason:
+        "the desktop's loopback host dials the deployment the operator configured, on the two constant API mounts, so the packaged client can speak to the server with the cookie the server issued; the address is configuration the setup page validated (HTTPS, or loopback HTTP) and no user content chooses it",
+      mustDial: "options.serverOrigin",
+    },
+  ],
+  [
+    "apps/desktop/src/setup-page.ts",
+    {
+      reason:
+        "the setup page's inline script posts the typed address to the desktop's own loopback origin at a constant path, which is same-origin by construction and never leaves the machine",
+      mustDial: "/__porkbot/server",
+    },
+  ],
+  [
+    "apps/desktop/src/update-controller.ts",
+    {
+      reason:
+        "the update check dials the release feed the deployment configured over HTTPS, reads a manifest whose signature is verified before any field is used, and downloads the artifact the signed manifest names; this is a signature-verified release channel, not a URL chosen by user content, and self-hosted feeds on a private network are a supported topology",
+      mustDial: "options.feedUrl",
+    },
+  ],
 ]);
 
 const fetchCall = /(?<!safe)\bfetch\s*\(/g;
