@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { Message } from "@porkbot/contracts";
 import { createThreadConsole } from "./console.ts";
+import { forwardRunEvent } from "./desktop.ts";
 import type { ThreadConsoleState, ThreadConsoleTransport } from "./console.ts";
 
 /**
@@ -30,7 +31,9 @@ export interface UseThreadConsoleResult {
 export function useThreadConsole(options: UseThreadConsoleOptions): UseThreadConsoleResult {
   const { transport, threadId } = options;
   const console = useMemo(
-    () => createThreadConsole({ transport, threadId }),
+    // The desktop bridge is a no-op in a browser; in the Electron shell it is
+    // how a settled run reaches the tray and the native notification.
+    () => createThreadConsole({ transport, threadId, onRunEvent: forwardRunEvent }),
     [transport, threadId],
   );
 

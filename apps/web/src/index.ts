@@ -1,5 +1,10 @@
-export { createStaticServer, serviceName, shellFileName } from "./host.ts";
-export type { StaticServerOptions } from "./host.ts";
+export { createStaticHandler, createStaticServer, serviceName, shellFileName } from "./host.ts";
+export type {
+  StaticDocument,
+  StaticHandler,
+  StaticHandlerOptions,
+  StaticServerOptions,
+} from "./host.ts";
 
 export const moduleInfo = {
   name: "@porkbot/web",

@@ -1901,8 +1901,9 @@ waits for every healthcheck, and the same command is what CI's integration tier
 runs; the testkit harness attaches to the stack's Postgres for the suite clones,
 so integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
-unchanged. `apps/desktop` and `apps/www` are placeholders that the M10 surface
-slices replace with the real clients; `apps/api` serves `/healthz`
+unchanged. `apps/desktop` is the connect-only Electron shell (slice 11.6) and
+`apps/www` is still a placeholder the remaining M10 surface slices replace with
+the real client; `apps/api` serves `/healthz`
 and the contract's procedures behind the auth gate, `apps/worker` boots Graphile
 Worker over the job registry, re-reads each run through the job's `SystemActor`
 and checks its fence under the worker's own database role (slice 6.1), and
@@ -2055,6 +2056,35 @@ console's entry point until the bot editor (slice 11.2) replaces it, and the
 e2e tier drives the resume path through a real socket against a scripted
 oRPC/SSE server.
 
+The desktop shell lands with slice 11.6: `apps/desktop` is a connect-only
+Electron app that packages the same `dist/client` the web image serves and
+dials the operator's server. The window cannot load the SPA from one origin and
+call the API on another — the session cookie is `HttpOnly` and scoped to the
+server, and the API is built for one origin — so the main process runs a
+loopback host that mounts `@porkbot/web`'s own static handler and forwards
+`/rpc`, `/rpc/*` and `/api/*` to the configured deployment, streaming in both
+directions so SSE arrives frame by frame and rewriting `Set-Cookie` onto the
+loopback origin. The renderer sees one same-origin app and re-implements no
+screen; the console it already runs forwards each run lifecycle frame across
+the preload bridge, which is what the tray's in-flight count and the native
+completion and failure notifications read. Hardening is a table, not an
+intention: `HARDENED_WEB_PREFERENCES` is the only source of window flags,
+`assertHardened` refuses a relaxed window, navigation allows the app's origin,
+opens `https:` links in the system browser and refuses a foreign frame,
+permissions are denied except clipboard and fullscreen, and the proxy stamps a
+fresh nonce onto every inline script and style it serves — hashes cannot cover
+the shell's hydration stream, whose bytes the HTML parser rewrites — and names
+that nonce in a policy that never says `'unsafe-inline'`. Updates are verified
+before they are written: the release signs `version`, `url` and `sha512` with
+an Ed25519 key the app pins, `update-controller.ts` refuses an unsigned,
+mis-signed, tampered, non-HTTPS or older manifest and stages nothing until the
+artifact's bytes hash to the signed digest, and a build with no feed configured
+checks nothing. The "run here" topology stays deferred (issue #180, PRD open
+question 1): the app runs no supervisor, computer or worker, and
+`docs/desktop.md` states it. The unit tier covers the hardening call sites, the
+proxy over real HTTP, the update refusals and the tray; the screens are
+captured under `docs/screenshots/`.
+
 The single-host deployment lands with slice 12.1. `deploy/compose.yaml` is the
 production shape of the stack — the same six services, every secret read
 through Compose's `${NAME:?}` instead of a local default, app images tagged
@@ -2066,13 +2096,14 @@ secret for every entry in one register, idempotently, so enabling the
 credential proxy later does not re-key the database; `check` validates the file
 (the placeholders, weak or reused secrets, the keyring, the origins, the image
 tag, the all-or-nothing families, the provider's own settings) without Docker;
-`up` renders when needed, validates, builds, waits on every healthcheck and
-reports readiness per service, and `down` keeps the volumes unless asked. The
-test suite pins the template, the compose file and the required set to each
-other, and CI validates the definition with a throwaway rendered env before it
-boots the local stack. The README's "Single-host deployment" section carries
-the floors and the arithmetic against the compose ceilings. The local stack,
-its command and the CI integration tier are unchanged.
+`up` renders when needed, validates, builds as its own step so the health
+budget covers the services, waits on every healthcheck and reports readiness
+per service, and `down` keeps the volumes unless asked. The test suite pins the
+template, the compose file and the required set to each other, and the
+integration tier validates the definition with a throwaway rendered env. The
+README's "Single-host deployment" section carries the floors and the arithmetic
+against the compose ceilings. The local stack, its command and the CI
+integration tier are otherwise unchanged.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
