@@ -265,12 +265,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - name: Install the virtual display and Electron's runtime libraries
+      # The runner image already carries Chrome, which means Electron's
+      # runtime libraries (NSS, GTK, GBM, ALSA and friends) are installed; the
+      # virtual display the packaged app needs is the one package named here.
+      - name: Install the virtual display
         timeout-minutes: 5
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
+          sudo apt-get install -y --no-install-recommends xvfb
+      # The packaging CLI reads built output (`dist/`, `apps/web/dist/client`),
+      # and a fresh job has only the restored turbo cache; running the same
+      # `pnpm build` every other tier depends on restores it, so this is the
+      # build job's output without a second artifact path.
+      - name: Build the workspace
+        timeout-minutes: 20
+        run: pnpm build
       - name: Package the desktop for linux-x64
         timeout-minutes: 15
         run: >-
@@ -319,7 +328,7 @@ jobs:
           --server-url http://127.0.0.1:3199
       - name: Show the local API log
         if: failure()
-        run: cat "$RUNNER_TEMP/api.log"
+        run: cat "$RUNNER_TEMP/api.log" 2>/dev/null || echo "(no API log)"
       - name: Upload the desktop artifacts
         if: always()
         uses: actions/upload-artifact@v4
