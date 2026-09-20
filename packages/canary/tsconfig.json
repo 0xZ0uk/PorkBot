@@ -1,0 +1,4 @@
+{
+  "extends": "@porkbot/typescript-config/base.json",
+  "include": ["src", "test"]
+}

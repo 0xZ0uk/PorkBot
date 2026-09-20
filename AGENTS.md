@@ -466,6 +466,20 @@ change it without breaking what the boundaries and the CI gate protect.
   before it deletes it. Checked by: test
   (`packages/testkit/test/deployment.test.ts`).
 
+### Canaries
+
+- **The canary claims only its own machines.** A sweep selects machines whose
+  bot id is the canary's, so it can never destroy a user's computer, and a
+  run's teardown is verified (`gone` and absent from `list`) rather than
+  assumed. Checked by: test (`packages/canary/src/canary-runner.test.ts`) and
+  review.
+- **A billable canary runs only inside a stated budget.** A billable provider
+  kind does not run until a monthly budget and a per-minute rate are stated;
+  the per-run ceiling is the month divided across the nightly runs, a run past
+  it is aborted and torn down, and a missing budget is a visible skip rather
+  than a default. Checked by: test (`packages/canary/src/canary-policy.test.ts`)
+  and review.
+
 ### Pull requests
 
 - **Why, What, How tested — in words.** Use

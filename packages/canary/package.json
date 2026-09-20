@@ -1,0 +1,34 @@
+{
+  "name": "@porkbot/canary",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "devDependencies": {
+    "@porkbot/eslint-config": "workspace:*",
+    "@porkbot/testkit": "workspace:*",
+    "@porkbot/typescript-config": "workspace:*",
+    "@types/node": "24.13.5",
+    "@vitest/coverage-v8": "5.0.1",
+    "eslint": "10.10.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  },
+  "dependencies": {
+    "@porkbot/adapter-kit": "workspace:*",
+    "@porkbot/adapters": "workspace:*"
+  }
+}

@@ -65,12 +65,13 @@ describe("module map", () => {
       .sort();
 
     // Only the surfaces that translate provider work — the HTTP/streaming
-    // surface, the run executor, the computer lifecycle owner and the backup
-    // process, which writes through the storage seam — plus the testkit, which
-    // consumes adapters.
+    // surface, the run executor, the computer lifecycle owner, the backup
+    // process, which writes through the storage seam, the canary, which drives
+    // a real provider on purpose — plus the testkit, which consumes adapters.
     expect(adapterImporters).toEqual([
       "@porkbot/api",
       "@porkbot/backup",
+      "@porkbot/canary",
       "@porkbot/supervisor",
       "@porkbot/testkit",
       "@porkbot/worker",
