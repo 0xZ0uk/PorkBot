@@ -41,6 +41,17 @@ export const docOnlyNames: readonly string[] = [
   "TESTKIT_DATABASE_URL",
   "TESTKIT_HARNESS_STATE",
   "TESTKIT_POSTGRES_IMAGE",
+  // The nightly canary's workflow configuration (slice 12.6): repository
+  // variables and Actions secrets, not deployment environment. The canary CLI
+  // itself reads the generic supervisor and notification names.
+  "PORKBOT_CANARY_BUDGET_USD",
+  "PORKBOT_CANARY_USD_PER_MINUTE",
+  "PORKBOT_CANARY_OWNER",
+  "PORKBOT_CANARY_WEBHOOK_URL",
+  "PORKBOT_CANARY_WEBHOOK_KEY",
+  "PORKBOT_CANARY_CLOUD_ENDPOINT",
+  "PORKBOT_CANARY_CLOUD_IMAGE",
+  "PORKBOT_CANARY_CLOUD_TOKEN",
 ];
 
 /** Names a running sandbox holds that no operator configures. */
