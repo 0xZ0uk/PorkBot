@@ -1,8 +1,10 @@
 import type { UsageBot, UsageTotalsView } from "@porkbot/contracts";
 
 /**
- * One bot's recorded token usage (slice 8.8, PRD story 34): the all-time total
- * and the window's UTC days, newest first.
+ * One bot's recorded token usage (slice 8.8, story 34): the all-time total and
+ * the window's UTC days, newest first. The settings surface (slice 11.5)
+ * renders the same report once per bot, so the two surfaces cannot disagree
+ * about what a null figure means.
  *
  * The screen is a plain function of the contract's answer. It has one rule the
  * numbers depend on: a null token figure is "Not reported", never a zero, so a
@@ -15,30 +17,42 @@ export interface UsageScreenProps {
 }
 
 export function UsageScreen({ usage }: UsageScreenProps) {
-  const empty = usage.total.reported === 0 && usage.total.unreported === 0;
-
   return (
     <section className="console">
       <h2>Usage</h2>
-      {empty ? (
-        <p className="muted">No usage recorded yet.</p>
-      ) : (
-        <>
-          <UsageTotals totals={usage.total} heading="All time" />
-          {usage.periods.length === 0 ? (
-            <p className="muted">No usage in this period.</p>
-          ) : (
-            <ul className="usage-list">
-              {usage.periods.map((period) => (
-                <li key={period.startsAt} className="usage-period">
-                  <UsageTotals totals={period} heading={formatDay(period.startsAt)} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+      <UsageReport usage={usage} />
     </section>
+  );
+}
+
+/**
+ * One bot's numbers, without the page around them: the all-time total and the
+ * window's UTC days, newest first. The settings surface renders one of these
+ * per bot under the bot's name, and the per-bot route renders one under its
+ * own heading, so both surfaces read the same figures from one component.
+ */
+export function UsageReport({ usage }: UsageScreenProps) {
+  const empty = usage.total.reported === 0 && usage.total.unreported === 0;
+
+  if (empty) {
+    return <p className="muted">No usage recorded yet.</p>;
+  }
+
+  return (
+    <>
+      <UsageTotals totals={usage.total} heading="All time" />
+      {usage.periods.length === 0 ? (
+        <p className="muted">No usage in this period.</p>
+      ) : (
+        <ul className="usage-list">
+          {usage.periods.map((period) => (
+            <li key={period.startsAt} className="usage-period">
+              <UsageTotals totals={period} heading={formatDay(period.startsAt)} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 

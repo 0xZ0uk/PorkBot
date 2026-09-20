@@ -18,7 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApiApp } from "../../src/app.ts";
 import { createOperatorAuth } from "../../src/operator-auth.ts";
 import type { OperatorAuth } from "../../src/operator-auth.ts";
-import { createDeploymentStatusService } from "../../src/services/deployment.ts";
+import { createDeploymentService } from "../../src/services/deployment.ts";
 
 /**
  * The operator auth wiring end to end, against a real Postgres: the shipped
@@ -78,7 +78,7 @@ beforeAll(async () => {
   });
   app = createApiApp({
     services: {
-      deployment: createDeploymentStatusService(() => readDeploymentSettings(opened.database)),
+      deployment: createDeploymentService(() => readDeploymentSettings(opened.database)),
       realtime: new InProcessRealtimeFanout(),
     },
     logger,

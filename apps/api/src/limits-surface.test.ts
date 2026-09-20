@@ -38,6 +38,9 @@ const services: ApiServices = {
     async status(): Promise<DeploymentStatus> {
       return { kind: "open" };
     },
+    async ownership() {
+      return { kind: "configured", ownerEmail: null } as const;
+    },
   },
   realtime: new InProcessRealtimeFanout(),
 };
@@ -248,6 +251,7 @@ describe("every contract procedure", () => {
 
     expect(leaves.map((leaf) => leaf.name).sort()).toEqual([
       "account.me",
+      "account.ownership",
       "approvals.decide",
       "approvals.list",
       "botSecrets.list",

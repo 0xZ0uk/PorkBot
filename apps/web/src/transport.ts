@@ -5,7 +5,11 @@ import { AuthRefusal } from "./session.ts";
 import type { ComputerTransport } from "./computer.ts";
 import type { ConnectionsTransport } from "./connections.ts";
 import type { ThreadConsoleTransport } from "./console.ts";
+import type { McpTransport } from "./mcp.ts";
 import type { MemoryTransport } from "./memory.ts";
+import type { NotificationsTransport } from "./notifications.ts";
+import type { OwnershipTransport } from "./ownership.ts";
+import type { SecretsTransport } from "./secrets.ts";
 import type {
   AuthTransport,
   Credentials,
@@ -300,17 +304,18 @@ export function createHttpMemoryTransport(options: HttpAuthTransportOptions = {}
 /**
  * The usage screen's API surface: one bot's all-time totals and its daily
  * buckets, in the contract's shape so the screen invents no wire type. The
- * procedure's window default is the server's; the client does not pick it.
+ * window is asked for explicitly; an omitted one is the server's default, and
+ * the client never invents a number.
  */
 export interface UsageTransport {
-  forBot(botId: string): Promise<UsageBot>;
+  forBot(botId: string, days?: number): Promise<UsageBot>;
 }
 
 export function createHttpUsageTransport(options: HttpAuthTransportOptions = {}): UsageTransport {
   const client = createApiClient({ url: resolveRpcUrl(options) });
 
   return {
-    forBot: (botId) => client.usage.bot({ botId }),
+    forBot: (botId, days) => client.usage.bot(days === undefined ? { botId } : { botId, days }),
   };
 }
 
@@ -370,5 +375,83 @@ export function createHttpConnectionsTransport(
     probeConnection: async (id) => (await client.modelConnections.probe({ id })).probe,
     setBotConnection: (input) =>
       client.bots.update({ id: input.botId, modelConnectionId: input.connectionId }),
+  };
+}
+
+/**
+ * The account settings surface's API (slice 11.5): the actor's role and the
+ * deployment's configured owner. It is the same derived client every other
+ * transport uses, so the settings area cannot drift from the shell's view of
+ * who is signed in.
+ */
+export function createHttpOwnershipTransport(
+  options: HttpAuthTransportOptions = {},
+): OwnershipTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    ownership: () => client.account.ownership(),
+  };
+}
+
+/**
+ * The notification settings surface (slice 11.5, story 35): the operator's
+ * switches, read whole and written one at a time. Every call answers the whole
+ * set, so the screen renders the server's answer and never merges a partial
+ * response into what it already showed.
+ */
+export function createHttpNotificationsTransport(
+  options: HttpAuthTransportOptions = {},
+): NotificationsTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    preferences: async () => (await client.notifications.preferences()).preferences,
+    setPreference: async (input) => (await client.notifications.setPreference(input)).preferences,
+  };
+}
+
+/**
+ * A bot's stored secrets (slice 11.5; slice 9.6's contract): names,
+ * destinations and statuses, and the two writes the operator has. No shape the
+ * client receives carries a value, so the screen cannot render one.
+ */
+export function createHttpSecretsTransport(
+  options: HttpAuthTransportOptions = {},
+): SecretsTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    listBots: async () => (await client.bots.list({ scope: "active" })).bots,
+    listSecrets: async (botId) => (await client.botSecrets.list({ botId })).secrets,
+    store: (input) => client.botSecrets.put(input),
+    forget: (input) => client.botSecrets.remove(input),
+  };
+}
+
+/**
+ * The MCP server settings surface (slice 11.5; slice 9.5's contract): install
+ * by URL, read one back with its tools, uninstall, and the per-bot grants. The
+ * install's answer carries the consent URL when the server needs OAuth, which
+ * is the only thing a browser has to be sent to.
+ */
+export function createHttpMcpTransport(options: HttpAuthTransportOptions = {}): McpTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    list: async () => (await client.mcpServers.list()).servers,
+    listBots: async () => (await client.bots.list({ scope: "active" })).bots,
+    get: async (id) => (await client.mcpServers.get({ id })).server,
+    install: (input) => client.mcpServers.create(input),
+    remove: async (id) => {
+      await client.mcpServers.remove({ id });
+    },
+    grants: async (id) => (await client.mcpServers.grants({ id })).grants,
+    grant: async (id, botId) => {
+      await client.mcpServers.grant({ id, botId });
+    },
+    revoke: async (id, botId) => {
+      await client.mcpServers.revoke({ id, botId });
+    },
   };
 }

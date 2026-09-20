@@ -21,7 +21,7 @@ import { limitsFromEnvironment } from "./limits.ts";
 import { operatorAuthFromEnvironment } from "./operator-auth.ts";
 import type { OperatorAuth } from "./operator-auth.ts";
 import type { LimitsConfig } from "./limits.ts";
-import { createDeploymentStatusService } from "./services/deployment.ts";
+import { createDeploymentService } from "./services/deployment.ts";
 import { createMcpService, mcpCallbackPath } from "./services/mcp.ts";
 import { createWebhookIngress } from "./webhooks.ts";
 import type { WebhookHandler } from "./webhooks.ts";
@@ -135,7 +135,7 @@ const server = createApiServer({
           createRepositories(actor, queryable(database), { credentialKeys }),
       }),
   services: {
-    deployment: createDeploymentStatusService(() => readDeploymentSettings(database.database)),
+    deployment: createDeploymentService(() => readDeploymentSettings(database.database)),
     realtime: new InProcessRealtimeFanout(),
     storage: new LocalStorageProvider({ root: storageRoot }),
     ...(computers === undefined ? {} : { computers }),
