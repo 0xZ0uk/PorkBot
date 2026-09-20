@@ -78,11 +78,11 @@ export function ComposerScreen({
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
     // Files on the clipboard stage beside the text; a text-only paste behaves
     // exactly as it always did.
-    offer(event.clipboardData.files, onFiles);
+    offer(event.clipboardData?.files ?? [], onFiles);
   }
 
   function onDragOver(event: DragEvent<HTMLElement>): void {
-    if (event.dataTransfer.types.includes("Files")) {
+    if (event.dataTransfer?.types.includes("Files") === true) {
       event.preventDefault();
       onDragActive(true);
     }
@@ -102,7 +102,7 @@ export function ComposerScreen({
   function onDrop(event: DragEvent<HTMLElement>): void {
     event.preventDefault();
     onDragActive(false);
-    offer(event.dataTransfer.files, onFiles);
+    offer(event.dataTransfer?.files ?? [], onFiles);
   }
 
   function onChoose(event: ChangeEvent<HTMLInputElement>): void {

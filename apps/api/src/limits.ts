@@ -41,7 +41,9 @@ export type RouteFamily = "probe" | "rpc" | "webhook" | "upload" | "fallback";
 /**
  * A route and the family whose budget it draws from. `method` uses Hono's
  * vocabulary, including `ALL`; `path` is a Hono pattern, where a trailing `/*`
- * matches the prefix and everything under it.
+ * matches the prefix and everything under it and a `:name` segment matches one
+ * non-empty path segment — the middleware sees an already-resolved concrete
+ * path, so a rule that named a pattern literally would never fire.
  */
 export interface RouteRule {
   readonly method: string;
@@ -91,7 +93,19 @@ function matches(rule: RouteRule, method: string, path: string): boolean {
     return path === prefix.slice(0, -1) || path.startsWith(prefix);
   }
 
-  return rule.path === path;
+  const pattern = rule.path.split("/");
+  const concrete = path.split("/");
+
+  if (pattern.length !== concrete.length) {
+    return false;
+  }
+
+  // The installer sees the concrete path (`/threads/<id>/attachments`), so a
+  // `:param` rule must match exactly one non-empty segment or the upload and
+  // download budgets would silently fall through to the anonymous family.
+  return pattern.every((segment, index) =>
+    segment.startsWith(":") ? (concrete[index] ?? "") !== "" : segment === concrete[index],
+  );
 }
 
 /** A per-minute request budget. The window is fixed at one minute. */
