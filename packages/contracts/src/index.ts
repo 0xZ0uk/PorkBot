@@ -48,6 +48,8 @@ export type { Approval } from "./approvals.ts";
 // test pins the two; a snapshot view names the row, never the storage key.
 export {
   computersBootContract,
+  computersFileContract,
+  computersFilesContract,
   computersProvidersContract,
   computersRecoverContract,
   computersResetContract,
@@ -56,17 +58,29 @@ export {
   computersSnapshotsContract,
   computersStatusContract,
   computersStopContract,
+  computersTerminalContract,
+  computerDirectoryViewSchema,
+  computerFileEntrySchema,
+  computerFileViewSchema,
   computerProvidersViewSchema,
   computerProviderSchema,
   computerSnapshotViewSchema,
   computerStateSchema,
+  computerTerminalViewSchema,
   computerViewSchema,
+  maxComputerOutputBytes,
+  maxComputerPathLength,
+  maxTerminalCommandLength,
 } from "./computers.ts";
 export type {
+  ComputerDirectoryView,
+  ComputerFileEntryView,
+  ComputerFileView,
   ComputerProvidersView,
   ComputerProviderView,
   ComputerSnapshotView,
   ComputerStateView,
+  ComputerTerminalView,
   ComputerView,
 } from "./computers.ts";
 

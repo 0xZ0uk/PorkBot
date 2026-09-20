@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  canBrowse,
   createComputerController,
   switchWarning,
   switchOutcome,
   effectiveKind,
+  lifecycleOutcome,
+  MAX_TERMINAL_ENTRIES,
+  resetWarning,
   selectionUnconfigured,
   availabilityOf,
 } from "./computer.ts";
-import type { ComputerController, ComputerState } from "./computer.ts";
+import type { ComputerController, ComputerState, ComputerTransport } from "./computer.ts";
 import { fakeBot, fakeProvider, fakeSnapshot, scriptedComputerTransport } from "../test/fakes.ts";
 
 /**
@@ -240,5 +244,243 @@ describe("the snapshot path", () => {
       text: "The change could not be saved.",
     });
     expect(controller.state().snapshots).toHaveLength(1);
+  });
+});
+
+describe("the machine controls", () => {
+  it("starts a stopped machine, stops a running one, and reports each outcome", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({ computer: { assigned: true, state: "stopped" } }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    // A stopped machine has no shell to point the file view at.
+    expect(canBrowse(controller.state())).toBe(false);
+
+    await controller.lifecycle("boot");
+
+    await until(
+      controller,
+      (state) => state.computer?.assigned === true && state.computer.state === "running",
+      "the start",
+    );
+    expect(controller.state().notice?.text).toBe(lifecycleOutcome("boot"));
+
+    await controller.lifecycle("stop");
+
+    await until(
+      controller,
+      (state) => state.computer?.assigned === true && state.computer.state === "stopped",
+      "the stop",
+    );
+  });
+
+  it("resets the machine and says what it destroyed", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({ computer: { assigned: true, state: "stopped" } }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    await controller.lifecycle("reset");
+
+    await until(
+      controller,
+      (state) => state.computer?.assigned === true && state.computer.state === "running",
+      "the reset",
+    );
+    expect(controller.state().notice?.text).toBe(lifecycleOutcome("reset"));
+  });
+
+  it("shows an error when a lifecycle write is refused", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({
+        computer: { assigned: true, state: "running" },
+        writeFailure: new Error("refused"),
+      }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    await controller.lifecycle("stop");
+
+    expect(controller.state().notice).toEqual({
+      kind: "error",
+      text: "The change could not be saved.",
+    });
+  });
+});
+
+describe("the reset warning", () => {
+  it("says the home is gone and snapshots are kept when there are any", () => {
+    expect(resetWarning({ snapshots: [fakeSnapshot()] })).toContain("Snapshots are kept");
+  });
+
+  it("says nothing is snapshotted when there is nothing to restore", () => {
+    expect(resetWarning({ snapshots: [] })).toContain("nothing is snapshotted");
+  });
+});
+
+describe("the terminal", () => {
+  it("appends each command's answer in the order they ran", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({ computer: { assigned: true, state: "running" } }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    await controller.run("echo hi");
+
+    await until(controller, (state) => state.terminal.entries.length === 1, "the command");
+    expect(controller.state().terminal.entries[0]).toEqual({
+      command: "echo hi",
+      exitCode: 0,
+      stdout: "ran: echo hi\n",
+      stderr: "",
+      truncated: false,
+    });
+  });
+
+  it("does not call the transport for a blank command", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({ computer: { assigned: true, state: "running" } }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    await controller.run("   ");
+
+    expect(controller.state().terminal.entries).toEqual([]);
+  });
+
+  it("keeps the history and shows an error when a command is refused", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({
+        computer: { assigned: true, state: "running" },
+        browseFailure: new Error("refused"),
+      }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    await controller.run("echo hi");
+
+    expect(controller.state().terminal.entries).toEqual([]);
+    expect(controller.state().notice).toEqual({
+      kind: "error",
+      text: "The command could not be run.",
+    });
+  });
+});
+
+describe("the file view", () => {
+  const directories = {
+    "": [
+      { name: "notes.md", kind: "file" as const, sizeBytes: 12 },
+      { name: "projects", kind: "directory" as const, sizeBytes: 0 },
+    ],
+    projects: [{ name: "readme.md", kind: "file" as const, sizeBytes: 5 }],
+  };
+  const files = { "notes.md": "# Notes\n", "projects/readme.md": "hello" };
+
+  it("lists the home as part of a read of a running machine", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({ computer: { assigned: true, state: "running" }, directories }),
+    );
+
+    await until(controller, (state) => state.files.path === "", "the home listing");
+    expect(controller.state().files.entries.map((entry) => entry.name)).toEqual([
+      "notes.md",
+      "projects",
+    ]);
+  });
+
+  it("opens a directory, reads one of its files, and returns to the parent", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({
+        computer: { assigned: true, state: "running" },
+        directories,
+        files,
+      }),
+    );
+    await until(controller, (state) => state.files.path === "", "the home listing");
+
+    const directory = controller.state().files.entries.find((entry) => entry.name === "projects");
+
+    if (directory === undefined) {
+      throw new Error("the projects directory is missing from the listing");
+    }
+
+    await controller.openDirectory(directory);
+
+    await until(controller, (state) => state.files.path === "projects", "the directory");
+
+    const file = controller.state().files.entries.find((entry) => entry.name === "readme.md");
+
+    if (file === undefined) {
+      throw new Error("the readme file is missing from the listing");
+    }
+
+    await controller.openFile(file);
+
+    await until(controller, (state) => state.files.preview !== null, "the file");
+    expect(controller.state().files.preview).toEqual({
+      path: "projects/readme.md",
+      content: "hello",
+      truncated: false,
+    });
+
+    await controller.openParent();
+
+    await until(controller, (state) => state.files.path === "", "the parent");
+    expect(controller.state().files.preview).toBeNull();
+  });
+
+  it("keeps the previous listing and says so when a read is refused", async () => {
+    const healthy = scriptedComputerTransport({
+      computer: { assigned: true, state: "running" },
+      directories,
+    });
+    let failing = false;
+    const flaky: ComputerTransport = {
+      ...healthy,
+      files: async (input) => {
+        if (failing) {
+          throw new Error("refused");
+        }
+
+        return healthy.files(input);
+      },
+    };
+    const controller = createComputerController({ transport: flaky, botId: "bot-1" });
+    controller.load();
+
+    await until(controller, (state) => state.files.path === "", "the home listing");
+
+    // The listing was read before the machine went away; the next read fails.
+    failing = true;
+    await controller.openDirectory({ name: "projects", kind: "directory", sizeBytes: 0 });
+
+    await until(
+      controller,
+      (state) => state.files.refusal === "That directory could not be listed.",
+      "the refusal",
+    );
+    expect(controller.state().files.path).toBe("");
+    expect(controller.state().files.entries).toHaveLength(2);
+  });
+});
+
+describe("the terminal history", () => {
+  it("keeps only the newest runs", async () => {
+    const controller = loaded(
+      scriptedComputerTransport({ computer: { assigned: true, state: "running" } }),
+    );
+    await until(controller, (state) => state.status === "ready", "the read");
+
+    for (let index = 0; index < MAX_TERMINAL_ENTRIES + 2; index += 1) {
+      await controller.run(`echo ${String(index)}`);
+    }
+
+    const entries = controller.state().terminal.entries;
+
+    expect(entries).toHaveLength(MAX_TERMINAL_ENTRIES);
+    expect(entries[0]?.command).toBe("echo 2");
+    expect(entries.at(-1)?.command).toBe(`echo ${String(MAX_TERMINAL_ENTRIES + 1)}`);
   });
 });

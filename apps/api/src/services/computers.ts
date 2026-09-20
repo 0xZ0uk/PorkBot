@@ -7,13 +7,26 @@ import type {
   ProviderFailureKind,
 } from "@porkbot/adapter-kit";
 import type {
+  ComputerDirectoryView,
+  ComputerFileView,
   ComputerProvidersView,
   ComputerProviderView,
   ComputerSnapshotView,
+  ComputerTerminalView,
   ComputerView,
 } from "@porkbot/contracts";
+import { maxComputerOutputBytes } from "@porkbot/contracts";
 import type { ComputerSnapshotRecord, UserRepositories } from "@porkbot/db";
 import { ComputerUnavailableError, NotFoundError } from "@porkbot/effect";
+import {
+  clampCommandOutput,
+  computerCommandTimeoutMs,
+  directoryListingCommands,
+  fileReadCommand,
+  isDirectoryListing,
+  parseDirectoryListing,
+  resolveViewPath,
+} from "./computer-files.ts";
 
 /**
  * The API's half of the supervisor boundary (slice 7.1, PRD decision 20).
@@ -117,6 +130,28 @@ export interface ComputerService {
     readonly botId: string;
     readonly snapshotId: string;
   }): Promise<ComputerView>;
+  /**
+   * Runs one operator-typed command on the bot's computer (slice 11.4). The
+   * same exec seam the model's `shell` tool uses, without a run's lease: this
+   * is the operator's own shell, and the sandbox is its boundary.
+   */
+  terminal(input: {
+    readonly repositories: UserRepositories;
+    readonly botId: string;
+    readonly command: string;
+  }): Promise<ComputerTerminalView>;
+  /** Lists one directory of the bot's computer home, through the supervisor. */
+  files(input: {
+    readonly repositories: UserRepositories;
+    readonly botId: string;
+    readonly path: string | undefined;
+  }): Promise<ComputerDirectoryView>;
+  /** Reads one file of the bot's computer home, bounded and marked when cut. */
+  file(input: {
+    readonly repositories: UserRepositories;
+    readonly botId: string;
+    readonly path: string;
+  }): Promise<ComputerFileView>;
 }
 
 /**
@@ -199,10 +234,10 @@ export function createComputerService(provider: ComputerLifecycleProvider): Comp
    * caller's translation; an unclassified error is a defect on this seam, so
    * it passes through rather than being dressed up as capacity.
    */
-  async function answered(
-    operation: () => Promise<ComputerStatus>,
+  async function answered<T>(
+    operation: () => Promise<T>,
     translate: (failure: { readonly kind: ProviderFailureKind; readonly detail: string }) => Error,
-  ): Promise<ComputerStatus> {
+  ): Promise<T> {
     try {
       return await operation();
     } catch (error) {
@@ -445,6 +480,113 @@ export function createComputerService(provider: ComputerLifecycleProvider): Comp
               : asUnavailable(failure),
         ),
       );
+    },
+
+    async terminal({ repositories, botId, command }): Promise<ComputerTerminalView> {
+      const ref = await reference(repositories, botId);
+
+      if (ref === undefined) {
+        throw new NotFoundError("computer", botId);
+      }
+
+      const result = await answered(
+        () =>
+          provider.exec({
+            computer: ref,
+            command,
+            timeoutMs: computerCommandTimeoutMs,
+          }),
+        asUnavailable,
+      );
+      const stdout = clampCommandOutput(result.stdout, maxComputerOutputBytes);
+      const stderr = clampCommandOutput(result.stderr, maxComputerOutputBytes);
+
+      // A non-zero exit code is the command's answer, not this service's
+      // failure: the operator typed it and the terminal renders it.
+      return {
+        exitCode: result.exitCode,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        truncated: stdout.truncated || stderr.truncated,
+      };
+    },
+
+    async files({ repositories, botId, path }): Promise<ComputerDirectoryView> {
+      const ref = await reference(repositories, botId);
+
+      if (ref === undefined) {
+        throw new NotFoundError("computer", botId);
+      }
+
+      // The path is resolved and refused before the machine is dialed, so a
+      // traversal is the typed BAD_REQUEST rather than a provider command.
+      const resolved = resolveViewPath(path);
+      const commands = directoryListingCommands(resolved.path);
+      const [names, details] = await Promise.all([
+        answered(
+          () =>
+            provider.exec({
+              computer: ref,
+              command: commands.names,
+              timeoutMs: computerCommandTimeoutMs,
+            }),
+          asUnavailable,
+        ),
+        answered(
+          () =>
+            provider.exec({
+              computer: ref,
+              command: commands.details,
+              timeoutMs: computerCommandTimeoutMs,
+            }),
+          asUnavailable,
+        ),
+      ]);
+
+      // A non-zero exit is the refusal to list — missing, denied and "not a
+      // directory" all read as the same typed miss, which is the fail-closed
+      // direction; the terminal is where the machine's own message is read.
+      if (names.exitCode !== 0 || details.exitCode !== 0) {
+        throw new NotFoundError("directory", resolved.relative === "" ? "/" : resolved.relative);
+      }
+
+      // A file target makes `ls` print the path itself; the view lists
+      // directories only, so that answer is the same typed miss.
+      if (!isDirectoryListing(names.stdout)) {
+        throw new NotFoundError("directory", resolved.relative);
+      }
+
+      return {
+        path: resolved.relative,
+        entries: parseDirectoryListing(names.stdout, details.stdout),
+      };
+    },
+
+    async file({ repositories, botId, path }): Promise<ComputerFileView> {
+      const ref = await reference(repositories, botId);
+
+      if (ref === undefined) {
+        throw new NotFoundError("computer", botId);
+      }
+
+      const resolved = resolveViewPath(path);
+      const result = await answered(
+        () =>
+          provider.exec({
+            computer: ref,
+            command: fileReadCommand(resolved.path),
+            timeoutMs: computerCommandTimeoutMs,
+          }),
+        asUnavailable,
+      );
+
+      if (result.exitCode !== 0) {
+        throw new NotFoundError("file", resolved.relative);
+      }
+
+      const content = clampCommandOutput(result.stdout, maxComputerOutputBytes);
+
+      return { path: resolved.relative, content: content.text, truncated: content.truncated };
     },
   };
 }

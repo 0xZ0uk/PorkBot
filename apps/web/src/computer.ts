@@ -1,29 +1,38 @@
 import type {
   Bot,
+  ComputerDirectoryView,
+  ComputerFileEntryView,
+  ComputerFileView,
   ComputerProvidersView,
   ComputerProviderView,
   ComputerSnapshotView,
+  ComputerTerminalView,
   ComputerView,
   ProviderFailureKindView,
 } from "@porkbot/contracts";
 
 /**
- * The bot-computer screen's state machine (slice 9.4, PRD story 31): a
- * framework-free controller like the memory and connections screens', so the
- * screen renders one state object and the read/write rules live where a unit
- * test can drive them without a DOM.
+ * The bot-computer screen's state machine (slices 9.4 and 11.4, PRD stories 27
+ * and 31, decision 20): a framework-free controller like the memory and
+ * connections screens', so the screen renders one state object and the
+ * read/write rules live where a unit test can drive them without a DOM.
  *
- * The controller owns the operator's questions. Where does this bot run: the
- * bot's stored `computerProvider` is the selection, `null` means the
- * deployment's default, and the two are distinguishable because they are
- * different fields rather than a guess. Which providers exist and which are
- * usable: the deployment answers through `computers.providers`, and an
- * unavailable kind is rendered as unavailable with the classified reason the
- * supervisor reported — never smoothed into a checkmark the first run would
- * contradict. What happens when I switch: the warning is a pure function of
- * state the screen already holds, so the same sentence is computed before the
- * write for the confirmation and after it for the outcome, exactly like the
- * connections screen's revoke.
+ * The controller owns the operator's questions. Is the machine up, and what
+ * can I do to it: the lifecycle verbs the supervisor owns — boot, stop, reset,
+ * recover — each one write, and a reset is destructive enough that the screen
+ * asks first. What is happening inside it: the terminal runs commands through
+ * the same supervisor exec seam the model's shell tool uses, and the file view
+ * lists the bot's home and reads one file from it, both home-scoped. Where
+ * does this bot run: the bot's stored `computerProvider` is the selection,
+ * `null` means the deployment's default, and the two are distinguishable
+ * because they are different fields rather than a guess. Which providers exist
+ * and which are usable: the deployment answers through `computers.providers`,
+ * and an unavailable kind is rendered as unavailable with the classified
+ * reason the supervisor reported — never smoothed into a checkmark the first
+ * run would contradict. What happens when I switch: the warning is a pure
+ * function of state the screen already holds, so the same sentence is computed
+ * before the write for the confirmation and after it for the outcome, exactly
+ * like the connections screen's revoke.
  *
  * The snapshot path is explicit because a provider switch moves nothing. A
  * home lives on one provider's machine and a snapshot is an archive in the
@@ -31,6 +40,14 @@ import type {
  * restoring the snapshot into the new machine is how files cross the boundary.
  * The controller exposes the three steps separately so each is one operator
  * decision and each failure keeps the previous state readable.
+ *
+ * Screen watch and takeover are deliberately absent (PRD story 28, issue
+ * #178): v1.0's observability is the tool-call timeline beside this terminal
+ * and file view. The seam is already reserved at the bottom of the stack —
+ * `ComputerProvider` declares optional `frames()` and `input()`, and the
+ * supervisor's capability-gated `/frames` and `/input` paths answer
+ * `not_implemented` — so a v1.1 stream lands as one adapter plus this screen's
+ * next section, not as a redesign. Nothing in this module names a frame.
  */
 
 /** A provider the operator can choose: a kind, or `null` for the deployment default. */
@@ -43,6 +60,34 @@ export interface ComputerNotice {
   readonly text: string;
 }
 
+/** One terminal run: the command as typed and the machine's whole answer. */
+export interface TerminalEntry extends ComputerTerminalView {
+  readonly command: string;
+}
+
+/**
+ * The most terminal runs the screen keeps. Each answer can carry the view's
+ * whole output bound, so an unbounded history would grow the controller and
+ * the DOM for the life of the tab; older runs fall away and the newest are
+ * what the operator is reading anyway.
+ */
+export const MAX_TERMINAL_ENTRIES = 50;
+
+/** What the file view is showing: the listed directory, its entries and any open file. */
+export interface ComputerFilesState {
+  /** The home-relative directory last listed; `null` until one is read. */
+  readonly path: string | null;
+  readonly entries: readonly ComputerFileEntryView[];
+  /** The file opened for reading, or `null` when none is. */
+  readonly preview: ComputerFileView | null;
+  readonly pending: boolean;
+  /** The sentence for the last refused browse, or `null`. */
+  readonly refusal: string | null;
+}
+
+/** The lifecycle verbs the supervisor owns; each is one write on the machine. */
+export type ComputerLifecycleAction = "boot" | "stop" | "reset" | "recover";
+
 export interface ComputerState {
   readonly status: "loading" | "ready" | "refused";
   /** The sentence to show when `status` is `refused`, else `null`. */
@@ -54,8 +99,15 @@ export interface ComputerState {
   /** The choice armed for confirmation, or `null` when the radios are quiet. */
   readonly candidate: ProviderChoice | null;
   /** What write is in flight, for disabling the controls. */
-  readonly pending: "switch" | "snapshot" | "restore" | null;
+  readonly pending: "switch" | "snapshot" | "restore" | ComputerLifecycleAction | null;
   readonly notice: ComputerNotice | null;
+  /** The terminal's runs, oldest first. */
+  readonly terminal: {
+    readonly pending: boolean;
+    readonly entries: readonly TerminalEntry[];
+  };
+  /** The file view's last listing and open file. */
+  readonly files: ComputerFilesState;
 }
 
 /** The API surface the computer screen needs, narrow enough to fake. */
@@ -70,6 +122,22 @@ export interface ComputerTransport {
   setProvider(input: { readonly botId: string; readonly kind: string | null }): Promise<Bot>;
   snapshot(input: { readonly botId: string }): Promise<ComputerSnapshotView>;
   restore(input: { readonly botId: string; readonly snapshotId: string }): Promise<ComputerView>;
+  boot(input: { readonly botId: string }): Promise<ComputerView>;
+  stop(input: { readonly botId: string }): Promise<ComputerView>;
+  reset(input: { readonly botId: string }): Promise<ComputerView>;
+  recover(input: { readonly botId: string }): Promise<ComputerView>;
+  /** Runs one command through the supervisor's exec seam. */
+  terminal(input: {
+    readonly botId: string;
+    readonly command: string;
+  }): Promise<ComputerTerminalView>;
+  /** Lists one directory of the bot's home; an absent path is the home itself. */
+  files(input: {
+    readonly botId: string;
+    readonly path?: string | undefined;
+  }): Promise<ComputerDirectoryView>;
+  /** Reads one file of the bot's home. */
+  file(input: { readonly botId: string; readonly path: string }): Promise<ComputerFileView>;
 }
 
 export interface ComputerController {
@@ -87,7 +155,25 @@ export interface ComputerController {
   restore(snapshotId: string): Promise<void>;
   /** Confirms the armed choice: validates, then stores it. */
   confirm(): Promise<void>;
+  /** Starts, stops, resets or recovers the machine; the answer is the new state. */
+  lifecycle(action: ComputerLifecycleAction): Promise<void>;
+  /** Runs one terminal command and appends its answer. */
+  run(command: string): Promise<void>;
+  /** Opens a directory by its entry, or lists the home when one is absent. */
+  openDirectory(entry: ComputerFileEntryView | null): Promise<void>;
+  /** Opens one of the listed files for reading. */
+  openFile(entry: ComputerFileEntryView): Promise<void>;
+  /** Navigates to the parent of the listed directory, staying at the home. */
+  openParent(): Promise<void>;
 }
+
+/** The lifecycle verbs the confirmation arms, as the controller names them. */
+export const lifecycleActions: readonly ComputerLifecycleAction[] = [
+  "boot",
+  "stop",
+  "reset",
+  "recover",
+];
 
 export interface ComputerControllerOptions {
   readonly transport: ComputerTransport;
@@ -233,6 +319,67 @@ export function switchOutcome(candidate: ProviderChoice): string {
     : `This bot now runs on ${providerName(candidate.kind)}.`;
 }
 
+/**
+ * Whether the machine is up. Its terminal and files exist only while it runs —
+ * a stopped or missing machine has no shell to reach — so the screen disables
+ * both rather than letting a command answer the supervisor's refusal.
+ */
+export function canBrowse(state: Pick<ComputerState, "computer">): boolean {
+  return state.computer?.assigned === true && state.computer.state === "running";
+}
+
+/**
+ * The reset confirmation's sentence, computed from state the screen already
+ * holds. A reset destroys the machine and its home — processes, files, the lot
+ * — and keeps only the space's snapshots, so the sentence says which of the
+ * two situations the operator is in before the write.
+ */
+export function resetWarning(state: Pick<ComputerState, "snapshots">): string {
+  return state.snapshots.length === 0
+    ? "Resetting destroys this machine and its home; nothing is snapshotted. The next run creates a clean machine."
+    : "Resetting destroys this machine and its home. Snapshots are kept; restore one to bring files back.";
+}
+
+/** The outcome sentence each lifecycle write reports, in the screen's own words. */
+export function lifecycleOutcome(action: ComputerLifecycleAction): string {
+  switch (action) {
+    case "boot":
+      return "The machine was started.";
+    case "stop":
+      return "The machine was stopped. Its home stays on the provider.";
+    case "recover":
+      return "The machine was recovered.";
+    case "reset":
+      return "The machine was reset. Its home is gone; snapshots are kept.";
+  }
+}
+
+/** The sentence an action's button shows while its write is in flight. */
+export function lifecyclePendingLabel(action: ComputerLifecycleAction): string {
+  switch (action) {
+    case "boot":
+      return "Starting…";
+    case "stop":
+      return "Stopping…";
+    case "recover":
+      return "Recovering…";
+    case "reset":
+      return "Resetting…";
+  }
+}
+
+/** The home-relative path one entry would open, given the directory it is in. */
+export function childPath(directory: string, name: string): string {
+  return directory === "" ? name : `${directory}/${name}`;
+}
+
+/** The parent of a home-relative directory, clamped at the home. */
+export function parentPath(directory: string): string {
+  const slash = directory.lastIndexOf("/");
+
+  return slash < 0 ? "" : directory.slice(0, slash);
+}
+
 export function createComputerController(options: ComputerControllerOptions): ComputerController {
   const { transport, botId } = options;
   const listeners = new Set<() => void>();
@@ -246,10 +393,15 @@ export function createComputerController(options: ComputerControllerOptions): Co
     candidate: null,
     pending: null,
     notice: null,
+    terminal: { pending: false, entries: [] },
+    files: { path: null, entries: [], preview: null, pending: false, refusal: null },
   };
   // Bumped on every read, so a late answer from a superseded load cannot
   // replace the state a newer one already produced.
   let generation = 0;
+  // The file view's own read counter, so a directory answer that a later
+  // navigation superseded cannot replace the listing the operator is looking at.
+  let filesGeneration = 0;
 
   function publish(next: ComputerState): void {
     state = next;
@@ -285,6 +437,14 @@ export function createComputerController(options: ComputerControllerOptions): Co
         computer: loaded.computer,
         snapshots: loaded.snapshots,
       });
+
+      // A running machine has a shell to point the file view at, so the home
+      // is listed as part of the read; a stopped one leaves the last listing
+      // in place, disabled. The read is not awaited so the rest of the screen
+      // renders first and the section's own pending state is honest.
+      if (canBrowse({ computer: loaded.computer })) {
+        void loadDirectory(undefined);
+      }
     } catch {
       if (mine !== generation) {
         return;
@@ -320,6 +480,45 @@ export function createComputerController(options: ComputerControllerOptions): Co
     await reload(false);
 
     return true;
+  }
+
+  /**
+   * The file view's read. The listing replaces the previous one only when it
+   * is the newest read — a navigation that outran another keeps the directory
+   * the operator asked for — and a refused read keeps the previous listing
+   * visible with the refusal beside it.
+   */
+  async function loadDirectory(path: string | undefined): Promise<void> {
+    const mine = ++filesGeneration;
+    publish({ ...state, files: { ...state.files, pending: true, refusal: null } });
+
+    try {
+      const listing = await transport.files(path === undefined ? { botId } : { botId, path });
+
+      if (mine !== filesGeneration) {
+        return;
+      }
+
+      publish({
+        ...state,
+        files: {
+          path: listing.path,
+          entries: listing.entries,
+          preview: null,
+          pending: false,
+          refusal: null,
+        },
+      });
+    } catch {
+      if (mine !== filesGeneration) {
+        return;
+      }
+
+      publish({
+        ...state,
+        files: { ...state.files, pending: false, refusal: "That directory could not be listed." },
+      });
+    }
   }
 
   return {
@@ -385,6 +584,90 @@ export function createComputerController(options: ComputerControllerOptions): Co
       if (landed && state.candidate !== null && state.candidate.kind === candidate.kind) {
         publish({ ...state, candidate: null });
       }
+    },
+
+    async lifecycle(action) {
+      await apply(action, async () => {
+        await transport[action]({ botId });
+
+        return { kind: "info", text: lifecycleOutcome(action) };
+      });
+    },
+
+    async run(command) {
+      const trimmed = command.trim();
+
+      if (trimmed === "" || state.terminal.pending) {
+        return;
+      }
+
+      publish({ ...state, terminal: { ...state.terminal, pending: true }, notice: null });
+
+      try {
+        const result = await transport.terminal({ botId, command: trimmed });
+
+        const kept = [...state.terminal.entries, { command: trimmed, ...result }];
+
+        publish({
+          ...state,
+          terminal: {
+            pending: false,
+            entries: kept.slice(Math.max(0, kept.length - MAX_TERMINAL_ENTRIES)),
+          },
+        });
+      } catch {
+        publish({
+          ...state,
+          terminal: { ...state.terminal, pending: false },
+          notice: { kind: "error", text: "The command could not be run." },
+        });
+      }
+    },
+
+    async openDirectory(entry) {
+      if (entry !== null && entry.kind !== "directory") {
+        return;
+      }
+
+      const target = entry === null ? "" : childPath(state.files.path ?? "", entry.name);
+
+      await loadDirectory(target);
+    },
+
+    async openFile(entry) {
+      if (entry.kind !== "file") {
+        return;
+      }
+
+      const mine = ++filesGeneration;
+      const path = childPath(state.files.path ?? "", entry.name);
+      publish({ ...state, files: { ...state.files, pending: true, refusal: null } });
+
+      try {
+        const file = await transport.file({ botId, path });
+
+        if (mine !== filesGeneration) {
+          return;
+        }
+
+        publish({
+          ...state,
+          files: { ...state.files, preview: file, pending: false, refusal: null },
+        });
+      } catch {
+        if (mine !== filesGeneration) {
+          return;
+        }
+
+        publish({
+          ...state,
+          files: { ...state.files, pending: false, refusal: "That file could not be read." },
+        });
+      }
+    },
+
+    async openParent() {
+      await loadDirectory(parentPath(state.files.path ?? ""));
     },
   };
 }
