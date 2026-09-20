@@ -7,7 +7,7 @@ import type { ComputerProvider, ComputerRef } from "@porkbot/adapter-kit";
 import { createDockerComputerProvider, LocalStorageProvider } from "@porkbot/adapters";
 import { findRepoRoot } from "@porkbot/testkit";
 import { afterAll, describe, expect, it } from "vitest";
-import { CANARY_BOT_ID } from "../../src/policy.ts";
+import { CANARY_BOT_ID, planCanarySweep } from "../../src/policy.ts";
 import { runCanary } from "../../src/runner.ts";
 
 /**
@@ -84,10 +84,14 @@ afterAll(async () => {
   const active = provider;
 
   if (active !== undefined) {
+    // The daemon is shared with the other integration suites, so the cleanup
+    // claims only the canary's own machines — the same selection the sweep
+    // makes. Destroying every managed container here would pull the rug out
+    // from under a suite running beside this one.
     const held = await active.list().catch(() => []);
 
-    for (const status of held) {
-      await active.destroy(status.computer).catch(() => undefined);
+    for (const computer of planCanarySweep(held)) {
+      await active.destroy(computer).catch(() => undefined);
     }
   }
 

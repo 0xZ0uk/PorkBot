@@ -239,6 +239,10 @@ export function createRuntimeComputerProvider(
 
         if (existing !== undefined) {
           await runtime.remove(existing, computer);
+          // A provider whose `remove` takes the isolation boundary with the
+          // machine — Docker removes the per-computer network — has to plan it
+          // again before the replacement is created.
+          await runtime.prepare(computer);
         }
 
         const machine = await runtime.create(computer);
