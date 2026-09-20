@@ -4,7 +4,7 @@ import { rateLimitedErrorMessage } from "@porkbot/contracts";
 import { MAX_ATTACHMENT_BYTES } from "@porkbot/core";
 import type { UserActor } from "@porkbot/db";
 import { healthPath } from "@porkbot/health";
-import { attachmentUploadRulePath, fileDownloadRulePath } from "./services/files.ts";
+import { attachmentUploadRoutePath, fileDownloadRoutePath } from "@porkbot/contracts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import { webhookRulePath } from "./webhooks.ts";
 
@@ -67,8 +67,8 @@ export function routeRules(rpcPath: string): readonly RouteRule[] {
     // so it has its own family with the attachment cap, spent before the body
     // is read. The download draws the RPC family — the route spends the actor's
     // budget after the gate resolves the session, like every procedure.
-    { method: "POST", path: attachmentUploadRulePath, family: "upload" },
-    { method: "GET", path: fileDownloadRulePath, family: "rpc" },
+    { method: "POST", path: attachmentUploadRoutePath, family: "upload" },
+    { method: "GET", path: fileDownloadRoutePath, family: "rpc" },
   ];
 }
 

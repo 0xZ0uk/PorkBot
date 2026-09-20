@@ -49,13 +49,8 @@ import type { ComputerLifecycleProvider } from "./services/computers.ts";
 import type { DeploymentStatusService } from "./services/deployment.ts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import type { McpService } from "./services/mcp.ts";
-import {
-  attachmentUploadPath,
-  contentDisposition,
-  createFileService,
-  fileDownloadPath,
-  toReadableStream,
-} from "./services/files.ts";
+import { attachmentUploadRoutePath, fileDownloadRoutePath } from "@porkbot/contracts";
+import { contentDisposition, createFileService, toReadableStream } from "./services/files.ts";
 import { createModelConnectionsService } from "./services/model-connections.ts";
 import { createThreadEventsService } from "./services/thread-events.ts";
 import { createThreadsService } from "./services/threads.ts";
@@ -360,7 +355,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   // through the gate's `openProcedureContext` before any store is touched. The
   // file name rides the query, the content type the header, and the answer is
   // the row the send will address.
-  app.post(attachmentUploadPath, async (context) => {
+  app.post(attachmentUploadRoutePath, async (context) => {
     const procedureContext = await openProcedureContext({
       headers: context.req.raw.headers,
       logger: context.get("logger"),
@@ -401,7 +396,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
   // holds the bytes, and the response streams the object with its stored name.
   // The RPC family's actor budget is spent here after the gate resolved the
   // session, the same order the procedures use.
-  app.get(fileDownloadPath, async (context) => {
+  app.get(fileDownloadRoutePath, async (context) => {
     const procedureContext = await openProcedureContext({
       headers: context.req.raw.headers,
       logger: context.get("logger"),

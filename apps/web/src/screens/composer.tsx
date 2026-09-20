@@ -1,0 +1,222 @@
+import { MAX_MESSAGE_TEXT_LENGTH } from "@porkbot/core";
+import { Button } from "@porkbot/ui";
+import { useRef } from "react";
+import type { ClipboardEvent, DragEvent, KeyboardEvent, ChangeEvent } from "react";
+import type { ComposerFileInput, ComposerState } from "../composer.ts";
+
+/**
+ * The message composer (slice 11.3): the textarea, the staged files, and the
+ * send. Every fact on screen is the controller's state — which files are
+ * staged, which are still in flight, which failed and why, and whether the
+ * send is live — so the render is the same whether a file arrived by drag,
+ * the chooser, or a paste.
+ *
+ * Files stage as they arrive, and a staged row is the feedback the story asks
+ * for before anything is sent: name, type, size, and the intake refusal when
+ * the file could not be taken — an oversized or extra file is a visible row,
+ * never a silent drop. Uploading rows carry a real progress bar; a failed row
+ * says so and offers a retry. While any row is unsettled the send stays off,
+ * because a send that quietly left a file behind is exactly the drop the
+ * story rules out — and a failed send leaves the whole draft standing.
+ *
+ * The keyboard flow is the pointer flow: the chooser is a real button, Enter
+ * sends (Shift+Enter stays a newline), every file row's retry and remove are
+ * buttons, and the drop affordance doubles as a paste target, so nothing on
+ * the composer requires a pointing device.
+ */
+
+export interface ComposerScreenProps {
+  readonly state: ComposerState;
+  readonly onText: (text: string) => void;
+  readonly onFiles: (files: readonly ComposerFileInput[]) => void;
+  readonly onRemoveFile: (key: string) => void;
+  readonly onRetryFile: (key: string) => void;
+  readonly onSend: () => void;
+  readonly onDragActive: (active: boolean) => void;
+}
+
+/** A picked, dropped or pasted `File` as the controller's intake shape. */
+function toInput(file: File): ComposerFileInput {
+  return {
+    filename: file.name,
+    contentType: file.type,
+    sizeBytes: file.size,
+    body: file,
+  };
+}
+
+function offer(
+  fileList: FileList | readonly File[],
+  onFiles: ComposerScreenProps["onFiles"],
+): void {
+  const files = Array.from(fileList, toInput);
+
+  if (files.length > 0) {
+    onFiles(files);
+  }
+}
+
+export function ComposerScreen({
+  state,
+  onText,
+  onFiles,
+  onRemoveFile,
+  onRetryFile,
+  onSend,
+  onDragActive,
+}: ComposerScreenProps) {
+  const chooser = useRef<HTMLInputElement>(null);
+
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    // Enter sends; Shift+Enter stays a newline, the chat-composer convention.
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSend();
+    }
+  }
+
+  function onPaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
+    // Files on the clipboard stage beside the text; a text-only paste behaves
+    // exactly as it always did.
+    offer(event.clipboardData.files, onFiles);
+  }
+
+  function onDragOver(event: DragEvent<HTMLElement>): void {
+    if (event.dataTransfer.types.includes("Files")) {
+      event.preventDefault();
+      onDragActive(true);
+    }
+  }
+
+  function onDragLeave(event: DragEvent<HTMLElement>): void {
+    // Leaving a child is not leaving the composer; only a pointer that moves
+    // outside the form ends the affordance.
+    if (
+      !(event.relatedTarget instanceof Node) ||
+      !event.currentTarget.contains(event.relatedTarget)
+    ) {
+      onDragActive(false);
+    }
+  }
+
+  function onDrop(event: DragEvent<HTMLElement>): void {
+    event.preventDefault();
+    onDragActive(false);
+    offer(event.dataTransfer.files, onFiles);
+  }
+
+  function onChoose(event: ChangeEvent<HTMLInputElement>): void {
+    offer(event.target.files ?? [], onFiles);
+    // The same file chosen again must stage again, so the value goes back to
+    // empty rather than suppressing the change event.
+    event.target.value = "";
+  }
+
+  return (
+    <form
+      className={state.dragActive ? "composer composer-drop" : "composer"}
+      aria-label="Message composer"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSend();
+      }}
+    >
+      {state.files.length === 0 ? null : (
+        <ul className="composer-files">
+          {state.files.map((file) => (
+            <li key={file.key} className={`composer-file composer-file-${file.status}`}>
+              <span className="composer-file-name">{file.filename}</span>
+              <span className="composer-file-meta muted">
+                {file.contentType} · {formatBytes(file.sizeBytes)}
+              </span>
+              {file.status === "uploading" ? (
+                <progress
+                  className="composer-file-progress"
+                  value={file.progress}
+                  max={1}
+                  aria-label={`Uploading ${file.filename}`}
+                />
+              ) : null}
+              {file.detail === null ? null : (
+                <span className="composer-file-detail" role="alert">
+                  {file.detail}
+                </span>
+              )}
+              {file.status === "failed" ? (
+                <Button
+                  onClick={() => {
+                    onRetryFile(file.key);
+                  }}
+                >
+                  Retry
+                </Button>
+              ) : null}
+              <button
+                type="button"
+                className="composer-file-remove"
+                aria-label={`Remove ${file.filename}`}
+                onClick={() => {
+                  onRemoveFile(file.key);
+                }}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="composer-row">
+        <textarea
+          className="composer-text"
+          aria-label="Message"
+          placeholder="Message the bot — drop, choose, or paste files to attach"
+          value={state.text}
+          maxLength={MAX_MESSAGE_TEXT_LENGTH}
+          rows={2}
+          onChange={(event) => {
+            onText(event.target.value);
+          }}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+        />
+        <input
+          ref={chooser}
+          type="file"
+          multiple
+          className="composer-chooser"
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={onChoose}
+        />
+        <Button
+          onClick={() => {
+            chooser.current?.click();
+          }}
+        >
+          Attach files
+        </Button>
+        <Button tone="primary" type="submit" disabled={!state.canSend}>
+          {state.sending ? "Sending…" : "Send"}
+        </Button>
+      </div>
+      {state.error === null ? null : (
+        <p className="form-error" role="alert">
+          {state.error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) {
+    return `${String(bytes)} B`;
+  }
+
+  const kib = bytes / 1_024;
+
+  return kib < 1_024 ? `${kib.toFixed(1)} KiB` : `${(kib / 1_024).toFixed(1)} MiB`;
+}
