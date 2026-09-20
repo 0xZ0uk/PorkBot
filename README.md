@@ -31,10 +31,17 @@ pnpm quarantine:check # validate quarantine.json: owners, reasons, expiries
 pnpm dependencies:check # validate dependencies.json, manifests, lockfile and image digests
 pnpm dependencies:diff  # print the lockfile delta against origin/main
 pnpm env:check        # load every .env.schema and audit it against the code
-pnpm stack:up         # build the stack, start it, wait for every healthcheck
+pnpm stack:up         # build the local stack, start it, wait for every healthcheck
 pnpm stack:logs       # follow the stack's logs
 pnpm stack:status     # show the stack's services, states and ports
 pnpm stack:down       # stop the stack; remove containers, network and volumes
+pnpm deploy:setup     # render deploy/.env from the template, generating every secret
+pnpm deploy:check     # validate deploy/.env without touching Docker
+pnpm deploy:up        # setup if needed, validate, build, start and wait for the stack
+pnpm deploy:status    # show the deployment's services, states and ports
+pnpm deploy:logs      # follow the deployment's logs
+pnpm deploy:exec      # run a command in a running service
+pnpm deploy:down      # stop the deployment (volumes kept unless --volumes)
 pnpm testkit:start    # boot the harness Postgres container, record its state
 pnpm testkit:migrate  # apply SQL migrations to the harness template database
 pnpm testkit:snapshot # clone the template into a fresh suite database
@@ -163,6 +170,94 @@ Each service image builds from the root `Dockerfile`; the shared build stage
 installs and builds the workspace once and `pnpm deploy`s each app into its own
 runtime image. Every process answers `/healthz` — `packages/health` is the
 shared route, `apps/api` keeps its own because its listener also logs requests.
+
+## Single-host deployment
+
+`deploy/compose.yaml` is the production shape of the local stack: the same
+Postgres 18, one-shot `migrate`, `api`, `worker`, `web` and `supervisor`, with
+none of a developer's defaults left in it. Every secret and every operator
+choice is read through `${NAME:?}`, so Compose itself refuses a stack whose
+environment is incomplete, and every process still answers the same
+`/healthz` the container healthcheck asks. On a host that has never run it:
+
+```sh
+pnpm install
+pnpm deploy:up --origin https://bots.example.com
+```
+
+`deploy:up` renders the env file when it is missing, validates it, builds the
+app images from the root `Dockerfile`, starts the stack, waits on compose's
+`--wait` until every healthcheck passes, and prints each service's state,
+health and ports. A service that never becomes healthy fails the command,
+prints the per-service state and the recent logs, and leaves nothing half-up.
+`--tag <tag>` names the release the images are tagged with; the default is the
+checkout's git SHA, so nothing is tagged `:latest`.
+
+- **The one env file.** `deploy/.env` is the single file (mode 0600,
+  git-ignored). `pnpm deploy:setup` renders it from the committed
+  `deploy/porkbot.env.example`, which documents every key, and generates every
+  secret: the Postgres superuser password and the two service-role passwords;
+  `PORKBOT_AUTH_SECRET`, `PORKBOT_SUPERVISOR_TOKEN` and
+  `PORKBOT_SCREEN_TOKEN_SECRET`; the AES-256 `PORKBOT_CREDENTIAL_KEYS` keyring
+  and its active id; and the credential-proxy capability token when the proxy
+  is enabled. No key is hand-invented and no secret is printed by the command.
+  `setup` is idempotent — a re-run keeps every existing value and fills only
+  what is missing or blank — so enabling the credential proxy is
+  `pnpm deploy:setup --proxy-image <ref> --egress-network <name>`. `--force`
+  regenerates the generated secrets, which rotates credentials, and says what
+  that breaks for a running cluster. The remaining values are the operator's:
+  the public origin (required), the optional mail and run-notification
+  webhooks, and the computer provider and its per-bot sizing.
+- **Check without Docker.** `pnpm deploy:check` validates the env file on its
+  own; `--compose` also makes Docker Compose interpolate the stack definition
+  against it. The integration tier runs the CLI that way against the committed
+  definition, so a typo in the production compose file fails CI by name.
+- **What fails loudly.** A missing required value fails at Compose's
+  interpolation (`${NAME:?}`) before a container is created, whether the stack
+  is started by the command or by hand. `deploy:check` refuses the local
+  stack's placeholders, a secret shorter than 24 characters, a secret reused
+  across roles, a database password that is not URL-safe for its connection
+  string, a keyring key that is not 32 bytes or whose active id is missing, an
+  unresolved template sentinel, an origin that is not an absolute https origin
+  outside loopback, an image tag of `latest`, a partial mail/proxy/webhook
+  configuration, and a real computer provider without the settings it boots
+  from. The processes keep their own boot checks on top: the API refuses a
+  partial auth pair or a missing storage root, the logger refuses an unknown
+  level, and the supervisor refuses a computer provider it cannot construct.
+- **Resource floors and per-bot sizing.** The host floor is 4 vCPU / 8 GB for
+  the stack, plus roughly 2 GB and 50 GB+ of disk per bot, with 50 GB+ more for
+  images (PRD decision 32; "A bot's computer" above). The stack's ceilings fit
+  inside the base with headroom for the OS, the Docker daemon and the bots:
+
+  | service            | CPU ceiling | memory ceiling |
+  | ------------------ | ----------- | -------------- |
+  | postgres           | 1.0         | 2 GB           |
+  | migrate (one-shot) | 0.25        | 512 MB         |
+  | api                | 0.75        | 1 GB           |
+  | worker             | 0.5         | 1 GB           |
+  | web                | 0.25        | 256 MB         |
+  | supervisor         | 0.25        | 384 MB         |
+
+  Summed, the stack's ceilings are 3.0 vCPU and about 5.1 GB, so the base host
+  runs the stack and one bot at its default `PORKBOT_COMPUTER_CPUS` (1) and
+  `PORKBOT_COMPUTER_MEMORY_MB` (2048) with roughly 1 GB of memory left for the
+  OS and the Docker daemon. Each additional bot adds its own ~2 GB and
+  `PORKBOT_COMPUTER_DISK_MB` (10240), so the floor for N bots is
+  4 vCPU / (8 + 2N) GB and (50 + 50N) GB+ of disk. Raise the ceilings in
+  `deploy/compose.yaml` only after raising the host; the per-bot settings live
+  in the env file and are re-read at supervisor boot.
+
+- **Operating it.** `pnpm deploy:status` prints each service's state, health
+  and published ports; `pnpm deploy:logs` follows the logs;
+  `pnpm deploy:exec -- postgres psql -U porkbot` runs a command in a running
+  service; `pnpm deploy:down` stops and removes the containers and network
+  while keeping the volumes, and `pnpm deploy:down --volumes` also deletes
+  Postgres data, bot storage and archives after saying so. The published ports
+  bind to `PORKBOT_BIND_ADDRESS`, loopback by default: HTTPS on one origin is
+  the reverse-proxy contract (slice 12.2), and until that is configured the
+  stack is reached over an SSH tunnel. Postgres is never published;
+  `deploy:exec` is the way in. Upgrade and rollback are slice 12.4, backups
+  12.3, and the operator runbooks 12.7.
 
 ## Environment configuration
 
@@ -1989,6 +2084,26 @@ question 1): the app runs no supervisor, computer or worker, and
 `docs/desktop.md` states it. The unit tier covers the hardening call sites, the
 proxy over real HTTP, the update refusals and the tray; the screens are
 captured under `docs/screenshots/`.
+
+The single-host deployment lands with slice 12.1. `deploy/compose.yaml` is the
+production shape of the stack — the same six services, every secret read
+through Compose's `${NAME:?}` instead of a local default, app images tagged
+with the release's git SHA, and CPU and memory ceilings per service — and
+`packages/testkit/src/deployment` is the CLI behind `pnpm deploy:setup`,
+`deploy:check`, `deploy:up` and the lifecycle commands. `setup` renders the
+committed `deploy/porkbot.env.example` into `deploy/.env` with a generated
+secret for every entry in one register, idempotently, so enabling the
+credential proxy later does not re-key the database; `check` validates the file
+(the placeholders, weak or reused secrets, the keyring, the origins, the image
+tag, the all-or-nothing families, the provider's own settings) without Docker;
+`up` renders when needed, validates, builds as its own step so the health
+budget covers the services, waits on every healthcheck and reports readiness
+per service, and `down` keeps the volumes unless asked. The test suite pins the
+template, the compose file and the required set to each other, and the
+integration tier validates the definition with a throwaway rendered env. The
+README's "Single-host deployment" section carries the floors and the arithmetic
+against the compose ceilings. The local stack, its command and the CI
+integration tier are otherwise unchanged.
 
 The workspace compiles with TypeScript 7; typescript-eslint refuses to run against it, so
 `@porkbot/eslint-config` depends on the TypeScript 6 API for lint tooling only. Remove that
