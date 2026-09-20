@@ -243,6 +243,21 @@ describe("token deltas", () => {
     ]);
   });
 
+  it("keeps messages of different runs separate when their ids repeat", () => {
+    const snapshot = reduceAll(createThreadSnapshot(threadId), [
+      token(1, "assistant-1", "first", runId),
+      completed(2, "assistant-1", runId),
+      started(3, otherRunId),
+      token(4, "assistant-1", "second", otherRunId),
+      completed(5, "assistant-1", otherRunId),
+    ]);
+
+    expect(snapshot.messages.map((message) => [message.runId, message.id, message.text])).toEqual([
+      [runId, "assistant-1", "first"],
+      [otherRunId, "assistant-1", "second"],
+    ]);
+  });
+
   it("folds concurrent runs of one thread independently", () => {
     const snapshot = reduceAll(createThreadSnapshot(threadId), [
       token(1, "msg-1", "a", runId),

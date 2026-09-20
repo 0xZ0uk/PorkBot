@@ -48,6 +48,7 @@ export {
   RUN_EVENT_SCHEMA_VERSION,
   RUN_EVENT_TYPES,
   RunEventError,
+  storedRunEvent,
   UnknownEventType,
   UnknownSchemaVersion,
 } from "./run-events.ts";

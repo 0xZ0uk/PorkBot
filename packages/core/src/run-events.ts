@@ -666,3 +666,41 @@ export function parseRunEvent(value: unknown): RunEventParseResult {
       return parseRunSteered(base.value, value);
   }
 }
+
+/**
+ * One durable event row reconstructed as the wire event it was stored from
+ * (slice 5.6). The base fields come from the row's columns, never from the
+ * payload, so a payload cannot rewrite its position or redirect its thread, and
+ * a row the vocabulary does not understand is a loud parse failure rather than
+ * an event delivered as if understood. The API's subscription and the worker's
+ * conversation replay both read rows through this one function, so the live
+ * frame and the replayed one are the same bytes.
+ */
+export function storedRunEvent(record: {
+  readonly payload: unknown;
+  readonly seq: number;
+  readonly threadId: string;
+  readonly runId: string | null;
+  readonly type: string;
+}): RunEvent {
+  if (record.runId === null) {
+    throw new MalformedRunEvent("the row carries no run id", record.runId);
+  }
+
+  const payload =
+    typeof record.payload === "object" && record.payload !== null ? record.payload : {};
+  const parsed = parseRunEvent({
+    ...payload,
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq: record.seq,
+    threadId: record.threadId,
+    runId: record.runId,
+    type: record.type,
+  });
+
+  if (!parsed.ok) {
+    throw parsed.error;
+  }
+
+  return parsed.event;
+}

@@ -153,6 +153,18 @@ export function openAiRequestBody(request: ModelTurnRequest): unknown {
       role: message.role,
       content: message.content,
       ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
+      ...(message.toolCalls === undefined
+        ? {}
+        : {
+            tool_calls: message.toolCalls.map((call) => ({
+              id: call.callId,
+              type: "function" as const,
+              function: {
+                name: call.name,
+                arguments: JSON.stringify(call.arguments),
+              },
+            })),
+          }),
     })),
     ...(request.tools === undefined
       ? {}

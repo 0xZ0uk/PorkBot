@@ -1,5 +1,5 @@
 import type { RealtimeFanout, ThreadSignal } from "@porkbot/adapter-kit";
-import { parseRunEvent, RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
+import { storedRunEvent } from "@porkbot/core";
 import type { RunEvent } from "@porkbot/core";
 import type { EventRecord, UserActor, UserRepositories } from "@porkbot/db";
 import { NotFoundError } from "@porkbot/effect";
@@ -208,25 +208,11 @@ async function nextSignal(
 }
 
 /**
- * The persisted row reconstructed into the wire event core parses. The base
- * fields come from the row's columns, never from the payload, so a payload
- * cannot rewrite the sequence position or redirect the thread. A row the
- * vocabulary does not understand is a defect — the reducer's parser names it
- * and the boundary answers 500 — never an event delivered as if understood.
+ * The persisted row reconstructed into the wire event core parses. The
+ * reconstruction is `storedRunEvent`, the one function the worker's replay
+ * reads rows through as well, so a replayed frame and a live one can never
+ * disagree about what a row meant.
  */
 function runEventFor(record: EventRecord): RunEvent {
-  const parsed = parseRunEvent({
-    ...record.payload,
-    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
-    seq: record.seq,
-    threadId: record.threadId,
-    runId: record.runId,
-    type: record.type,
-  });
-
-  if (!parsed.ok) {
-    throw parsed.error;
-  }
-
-  return parsed.event;
+  return storedRunEvent(record);
 }

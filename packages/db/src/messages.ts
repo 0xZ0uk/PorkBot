@@ -76,6 +76,16 @@ export interface AssistantMessageWriter {
 }
 
 /**
+ * The worker's transcript read (slice 6.11): the thread's messages, oldest
+ * first, so a new run rebuilds the conversation it continues. It is the same
+ * scoped read the console pages through, exposed on a job's scope without the
+ * nonce lookup a send needs.
+ */
+export interface ThreadTranscriptReader {
+  listForThread(threadId: string, page: MessagePage): Promise<readonly MessageRecord[]>;
+}
+
+/**
  * The worker's read of a run's input (slice 7.6): the message a
  * message-triggered run was created from, so the attachments it carries can be
  * materialized into the computer before the run starts. The read joins through

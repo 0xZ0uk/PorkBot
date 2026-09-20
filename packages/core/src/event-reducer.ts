@@ -207,8 +207,18 @@ function findRun(snapshot: ThreadSnapshot, runId: string): RunSnapshot | undefin
   return snapshot.runs.find((run) => run.runId === runId);
 }
 
-function findMessage(snapshot: ThreadSnapshot, messageId: string): MessageSnapshot | undefined {
-  return snapshot.messages.find((message) => message.id === messageId);
+/**
+ * A message's identity is `(runId, id)`, not the id alone: a run's assistant
+ * messages are numbered by the provider session that produced them, so the
+ * same id in two runs of one thread names two different turns. Keying by the
+ * id alone would fold a later run's answer into an earlier one.
+ */
+function findMessage(
+  snapshot: ThreadSnapshot,
+  runId: string,
+  messageId: string,
+): MessageSnapshot | undefined {
+  return snapshot.messages.find((message) => message.runId === runId && message.id === messageId);
 }
 
 function withRun(snapshot: ThreadSnapshot, run: RunSnapshot): ThreadSnapshot {
@@ -221,9 +231,13 @@ function withRun(snapshot: ThreadSnapshot, run: RunSnapshot): ThreadSnapshot {
 }
 
 function withMessage(snapshot: ThreadSnapshot, message: MessageSnapshot): ThreadSnapshot {
-  const exists = snapshot.messages.some((candidate) => candidate.id === message.id);
+  const exists = snapshot.messages.some(
+    (candidate) => candidate.runId === message.runId && candidate.id === message.id,
+  );
   const messages = exists
-    ? snapshot.messages.map((candidate) => (candidate.id === message.id ? message : candidate))
+    ? snapshot.messages.map((candidate) =>
+        candidate.runId === message.runId && candidate.id === message.id ? message : candidate,
+      )
     : [...snapshot.messages, message];
 
   return { ...snapshot, messages };
@@ -286,7 +300,7 @@ function completeRunMessages(
   let current = snapshot;
 
   if (messageId !== undefined) {
-    const message = findMessage(current, messageId);
+    const message = findMessage(current, runId, messageId);
     if (message === undefined) {
       const created: MessageSnapshot = {
         id: messageId,
@@ -331,7 +345,7 @@ function reduceTokenDelta(snapshot: ThreadSnapshot, event: TokenDeltaEvent): Red
     return running;
   }
 
-  const message = findMessage(running.snapshot, event.messageId);
+  const message = findMessage(running.snapshot, event.runId, event.messageId);
   if (message === undefined) {
     const created: MessageSnapshot = {
       id: event.messageId,
@@ -558,7 +572,7 @@ function reduceRunSteered(snapshot: ThreadSnapshot, event: RunSteeredEvent): Red
     return running;
   }
 
-  if (findMessage(running.snapshot, event.messageId) !== undefined) {
+  if (findMessage(running.snapshot, event.runId, event.messageId) !== undefined) {
     return failure(new MessageConflict(event.messageId, "already_exists"));
   }
 

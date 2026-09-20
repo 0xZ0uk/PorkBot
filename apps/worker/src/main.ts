@@ -1,5 +1,4 @@
 import process from "node:process";
-import { Effect } from "effect";
 import {
   createEnvironmentCredentialStore,
   createHttpNotificationProvider,
@@ -11,6 +10,7 @@ import { createLogger } from "@porkbot/logging";
 import type { Runner } from "graphile-worker";
 import { moduleInfo } from "./index.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
+import { createLiveRunWork } from "./live-run.ts";
 import { createRunExecutor } from "./run-execution.ts";
 import type { RunNotificationTarget } from "./run-notifications.ts";
 import { startWorker } from "./worker.ts";
@@ -121,23 +121,17 @@ try {
 /**
  * The handler has atomically claimed the run before entering this seam, and the
  * harness owns the lease from then on: it heartbeats, interrupts the work on a
- * lost fence, and settles the run and its attempt. Slice 6.9 lands the
- * computer tools and proves a full run with real tool execution offline
- * (`offline-run.test.ts`); the live model launch that fills this seam with a
- * Pi-backed session waits on the stream bridge from Pi's agent loop to the
- * model runtime (slice 9.2 ships the runtime itself). That launch also passes
- * `repositories.usage` to the runtime layer as its `usage` recorder, which is
- * how slice 8.8's ledger is fed in production. Until then the run records its
- * claim and completes with no output rather than pretending a runtime exists.
+ * lost fence, and settles the run and its attempt. The work is the live model
+ * launch (slice 6.11): it resolves the run's bot, conversation, model
+ * connection and memory lane, composes the prompt, drives the live agent loop
+ * and records the session's events through the one recorder. `usage` rides the
+ * job's repository as the run's own ledger write (slice 8.8), and a run that
+ * cannot be assembled fails with the sentence its operator can act on instead
+ * of completing with no output.
  */
 const verifiedRunExecutor: RunExecutor = createRunExecutor({
   notificationTarget,
-  work: ({ run, logger: runLogger }) =>
-    Effect.sync(() => {
-      runLogger.info("run claimed; no model runtime is wired yet", { fence: run.leaseFence });
-
-      return { status: "completed" } as const;
-    }),
+  work: createLiveRunWork(),
 });
 
 let runner: Runner | undefined;

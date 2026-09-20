@@ -7,6 +7,11 @@
       "reason": "Pi owns the agent loop (PRD decisions 13 and 31) and is adapted at the RunSession seam in slice 5.3. Pinned exactly so an upgrade is a reviewed change paired with the golden-corpus replay, never a silent lockfile move."
     },
     {
+      "name": "@earendil-works/pi-ai",
+      "version": "0.85.1",
+      "reason": "The message, model and stream types Pi's agent loop consumes and produces; the live launch's stream bridge builds an AssistantMessageEventStream with them (slice 6.11). It is the same build pi-agent-core depends on, pinned exactly so the bridge and the loop cannot drift apart across an implicit upgrade."
+    },
+    {
       "name": "@electron/packager",
       "version": "20.3.0",
       "reason": "Builds the versioned desktop artifacts in the release pipeline (slice 11.7): it stages the app, the packaged web client and the prod dependency closure into the platform bundles the smoke test runs and the signed update manifest points at. Pinned exactly because the bundle layout — resources/app, the extra client resource and the executable name — is the release contract the smoke test asserts, so an implicit upgrade could move the artifact out from under a signed digest."

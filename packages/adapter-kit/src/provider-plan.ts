@@ -340,6 +340,7 @@ export const PROVIDER_SHAPES: readonly ProviderShape[] = [
       "ModelDescriptor",
       "ModelProbeResult",
       "ModelMessage",
+      "ModelToolCall",
       "ModelToolDefinition",
       "ModelTurnRequest",
     ],

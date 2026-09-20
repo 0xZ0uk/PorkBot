@@ -119,6 +119,25 @@ export {
 } from "./pi-run-source.ts";
 export type { PiApprovalDecision, PiRunControls, PiRunSource } from "./pi-run-source.ts";
 
+// The live launch's two halves: the `StreamFn` that dials the operator's own
+// model connection through `ModelRuntimeProvider`, and the real `Agent` behind
+// the shipped `PiRunSource` seam (slice 6.11). The worker calls
+// `createLiveAgentRuntimeLayer` with provider-neutral values and receives the
+// run-scoped `AgentRuntimeLayer` the orchestrator provides.
+export {
+  createPiModel,
+  createPiStreamFn,
+  PiStreamContextError,
+  toModelMessages,
+} from "./pi-stream-fn.ts";
+export type { PiStreamFnOptions } from "./pi-stream-fn.ts";
+export {
+  createLiveAgentRuntimeLayer,
+  createPiAgentSource,
+  PiAgentSourceError,
+} from "./pi-agent-source.ts";
+export type { LiveAgentRuntimeOptions, LiveTool, PiAgentSourceOptions } from "./pi-agent-source.ts";
+
 // Memory retrieval (slice 8.1, PRD decision 21). The interface lives in
 // @porkbot/adapter-kit; this package ships the two implementations the rule
 // requires plus the recall composition between them. The emulator is the

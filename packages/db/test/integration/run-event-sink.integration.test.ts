@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   createThreadSnapshot,
-  parseRunEvent,
   reduceRunEvents,
   RUN_EVENT_SCHEMA_VERSION,
+  storedRunEvent,
 } from "@porkbot/core";
 import type { RunEvent, ToolResultLimits } from "@porkbot/core";
 import { createRunEventRecorder, NotFoundError } from "@porkbot/effect";
@@ -166,20 +166,7 @@ async function recordAndAppend(
 
 /** The reconstruction `apps/api`'s subscription performs, pinned to the row. */
 function runEventFor(record: EventRecord): RunEvent {
-  const parsed = parseRunEvent({
-    ...record.payload,
-    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
-    seq: record.seq,
-    threadId: record.threadId,
-    runId: record.runId,
-    type: record.type,
-  });
-
-  if (!parsed.ok) {
-    throw parsed.error;
-  }
-
-  return parsed.event;
+  return storedRunEvent(record);
 }
 
 describe("the persisted tool-call timeline", () => {
@@ -272,6 +259,38 @@ describe("the persisted tool-call timeline", () => {
     );
 
     expect(rows[0]?.nextEventSeq).toBe(7);
+  });
+});
+
+describe("the system event read", () => {
+  it("replays a thread's durable events in order through the job's scope", async () => {
+    const { rows } = await db().query<{ readonly count: string }>(
+      "select count(*)::text as count from event where thread_id = $1",
+      [threadId],
+    );
+    const total = Number(rows[0]?.count ?? "0");
+    const events = createRepositories(systemActor(user.spaceId), db()).events;
+    const replayed = await events.listAfter(threadId, 0, 100);
+
+    expect(replayed).toHaveLength(total);
+    expect(replayed.map((event) => event.type)).toEqual([
+      "run.started",
+      "tool.requested",
+      "tool.completed",
+      "tool.requested",
+      "tool.failed",
+      "run.completed",
+    ]);
+
+    // The cursor is exclusive, exactly like the client subscription's.
+    const afterFirst = await events.listAfter(threadId, replayed[0]?.seq ?? 0, 100);
+    expect(afterFirst).toHaveLength(total - 1);
+  });
+
+  it("yields nothing for a thread outside the job's space", async () => {
+    const events = createRepositories(systemActor(otherSpace), db()).events;
+
+    await expect(events.listAfter(threadId, 0, 100)).resolves.toEqual([]);
   });
 });
 

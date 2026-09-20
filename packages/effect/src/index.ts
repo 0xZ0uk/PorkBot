@@ -237,7 +237,12 @@ export type {
 // duration. Running every event through the recorder before it is persisted
 // or streamed is what keeps the live timeline and the replayed one identical.
 export { createRunEventRecorder } from "./run-events.ts";
-export type { RunEventRecorder, RunEventRecorderOptions, RunEventSink } from "./run-events.ts";
+export type {
+  RunEventReader,
+  RunEventRecorder,
+  RunEventRecorderOptions,
+  RunEventSink,
+} from "./run-events.ts";
 
 // The usage seam (slice 8.8, PRD story 34). A run's adapters report what each
 // completed model turn spent; `createUsageStore` in `@porkbot/db` implements
