@@ -16,7 +16,13 @@ import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AppBotsNewRouteImport } from './routes/_app/bots.new'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings.index'
+import { Route as AppSettingsAccountRouteImport } from './routes/_app/settings.account'
 import { Route as AppSettingsConnectionsRouteImport } from './routes/_app/settings.connections'
+import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings.mcp'
+import { Route as AppSettingsNotificationsRouteImport } from './routes/_app/settings.notifications'
+import { Route as AppSettingsSecretsRouteImport } from './routes/_app/settings.secrets'
+import { Route as AppSettingsUsageRouteImport } from './routes/_app/settings.usage'
 import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
 import { Route as AppBotsBotIdComputerRouteImport } from './routes/_app/bots.$botId.computer'
 import { Route as AppBotsBotIdEditRouteImport } from './routes/_app/bots.$botId.edit'
@@ -57,9 +63,40 @@ const AppBotsNewRoute = AppBotsNewRouteImport.update({
   path: '/bots/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsAccountRoute = AppSettingsAccountRouteImport.update({
+  id: '/settings/account',
+  path: '/settings/account',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsConnectionsRoute = AppSettingsConnectionsRouteImport.update({
   id: '/settings/connections',
   path: '/settings/connections',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsMcpRoute = AppSettingsMcpRouteImport.update({
+  id: '/settings/mcp',
+  path: '/settings/mcp',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsNotificationsRoute =
+  AppSettingsNotificationsRouteImport.update({
+    id: '/settings/notifications',
+    path: '/settings/notifications',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppSettingsSecretsRoute = AppSettingsSecretsRouteImport.update({
+  id: '/settings/secrets',
+  path: '/settings/secrets',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsUsageRoute = AppSettingsUsageRouteImport.update({
+  id: '/settings/usage',
+  path: '/settings/usage',
   getParentRoute: () => AppRoute,
 } as any)
 const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
@@ -100,8 +137,14 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
   '/bots/new': typeof AppBotsNewRoute
+  '/settings/account': typeof AppSettingsAccountRoute
   '/settings/connections': typeof AppSettingsConnectionsRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
+  '/settings/secrets': typeof AppSettingsSecretsRoute
+  '/settings/usage': typeof AppSettingsUsageRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/settings/': typeof AppSettingsIndexRoute
   '/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
@@ -114,8 +157,14 @@ export interface FileRoutesByTo {
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
   '/bots/new': typeof AppBotsNewRoute
+  '/settings/account': typeof AppSettingsAccountRoute
   '/settings/connections': typeof AppSettingsConnectionsRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
+  '/settings/secrets': typeof AppSettingsSecretsRoute
+  '/settings/usage': typeof AppSettingsUsageRoute
   '/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/settings': typeof AppSettingsIndexRoute
   '/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
@@ -131,8 +180,14 @@ export interface FileRoutesById {
   '/_auth/sign-up': typeof AuthSignUpRoute
   '/_app/': typeof AppIndexRoute
   '/_app/bots/new': typeof AppBotsNewRoute
+  '/_app/settings/account': typeof AppSettingsAccountRoute
   '/_app/settings/connections': typeof AppSettingsConnectionsRoute
+  '/_app/settings/mcp': typeof AppSettingsMcpRoute
+  '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
+  '/_app/settings/secrets': typeof AppSettingsSecretsRoute
+  '/_app/settings/usage': typeof AppSettingsUsageRoute
   '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/_app/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
@@ -147,8 +202,14 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/bots/new'
+    | '/settings/account'
     | '/settings/connections'
+    | '/settings/mcp'
+    | '/settings/notifications'
+    | '/settings/secrets'
+    | '/settings/usage'
     | '/threads/$threadId'
+    | '/settings/'
     | '/bots/$botId/computer'
     | '/bots/$botId/edit'
     | '/bots/$botId/memory'
@@ -161,8 +222,14 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/bots/new'
+    | '/settings/account'
     | '/settings/connections'
+    | '/settings/mcp'
+    | '/settings/notifications'
+    | '/settings/secrets'
+    | '/settings/usage'
     | '/threads/$threadId'
+    | '/settings'
     | '/bots/$botId/computer'
     | '/bots/$botId/edit'
     | '/bots/$botId/memory'
@@ -177,8 +244,14 @@ export interface FileRouteTypes {
     | '/_auth/sign-up'
     | '/_app/'
     | '/_app/bots/new'
+    | '/_app/settings/account'
     | '/_app/settings/connections'
+    | '/_app/settings/mcp'
+    | '/_app/settings/notifications'
+    | '/_app/settings/secrets'
+    | '/_app/settings/usage'
     | '/_app/threads/$threadId'
+    | '/_app/settings/'
     | '/_app/bots/$botId/computer'
     | '/_app/bots/$botId/edit'
     | '/_app/bots/$botId/memory'
@@ -242,11 +315,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBotsNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/account': {
+      id: '/_app/settings/account'
+      path: '/settings/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof AppSettingsAccountRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/connections': {
       id: '/_app/settings/connections'
       path: '/settings/connections'
       fullPath: '/settings/connections'
       preLoaderRoute: typeof AppSettingsConnectionsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/mcp': {
+      id: '/_app/settings/mcp'
+      path: '/settings/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof AppSettingsMcpRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/notifications': {
+      id: '/_app/settings/notifications'
+      path: '/settings/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AppSettingsNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/secrets': {
+      id: '/_app/settings/secrets'
+      path: '/settings/secrets'
+      fullPath: '/settings/secrets'
+      preLoaderRoute: typeof AppSettingsSecretsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/usage': {
+      id: '/_app/settings/usage'
+      path: '/settings/usage'
+      fullPath: '/settings/usage'
+      preLoaderRoute: typeof AppSettingsUsageRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/threads/$threadId': {
@@ -298,8 +413,14 @@ interface AppRouteChildren {
   AppApprovalsRoute: typeof AppApprovalsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppBotsNewRoute: typeof AppBotsNewRoute
+  AppSettingsAccountRoute: typeof AppSettingsAccountRoute
   AppSettingsConnectionsRoute: typeof AppSettingsConnectionsRoute
+  AppSettingsMcpRoute: typeof AppSettingsMcpRoute
+  AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
+  AppSettingsSecretsRoute: typeof AppSettingsSecretsRoute
+  AppSettingsUsageRoute: typeof AppSettingsUsageRoute
   AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
   AppBotsBotIdComputerRoute: typeof AppBotsBotIdComputerRoute
   AppBotsBotIdEditRoute: typeof AppBotsBotIdEditRoute
   AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
@@ -311,8 +432,14 @@ const AppRouteChildren: AppRouteChildren = {
   AppApprovalsRoute: AppApprovalsRoute,
   AppIndexRoute: AppIndexRoute,
   AppBotsNewRoute: AppBotsNewRoute,
+  AppSettingsAccountRoute: AppSettingsAccountRoute,
   AppSettingsConnectionsRoute: AppSettingsConnectionsRoute,
+  AppSettingsMcpRoute: AppSettingsMcpRoute,
+  AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
+  AppSettingsSecretsRoute: AppSettingsSecretsRoute,
+  AppSettingsUsageRoute: AppSettingsUsageRoute,
   AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
   AppBotsBotIdComputerRoute: AppBotsBotIdComputerRoute,
   AppBotsBotIdEditRoute: AppBotsBotIdEditRoute,
   AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,

@@ -46,7 +46,7 @@ import { createUsageRouter } from "./routers/usage.ts";
 import { createBotService } from "./services/bots.ts";
 import { createComputerService, unconfiguredComputerProvider } from "./services/computers.ts";
 import type { ComputerLifecycleProvider } from "./services/computers.ts";
-import type { DeploymentStatusService } from "./services/deployment.ts";
+import type { DeploymentService } from "./services/deployment.ts";
 import { mcpCallbackPath } from "./services/mcp.ts";
 import type { McpService } from "./services/mcp.ts";
 import { attachmentUploadRoutePath, fileDownloadRoutePath } from "@porkbot/contracts";
@@ -75,7 +75,7 @@ export const authBasePath = "/api/auth";
  * service under test without a database or a network.
  */
 export interface ApiServices {
-  readonly deployment: DeploymentStatusService;
+  readonly deployment: DeploymentService;
   /**
    * The live wake-up source for thread subscriptions. Process-scoped, like a
    * pool or an SDK client: one instance serves every request, and a same-process
@@ -216,7 +216,7 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
     ((credentials: CredentialStore) => createOpenAiCompatibleModelRuntime({ credentials }));
   const router = assembleRouter({
     deployment: createDeploymentRouter(options.services.deployment),
-    account: createAccountRouter(),
+    account: createAccountRouter(options.services.deployment),
     approvals: createApprovalsRouter(),
     notifications: createNotificationsRouter(),
     bots: createBotsRouter(

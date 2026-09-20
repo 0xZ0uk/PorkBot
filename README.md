@@ -1886,6 +1886,26 @@ default from a bot's own connection. The e2e tier drives create, revoke, probe
 and the default swap against a scripted API over a real socket, and the screen
 is captured under `docs/screenshots/`.
 
+The settings area lands with slice 11.5. `/settings` is the directory: models,
+MCP servers, secrets, notifications, usage and account, one line each, every
+entry a route the index test walks so an added surface without a link fails the
+suite. Models stays the connections surface at `/settings/connections`; the
+other five are new. `/settings/mcp` installs a server by URL, shows the status
+discovery reported — `pending_authorization` beside the consent link, never a
+success it did not observe — lists its tools, grants it per bot, and confirms an
+uninstall with how many tools and bots it takes down. `/settings/secrets` reads
+one bot's secrets as names, destinations and statuses, stores a value and
+forgets one behind a confirmation that says the value is cleared immediately.
+`/settings/notifications` renders the switches with the quiet defaults the store
+answers. `/settings/usage` fans out over the active bots and re-reads every bot
+when the window changes, under the sentence that the figures are recorded and
+displayed only; the per-bot report is the same component the bot route renders.
+`/settings/account` reads the new authenticated `account.ownership`, which pairs
+the actor's role with the deployment's configured admin address or `null` when
+none was configured. The e2e tier drives a switch flip, a window change, a
+forget, an install and an uninstall against a scripted API over a real socket,
+and the index is captured under `docs/screenshots/`.
+
 Choosing where a bot runs lands with slice 9.4. `computers.providers` is the
 deployment's own answer — every kind its supervisor configured, each asked to
 prove itself by the one readiness check every `ComputerProvider` now answers

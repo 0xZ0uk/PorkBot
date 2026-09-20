@@ -1188,3 +1188,68 @@
   max-height: 24rem;
   overflow: auto;
 }
+
+/*
+ * The settings surfaces (slice 11.5): the index is a directory of one-line
+ * entries, the toggles are a compact switch list, and the usage report reuses
+ * the per-bot screen's card vocabulary.
+ */
+
+.settings-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+}
+
+.settings-index-item {
+  padding: var(--pb-space-sm) var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-sm);
+}
+
+.settings-index-item h3 {
+  margin: 0;
+}
+
+.settings-toggles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+}
+
+.settings-toggle {
+  padding: var(--pb-space-sm) var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-sm);
+}
+
+.settings-toggle .field {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-usage-bot {
+  margin-top: var(--pb-space-md);
+}
+
+.mcp-tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-xs);
+}
+
+.mcp-tool {
+  padding: var(--pb-space-xs) 0;
+}

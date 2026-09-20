@@ -1,5 +1,5 @@
 import { publicOnly } from "../gate.ts";
-import type { DeploymentStatusService } from "../services/deployment.ts";
+import type { DeploymentService } from "../services/deployment.ts";
 
 /**
  * The deployment router: one screen, no business logic. It asks the service
@@ -11,7 +11,7 @@ import type { DeploymentStatusService } from "../services/deployment.ts";
  * on `publicOnly`; the middleware fails closed if the contract ever stops
  * marking it public.
  */
-export function createDeploymentRouter(service: DeploymentStatusService) {
+export function createDeploymentRouter(service: DeploymentService) {
   const status = publicOnly.deployment.status.handler(async ({ errors }) => {
     const result = await service.status();
 

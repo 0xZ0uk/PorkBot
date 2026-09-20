@@ -10,13 +10,21 @@ import {
   createHttpComputerTransport,
   createHttpConnectionsTransport,
   createHttpConsoleTransport,
+  createHttpMcpTransport,
   createHttpMemoryTransport,
+  createHttpNotificationsTransport,
+  createHttpOwnershipTransport,
+  createHttpSecretsTransport,
   createHttpUsageTransport,
 } from "./transport.ts";
 import type { ComputerTransport } from "./computer.ts";
 import type { ConnectionsTransport } from "./connections.ts";
 import type { BotsTransport } from "./bots.ts";
+import type { McpTransport } from "./mcp.ts";
 import type { MemoryTransport } from "./memory.ts";
+import type { NotificationsTransport } from "./notifications.ts";
+import type { OwnershipTransport } from "./ownership.ts";
+import type { SecretsTransport } from "./secrets.ts";
 import type { AuthTransport, SessionController } from "./session.ts";
 import type { ApprovalTransport, ConsoleTransport, UsageTransport } from "./transport.ts";
 
@@ -44,6 +52,14 @@ export interface RouterContext {
   readonly computer: ComputerTransport;
   /** Pending approvals and durable approval history for the signed-in actor. */
   readonly approvals?: ApprovalTransport;
+  /** The notification settings surface's data: the operator's switches. */
+  readonly notifications?: NotificationsTransport;
+  /** The account settings surface's data: the actor's role and the deployment owner. */
+  readonly ownership?: OwnershipTransport;
+  /** The secrets settings surface's data: bots and their stored secrets. */
+  readonly secrets?: SecretsTransport;
+  /** The MCP settings surface's data: servers, tools and per-bot grants. */
+  readonly mcp?: McpTransport;
 }
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
@@ -73,5 +89,9 @@ export function getRouter() {
     connections: createHttpConnectionsTransport(),
     computer: createHttpComputerTransport(),
     approvals: createHttpApprovalTransport(),
+    notifications: createHttpNotificationsTransport(),
+    ownership: createHttpOwnershipTransport(),
+    secrets: createHttpSecretsTransport(),
+    mcp: createHttpMcpTransport(),
   });
 }

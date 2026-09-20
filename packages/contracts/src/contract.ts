@@ -1,4 +1,4 @@
-import { accountMeContract } from "./account.ts";
+import { accountMeContract, accountOwnershipContract } from "./account.ts";
 import { approvalsDecideContract, approvalsListContract } from "./approvals.ts";
 import {
   computersBootContract,
@@ -106,6 +106,7 @@ export const appContract = {
   },
   account: {
     me: accountMeContract,
+    ownership: accountOwnershipContract,
   },
   notifications: {
     preferences: notificationsPreferencesContract,

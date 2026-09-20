@@ -290,6 +290,9 @@ beforeAll(async () => {
         async status() {
           return { kind: "closed" };
         },
+        async ownership() {
+          return { kind: "configured", ownerEmail: null } as const;
+        },
       },
       realtime: new InProcessRealtimeFanout(),
       storage,
