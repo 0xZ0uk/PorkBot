@@ -528,6 +528,9 @@ importers:
       '@porkbot/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
+      '@porkbot/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@porkbot/core':
         specifier: workspace:*
         version: link:../core

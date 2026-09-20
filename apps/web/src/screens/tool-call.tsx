@@ -92,11 +92,6 @@ export function ToolCallEntry({ threadId, runId, call, onApprovalDecision }: Too
                 Full result ({formatBytes(artifact.bytes)})
               </a>
             )}
-            {download === undefined ? null : (
-              <a className="tool-call-artifact tool-call-download" href={download.downloadPath}>
-                Download {download.filename} ({formatBytes(download.sizeBytes)})
-              </a>
-            )}
           </dd>
           {pending ? (
             <dd className="approval-controls-cell">
@@ -110,6 +105,11 @@ export function ToolCallEntry({ threadId, runId, call, onApprovalDecision }: Too
           ) : null}
         </dl>
       </details>
+      {download === undefined ? null : (
+        <a className="tool-call-artifact tool-call-download" href={download.downloadPath}>
+          Download {download.filename} ({formatBytes(download.sizeBytes)})
+        </a>
+      )}
     </li>
   );
 }

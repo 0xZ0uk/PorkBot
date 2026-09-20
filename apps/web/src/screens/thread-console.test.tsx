@@ -23,8 +23,22 @@ const base: ThreadConsoleState = {
   threadId: "thread-1",
   status: "ready",
   entries: [
-    { kind: "message", id: "message-0", role: "user", text: "do it", streaming: false },
-    { kind: "message", id: "message-1", role: "assistant", text: "Hello", streaming: true },
+    {
+      kind: "message",
+      id: "message-0",
+      role: "user",
+      text: "do it",
+      attachments: [],
+      streaming: false,
+    },
+    {
+      kind: "message",
+      id: "message-1",
+      role: "assistant",
+      text: "Hello",
+      attachments: [],
+      streaming: true,
+    },
   ],
   refusal: null,
   connection: "live",
@@ -39,9 +53,23 @@ function withCall(callSnapshot: ToolCallSnapshot): ThreadConsoleState {
   return {
     ...base,
     entries: [
-      { kind: "message", id: "message-0", role: "user", text: "audit it", streaming: false },
+      {
+        kind: "message",
+        id: "message-0",
+        role: "user",
+        text: "audit it",
+        attachments: [],
+        streaming: false,
+      },
       { kind: "tool", id: `tool:run-1:${callSnapshot.callId}`, runId: "run-1", call: callSnapshot },
-      { kind: "message", id: "message-1", role: "assistant", text: "Done", streaming: false },
+      {
+        kind: "message",
+        id: "message-1",
+        role: "assistant",
+        text: "Done",
+        attachments: [],
+        streaming: false,
+      },
     ],
   };
 }

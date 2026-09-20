@@ -1,4 +1,5 @@
 import { Button } from "@porkbot/ui";
+import { fileDownloadPath } from "@porkbot/contracts";
 import type { RunLiveness } from "@porkbot/contracts";
 import type { ThreadConsoleState } from "../console.ts";
 import { ToolCallEntry } from "./tool-call.tsx";
@@ -92,6 +93,21 @@ export function ThreadConsoleScreen({
               >
                 <span className="message-role muted">{entry.role === "user" ? "You" : "Bot"}</span>
                 <p className="message-text">{entry.text}</p>
+                {entry.attachments.length === 0 ? null : (
+                  <ul className="message-attachments">
+                    {entry.attachments.map((file) => (
+                      <li key={file.attachmentId}>
+                        <a
+                          className="message-attachment"
+                          href={fileDownloadPath(file.attachmentId)}
+                        >
+                          {file.filename}
+                          <span className="muted"> · {formatBytes(file.sizeBytes)}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ),
           )}
@@ -144,6 +160,17 @@ function livenessLabel(liveness: RunLiveness): string {
     case "stuck":
       return `Stuck — no progress for ${formatDuration(liveness.sinceProgressMs)} · ${beat}`;
   }
+}
+
+/** File sizes on attachment chips: bytes, then KiB, then MiB. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) {
+    return `${String(bytes)} B`;
+  }
+
+  const kib = bytes / 1_024;
+
+  return kib < 1_024 ? `${kib.toFixed(1)} KiB` : `${(kib / 1_024).toFixed(1)} MiB`;
 }
 
 /** Durations in seconds under a minute, minutes under ten, then whole minutes. */

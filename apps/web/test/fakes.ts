@@ -21,6 +21,8 @@ import type {
   Thread,
   ThreadEventsCallOptions,
   ThreadEventsProcedure,
+  ThreadsSendResult,
+  UploadedAttachment,
   UsageBot,
   UsageTotalsView,
 } from "@porkbot/contracts";
@@ -148,13 +150,34 @@ export interface ScriptedThreadTransportOptions {
    * disappears between polls.
    */
   readonly runs?: Readonly<Record<string, RunGet>> | (() => Readonly<Record<string, RunGet>>);
+  /**
+   * The composer's send seam. The default throws, so a console test that
+   * never sends stays honest; a composer test installs the answer or the
+   * refusal it wants and reads `sendCalls` for what the send carried.
+   */
+  readonly send?: (input: Parameters<ConsoleTransport["send"]>[0]) => Promise<ThreadsSendResult>;
+  /**
+   * The composer's upload seam. The default throws for the same reason; the
+   * input carries the test's `onProgress` and `signal` verbatim, so a fake
+   * drives progress and observes aborts the way the XHR would.
+   */
+  readonly uploadAttachment?: (
+    input: Parameters<ConsoleTransport["uploadAttachment"]>[0],
+  ) => Promise<UploadedAttachment>;
 }
 
 export function scriptedThreadTransport(
   options: ScriptedThreadTransportOptions = {},
-): ConsoleTransport & { readonly transcriptCalls: string[]; readonly runCalls: string[] } {
+): ConsoleTransport & {
+  readonly transcriptCalls: string[];
+  readonly runCalls: string[];
+  readonly sendCalls: Parameters<ConsoleTransport["send"]>[0][];
+  readonly uploadCalls: Parameters<ConsoleTransport["uploadAttachment"]>[0][];
+} {
   const transcriptCalls: string[] = [];
   const runCalls: string[] = [];
+  const sendCalls: Parameters<ConsoleTransport["send"]>[0][] = [];
+  const uploadCalls: Parameters<ConsoleTransport["uploadAttachment"]>[0][] = [];
   const notExercised = (): never => {
     throw new Error("not exercised by this test");
   };
@@ -162,6 +185,8 @@ export function scriptedThreadTransport(
   return {
     transcriptCalls,
     runCalls,
+    sendCalls,
+    uploadCalls,
 
     async transcript(threadId) {
       transcriptCalls.push(threadId);
@@ -212,6 +237,20 @@ export function scriptedThreadTransport(
       }
 
       return stored;
+    },
+
+    async send(input) {
+      sendCalls.push(input);
+      const send = options.send ?? notExercised;
+
+      return send(input);
+    },
+
+    async uploadAttachment(input) {
+      uploadCalls.push(input);
+      const upload = options.uploadAttachment ?? notExercised;
+
+      return upload(input);
     },
   };
 }

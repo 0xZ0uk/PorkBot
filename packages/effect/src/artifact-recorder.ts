@@ -39,12 +39,3 @@ export interface RecordedArtifact {
 export interface ArtifactRecorder {
   readonly record: (request: ArtifactRecordRequest) => Effect.Effect<RecordedArtifact, unknown>;
 }
-
-/**
- * The one path a stored file is downloaded from. Attachments and artifacts
- * share it because they share the addressing: a file id the actor's space can
- * resolve, never a storage key or a filesystem path.
- */
-export function fileDownloadPath(id: string): string {
-  return `/files/${encodeURIComponent(id)}`;
-}

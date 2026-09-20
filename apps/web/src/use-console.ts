@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import type { Message } from "@porkbot/contracts";
 import { createThreadConsole } from "./console.ts";
 import type { ThreadConsoleState, ThreadConsoleTransport } from "./console.ts";
 
@@ -22,6 +23,8 @@ export interface UseThreadConsoleOptions {
 export interface UseThreadConsoleResult {
   readonly state: ThreadConsoleState;
   readonly retry: () => void;
+  /** Folds a just-sent message into the view, for the composer's send. */
+  readonly noteSent: (message: Message) => void;
 }
 
 export function useThreadConsole(options: UseThreadConsoleOptions): UseThreadConsoleResult {
@@ -43,6 +46,12 @@ export function useThreadConsole(options: UseThreadConsoleOptions): UseThreadCon
   const retry = useCallback(() => {
     console.retry();
   }, [console]);
+  const noteSent = useCallback(
+    (message: Message) => {
+      console.noteSent(message);
+    },
+    [console],
+  );
 
-  return { state, retry };
+  return { state, retry, noteSent };
 }
