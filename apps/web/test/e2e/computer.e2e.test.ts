@@ -20,14 +20,17 @@ import { startScriptedComputerApi } from "./scripted-computer-api.ts";
 import type { ScriptedComputerApi } from "./scripted-computer-api.ts";
 
 /**
- * The computer settings screen end to end: the built client modules — the
- * contracts' oRPC client, the computer controller and the screen — mounted in
- * a DOM, reading and writing a real HTTP server on loopback.
+ * The computer screen end to end: the built client modules — the contracts'
+ * oRPC client, the computer controller and the screen — mounted in a DOM,
+ * reading and writing a real HTTP server on loopback.
  *
  * The acceptance criteria this proves over the wire: a bot's provider is a
  * stored setting that survives a reload; an unavailable provider is shown as
- * unavailable rather than selected; and the snapshot path — capture, switch,
- * restore — moves the bot's files across a provider change.
+ * unavailable rather than selected; the snapshot path — capture, switch,
+ * restore — moves the bot's files across a provider change; the terminal runs
+ * commands through the supervisor's exec seam and the file view reads real
+ * state through it; and the lifecycle controls and their results survive a
+ * reload.
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -252,6 +255,119 @@ describe("the computer screen over the real wire", () => {
       expect(api.computer).toMatchObject({ assigned: true, state: "running" });
     } finally {
       await mounted.unmount();
+      await api.close();
+    }
+  });
+});
+
+/** Sets a controlled input's value the way React's onChange reads it. */
+function setValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("the terminal and file views over the real wire", () => {
+  it("runs a command and walks the machine's home through the supervisor's seam", async () => {
+    const api = await startScriptedComputerApi({
+      bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+      providers,
+    });
+    const mounted = await mountComputer(api);
+
+    try {
+      // A running machine lists its home as part of the read.
+      await until(
+        () => mounted.container.textContent?.includes("notes.md") === true,
+        "the home listing",
+      );
+      expect(api.calls).toContain("computers/files");
+
+      const input = mounted.container.querySelector<HTMLInputElement>(".terminal-form input");
+      const form = mounted.container.querySelector<HTMLFormElement>(".terminal-form");
+
+      if (input === null || form === null) {
+        throw new Error("the terminal form did not render");
+      }
+
+      await act(async () => {
+        setValue(input, "ls");
+      });
+      await act(async () => {
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+
+      await until(
+        () => mounted.container.textContent?.includes("ran: ls") === true,
+        "the terminal answer",
+      );
+      expect(api.calls).toContain("computers/terminal");
+
+      await click(mounted.container, "notes.md");
+
+      await until(
+        () => mounted.container.textContent?.includes("# Notes") === true,
+        "the file preview",
+      );
+      expect(api.calls).toContain("computers/file");
+
+      await click(mounted.container, "projects/");
+
+      await until(
+        () => mounted.container.textContent?.includes("readme.md") === true,
+        "the nested directory",
+      );
+    } finally {
+      await mounted.unmount();
+      await api.close();
+    }
+  });
+
+  it("stops and starts the machine, and the state survives a reload", async () => {
+    const api = await startScriptedComputerApi({
+      bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+      providers,
+    });
+    const before = await mountComputer(api);
+
+    try {
+      await until(
+        () => before.container.textContent?.includes("The machine is running.") === true,
+        "the running machine",
+      );
+
+      await click(before.container, "Stop");
+
+      await until(
+        () => before.container.textContent?.includes("The machine is stopped.") === true,
+        "the stop",
+      );
+      expect(api.computer).toMatchObject({ assigned: true, state: "stopped" });
+      // A stopped machine has no terminal to point at.
+      expect(before.container.querySelector(".terminal")).toBeNull();
+    } finally {
+      await before.unmount();
+    }
+
+    // The reload: the state is the server's, not a client memory.
+    const after = await mountComputer(api);
+
+    try {
+      await until(
+        () => after.container.textContent?.includes("The machine is stopped.") === true,
+        "the stopped machine after reload",
+      );
+
+      await click(after.container, "Start");
+
+      await until(
+        () => after.container.textContent?.includes("The machine is running.") === true,
+        "the restart",
+      );
+      expect(api.computer).toMatchObject({ assigned: true, state: "running" });
+    } finally {
+      await after.unmount();
       await api.close();
     }
   });

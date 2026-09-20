@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@porkbot/adapter-kit": "workspace:*",
+    "@porkbot/contracts": "workspace:*",
     "@porkbot/core": "workspace:*",
     "@porkbot/effect": "workspace:*",
     "@porkbot/logging": "workspace:*",

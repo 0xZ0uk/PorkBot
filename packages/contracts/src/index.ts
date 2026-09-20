@@ -48,6 +48,8 @@ export type { Approval } from "./approvals.ts";
 // test pins the two; a snapshot view names the row, never the storage key.
 export {
   computersBootContract,
+  computersFileContract,
+  computersFilesContract,
   computersProvidersContract,
   computersRecoverContract,
   computersResetContract,
@@ -56,17 +58,29 @@ export {
   computersSnapshotsContract,
   computersStatusContract,
   computersStopContract,
+  computersTerminalContract,
+  computerDirectoryViewSchema,
+  computerFileEntrySchema,
+  computerFileViewSchema,
   computerProvidersViewSchema,
   computerProviderSchema,
   computerSnapshotViewSchema,
   computerStateSchema,
+  computerTerminalViewSchema,
   computerViewSchema,
+  maxComputerOutputBytes,
+  maxComputerPathLength,
+  maxTerminalCommandLength,
 } from "./computers.ts";
 export type {
+  ComputerDirectoryView,
+  ComputerFileEntryView,
+  ComputerFileView,
   ComputerProvidersView,
   ComputerProviderView,
   ComputerSnapshotView,
   ComputerStateView,
+  ComputerTerminalView,
   ComputerView,
 } from "./computers.ts";
 
@@ -172,9 +186,30 @@ export {
   threadsListContract,
   threadsMessagesContract,
   threadsSendContract,
+  threadsSendResultSchema,
   threadsToolResultContract,
 } from "./threads.ts";
-export type { Message, RunEventMessage, Thread, ThreadCursor } from "./threads.ts";
+export type {
+  Message,
+  RunEventMessage,
+  Thread,
+  ThreadCursor,
+  ThreadsSendResult,
+} from "./threads.ts";
+
+// The stored-file routes (slice 7.6, stories 32 and 33): raw upload and
+// download paths outside the RPC envelope, and the upload's answer shape.
+// Patterns are what the API mounts and its limits register names; the builders
+// are what a client dials, so the two sides cannot disagree about where a file
+// lives.
+export {
+  attachmentUploadPath,
+  attachmentUploadRoutePath,
+  fileDownloadPath,
+  fileDownloadRoutePath,
+  uploadedAttachmentSchema,
+} from "./files.ts";
+export type { UploadedAttachment } from "./files.ts";
 
 // Run control (slice 6.7, story 21) and the liveness read (slice 6.10, story
 // 22): the operator's one write into a single run, and the assessment of what

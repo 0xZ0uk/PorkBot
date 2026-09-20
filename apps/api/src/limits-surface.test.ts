@@ -137,6 +137,9 @@ const requestBodies: Record<string, string> = {
   "computers.restore": JSON.stringify({
     json: { botId: "bot-1", snapshotId: "00000000-0000-4000-8000-000000000000" },
   }),
+  "computers.terminal": JSON.stringify({ json: { botId: "bot-1", command: "ls" } }),
+  "computers.files": JSON.stringify({ json: { botId: "bot-1" } }),
+  "computers.file": JSON.stringify({ json: { botId: "bot-1", path: "notes.md" } }),
   "credentials.store": JSON.stringify({ json: { name: "model-key", value: "sk-test" } }),
   "credentials.remove": JSON.stringify({ json: { name: "model-key" } }),
   "modelConnections.list": JSON.stringify({ json: {} }),
@@ -242,6 +245,21 @@ describe("the route list", () => {
     // The callback is an unauthenticated provider redirect, the same ingress
     // profile as a webhook, so it draws that family rather than the fallback.
     expect(routeRuleFor(rules, "GET", "/oauth/mcp/callback")?.family).toBe("webhook");
+
+    // The middleware sees the resolved path, never the Hono pattern: a rule
+    // whose `:param` segment did not match a concrete id would let the upload
+    // spend the anonymous fallback instead of its own family.
+    expect(
+      routeRuleFor(rules, "POST", "/threads/01900000-0000-7000-8000-000000000001/attachments")
+        ?.family,
+    ).toBe("upload");
+    expect(routeRuleFor(rules, "GET", "/files/01900000-0000-7000-8000-00000000a1f0")?.family).toBe(
+      "rpc",
+    );
+    // One `:param` is one segment: a longer path is not the rule's route.
+    expect(
+      routeRuleFor(rules, "POST", "/threads/01900000-0000-7000-8000-000000000001/attachments/x"),
+    ).toBeUndefined();
   });
 });
 
@@ -268,6 +286,8 @@ describe("every contract procedure", () => {
       "bots.setAvatar",
       "bots.update",
       "computers.boot",
+      "computers.file",
+      "computers.files",
       "computers.providers",
       "computers.recover",
       "computers.reset",
@@ -276,6 +296,7 @@ describe("every contract procedure", () => {
       "computers.snapshots",
       "computers.status",
       "computers.stop",
+      "computers.terminal",
       "credentials.list",
       "credentials.remove",
       "credentials.store",

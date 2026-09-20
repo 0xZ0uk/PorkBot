@@ -339,6 +339,122 @@ describe("the console routes", () => {
     await until(() => container.textContent?.includes("Hello") === true, "the completed text");
   });
 
+  it("sends a message with an attachment from the composer, chips and all", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({
+      transcript: [],
+      events: events.procedure,
+      uploadAttachment: async (input) => {
+        input.onProgress?.(4, 4);
+
+        return {
+          id: "attachment-1",
+          filename: input.filename,
+          contentType: input.contentType,
+          sizeBytes: 4,
+        };
+      },
+      send: async (input) => ({
+        action: "start_run",
+        runId: "run-1",
+        message: {
+          id: "message-9",
+          threadId: input.threadId,
+          seq: 0,
+          role: "user",
+          blocks: [
+            { type: "text", text: input.text },
+            {
+              type: "file",
+              attachmentId: "attachment-1",
+              filename: "notes.txt",
+              contentType: "text/plain",
+              sizeBytes: 4,
+            },
+          ],
+          runId: "run-1",
+          createdAt: "2026-01-02T00:00:00.000Z",
+        },
+      }),
+    });
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+    const router = createAppRouter(
+      {
+        auth,
+        session,
+        bots: scriptedBotsTransport(transport),
+        threads: transport,
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
+      },
+      createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
+    );
+
+    await act(async () => {
+      await router.load();
+    });
+    await render(<RouterProvider router={router} />);
+    await until(() => container.querySelector(".composer") !== null, "the composer");
+
+    // Type the message the way a keyboard user does.
+    const field = container.querySelector(".composer textarea") as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+
+    setter?.call(field, "look at this");
+
+    await act(async () => {
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // Stage a file through the chooser; the send stays off while it uploads.
+    const chooser = container.querySelector(".composer input[type='file']") as HTMLInputElement;
+
+    Object.defineProperty(chooser, "files", {
+      value: [new File(["data"], "notes.txt", { type: "text/plain" })],
+      configurable: true,
+    });
+
+    await act(async () => {
+      chooser.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await until(
+      () => container.querySelector(".composer-file-ready") !== null,
+      "the upload to settle",
+    );
+    expect(container.textContent).toContain("notes.txt");
+
+    // Enter is the keyboard user's send.
+    await act(async () => {
+      field.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+
+    await until(() => transport.sendCalls.length === 1, "the send");
+    expect(transport.sendCalls[0]).toMatchObject({
+      threadId: "thread-1",
+      text: "look at this",
+      attachmentIds: ["attachment-1"],
+    });
+
+    // The sent message is in the transcript — not on the next mount — with
+    // its file as a download chip.
+    await until(
+      () => container.querySelector(".message-attachment") !== null,
+      "the attachment chip",
+    );
+
+    const chip = container.querySelector("a.message-attachment");
+
+    expect(chip?.getAttribute("href")).toBe("/files/attachment-1");
+    expect(chip?.textContent).toContain("notes.txt");
+    expect(container.querySelector(".composer textarea")).toHaveProperty("value", "");
+  });
+
   it("resolves a truncated call's artifact on its own route", async () => {
     const transport = scriptedThreadTransport({
       toolResults: {

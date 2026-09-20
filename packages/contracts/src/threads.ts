@@ -180,6 +180,21 @@ export const threadsMessagesContract = authenticatedProcedure
     }),
   );
 
+/**
+ * What a send answers. `start_run` created the message and its run, `steer`
+ * appended the message to the thread's live run, and `replay` returned the
+ * message an earlier submission of this nonce produced. `runId` is `null` only
+ * when a replayed message's run row is gone.
+ */
+export const threadsSendResultSchema = z.object({
+  action: z.enum(["start_run", "steer", "replay"]),
+  message: messageSchema,
+  /** The run that started, is live, or was replayed; null if it is gone. */
+  runId: z.string().nullable(),
+});
+
+export type ThreadsSendResult = z.infer<typeof threadsSendResultSchema>;
+
 export const threadsSendContract = authenticatedProcedure
   .route({
     method: "POST",
@@ -234,19 +249,7 @@ export const threadsSendContract = authenticatedProcedure
       message: "That run is no longer active; send again to start a new run",
     },
   })
-  .output(
-    z.object({
-      /**
-       * What the send did: `start_run` created the message and its run,
-       * `steer` appended the message to the thread's live run, and `replay`
-       * returned the message an earlier submission of this nonce produced.
-       */
-      action: z.enum(["start_run", "steer", "replay"]),
-      message: messageSchema,
-      /** The run that started, is live, or was replayed; null if it is gone. */
-      runId: z.string().nullable(),
-    }),
-  );
+  .output(threadsSendResultSchema);
 
 export const threadsClearContract = authenticatedProcedure
   .route({

@@ -106,8 +106,22 @@ describe("the thread console", () => {
     await until(() => !lastMessage(console.state())?.streaming, "the completed run");
 
     expect(console.state().entries).toEqual([
-      { kind: "message", id: "message-0", role: "user", text: "do it", streaming: false },
-      { kind: "message", id: messageId, role: "assistant", text: "Hello", streaming: false },
+      {
+        kind: "message",
+        id: "message-0",
+        role: "user",
+        text: "do it",
+        attachments: [],
+        streaming: false,
+      },
+      {
+        kind: "message",
+        id: messageId,
+        role: "assistant",
+        text: "Hello",
+        attachments: [],
+        streaming: false,
+      },
     ]);
 
     console.stop();
@@ -144,7 +158,14 @@ describe("the thread console", () => {
     // One message, exactly the text the two attempts produced: no duplicate
     // from a replay and no gap from the drop.
     expect(console.state().entries).toEqual([
-      { kind: "message", id: messageId, role: "assistant", text: "One two", streaming: false },
+      {
+        kind: "message",
+        id: messageId,
+        role: "assistant",
+        text: "One two",
+        attachments: [],
+        streaming: false,
+      },
     ]);
 
     console.stop();
@@ -198,8 +219,22 @@ describe("the thread console", () => {
     await until(() => !lastMessage(afterConsole.state())?.streaming, "the replayed run");
 
     expect(afterConsole.state().entries).toEqual([
-      { kind: "message", id: "message-0", role: "user", text: "say hello", streaming: false },
-      { kind: "message", id: messageId, role: "assistant", text: "Hello world", streaming: false },
+      {
+        kind: "message",
+        id: "message-0",
+        role: "user",
+        text: "say hello",
+        attachments: [],
+        streaming: false,
+      },
+      {
+        kind: "message",
+        id: messageId,
+        role: "assistant",
+        text: "Hello world",
+        attachments: [],
+        streaming: false,
+      },
     ]);
 
     afterConsole.stop();
@@ -339,7 +374,14 @@ describe("the thread console", () => {
     await until(() => events.calls.length === 1, "the subscription");
 
     expect(console.state().entries).toEqual([
-      { kind: "message", id: "message-0", role: "user", text: "", streaming: false },
+      {
+        kind: "message",
+        id: "message-0",
+        role: "user",
+        text: "",
+        attachments: [],
+        streaming: false,
+      },
     ]);
 
     console.stop();
@@ -547,6 +589,124 @@ describe("the console's liveness follow", () => {
 
     await until(() => console.state().liveness?.state === "thinking", "the second run's liveness");
     expect(scripted.runCalls).toContain(runIdle);
+
+    console.stop();
+  });
+});
+
+describe("the console's sent messages", () => {
+  const fileBlock = {
+    type: "file",
+    attachmentId: "attachment-1",
+    filename: "notes.txt",
+    contentType: "text/plain",
+    sizeBytes: 8,
+  } as const;
+
+  function fileMessage(id: string, seq: number, text: string): Message {
+    return {
+      id,
+      threadId,
+      seq,
+      role: "user",
+      blocks: [{ type: "text", text }, fileBlock],
+      runId,
+      createdAt: "2026-01-02T00:00:00.000Z",
+    };
+  }
+
+  it("carries a message's file blocks onto its entry, live and replayed", async () => {
+    const events = createScriptedEvents();
+    const console = consoleFor(
+      scriptedThreadTransport({
+        transcript: [fileMessage("message-0", 0, "here it is")],
+        events: events.procedure,
+      }),
+    );
+
+    console.start();
+    await until(() => console.state().status === "ready", "the transcript");
+
+    const entry = messagesOf(console.state())[0];
+
+    expect(entry?.attachments).toEqual([fileBlock]);
+
+    console.stop();
+  });
+
+  it("folds a sent message into the view before the stream would know it", async () => {
+    const events = createScriptedEvents();
+    const console = consoleFor(
+      scriptedThreadTransport({
+        transcript: [
+          textMessage({ id: "message-0", threadId, seq: 0, role: "user", text: "earlier" }),
+        ],
+        events: events.procedure,
+      }),
+    );
+
+    console.start();
+    await until(() => console.state().status === "ready", "the transcript");
+
+    // The run-starting message is not an event; the composer's note is the
+    // only fold that shows it before the next mount.
+    console.noteSent(fileMessage("message-9", 1, "with a file"));
+
+    const entries = messagesOf(console.state());
+    const sent = entries.at(-1);
+
+    expect(sent).toMatchObject({
+      id: "message-9",
+      role: "user",
+      text: "with a file",
+      streaming: false,
+    });
+    expect(sent?.attachments).toEqual([fileBlock]);
+
+    console.stop();
+  });
+
+  it("ignores a sent note whose id the transcript already has", async () => {
+    const events = createScriptedEvents();
+    const sent = fileMessage("message-0", 0, "with a file");
+    const console = consoleFor(
+      scriptedThreadTransport({ transcript: [sent], events: events.procedure }),
+    );
+
+    console.start();
+    await until(() => console.state().status === "ready", "the transcript");
+
+    // The nonce replay answers with the persisted row: noting it again must
+    // not put a second copy in the transcript.
+    console.noteSent(sent);
+
+    expect(messagesOf(console.state())).toHaveLength(1);
+
+    console.stop();
+  });
+
+  it("keeps a noted send when a slower transcript fetch lands without it", async () => {
+    const events = createScriptedEvents();
+    let release: (messages: readonly Message[]) => void = () => undefined;
+    const transcript = new Promise<readonly Message[]>((resolve) => {
+      release = resolve;
+    });
+    const transport = scriptedThreadTransport({ events: events.procedure });
+    const slow = {
+      ...transport,
+      transcript: async () => transcript,
+    };
+    const console = consoleFor(slow);
+
+    console.start();
+
+    // The send lands while the fetch is still in flight; when it resolves —
+    // started before the send, so without the row — the noted message stays.
+    console.noteSent(fileMessage("message-9", 1, "with a file"));
+    release([]);
+
+    await until(() => console.state().status === "ready", "the transcript");
+    expect(messagesOf(console.state()).map((entry) => entry.id)).toEqual(["message-9"]);
 
     console.stop();
   });
