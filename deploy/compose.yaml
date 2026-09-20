@@ -1,0 +1,276 @@
+# The single-host deployment (slice 12.1, PRD stories 1 and 2, decision 32).
+#
+# This is the production shape of the local stack in the repository-root
+# compose.yaml: the same five always-on processes plus the one-shot migrate,
+# with production's teeth instead of a developer's defaults.
+#
+#   - No local placeholder survives. Every secret and every operator choice is
+#     read through `${NAME:?}`; `docker compose` itself refuses a stack whose
+#     environment is incomplete, whether it was started by `pnpm deploy:up` or
+#     by hand. The one file that supplies them is deploy/.env, rendered from
+#     deploy/porkbot.env.example by `pnpm deploy:setup` (or by the first
+#     `pnpm deploy:up`). No key in it is invented by hand.
+#   - App images are built from the root Dockerfile and tagged with
+#     PORKBOT_IMAGE_TAG (the release's git SHA). Nothing is tagged `:latest`.
+#     The only pulled image is Postgres, pinned by the digest registered in
+#     dependencies.json.
+#   - Every service declares CPU and memory ceilings (deploy.resources.limits),
+#     and the README's "Single-host deployment" section does the arithmetic
+#     against the host floor: 4 vCPU / 8 GB plus ~2 GB and 50 GB+ of disk per
+#     bot. Raise the ceilings here only after raising the host.
+#   - Container logs are rotated, so a long-lived host does not fill its disk
+#     with one chatty process.
+#   - The web and API ports bind to PORKBOT_BIND_ADDRESS (loopback by default).
+#     HTTPS and the one public origin are the reverse-proxy contract, slice
+#     12.2; until then the operator reaches the stack through a tunnel.
+#
+# `pnpm deploy:up` renders the env file when it is missing, validates it, runs
+# `docker compose up --build --wait` with this file and reports readiness per
+# service; `pnpm deploy:status`, `deploy:logs` and `deploy:down` wrap the
+# matching compose commands. `pnpm deploy:check` validates the env file without
+# touching Docker.
+
+name: porkbot
+
+# Every always-on process: restarts with the host, reports health through its
+# own /healthz, carries a ceiling and rotates its logs. The health probe asks
+# the process itself, so "healthy" means the HTTP surface answered.
+x-app: &app
+  restart: unless-stopped
+  stop_grace_period: 30s
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  healthcheck:
+    test:
+      - CMD
+      - node
+      - -e
+      - >-
+        fetch("http://127.0.0.1:" + process.env.PORT + "/healthz").then((response) =>
+        process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))
+    interval: 5s
+    timeout: 5s
+    retries: 12
+    start_period: 20s
+
+services:
+  postgres:
+    image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_USER: ${PORKBOT_POSTGRES_USER:-porkbot}
+      POSTGRES_PASSWORD: ${PORKBOT_POSTGRES_PASSWORD:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+      POSTGRES_DB: ${PORKBOT_POSTGRES_DB:-porkbot}
+    volumes:
+      # Postgres 18 keeps the cluster under /var/lib/postgresql, and the image
+      # declares that path as its volume.
+      - postgres-data:/var/lib/postgresql
+    # Not published: the api, worker and migrate reach the database over the
+    # compose network. An operator who needs psql runs
+    # `pnpm deploy:exec -- postgres psql -U "$PORKBOT_POSTGRES_USER"` instead of
+    # exposing the port.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2g
+
+  migrate:
+    # The one-shot: it applies the committed journal, creates the two service
+    # roles and sets their passwords, then exits; the api and the worker wait
+    # on service_completed_successfully, so an always-on process never starts
+    # against an unmigrated database.
+    build:
+      context: ..
+      target: migrate
+    image: porkbot/migrate:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      PORKBOT_API_DB_PASSWORD: ${PORKBOT_API_DB_PASSWORD:?}
+      PORKBOT_WORKER_DB_PASSWORD: ${PORKBOT_WORKER_DB_PASSWORD:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512m
+
+  api:
+    <<: *app
+    build:
+      context: ..
+      target: api
+    image: porkbot/api:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    environment:
+      PORT: "3001"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The API's own role, over the compose network: read and write the
+      # application schema, and nothing in the worker's queue.
+      DATABASE_URL: postgres://porkbot_api:${PORKBOT_API_DB_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
+      # Computers are reached through the supervisor's authenticated surface;
+      # this process holds no Docker socket and no provider credential.
+      PORKBOT_SUPERVISOR_URL: http://supervisor:3003
+      PORKBOT_SUPERVISOR_TOKEN: ${PORKBOT_SUPERVISOR_TOKEN:?}
+      # The operator auth pair is required here rather than optional: a
+      # deployment whose API answers 401 to everything is not a deployment.
+      PORKBOT_AUTH_SECRET: ${PORKBOT_AUTH_SECRET:?}
+      PORKBOT_AUTH_ORIGIN: ${PORKBOT_AUTH_ORIGIN:?}
+      # The consent callback the MCP OAuth flow returns to; empty keeps the
+      # loopback fallback the app warns about.
+      PORKBOT_MCP_CALLBACK_URL: ${PORKBOT_MCP_CALLBACK_URL:-}
+      # The keyring that encrypts stored credentials at rest. Both are
+      # required: the store is what keeps provider keys out of list responses.
+      PORKBOT_CREDENTIAL_KEYS: ${PORKBOT_CREDENTIAL_KEYS:?}
+      PORKBOT_CREDENTIAL_ACTIVE_KEY: ${PORKBOT_CREDENTIAL_ACTIVE_KEY:?}
+      # Transactional mail is optional and all-or-nothing (the app enforces
+      # it): unset, sign-in and sign-out still work and reset mail is refused
+      # as a typed configuration error.
+      PORKBOT_MAIL_ENDPOINT: ${PORKBOT_MAIL_ENDPOINT:-}
+      PORKBOT_MAIL_FROM: ${PORKBOT_MAIL_FROM:-}
+      PORKBOT_MAIL_KEY: ${PORKBOT_MAIL_KEY:-}
+    ports:
+      # Loopback by default; the reverse proxy (slice 12.2) is the supported
+      # way to reach this from outside the host.
+      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:${PORKBOT_API_PORT:-3001}:3001"
+    volumes:
+      - storage-data:/var/lib/porkbot/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 1g
+
+  worker:
+    <<: *app
+    build:
+      context: ..
+      target: worker
+    image: porkbot/worker:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    environment:
+      PORT: "3002"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The worker's own role: read the run state it executes, own the job
+      # queue's schema, and no domain write.
+      DATABASE_URL: postgres://porkbot_worker:${PORKBOT_WORKER_DB_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # Where run-liveness notification links point. Required: a notification
+      # whose link goes nowhere is worse than none.
+      PORKBOT_WEB_ORIGIN: ${PORKBOT_WEB_ORIGIN:?}
+      # The optional webhook destination. Unset, notifications go to the
+      # offline emulator; set, the key is read through the generic credential
+      # store and both values are required together.
+      PORKBOT_NOTIFICATION_WEBHOOK_URL: ${PORKBOT_NOTIFICATION_WEBHOOK_URL:-}
+      PORKBOT_NOTIFICATION_WEBHOOK_KEY: ${PORKBOT_NOTIFICATION_WEBHOOK_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1g
+
+  web:
+    <<: *app
+    build:
+      context: ..
+      target: web
+    image: porkbot/web:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    environment:
+      PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${PORKBOT_BIND_ADDRESS:-127.0.0.1}:${PORKBOT_WEB_PORT:-3000}:3000"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256m
+
+  supervisor:
+    <<: *app
+    build:
+      context: ..
+      target: supervisor
+    image: porkbot/supervisor:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    environment:
+      PORT: "3003"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The process credential the API presents to the internal computer
+      # surface. Both sides read it from the environment.
+      PORKBOT_SUPERVISOR_TOKEN: ${PORKBOT_SUPERVISOR_TOKEN:?}
+      # The key screen capabilities are signed with. v1.0 ships no screen
+      # surface, so the capability path stays closed; the key is still
+      # required here so a later screen slice cannot boot half-configured.
+      PORKBOT_SCREEN_TOKEN_SECRET: ${PORKBOT_SCREEN_TOKEN_SECRET:?}
+      # Which computer a bot gets. A bot may select any kind this deployment
+      # configured; a selection whose kind is not configured is refused
+      # fail-closed, and a default without its settings fails at supervisor
+      # boot rather than at a bot's first run.
+      PORKBOT_COMPUTER_PROVIDER: ${PORKBOT_COMPUTER_PROVIDER:?}
+      PORKBOT_COMPUTER_IMAGE: ${PORKBOT_COMPUTER_IMAGE:-}
+      PORKBOT_COMPUTER_ENDPOINT: ${PORKBOT_COMPUTER_ENDPOINT:-}
+      PORKBOT_COMPUTER_TOKEN: ${PORKBOT_COMPUTER_TOKEN:-}
+      PORKBOT_COMPUTER_SOCKET: /var/run/docker.sock
+      # The credential proxy (slice 7.8): all three or none. Configured, every
+      # Docker computer gets a sidecar on its isolated network; run
+      # credentials live on the sidecar's own layer and the sandbox carries
+      # only a short-lived capability.
+      PORKBOT_COMPUTER_PROXY_IMAGE: ${PORKBOT_COMPUTER_PROXY_IMAGE:-}
+      PORKBOT_PROXY_TOKEN_SECRET: ${PORKBOT_PROXY_TOKEN_SECRET:-}
+      PORKBOT_COMPUTER_EGRESS_NETWORK: ${PORKBOT_COMPUTER_EGRESS_NETWORK:-}
+      # Snapshot storage and staging, on the same seam the API writes through.
+      PORKBOT_STORAGE_DIR: /var/lib/porkbot/storage
+      PORKBOT_COMPUTER_ARCHIVE_DIR: /var/lib/porkbot/computer-archives
+      # One bot's share of the host floor (README, "A bot's computer" and
+      # "Single-host deployment"): raise these only after raising the host.
+      PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
+      PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
+      PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
+      # A machine whose last command is older than this is parked; the home
+      # volume survives. Zero disables the idle sweep.
+      PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-900000}
+    volumes:
+      # The only place the Docker socket is mounted in the stack. The
+      # supervisor owns computer lifecycle; every other process reaches
+      # computers through its authenticated surface.
+      - ${PORKBOT_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - storage-data:/var/lib/porkbot/storage
+      - computer-archives:/var/lib/porkbot/computer-archives
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 384m
+
+volumes:
+  postgres-data:
+  storage-data:
+  computer-archives:
