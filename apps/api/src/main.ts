@@ -61,6 +61,16 @@ try {
 // and answers its healthcheck while Postgres finishes coming up.
 const database = openDatabase(connectionString);
 
+/** The API is live while Postgres is unavailable, but it is not ready for data-backed work. */
+const readiness = async (): Promise<boolean> => {
+  try {
+    await queryable(database).query("select 1");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // The credential keyring is optional at boot: without it the encrypted store
 // is locked (a typed 503 at every credential and MCP call), and the process
 // still serves everything that does not touch a secret.
@@ -121,6 +131,7 @@ if (computers === undefined) {
 
 const server = createApiServer({
   logger,
+  readiness,
   limits,
   // The session read and the actor-scoped repositories are supplied together:
   // a resolver without a data scope could only ever answer 500, and the

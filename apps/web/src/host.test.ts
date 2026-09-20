@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { livenessPath, readinessPath } from "@porkbot/health";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createStaticHandler, createStaticServer, shellFileName, serviceName } from "./host.ts";
 
@@ -70,6 +71,16 @@ describe("the static host", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "ok", service: serviceName });
+  });
+
+  it("keeps liveness separate from artifact readiness", async () => {
+    const live = await fetch(`${baseUrl}${livenessPath}`);
+    expect(live.status).toBe(200);
+    expect(await live.json()).toEqual({ status: "ok", service: serviceName });
+
+    const ready = await fetch(`${baseUrl}${readinessPath}`);
+    expect(ready.status).toBe(200);
+    expect(await ready.json()).toEqual({ status: "ready", service: serviceName });
   });
 
   it("keeps a missing asset a 404 instead of answering the shell", async () => {

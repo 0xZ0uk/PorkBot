@@ -12,7 +12,14 @@ import {
   webhookDeliveryHeader,
   webhookSignatureHeader,
 } from "@porkbot/effect";
-import { healthPath } from "@porkbot/health";
+import {
+  checkReadiness,
+  healthPath,
+  healthPayload,
+  livenessPath,
+  readinessPath,
+} from "@porkbot/health";
+import type { ReadinessCheck } from "@porkbot/health";
 import { createLogger, moduleInfo as loggingModule, redactPath } from "@porkbot/logging";
 import type { Logger } from "@porkbot/logging";
 import type { ResolveActor } from "@porkbot/auth";
@@ -124,6 +131,8 @@ export interface ApiAppOptions {
   readonly services: ApiServices;
   /** Defaults to a JSON logger for this service. */
   readonly logger?: Logger;
+  /** Dependency check used by `/readyz`; failures never change `/livez`. */
+  readonly readiness?: ReadinessCheck;
   /** Request id factory used when the client did not supply one. */
   readonly generateRequestId?: () => string;
   /**
@@ -287,11 +296,19 @@ export function createApiApp(options: ApiAppOptions): ApiApp {
 
   app.get(healthPath, (context) =>
     context.json({
-      status: "ok",
-      service: serviceName,
+      ...healthPayload(serviceName, "ok"),
       modules: [coreModule.name, contractsModule.name, loggingModule.name],
     }),
   );
+  app.get(livenessPath, (context) => context.json(healthPayload(serviceName, "ok")));
+  app.get(readinessPath, async (context) => {
+    const ready = await checkReadiness(options.readiness);
+
+    return context.json(
+      healthPayload(serviceName, ready ? "ready" : "not_ready"),
+      ready ? 200 : 503,
+    );
+  });
 
   // The operator auth surface (slice 3.1). Every method and every path under
   // the prefix belongs to Better Auth, so the whole subtree is handed to its

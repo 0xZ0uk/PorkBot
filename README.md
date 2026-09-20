@@ -168,8 +168,11 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
 
 Each service image builds from the root `Dockerfile`; the shared build stage
 installs and builds the workspace once and `pnpm deploy`s each app into its own
-runtime image. Every process answers `/healthz` — `packages/health` is the
-shared route, `apps/api` keeps its own because its listener also logs requests.
+runtime image. Every process answers `/livez` and `/readyz`: liveness means the
+process can answer, while readiness includes the dependency checks needed to
+receive work. `/healthz` remains as a legacy liveness alias, and
+`packages/health` is the shared implementation; `apps/api` keeps its own
+request-aware surface.
 
 ## Single-host deployment
 
@@ -177,8 +180,9 @@ shared route, `apps/api` keeps its own because its listener also logs requests.
 Postgres 18, one-shot `migrate`, `api`, `worker`, `web` and `supervisor`, with
 none of a developer's defaults left in it. Every secret and every operator
 choice is read through `${NAME:?}`, so Compose itself refuses a stack whose
-environment is incomplete, and every process still answers the same
-`/healthz` the container healthcheck asks. On a host that has never run it:
+environment is incomplete, and every process exposes `/livez` plus `/readyz`,
+which is the dependency-aware probe the container healthcheck asks. On a host
+that has never run it:
 
 ```sh
 pnpm install
@@ -187,7 +191,7 @@ pnpm deploy:up --origin https://bots.example.com
 
 `deploy:up` renders the env file when it is missing, validates it, builds the
 app images from the root `Dockerfile`, starts the stack, waits on compose's
-`--wait` until every healthcheck passes, and prints each service's state,
+`--wait` until every readiness healthcheck passes, and prints each service's state,
 health and ports. A service that never becomes healthy fails the command,
 prints the per-service state and the recent logs, and leaves nothing half-up.
 `--tag <tag>` names the release the images are tagged with; the default is the
@@ -727,6 +731,11 @@ run.error("run failed", { error }); // error serialized + redacted
   incoming `x-request-id`), echoes it in the response, and logs the finished
   request at a level derived from the status: 5xx error, 4xx warn, otherwise
   info.
+- **Run liveness.** A worker job creates its run child logger at the job
+  boundary, so execution, lease recovery, stall detection and notification
+  lines carry both `runId` and `correlationId`. The run timeline and its
+  stalled-run notification remain the operator's durable signal when a run
+  stops making progress.
 - **Redaction is wired in, not opt-in.** The logger redacts before it writes:
   fields named `key`, `token`, `secret` or `password` (and compounds such as
   `apiKey` or `X-Api-Key`, plus `authorization`, `cookie` and `credentials`)
@@ -766,8 +775,9 @@ export type AppClient = ContractRouterClient<AppContract>;
 export function createApiClient(options: { url: string | URL }): AppClient;
 ```
 
-`apps/api` mounts the implemented router on Hono at `/rpc`, keeps `/healthz` as
-the process probe, and owns the request boundary: every response gets a
+`apps/api` mounts the implemented router on Hono at `/rpc`, exposes `/livez`
+for process liveness and `/readyz` for its database dependency (while keeping
+`/healthz` as a legacy alias), and owns the request boundary: every response gets a
 correlation id and a redacted request line, and a defect is logged redacted and
 answered as a 500. Routers live in `apps/api/src/routers/`, delegate to the
 services `main.ts` injects, and stay one screen each; contract schemas are the
@@ -1427,8 +1437,8 @@ there is one client build and no fork. The app's own server
 (`apps/web/src/host.ts`) is a file server with the SPA contract: an existing
 file is streamed with its content type, an extension-less path with no file
 answers the shell and lets the router resolve it, a missing asset stays a 404,
-`/healthz` answers the container probe, and a path that escapes the root is
-refused rather than answered with the shell.
+`/livez` answers process liveness, `/readyz` checks that the shell exists, and a
+path that escapes the root is refused rather than answered with the shell.
 
 Auth has three states, not two. `createSessionController` resolves the session
 through `account.me` — the contract's first authenticated procedure — and the
@@ -1903,7 +1913,7 @@ so integration tests run against the production major. The structured logger,
 Postgres-per-suite isolation, the dependency pin register and the CI gate are
 unchanged. `apps/desktop` is the connect-only Electron shell (slice 11.6) and
 `apps/www` is still a placeholder the remaining M10 surface slices replace with
-the real client; `apps/api` serves `/healthz`
+the real client; `apps/api` serves `/livez` and `/readyz`
 and the contract's procedures behind the auth gate, `apps/worker` boots Graphile
 Worker over the job registry, re-reads each run through the job's `SystemActor`
 and checks its fence under the worker's own database role (slice 6.1), and

@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import path from "node:path";
-import { createHealthListener } from "@porkbot/health";
+import { createHealthListener, createReadinessListener } from "@porkbot/health";
 
 /**
  * The static host for the built SPA. It is not a client runtime: it serves
@@ -222,12 +222,21 @@ export function createStaticHandler(options: StaticHandlerOptions): StaticHandle
 }
 
 export function createStaticServer(options: StaticServerOptions): Server {
-  const handler = createStaticHandler(options);
+  const root = path.resolve(options.root);
+  const handler = createStaticHandler({ ...options, root });
   const health = createHealthListener({ service: serviceName });
+  const readiness = createReadinessListener({
+    service: serviceName,
+    readiness: () => isFile(path.join(root, shellFileName)),
+  });
 
   return createServer((request: IncomingMessage, response: ServerResponse) => {
     void (async () => {
       if (health(request, response)) {
+        return;
+      }
+
+      if (await readiness(request, response)) {
         return;
       }
 

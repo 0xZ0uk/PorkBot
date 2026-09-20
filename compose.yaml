@@ -20,14 +20,14 @@ name: porkbot
 x-app: &app
   restart: unless-stopped
   healthcheck:
-    # The probe asks the process itself, so "healthy" means the HTTP surface
-    # answered, not merely that a process exists.
+    # Readiness asks the process whether its dependencies are available; a
+    # live process that cannot reach them stays up but is not healthy.
     test:
       - CMD
       - node
       - -e
       - >-
-        fetch("http://127.0.0.1:" + process.env.PORT + "/healthz").then((response) =>
+        fetch("http://127.0.0.1:" + process.env.PORT + "/readyz").then((response) =>
         process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))
     interval: 2s
     timeout: 3s

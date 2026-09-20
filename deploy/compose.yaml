@@ -32,9 +32,10 @@
 
 name: porkbot
 
-# Every always-on process: restarts with the host, reports health through its
-# own /healthz, carries a ceiling and rotates its logs. The health probe asks
-# the process itself, so "healthy" means the HTTP surface answered.
+# Every always-on process: restarts with the host, reports liveness and
+# dependency readiness through its own probes, carries a ceiling and rotates
+# its logs. Readiness asks the process itself, so "healthy" means its required
+# dependencies are available rather than merely that a process exists.
 x-app: &app
   restart: unless-stopped
   stop_grace_period: 30s
@@ -51,7 +52,7 @@ x-app: &app
       - node
       - -e
       - >-
-        fetch("http://127.0.0.1:" + process.env.PORT + "/healthz").then((response) =>
+        fetch("http://127.0.0.1:" + process.env.PORT + "/readyz").then((response) =>
         process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))
     interval: 5s
     timeout: 5s

@@ -203,10 +203,12 @@ function runUrl(origin: string, run: RunRecord): string {
  * durable.
  */
 async function claim(run: RunRecord, context: RunNotificationContext): Promise<boolean> {
+  const logger = context.logger.child({ runId: run.id });
+
   try {
     return await context.repositories.runs.claimNotification(run.id);
   } catch (error) {
-    context.logger.warn("could not claim a run notification", { runId: run.id, error });
+    logger.warn("could not claim a run notification", { runId: run.id, error });
 
     return false;
   }
@@ -217,10 +219,11 @@ async function deliver(
   message: RunNotificationMessage,
   context: RunNotificationContext,
 ): Promise<void> {
+  const logger = context.logger.child({ runId: run.id });
   const delivery = createNotificationDelivery({
     provider: context.target.provider,
     recipients: context.repositories.notifications,
-    logger: context.logger,
+    logger,
   });
 
   try {
@@ -232,13 +235,13 @@ async function deliver(
       url: runUrl(context.target.origin, run),
     });
 
-    context.logger.info("run notification answered", {
+    logger.info("run notification answered", {
       runId: run.id,
       kind: message.kind,
       outcome: outcome.status,
     });
   } catch (error) {
-    context.logger.warn("could not deliver a run notification", {
+    logger.warn("could not deliver a run notification", {
       runId: run.id,
       kind: message.kind,
       error,

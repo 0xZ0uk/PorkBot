@@ -336,6 +336,8 @@ describe("the run-execute handler", () => {
     expect(recorded.lines.at(-1)).toMatchObject({
       msg: "run failed: there was nothing to resume",
       reason: "checkpoint_absent",
+      runId: "run-1",
+      correlationId: "run-1",
     });
 
     const failure = client.calls.find((call) => call.text.startsWith("with updated as"));
@@ -400,7 +402,11 @@ describe("the run-execute handler", () => {
     await job.handle({ runId: "run-1", fence: 3, spaceId: "space-1" }, context);
 
     expect(recorded.executions).toEqual([]);
-    expect(recorded.lines.at(-1)).toMatchObject({ msg: "run job skipped: the row fence moved on" });
+    expect(recorded.lines.at(-1)).toMatchObject({
+      msg: "run job skipped: the row fence moved on",
+      runId: "run-1",
+      correlationId: "run-1",
+    });
     // A skipped delivery writes nothing: the only statement is the scoped read.
     expect(client.calls).toEqual([
       { text: expect.stringContaining("from run where id ="), values: ["run-1", "space-1"] },
@@ -467,6 +473,8 @@ describe("the run-execute handler", () => {
     expect(recorded.executions).toEqual([]);
     expect(recorded.lines.at(-1)).toMatchObject({
       msg: "run job skipped: another worker owns the run",
+      runId: "run-1",
+      correlationId: "run-1",
     });
   });
 
