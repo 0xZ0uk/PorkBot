@@ -16,7 +16,20 @@ export const Route = createFileRoute("/_app/bots/$botId/computer")({
 function ComputerRoute() {
   const { botId } = Route.useParams();
   const { computer } = Route.useRouteContext();
-  const { state, load, choose, cancel, confirm, snapshot, restore } = useComputer({
+  const {
+    state,
+    load,
+    choose,
+    cancel,
+    confirm,
+    snapshot,
+    restore,
+    lifecycle,
+    run,
+    openDirectory,
+    openFile,
+    openParent,
+  } = useComputer({
     transport: computer,
     botId,
   });
@@ -34,6 +47,11 @@ function ComputerRoute() {
         onConfirm={confirm}
         onSnapshot={snapshot}
         onRestore={restore}
+        onLifecycle={lifecycle}
+        onRun={run}
+        onOpenDirectory={openDirectory}
+        onOpenFile={openFile}
+        onOpenParent={openParent}
       />
     </>
   );

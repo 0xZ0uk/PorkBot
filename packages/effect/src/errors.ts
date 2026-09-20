@@ -530,6 +530,26 @@ export class ComputerUnavailableError extends Data.TaggedError("ComputerUnavaila
 }
 
 /**
+ * A path the operator's file view asked for leaves the bot's home (slice
+ * 11.4, PRD story 27). Reading outside the home is a `dangerous` class (PRD
+ * decision 30) and the file browser has no approval gate to open, so it
+ * refuses instead: the home is the view's whole namespace. The terminal
+ * deliberately does not classify a command — the sandbox is its boundary — so
+ * the rest of the machine stays one shell command away.
+ */
+export class InvalidComputerPathError extends Data.TaggedError("InvalidComputerPathError")<{
+  readonly path: string;
+  readonly message: string;
+}> {
+  constructor(path: string) {
+    super({
+      path,
+      message: `"${path}" is outside this bot's home directory, so the file view cannot read it`,
+    });
+  }
+}
+
+/**
  * Why an OAuth callback was refused before any code was exchanged. The reasons
  * are distinct because they mean different things to whoever reads a log: the
  * state was unknown, already consumed or expired; the state named a server the
@@ -617,6 +637,7 @@ export type TypedError =
   | InvalidRoutineScheduleError
   | McpServerUnavailableError
   | ComputerUnavailableError
+  | InvalidComputerPathError
   | InvalidOAuthStateError;
 
 /** The literal tag of every typed error, i.e. the table's key space. */

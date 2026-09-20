@@ -8,12 +8,22 @@ import type {
   ComputerSnapshot,
   ComputerStatus,
 } from "@porkbot/adapter-kit";
+import {
+  maxComputerOutputBytes,
+  maxComputerPathLength,
+  maxTerminalCommandLength,
+} from "@porkbot/contracts";
 import { DEFAULT_APPROVAL_TIMEOUT_MS, parseEgressAllowlist } from "@porkbot/core";
 import { describe, expect, it } from "vitest";
 import type { ApprovalRecord, ApprovalStore } from "./approval-gate.ts";
 import type { ArtifactRecorder } from "./artifact-recorder.ts";
 import type { ComputerCommandRunner } from "./computer-commands.ts";
-import { createComputerTools, MAX_COMPUTER_OUTPUT_BYTES } from "./computer-tools.ts";
+import {
+  createComputerTools,
+  MAX_COMPUTER_OUTPUT_BYTES,
+  MAX_COMPUTER_PATH_LENGTH,
+  MAX_SHELL_COMMAND_LENGTH,
+} from "./computer-tools.ts";
 import { NotFoundError } from "./errors.ts";
 import { createToolDispatcher } from "./tool-dispatcher.ts";
 import type {
@@ -699,5 +709,20 @@ describe("the computer tool registrations", () => {
         maxDurationMs: 30_000,
       }),
     ).toThrow(RangeError);
+  });
+});
+
+/**
+ * The wire caps the terminal and file view declare must match the caps the
+ * model's tools declare: an operator command no larger than a model's, a path
+ * of the same length, and one output bound for both readers. The contract
+ * cannot import this package (the mapping imports the contract), so the pin
+ * lives here, where both numbers are in scope.
+ */
+describe("the wire caps and the tool caps", () => {
+  it("declare the same command, path and output bounds", () => {
+    expect(maxTerminalCommandLength).toBe(MAX_SHELL_COMMAND_LENGTH);
+    expect(maxComputerPathLength).toBe(MAX_COMPUTER_PATH_LENGTH);
+    expect(maxComputerOutputBytes).toBe(MAX_COMPUTER_OUTPUT_BYTES);
   });
 });
