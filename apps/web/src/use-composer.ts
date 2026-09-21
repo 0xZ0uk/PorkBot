@@ -1,18 +1,29 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import type { Message } from "@porkbot/contracts";
 import { createComposer } from "./composer.ts";
-import type { ComposerFileInput, ComposerState, ComposerTransport } from "./composer.ts";
+import type {
+  ComposerFileInput,
+  ComposerState,
+  ComposerTransport,
+  ComposerOptions,
+} from "./composer.ts";
 
 /**
  * The React binding for `createComposer`: it mounts the controller the screen
- * renders, feeds it the transport and thread id, and folds each sent message
- * back through `onSent` — the console's `noteSent`. Unmounting drops the
- * controller; the draft lives only as long as the route does.
+ * renders, feeds it the transport and thread id, and reports the send lifecycle
+ * through the options — the console can show a local send, settle it, or mark
+ * it failed. Unmounting drops the controller; the draft lives only as long as
+ * the route does.
  */
+export interface UseComposerOptions {
+  readonly onOptimistic?: ComposerOptions["onOptimistic"];
+  readonly onSent?: ComposerOptions["onSent"];
+  readonly onSendFailed?: ComposerOptions["onSendFailed"];
+}
+
 export function useComposer(
   transport: ComposerTransport,
   threadId: string,
-  onSent: (message: Message) => void,
+  options: UseComposerOptions,
 ): {
   readonly state: ComposerState;
   readonly setText: (text: string) => void;
@@ -22,9 +33,10 @@ export function useComposer(
   readonly retryFile: (key: string) => void;
   readonly send: () => void;
 } {
+  const { onOptimistic, onSent, onSendFailed } = options;
   const composer = useMemo(
-    () => createComposer({ transport, threadId, onSent }),
-    [transport, threadId, onSent],
+    () => createComposer({ transport, threadId, onOptimistic, onSent, onSendFailed }),
+    [transport, threadId, onOptimistic, onSent, onSendFailed],
   );
 
   const state = useSyncExternalStore(composer.subscribe, composer.state, composer.state);

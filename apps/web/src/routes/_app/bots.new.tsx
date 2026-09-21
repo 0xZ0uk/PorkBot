@@ -4,8 +4,10 @@ import type { BotSection } from "@porkbot/contracts";
 import { formToWriteInput } from "../../bots.ts";
 import type { BotFormValues } from "../../bots.ts";
 import { BotEditorScreen } from "../../screens/bot-editor.tsx";
+import { BotEditorSkeleton } from "../../screens/loading.tsx";
 
 export const Route = createFileRoute("/_app/bots/new")({
+  pendingComponent: BotEditorSkeleton,
   loader: ({ context }) => context.bots.listSections(),
   component: NewBotRoute,
 });

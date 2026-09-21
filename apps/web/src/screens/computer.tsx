@@ -25,6 +25,7 @@ import {
   switchWarning,
 } from "../computer.ts";
 import type { ComputerLifecycleAction, ComputerState, ProviderChoice } from "../computer.ts";
+import { ComputerSkeleton } from "./loading.tsx";
 
 /**
  * One bot's computer (slices 9.4, 11.4 and 13.10; PRD stories 27, 30 and 31):
@@ -94,7 +95,7 @@ export function ComputerScreen({
   }
 
   if (state.bot === null || state.providers === null) {
-    return <section className="console" aria-busy="true" />;
+    return <ComputerSkeleton />;
   }
 
   const busy = state.pending !== null;

@@ -1,4 +1,5 @@
 import { Outlet, createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+import { ToastProvider } from "@porkbot/ui";
 import { emptyRoster, readRoster } from "../roster.ts";
 import { UnavailableScreen } from "../screens/unavailable.tsx";
 import { Workspace } from "../shell/workspace.tsx";
@@ -71,18 +72,20 @@ function AppLayout() {
   }
 
   return (
-    <Workspace
-      roster={roster}
-      pendingApprovals={pendingApprovals}
-      rosterFailed={rosterFailed}
-      onRetryRoster={() => {
-        void router.invalidate();
-      }}
-      onSignOut={() => {
-        void signOut();
-      }}
-    >
-      <Outlet />
-    </Workspace>
+    <ToastProvider>
+      <Workspace
+        roster={roster}
+        pendingApprovals={pendingApprovals}
+        rosterFailed={rosterFailed}
+        onRetryRoster={() => {
+          void router.invalidate();
+        }}
+        onSignOut={() => {
+          void signOut();
+        }}
+      >
+        <Outlet />
+      </Workspace>
+    </ToastProvider>
   );
 }

@@ -2,6 +2,7 @@ import { Button, Field, Input, Textarea } from "@porkbot/ui";
 import { useState } from "react";
 import type { MemoryDocumentView } from "@porkbot/contracts";
 import type { MemoryNotice, MemoryScope, MemoryState } from "../memory.ts";
+import { MemorySkeleton } from "./loading.tsx";
 
 /**
  * The memory screen (slice 8.3, PRD decision 21; story 24): what a bot
@@ -73,8 +74,12 @@ export function MemoryScreen({
     );
   }
 
+  if (state.status === "loading") {
+    return <MemorySkeleton />;
+  }
+
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <h2>Memory</h2>
         <div className="memory-scopes" role="group" aria-label="Which documents to show">

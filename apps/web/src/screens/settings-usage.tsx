@@ -2,6 +2,7 @@ import { Button, Field, Select } from "@porkbot/ui";
 import { UsageReport } from "./usage.tsx";
 import { usageWindows } from "../settings-usage.ts";
 import type { SettingsUsageState, UsageWindow } from "../settings-usage.ts";
+import { UsageSkeleton } from "./loading.tsx";
 
 /**
  * Usage settings (slice 11.5, story 34): every active bot's recorded totals
@@ -36,8 +37,12 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
     );
   }
 
+  if (state.status === "loading") {
+    return <UsageSkeleton />;
+  }
+
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <h2>Usage</h2>
         <Field label="Window">
@@ -58,9 +63,7 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
       </header>
       <p className="muted">Recorded and displayed only; nothing here is metered or enforced.</p>
 
-      {state.status === "loading" ? (
-        <p className="muted">Loading usage…</p>
-      ) : state.reports.length === 0 ? (
+      {state.reports.length === 0 ? (
         <p className="muted">No bots yet.</p>
       ) : (
         state.reports.map(({ bot, usage }) => (
