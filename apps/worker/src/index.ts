@@ -28,6 +28,13 @@ export type {
 export { parseRunExecutePayload, runExecuteIdentifier, runExecuteJob } from "./jobs/run-execute.ts";
 export type { RunExecutePayload, RunExecution, RunExecutor } from "./jobs/run-execute.ts";
 
+export {
+  dispatchQueuedRunBatch,
+  runDispatchIntervalMs,
+  startRunDispatcher,
+} from "./run-dispatch.ts";
+export type { RunDispatcher, RunDispatchOptions } from "./run-dispatch.ts";
+
 export { systemActorForJob } from "./system-actor.ts";
 export type { JobScope } from "./system-actor.ts";
 export { startWorker } from "./worker.ts";

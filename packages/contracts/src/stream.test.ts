@@ -192,7 +192,7 @@ describe("the reconnecting subscription", () => {
     ]);
   });
 
-  it("does not report live for a connection that ends without a frame", async () => {
+  it("reports an accepted idle connection as live before it has a frame", async () => {
     const states: ThreadSubscriptionState[] = [];
     const controller = new AbortController();
     let attempts = 0;
@@ -217,14 +217,17 @@ describe("the reconnecting subscription", () => {
       expect(event).toBeDefined();
     }
 
-    // Each attempt is `connecting`, the ended stream is `reconnecting`, and
-    // `live` never appears: no frame was ever delivered.
+    // Acceptance makes the first idle stream live. When it ends, the next
+    // accepted attempts are resumed even though none has delivered a frame.
     expect(states).toEqual([
       "connecting",
+      "live",
       "reconnecting",
       "connecting",
+      "resumed",
       "reconnecting",
       "connecting",
+      "resumed",
       "reconnecting",
     ]);
   });

@@ -756,6 +756,20 @@ describe("Last-Event-ID", () => {
 });
 
 describe("a dropped connection resumes with no duplicate and no missing event", () => {
+  it("polls durable events when a cross-process writer cannot publish a wake-up", async () => {
+    addThread(spaceOneThread, "space-1");
+
+    const stream = await openStream({ threadId: spaceOneThread });
+
+    // The worker is a separate process from the API, so persistence can land
+    // without reaching this process's in-memory fanout. The durable replay
+    // poll must still deliver it without a reconnect or a second signal.
+    appendEvent(spaceOneThread, 1);
+
+    expect(eventSeq(await stream.reader.next())).toBe(1);
+    await stream.close();
+  });
+
   it("delivers each position exactly once across a drop and three live events", async () => {
     addThread(spaceOneThread, "space-1");
     appendEvent(spaceOneThread, 1);

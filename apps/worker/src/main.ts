@@ -4,7 +4,8 @@ import {
   createHttpNotificationProvider,
   NotificationEmulator,
 } from "@porkbot/adapters";
-import { openDatabase, queryable } from "@porkbot/db";
+import { credentialKeyringFromEnvironment, openDatabase, queryable } from "@porkbot/db";
+import type { CredentialKeyring } from "@porkbot/db";
 import { createHealthServer, livenessPath } from "@porkbot/health";
 import { createLogger } from "@porkbot/logging";
 import type { Runner } from "graphile-worker";
@@ -12,6 +13,8 @@ import { moduleInfo } from "./index.ts";
 import type { RunExecutor } from "./jobs/run-execute.ts";
 import { createLiveRunWork } from "./live-run.ts";
 import { createRunExecutor } from "./run-execution.ts";
+import { startRunDispatcher } from "./run-dispatch.ts";
+import type { RunDispatcher } from "./run-dispatch.ts";
 import type { RunNotificationTarget } from "./run-notifications.ts";
 import { startWorker } from "./worker.ts";
 
@@ -44,6 +47,8 @@ if (connectionString === undefined || connectionString.length === 0) {
 // `/livez` or making the worker guess from the runner's in-memory state.
 const readinessDatabase = openDatabase(connectionString);
 let workerReady = false;
+
+const credentialKeys = readCredentialKeys();
 
 /**
  * The run-liveness notification target (slices 6.10 and 8.7): the E8 provider
@@ -135,6 +140,7 @@ const verifiedRunExecutor: RunExecutor = createRunExecutor({
 });
 
 let runner: Runner | undefined;
+let runDispatcher: RunDispatcher | undefined;
 
 const server = createHealthServer({
   service: moduleInfo.name,
@@ -167,6 +173,12 @@ try {
     // per-user preference check: a missed backup is not a notification
     // category an operator opts into.
     operatorAlerts: notificationTarget.provider,
+    ...(credentialKeys === undefined ? {} : { credentialKeys }),
+    logger,
+  });
+  runDispatcher = startRunDispatcher({
+    database: queryable(readinessDatabase),
+    queue: runner,
     logger,
   });
   workerReady = true;
@@ -185,14 +197,27 @@ function shutdown(signal: string): void {
   stopping = true;
   logger.info("worker stopping", { signal });
 
-  void (runner === undefined ? Promise.resolve() : runner.stop(`received ${signal}`)).finally(
-    () => {
+  void (runDispatcher === undefined ? Promise.resolve() : runDispatcher.stop())
+    .then(() => (runner === undefined ? Promise.resolve() : runner.stop(`received ${signal}`)))
+    .finally(() => {
       void readinessDatabase.close().finally(() => {
         server.close(() => process.exit(0));
       });
-    },
-  );
+    });
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+/** Invalid or absent keys lock live runs without taking down health checks. */
+function readCredentialKeys(): CredentialKeyring | undefined {
+  try {
+    return credentialKeyringFromEnvironment(process.env);
+  } catch (error) {
+    logger.warn("PORKBOT_CREDENTIAL_KEYS is not usable; live runs cannot resolve credentials", {
+      error,
+    });
+
+    return undefined;
+  }
+}
