@@ -15,4 +15,5 @@ what ships today.
 | [operations.md](operations.md)   | The local stack, the single-host deployment, backups and the live-provider canaries                                        |
 | [development.md](development.md) | Module boundaries, dependencies, environment schemas, logging and migrations                                               |
 | [clients.md](clients.md)         | The web shell, the thread console and the desktop shell                                                                    |
+| [interface.md](interface.md)     | The workspace shell, bot identity, conversation grammar, state vocabulary, scales, register and screenshot set             |
 | [testing.md](testing.md)         | The CI tiers, the Postgres-per-suite harness, flake management, coverage and required checks                               |

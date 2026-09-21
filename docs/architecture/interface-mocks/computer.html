@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1280" />
+    <title>Interface mock — computer surface with inspector</title>
+    <link rel="stylesheet" href="mock.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <!-- Rail: the same roster, unchanged on every surface. -->
+      <aside class="rail">
+        <div class="rail-head">
+          <div class="brand">
+            <span class="brand-name">PorkBot</span>
+            <button class="mode-toggle" data-theme-toggle aria-label="Switch mode">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+              </svg>
+            </button>
+          </div>
+          <label class="search">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input type="search" placeholder="Search bots" aria-label="Search bots" />
+          </label>
+        </div>
+
+        <div class="rail-list" role="list">
+          <button
+            class="rail-row"
+            style="--pb-id: var(--pb-id-1)"
+            aria-current="true"
+            role="listitem"
+          >
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="14" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Scout</span>
+              <span class="rail-row-activity">Reading a page</span>
+            </span>
+            <span class="chip chip-working"><span class="dot"></span>Working</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-3)" role="listitem">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="27" height="27" rx="9" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Ledger</span>
+              <span class="rail-row-activity">Waiting for you</span>
+            </span>
+            <span class="chip chip-waiting"><span class="dot"></span>Waiting</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-5)" role="listitem">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M16 2.5 27.7 9.2v13.6L16 29.5 4.3 22.8V9.2Z" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Atlas</span>
+              <span class="rail-row-activity">Idle since 09:12</span>
+            </span>
+            <span class="chip chip-idle"><span class="dot"></span>Idle</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-2)" role="listitem">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="27" height="27" rx="14" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Ember</span>
+              <span class="rail-row-activity">Rate limited</span>
+            </span>
+            <span class="chip chip-failed"><span class="dot"></span>Failed</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-6)" role="listitem">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M16 3 29 27H3Z" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="19" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="19" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Warden</span>
+              <span class="rail-row-activity">Stuck on shell</span>
+            </span>
+            <span class="chip chip-stuck"><span class="dot"></span>Stuck</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-4)" role="listitem">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="14" fill="var(--pb-id)" />
+              <ellipse cx="11.5" cy="15" rx="2" ry="2.8" fill="var(--pb-bg)" />
+              <ellipse cx="20.5" cy="15" rx="2" ry="2.8" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Piper</span>
+              <span class="rail-row-activity">Stopped by you</span>
+            </span>
+            <span class="chip chip-stopped"><span class="dot"></span>Stopped</span>
+          </button>
+        </div>
+
+        <div class="rail-foot">
+          <button class="rail-foot-row">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            Approvals
+            <span class="chip chip-waiting count">2</span>
+          </button>
+          <button class="rail-foot-row">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.2a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4Z"
+              />
+            </svg>
+            Settings
+          </button>
+        </div>
+      </aside>
+
+      <!-- Content: the bot's screen is the surface; terminal and files are tabs. -->
+      <main class="content">
+        <header class="thread-head">
+          <svg class="mascot mascot-32" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="14" fill="var(--pb-id-1)" />
+            <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+          </svg>
+          <span class="thread-head-body">
+            <span class="thread-head-name">Scout</span>
+            <span class="thread-head-meta">Computer · Docker · running 24m</span>
+          </span>
+          <span class="thread-head-actions">
+            <span class="chip chip-working"><span class="dot"></span>Working</span>
+            <button class="lifecycle">
+              <span class="dot"></span>
+              Running
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <button class="icon-button" aria-label="Toggle inspector">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M15 4v16" />
+              </svg>
+            </button>
+          </span>
+        </header>
+
+        <div class="transcript">
+          <div class="thread-column">
+            <div class="tabs" role="tablist" style="margin-top: 0">
+              <button class="tab" role="tab" aria-selected="true">Screen</button>
+              <button class="tab" role="tab" aria-selected="false">Terminal</button>
+              <button class="tab" role="tab" aria-selected="false">Files</button>
+            </div>
+
+            <div class="screen-frame">
+              <div class="screen-chrome">
+                <span class="traffic"><i></i><i></i><i></i></span>
+                <span class="screen-address">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="4" y="10" width="16" height="11" rx="2" />
+                    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                  </svg>
+                  portal.acme.example/invoices
+                </span>
+                <button class="take-control">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M4 4h6M4 4v6M20 20h-6M20 20v-6" />
+                  </svg>
+                  Take control
+                </button>
+              </div>
+              <div class="screen-body">
+                <div class="web-page">
+                  <div class="web-page-head">
+                    <span class="web-page-title">Acme Portal — Invoices</span>
+                    <span class="chip chip-working" style="--pb-id: var(--pb-id-1)">
+                      <span class="dot"></span>Scout is here
+                    </span>
+                  </div>
+                  <div class="web-field">
+                    <span class="web-label">Email</span>
+                    <span class="web-input">accounts@acme.example</span>
+                  </div>
+                  <div class="web-field">
+                    <span class="web-label">Password</span>
+                    <span class="web-input">••••••••••••</span>
+                  </div>
+                  <span class="web-button">Sign in</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row row-muted" style="margin-top: 0.25rem">
+              <span
+                >Scout is signing in to the invoice portal. Take control to finish the login.</span
+              >
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Inspector: state, provider, snapshots, routines, approvals. -->
+      <aside class="inspector">
+        <div class="inspector-head">
+          <svg class="mascot mascot-32" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="14" fill="var(--pb-id-1)" />
+            <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+          </svg>
+          <span class="inspector-head-body">
+            <span class="inspector-head-name">Scout</span>
+            <span class="inspector-head-meta">Research · Docker · gpt-5.1</span>
+          </span>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3 class="section-title">State</h3>
+          </div>
+          <div class="state-row">
+            <span class="chip chip-working" style="--pb-id: var(--pb-id-1)">
+              <span class="dot"></span>Working
+            </span>
+            <span class="state-since">24m · browser.open</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3 class="section-title">Provider</h3>
+            <button class="row-action">Change</button>
+          </div>
+          <div class="row">
+            <span>Docker</span>
+            <span class="row-muted" style="margin-left: auto">this host</span>
+          </div>
+          <div class="row row-muted">
+            <span>Isolated network · 2 vCPU · 4 GB</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3 class="section-title">Snapshots</h3>
+            <span class="section-note">2</span>
+          </div>
+          <div class="row">
+            <span>before-login · today 09:31</span>
+            <button class="row-action">Restore</button>
+          </div>
+          <div class="row">
+            <span>clean · yesterday 18:02</span>
+            <button class="row-action">Restore</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3 class="section-title">Routines</h3>
+            <span class="section-note">2</span>
+          </div>
+          <div class="row">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--pb-success)"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m5 13 4 4L19 7" />
+            </svg>
+            <span>Weekdays 08:00 · Check vendor pages</span>
+          </div>
+          <div class="row">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--pb-warning)"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 8v4l2.5 2" />
+            </svg>
+            <span>Fridays 17:00 · Weekly digest</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <h3 class="section-title">Pending approvals</h3>
+          </div>
+          <div class="row row-muted">
+            <span>Nothing waiting for you.</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const stored = localStorage.getItem("pb-mode");
+        const mode =
+          params.get("mode") ??
+          (stored === "light" || stored === "dark"
+            ? stored
+            : matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark");
+        document.documentElement.dataset.theme = mode;
+
+        for (const button of document.querySelectorAll("[data-theme-toggle]")) {
+          button.addEventListener("click", () => {
+            const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem("pb-mode", next);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
