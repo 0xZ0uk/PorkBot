@@ -1,10 +1,11 @@
 import { Outlet, createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+import { emptyRoster, readRoster } from "../roster.ts";
 import { UnavailableScreen } from "../screens/unavailable.tsx";
 import { Workspace } from "../shell/workspace.tsx";
 
 /**
  * The layout every signed-in screen renders in: the three-pane workspace, with
- * the roster and the pending approvals it needs (slice 13.4).
+ * the roster and the pending approvals it needs (slices 13.4 and 13.6).
  *
  * Its guard is the shell's authorization: the session is resolved before a
  * child route renders, a signed-out visitor is redirected to sign-in, and a
@@ -12,6 +13,10 @@ import { Workspace } from "../shell/workspace.tsx";
  * signed-out lie. The roster read is deliberately not fatal — a rail that
  * cannot list bots must not take the content pane down with it — so a failure
  * becomes an empty rail that says so and offers the retry.
+ *
+ * The roster is read once here and handed to the rail and the home screen
+ * alike, so both list the same rows: the bot, its identity, its state and its
+ * latest activity come from one read rather than two shapes that can drift.
  */
 export const Route = createFileRoute("/_app")({
   beforeLoad: async ({ context }) => {
@@ -25,16 +30,13 @@ export const Route = createFileRoute("/_app")({
   },
   loader: async ({ context }) => {
     try {
-      const [bots, pendingApprovals] = await Promise.all([
-        context.bots.listBots("active"),
-        context.approvals === undefined
-          ? Promise.resolve([])
-          : context.approvals.list({ status: "pending" }),
-      ]);
+      const pendingApprovals =
+        context.approvals === undefined ? [] : await context.approvals.list({ status: "pending" });
+      const roster = await readRoster(context.bots, pendingApprovals);
 
-      return { bots, pendingApprovals, rosterFailed: false };
+      return { roster, pendingApprovals, rosterFailed: false };
     } catch {
-      return { bots: [], pendingApprovals: [], rosterFailed: true };
+      return { roster: emptyRoster, pendingApprovals: [], rosterFailed: true };
     }
   },
   component: AppLayout,
@@ -42,7 +44,7 @@ export const Route = createFileRoute("/_app")({
 
 function AppLayout() {
   const { session, sessionState } = Route.useRouteContext();
-  const { bots, pendingApprovals, rosterFailed } = Route.useLoaderData();
+  const { roster, pendingApprovals, rosterFailed } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
 
@@ -70,7 +72,7 @@ function AppLayout() {
 
   return (
     <Workspace
-      bots={bots}
+      roster={roster}
       pendingApprovals={pendingApprovals}
       rosterFailed={rosterFailed}
       onRetryRoster={() => {

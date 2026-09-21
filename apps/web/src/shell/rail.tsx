@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
-import type { Bot } from "@porkbot/contracts";
-import { BotAvatar, Button, CountBadge, Icon, Input, StateChip } from "@porkbot/ui";
+import { Button, CountBadge, Icon, Input } from "@porkbot/ui";
+import type { RosterEntry } from "../roster.ts";
+import { RosterRow } from "./roster-row.tsx";
 import type { Mode } from "./mode.ts";
 
 /**
@@ -8,11 +9,14 @@ import type { Mode } from "./mode.ts";
  * (slice 13.4; design record, Shell anatomy). One component serves the wide
  * rail and the narrow switcher sheet, so the roster cannot drift between the
  * two; the sheet passes `onNavigate` so a chosen bot closes it.
+ *
+ * Since slice 13.6 the rail reads the same roster rows the home screen does —
+ * identity, name, role, the state chip and the latest activity — so a bot
+ * looks the same wherever it is listed.
  */
 
 export interface RailProps {
-  readonly bots: readonly Bot[];
-  readonly pendingByBot: ReadonlyMap<string, number>;
+  readonly entries: readonly RosterEntry[];
   readonly pendingCount: number;
   readonly query: string;
   readonly onQuery: (query: string) => void;
@@ -26,8 +30,7 @@ export interface RailProps {
 }
 
 export function Rail({
-  bots,
-  pendingByBot,
+  entries,
   pendingCount,
   query,
   onQuery,
@@ -41,8 +44,10 @@ export function Rail({
   const needle = query.trim().toLowerCase();
   const visible =
     needle === ""
-      ? bots
-      : bots.filter((bot) => `${bot.name} ${bot.title}`.toLowerCase().includes(needle));
+      ? entries
+      : entries.filter((entry) =>
+          `${entry.bot.name} ${entry.bot.title}`.toLowerCase().includes(needle),
+        );
   const nextMode = mode === "dark" ? "light" : "dark";
 
   return (
@@ -65,26 +70,9 @@ export function Rail({
       </div>
 
       <nav className="shell-rail-roster" aria-label="Bots">
-        {visible.map((bot) => {
-          const pending = pendingByBot.get(bot.id) ?? 0;
-
-          return (
-            <Link
-              key={bot.id}
-              to="/bots/$botId"
-              params={{ botId: bot.id }}
-              className="shell-rail-row"
-              onClick={onNavigate}
-            >
-              <BotAvatar id={bot.id} name={bot.name} color={bot.color} size={24} />
-              <span className="shell-rail-row-body">
-                <span className="shell-rail-row-name">{bot.name}</span>
-                <span className="shell-rail-row-meta">{bot.title === "" ? "Bot" : bot.title}</span>
-              </span>
-              {pending > 0 ? <StateChip state="waiting" count={pending} /> : null}
-            </Link>
-          );
-        })}
+        {visible.map((entry) => (
+          <RosterRow key={entry.bot.id} entry={entry} size="rail" onNavigate={onNavigate} />
+        ))}
         {rosterFailed ? (
           <>
             <p className="shell-rail-empty">The bot list could not be loaded.</p>
@@ -95,10 +83,10 @@ export function Rail({
         ) : null}
         {!rosterFailed && visible.length === 0 ? (
           <p className="shell-rail-empty">
-            {bots.length === 0 ? "No bots yet." : "No bots match."}
+            {entries.length === 0 ? "No bots yet." : "No bots match."}
           </p>
         ) : null}
-        {!rosterFailed && bots.length === 0 ? (
+        {!rosterFailed && entries.length === 0 ? (
           <Link to="/bots/new" className="shell-rail-new" onClick={onNavigate}>
             <Icon name="plus" />
             New bot

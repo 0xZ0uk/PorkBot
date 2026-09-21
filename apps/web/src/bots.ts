@@ -11,6 +11,8 @@ export interface BotsTransport {
   updateBot(id: string, input: BotWriteInput): Promise<Bot>;
   archiveBot(id: string): Promise<Bot>;
   restoreBot(id: string): Promise<Bot>;
+  /** Pins a bot to the roster's top group, or returns it to its section. */
+  setPinned(id: string, pinned: boolean): Promise<Bot>;
   createSection(name: string): Promise<BotSection>;
   readAvatar(id: string): Promise<{ readonly contentType: string; readonly data: string }>;
   setAvatar(input: {
@@ -39,15 +41,6 @@ export type ComputerHealth =
   | { readonly kind: "healthy"; readonly view: ComputerView }
   | { readonly kind: "stopped"; readonly view: ComputerView }
   | { readonly kind: "failed" };
-
-export interface BotListItem {
-  readonly bot: Bot;
-  /** A data URL for the stored avatar, or null for the generated identity. */
-  readonly avatarUrl: string | null;
-  readonly threads: readonly Thread[];
-  readonly lastActivityAt: string | null;
-  readonly computer: ComputerHealth;
-}
 
 export interface BotFormValues {
   readonly name: string;

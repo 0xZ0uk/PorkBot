@@ -11,6 +11,8 @@ deploy/.release-state
 
 # Testing
 coverage
+# Playwright's traces, reports and captures, uploaded as CI artifacts
+test-results
 
 # Testkit harness state (container id, port and the throwaway test password)
 .testkit

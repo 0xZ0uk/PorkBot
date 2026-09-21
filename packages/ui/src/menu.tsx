@@ -15,6 +15,12 @@ export type MenuItem = {
 export type MenuProps = {
   /** The trigger's visible label. */
   readonly label: string;
+  /**
+   * The trigger's accessible name when the visible label needs the item's
+   * context — a roster of menus all labelled "Actions" is one name. It must
+   * contain the visible label so speech input still reaches the control.
+   */
+  readonly ariaLabel?: string | undefined;
   readonly items: readonly MenuItem[];
   readonly variant?: ButtonVariant;
   readonly align?: "start" | "end";
@@ -27,7 +33,14 @@ export type MenuProps = {
  * the trigger, and a pointer press outside closes it. Items are buttons, so
  * activation is the platform's.
  */
-export function Menu({ label, items, variant = "neutral", align = "start", className }: MenuProps) {
+export function Menu({
+  label,
+  ariaLabel,
+  items,
+  variant = "neutral",
+  align = "start",
+  className,
+}: MenuProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -39,8 +52,8 @@ export function Menu({ label, items, variant = "neutral", align = "start", class
       return;
     }
 
-    const index = openAt.current === "first" ? 0 : items.length - 1;
-    itemRefs.current[index]?.focus();
+    const first = openAt.current === "first";
+    focusIndex(enabledFrom(first ? 0 : items.length - 1, first ? 1 : -1));
 
     function onPointerDown(event: MouseEvent): void {
       const target = event.target as Node;
@@ -79,9 +92,28 @@ export function Menu({ label, items, variant = "neutral", align = "start", class
     }
   }
 
-  function focusItem(index: number): void {
-    const clamped = (index + items.length) % items.length;
-    itemRefs.current[clamped]?.focus();
+  /**
+   * The first enabled item at or after `start`, walking in `direction` and
+   * wrapping once. A disabled item cannot take focus, so an arrow that lands
+   * on one would appear to do nothing; the walk steps over them instead.
+   */
+  function enabledFrom(start: number, direction: 1 | -1): number | undefined {
+    for (let step = 0; step < items.length; step += 1) {
+      const index = (((start + direction * step) % items.length) + items.length) % items.length;
+      const node = itemRefs.current[index];
+
+      if (node !== null && node !== undefined && !node.disabled) {
+        return index;
+      }
+    }
+
+    return undefined;
+  }
+
+  function focusIndex(index: number | undefined): void {
+    if (index !== undefined) {
+      itemRefs.current[index]?.focus();
+    }
   }
 
   function indexOfFocused(): number {
@@ -89,18 +121,20 @@ export function Menu({ label, items, variant = "neutral", align = "start", class
   }
 
   function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const focused = indexOfFocused();
+
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      focusItem(indexOfFocused() + 1);
+      focusIndex(enabledFrom(focused + 1, 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      focusItem(indexOfFocused() - 1);
+      focusIndex(enabledFrom(focused - 1, -1));
     } else if (event.key === "Home") {
       event.preventDefault();
-      focusItem(0);
+      focusIndex(enabledFrom(0, 1));
     } else if (event.key === "End") {
       event.preventDefault();
-      focusItem(items.length - 1);
+      focusIndex(enabledFrom(items.length - 1, -1));
     } else if (event.key === "Escape") {
       event.preventDefault();
       close(true);
@@ -115,6 +149,7 @@ export function Menu({ label, items, variant = "neutral", align = "start", class
         ref={triggerRef}
         className={["pb-button", `pb-button--${variant}`].join(" ")}
         type="button"
+        aria-label={ariaLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => {

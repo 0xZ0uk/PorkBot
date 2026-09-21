@@ -17,6 +17,17 @@ function menu(onSelect: () => void = () => {}, destructive = false) {
 }
 
 describe("Menu", () => {
+  it("takes an accessible name for a trigger whose label needs context", async () => {
+    const { container, unmount } = await renderDom(
+      <Menu label="Actions" ariaLabel="Actions for Ada" items={[]} />,
+    );
+    const trigger = container.querySelector("button[aria-haspopup='menu']");
+
+    expect(trigger?.textContent).toContain("Actions");
+    expect(trigger?.getAttribute("aria-label")).toBe("Actions for Ada");
+    await unmount();
+  });
+
   it("opens from the trigger and marks the popup expanded", async () => {
     const { container, unmount } = await renderDom(menu());
     const trigger = container.querySelector("button[aria-haspopup='menu']");
@@ -52,11 +63,37 @@ describe("Menu", () => {
     await keydown(items[1] as Element, "ArrowUp");
     expect(document.activeElement).toBe(items[0]);
 
+    // The last item is disabled, so End lands on the last item that can take
+    // focus; Home walks back the same way.
     await keydown(items[0] as Element, "End");
-    expect(document.activeElement).toBe(items[2]);
+    expect(document.activeElement).toBe(items[1]);
 
-    await keydown(items[2] as Element, "Home");
+    await keydown(items[1] as Element, "Home");
     expect(document.activeElement).toBe(items[0]);
+    await unmount();
+  });
+
+  it("steps over a disabled item instead of stalling on it", async () => {
+    const { container, unmount } = await renderDom(menu());
+    const trigger = container.querySelector("button[aria-haspopup='menu']");
+
+    if (trigger === null) {
+      throw new Error("the trigger did not render");
+    }
+
+    await keydown(trigger, "ArrowDown");
+    const items = [...container.querySelectorAll("[role='menuitem']")];
+
+    // Reset, the last item, is disabled: ArrowUp from the first item wraps
+    // past it to Stop rather than focusing nothing.
+    await keydown(items[0] as Element, "ArrowUp");
+    expect(document.activeElement).toBe(items[1]);
+
+    await keydown(items[1] as Element, "ArrowDown");
+    expect(document.activeElement).toBe(items[0]);
+
+    await keydown(items[0] as Element, "End");
+    expect(document.activeElement).toBe(items[1]);
     await unmount();
   });
 
