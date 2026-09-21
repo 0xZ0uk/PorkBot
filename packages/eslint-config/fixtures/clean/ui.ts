@@ -4,6 +4,6 @@ import { colors } from "@porkbot/tokens";
 // semantic tokens. This fixture catches a colour rule that fires on the tokens
 // it is supposed to encourage.
 export const card = {
-  background: colors.card,
+  background: colors.surface,
   borderColor: colors.border,
 };

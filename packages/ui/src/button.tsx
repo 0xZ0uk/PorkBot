@@ -19,13 +19,13 @@ export function Button({
   const palette =
     tone === "primary"
       ? {
-          background: colors.primary,
-          color: colors.primaryForeground,
-          borderColor: colors.primary,
+          background: colors.accent,
+          color: colors.accentForeground,
+          borderColor: colors.accent,
         }
       : {
-          background: colors.secondary,
-          color: colors.secondaryForeground,
+          background: colors.surface,
+          color: colors.foreground,
           borderColor: colors.border,
         };
 

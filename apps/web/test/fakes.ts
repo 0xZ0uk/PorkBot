@@ -1,7 +1,7 @@
 import { ORPCError } from "@porkbot/contracts";
 import { RUN_EVENT_SCHEMA_VERSION } from "@porkbot/core";
 import type { ApprovalDecision, RunEvent, ToolResultArtifact } from "@porkbot/core";
-import { srgbPrimary } from "@porkbot/tokens";
+import { srgbAccent } from "@porkbot/tokens";
 import type {
   Bot,
   BotSection,
@@ -302,7 +302,7 @@ export function fakeBot(id: string, name: string): Bot {
     title: "",
     description: "",
     instructions: "",
-    color: srgbPrimary,
+    color: srgbAccent,
     pinned: false,
     position: 0,
     sectionId: null,
