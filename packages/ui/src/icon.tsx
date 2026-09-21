@@ -21,7 +21,9 @@ export type IconName =
   | "folder"
   | "info"
   | "log-out"
+  | "menu"
   | "monitor"
+  | "moon"
   | "more"
   | "panel-left"
   | "plus"
@@ -29,6 +31,7 @@ export type IconName =
   | "send"
   | "settings"
   | "stop"
+  | "sun"
   | "terminal"
   | "trash";
 
@@ -43,7 +46,9 @@ const iconPaths: Readonly<Record<IconName, readonly string[]>> = {
   folder: ["M4 7h5l2 2h9v10H4z"],
   info: ["M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z", "M12 11v5", "M12 8h.01"],
   "log-out": ["M10 5H5v14h5", "M15 8l4 4-4 4", "M19 12H9"],
+  menu: ["M4 6h16", "M4 12h16", "M4 18h16"],
   monitor: ["M4 5h16v11H4z", "M9 20h6", "M12 16v4"],
+  moon: ["M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"],
   more: ["M6 12h.01", "M12 12h.01", "M18 12h.01"],
   "panel-left": ["M4 5h16v14H4z", "M10 5v14"],
   plus: ["M12 5v14", "M5 12h14"],
@@ -58,6 +63,17 @@ const iconPaths: Readonly<Record<IconName, readonly string[]>> = {
     "M10 16a2 2 0 1 0 0 .01",
   ],
   stop: ["M6 6h12v12H6z"],
+  sun: [
+    "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z",
+    "M12 2v2",
+    "M12 20v2",
+    "M4.9 4.9l1.4 1.4",
+    "M17.7 17.7l1.4 1.4",
+    "M2 12h2",
+    "M20 12h2",
+    "M4.9 19.1l1.4-1.4",
+    "M17.7 6.3l1.4-1.4",
+  ],
   terminal: ["M5 7l4 4-4 4", "M12 16h7", "M4 5h16v14H4z"],
   trash: ["M5 7h14", "M9 7V5h6v2", "M7 7l1 13h8l1-13", "M10 11v5", "M14 11v5"],
 };

@@ -71,7 +71,10 @@ function HomeRoute() {
 
     try {
       const thread = await threads.createThread(botId);
-      await navigate({ to: "/threads/$threadId", params: { threadId: thread.id } });
+      await navigate({
+        to: "/bots/$botId/threads/$threadId",
+        params: { botId, threadId: thread.id },
+      });
     } catch {
       setError("The thread could not be started. Try again.");
     } finally {
@@ -132,7 +135,10 @@ function HomeRoute() {
       )}
       renderThread={(thread) => (
         <li key={thread.id}>
-          <Link to="/threads/$threadId" params={{ threadId: thread.id }}>
+          <Link
+            to="/bots/$botId/threads/$threadId"
+            params={{ botId: thread.botId, threadId: thread.id }}
+          >
             Thread · {new Date(thread.updatedAt).toLocaleString()}
           </Link>
         </li>

@@ -196,8 +196,9 @@ describe("the settings area over the real wire", () => {
     const view = await mountSettings(api, "/settings/usage");
 
     try {
-      await until(() => view.container.textContent?.includes("Ada") === true, "the per-bot report");
+      await until(() => api.usageWindows.length > 0, "the per-bot report");
 
+      expect(view.container.textContent).toContain("Ada");
       expect(view.container.textContent).toContain("Recorded and displayed only");
       expect(api.usageWindows).toEqual([30]);
 
@@ -282,7 +283,11 @@ describe("the settings area over the real wire", () => {
       );
 
       await click(view.container, "Open");
-      await until(() => view.container.textContent?.includes("Ada") === true, "the grant row");
+      await until(
+        () =>
+          view.container.querySelector(".connection-key")?.textContent?.includes("Ada") === true,
+        "the grant row",
+      );
 
       await click(view.container, "Remove");
 

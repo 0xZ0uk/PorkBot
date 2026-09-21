@@ -139,7 +139,7 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
                   <dt>Run</dt>
                   <dd>
                     <a
-                      href={`/threads/${encodeURIComponent(approval.threadId)}?run=${encodeURIComponent(approval.runId)}`}
+                      href={`/bots/${encodeURIComponent(approval.botId)}/threads/${encodeURIComponent(approval.threadId)}?run=${encodeURIComponent(approval.runId)}`}
                     >
                       Open transcript
                     </a>

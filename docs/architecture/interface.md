@@ -44,7 +44,9 @@ search and the roster, a **content pane** carrying the thread or the bot's
 computer, and an **inspector** (19rem) carrying the selected bot's context.
 The thread column is capped at 44rem inside the content pane; the computer
 surface is full-bleed. Below 64rem one pane is visible at a time and a
-switcher sheet replaces the rail.
+switcher sheet replaces the rail. Slice 13.4 built this shell and its captures
+live under `docs/screenshots/shell-*.png`; the panes' contents arrive with the
+slices that own them.
 
 | Decision                                                                                                         | Source                                                   | Reason                                                                                                                                                             |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -310,8 +312,9 @@ preference decides; after it, the choice wins. `themeStyleSheet` in
 then repeats both as `[data-theme="light"]` and `[data-theme="dark"]` after the
 media query, so an explicit choice wins by source order. `themeBootstrapScript`
 reads the stored key and sets `data-theme` before the bundle runs, so there is
-no flash and no OS override of a deliberate choice; the mode control (slice
-13.13) writes the key.
+no flash and no OS override of a deliberate choice; the shell's interim
+light/dark toggle (slice 13.4) writes the key, and slice 13.13 replaces it with
+the explicit System, Light, Dark control.
 
 Source: the current `theme.ts` and shadcn's `.dark` class convention. Reason:
 one operator, one device preference, and a choice that a nighttime OS schedule

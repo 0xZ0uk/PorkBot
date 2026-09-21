@@ -99,7 +99,7 @@ async function render(element: ReactElement): Promise<void> {
 
 describe("the thread console screen", () => {
   it("renders every turn with its role and its text", async () => {
-    await render(<ThreadConsoleScreen state={base} onRetry={vi.fn()} />);
+    await render(<ThreadConsoleScreen botId="bot-1" state={base} onRetry={vi.fn()} />);
 
     const items = [...container.querySelectorAll(".transcript > li")];
 
@@ -111,6 +111,7 @@ describe("the thread console screen", () => {
   it("uses the bot identity in the header and assistant attribution", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={base}
         bot={fakeBot("bot-1", "Ada")}
         avatarUrl="data:image/png;base64,ZmFrZQ=="
@@ -135,6 +136,7 @@ describe("the thread console screen", () => {
     for (const [connection, label] of Object.entries(labels)) {
       await render(
         <ThreadConsoleScreen
+          botId="bot-1"
           state={{ ...base, connection: connection as ThreadConsoleState["connection"] }}
           onRetry={vi.fn()}
         />,
@@ -151,11 +153,17 @@ describe("the thread console screen", () => {
   });
 
   it("says a ready thread has no messages and stays quiet while loading", async () => {
-    await render(<ThreadConsoleScreen state={{ ...base, entries: [] }} onRetry={vi.fn()} />);
+    await render(
+      <ThreadConsoleScreen botId="bot-1" state={{ ...base, entries: [] }} onRetry={vi.fn()} />,
+    );
     expect(container.textContent).toContain("No messages yet.");
 
     await render(
-      <ThreadConsoleScreen state={{ ...base, entries: [], status: "loading" }} onRetry={vi.fn()} />,
+      <ThreadConsoleScreen
+        botId="bot-1"
+        state={{ ...base, entries: [], status: "loading" }}
+        onRetry={vi.fn()}
+      />,
     );
     expect(container.textContent).not.toContain("No messages yet.");
   });
@@ -165,6 +173,7 @@ describe("the thread console screen", () => {
 
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={{ ...base, status: "refused", refusal: "This thread is not available." }}
         onRetry={onRetry}
       />,
@@ -192,6 +201,7 @@ describe("the tool-call timeline", () => {
   it("collapses a call to name, status and duration, and expands to its arguments and result", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({
             status: "completed",
@@ -236,6 +246,7 @@ describe("the tool-call timeline", () => {
   it("links a truncated result to its artifact instead of stopping at the preview", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({
             status: "completed",
@@ -250,7 +261,9 @@ describe("the tool-call timeline", () => {
 
     const link = container.querySelector("a.tool-call-artifact");
 
-    expect(link?.getAttribute("href")).toBe("/threads/thread-1/tool-results/run-1/call-1");
+    expect(link?.getAttribute("href")).toBe(
+      "/bots/bot-1/threads/thread-1/tool-results/run-1/call-1",
+    );
     expect(link?.textContent).toBe("Full result (4.0 KiB)");
     expect(container.textContent).toContain("[truncated]");
     expect(container.querySelector(".tool-call-duration")?.textContent).toBe("2.5 s");
@@ -259,6 +272,7 @@ describe("the tool-call timeline", () => {
   it("offers a produced file by name, rebuilding the link from the artifact id", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({
             callId: "call-file",
@@ -293,6 +307,7 @@ describe("the tool-call timeline", () => {
   it("renders no download link for a result whose artifact shape is broken", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({
             status: "completed",
@@ -317,6 +332,7 @@ describe("the tool-call timeline", () => {
   it("marks a failure in the danger token and shows the typed reason", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({
             callId: "call-2",
@@ -342,6 +358,7 @@ describe("the tool-call timeline", () => {
   it("says a call is waiting for approval rather than calling it running", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({
             approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" },
@@ -359,6 +376,7 @@ describe("the tool-call timeline", () => {
 
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={withCall(
           call({ approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" } }),
         )}
@@ -387,6 +405,7 @@ describe("the console's liveness line", () => {
   it("names the step, the tool and the heartbeat lag while the run works", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={{
           ...base,
           liveness: {
@@ -408,6 +427,7 @@ describe("the console's liveness line", () => {
   it("marks a stuck run with its silence, not as healthy", async () => {
     await render(
       <ThreadConsoleScreen
+        botId="bot-1"
         state={{
           ...base,
           liveness: {
@@ -428,7 +448,7 @@ describe("the console's liveness line", () => {
   });
 
   it("shows no liveness chrome when no run is active", async () => {
-    await render(<ThreadConsoleScreen state={base} onRetry={vi.fn()} />);
+    await render(<ThreadConsoleScreen botId="bot-1" state={base} onRetry={vi.fn()} />);
 
     expect(container.querySelector("[data-liveness]")).toBeNull();
   });

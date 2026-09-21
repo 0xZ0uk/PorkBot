@@ -91,7 +91,7 @@ async function mountConsole(api: ScriptedThreadApi): Promise<MountedConsole> {
       connections: scriptedConnectionsTransport(),
       computer: scriptedComputerTransport(),
     },
-    createMemoryHistory({ initialEntries: [`/threads/${threadId}`] }),
+    createMemoryHistory({ initialEntries: [`/bots/bot-1/threads/${threadId}`] }),
   );
   const container = document.createElement("div");
 

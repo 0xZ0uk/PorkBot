@@ -11,17 +11,20 @@
 .skip-link {
   position: absolute;
   left: var(--pb-space-md);
-  top: calc(-1 * var(--pb-space-xl));
+  top: var(--pb-space-md);
   z-index: 1;
   padding: var(--pb-space-sm) var(--pb-space-md);
   background: var(--pb-color-surface);
   color: var(--pb-color-foreground);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
+  /* Fully off-screen until focused; a negative `top` shorter than the link's
+     own height leaves a strip of it peeking above the shell. */
+  transform: translateY(calc(-100% - 2 * var(--pb-space-md)));
 }
 
 .skip-link:focus {
-  top: var(--pb-space-md);
+  transform: none;
 }
 
 .screen {
@@ -55,32 +58,345 @@
   color: var(--pb-color-muted);
 }
 
-.app-header {
+/*
+ * The workspace shell (slice 13.4; design record, Shell anatomy): a roster
+ * rail, the content pane and the context inspector at 64rem and wider, and one
+ * pane at a time below it. The narrow layout renders only the pane it shows —
+ * the sheets are not mounted-but-hidden — so the grid has no breakpoint rules
+ * to disagree with the JavaScript that chose the pane.
+ */
+
+.shell {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr) 19rem;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.shell[data-inspector="closed"] {
+  grid-template-columns: 16rem minmax(0, 1fr);
+}
+
+.shell[data-layout="narrow"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Rail */
+
+.shell-rail {
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pb-space-md);
-  padding: var(--pb-space-sm) var(--pb-space-md);
+  flex-direction: column;
   background: var(--pb-color-surface);
-  border-bottom: 1px solid var(--pb-color-border);
+  border-right: 1px solid var(--pb-color-border);
 }
 
-.app-header h1 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.app-header-actions {
+.shell-rail-inner {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  gap: var(--pb-space-md);
+  flex-direction: column;
 }
 
-.app-main {
+.shell-rail-head {
   display: flex;
   flex-direction: column;
   gap: var(--pb-space-md);
+  padding: var(--pb-space-md);
+}
+
+.shell-rail-brand {
+  font-size: var(--pb-type-heading-size);
+  line-height: var(--pb-type-heading-line-height);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.shell-rail-search {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  padding: 0 var(--pb-space-sm);
+  color: var(--pb-color-muted);
+  background: var(--pb-color-background);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-lg);
+}
+
+.shell-rail-search .shell-rail-search-input {
+  padding: var(--pb-space-sm) 0;
+  background: transparent;
+  border: 0;
+}
+
+.shell-rail-search .shell-rail-search-input:focus-visible {
+  outline: 2px solid var(--pb-color-accent);
+  outline-offset: 1px;
+}
+
+.shell-rail-roster {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-2xs);
+  padding: var(--pb-space-xs) var(--pb-space-sm);
+}
+
+.shell-rail-row {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-sm);
+  color: var(--pb-color-foreground);
+  text-decoration: none;
+  border-radius: var(--pb-radius-xl);
+}
+
+.shell-rail-row:hover {
+  background: var(--pb-color-raised);
+}
+
+.shell-rail-row[aria-current="page"] {
+  background: var(--pb-color-raised);
+  box-shadow: inset 0 0 0 1px var(--pb-color-border);
+}
+
+.shell-rail-row:focus-visible {
+  outline: 2px solid var(--pb-color-accent);
+  outline-offset: -2px;
+}
+
+.shell-rail-row-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-rail-row-name {
+  font-size: var(--pb-type-body-size);
+  line-height: var(--pb-type-body-line-height);
+  font-weight: 500;
+}
+
+.shell-rail-row-meta {
+  overflow: hidden;
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shell-rail-empty {
+  margin: 0;
+  padding: var(--pb-space-sm);
+  color: var(--pb-color-muted);
+}
+
+.shell-rail-roster .shell-rail-new {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  width: 100%;
+  padding: var(--pb-space-sm);
+  color: var(--pb-color-accent);
+  text-decoration: none;
+  border: 0;
+  border-radius: var(--pb-radius-lg);
+}
+
+.shell-rail-roster .shell-rail-new:hover {
+  background: var(--pb-color-raised);
+}
+
+.shell-rail-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-2xs);
+  padding: var(--pb-space-sm);
+  border-top: 1px solid var(--pb-color-border);
+}
+
+.shell-rail-foot .shell-rail-foot-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--pb-space-sm);
+  width: 100%;
+  padding: var(--pb-space-sm);
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-body-size);
+  line-height: var(--pb-type-body-line-height);
+  text-decoration: none;
+  border: 0;
+  border-radius: var(--pb-radius-lg);
+}
+
+.shell-rail-foot .shell-rail-foot-row:hover {
+  color: var(--pb-color-foreground);
+  background: var(--pb-color-raised);
+}
+
+.shell-rail-foot .shell-rail-foot-row .pb-count-badge {
+  margin-left: auto;
+}
+
+/* Content */
+
+.shell-content {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--pb-color-background);
+}
+
+.shell-header {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  min-height: 3.5rem;
+  padding: 0 var(--pb-space-lg);
+  border-bottom: 1px solid var(--pb-color-border);
+}
+
+.shell-header-title,
+.shell-header-name {
+  overflow: hidden;
+  font-size: var(--pb-type-title-size);
+  line-height: var(--pb-type-title-line-height);
+  font-weight: var(--pb-type-title-weight);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shell-header-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-header-meta {
+  overflow: hidden;
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shell-header .shell-header-toggle {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.shell-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--pb-space-lg);
+}
+
+/* Inspector */
+
+.shell-inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--pb-color-surface);
+  border-left: 1px solid var(--pb-color-border);
+}
+
+.shell-inspector-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-inspector-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-md);
+  border-bottom: 1px solid var(--pb-color-border);
+}
+
+.shell-inspector-head-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-inspector-head-name {
+  font-weight: 600;
+}
+
+.shell-inspector-head-meta {
+  overflow: hidden;
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shell-inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-md);
+  border-bottom: 1px solid var(--pb-color-border);
+}
+
+.shell-inspector-title {
+  margin: 0;
+  font-size: var(--pb-type-heading-size);
+  line-height: var(--pb-type-heading-line-height);
+  font-weight: var(--pb-type-heading-weight);
+}
+
+.shell-inspector-line {
+  margin: 0;
+}
+
+.shell-inspector-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-xs);
+}
+
+.shell-inspector-link {
+  padding: var(--pb-space-xs) 0;
+  color: var(--pb-color-accent);
+  text-decoration: none;
+  border-radius: var(--pb-radius-md);
+}
+
+.shell-inspector-link:hover {
+  text-decoration: underline;
+}
+
+.shell-inspector-link:focus-visible {
+  outline: 2px solid var(--pb-color-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 63.99rem) {
+  .shell-header {
+    padding: 0 var(--pb-space-sm);
+  }
+
+  .shell-pane {
+    padding: var(--pb-space-md);
+  }
 }
 
 .console {

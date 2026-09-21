@@ -597,6 +597,64 @@ function threadIdFromUrl(url: string): string {
   return match[1];
 }
 
+/**
+ * The shell's acceptance captures (slice 13.4): the workspace at 1280 and 390
+ * in both modes, plus the narrow switcher sheet. They land in
+ * `test-results/ui/` beside the release screenshot, which CI uploads and the
+ * pull request links; the narrow switcher is exercised here rather than only
+ * asserted, because it is the pane the shell replaces the rail with.
+ */
+async function captureWorkspace(
+  page: Page,
+  origin: string,
+  botId: string,
+  threadId: string,
+): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+  const threadUrl = `${origin}/bots/${botId}/threads/${threadId}`;
+
+  // One load, four captures: resizing and emulating the colour scheme do not
+  // navigate, so the console's stream stays open and the captures show the
+  // workspace rather than a reconnect line.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto(threadUrl);
+  await expect(page.getByText("Start offline task", { exact: true })).toBeVisible();
+
+  for (const mode of ["dark", "light"] as const) {
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.emulateMedia({ colorScheme: mode });
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: path.join(uiDir, `shell-${String(width)}-${mode}.png`) });
+
+      if (width === 390) {
+        const overflow = await page.evaluate(() => {
+          const pane = document.querySelector(".shell-pane");
+          return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
+        });
+
+        expect(overflow, "the content pane does not scroll horizontally at 390").toBe(0);
+      }
+    }
+  }
+
+  // The narrow switcher sheet, the pane the shell replaces the rail with. It
+  // is exercised here rather than only asserted, and the capture waits out the
+  // sheet's 180ms enter animation.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.getByRole("button", { name: "Switch bot" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(uiDir, "shell-390-switcher-dark.png") });
+  await page
+    .getByRole("dialog")
+    .getByRole("link", { name: /Offline Helper/ })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/bots/${botId}$`));
+}
+
 let harness: BrowserHarness | undefined;
 
 test.beforeAll(async () => {
@@ -712,7 +770,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
     await page.goto(current.origin);
     await page.getByRole("button", { name: "New thread" }).click();
-    await expect(page).toHaveURL(/\/threads\/[^/]+$/);
+    await expect(page).toHaveURL(/\/bots\/[^/]+\/threads\/[^/]+$/);
     const threadId = threadIdFromUrl(page.url());
     await page.getByLabel("Message", { exact: true }).fill("Start offline task");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -728,7 +786,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.getByRole("button", { name: "Approve" }).click();
     await expect(page.locator(".approval-status")).toHaveText("Approved");
 
-    await page.goto(`${current.origin}/threads/${threadId}`);
+    await page.goto(`${current.origin}/bots/${botId}/threads/${threadId}`);
     await page.getByLabel("Message", { exact: true }).fill("Steer this run");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByText("Steer this run", { exact: true })).toBeVisible();
@@ -741,6 +799,8 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
     await expect(page.getByText("shell", { exact: true })).toBeVisible();
     expect(await repositories.routines.listForBot(botId)).toHaveLength(1);
+
+    await captureWorkspace(page, current.origin, botId, threadId);
   } finally {
     if (!page.isClosed()) {
       await page.screenshot({ path: screenshotPath, fullPage: true });
