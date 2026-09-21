@@ -1,4 +1,4 @@
-import { Button, Field, Input } from "@porkbot/ui";
+import { BotAvatar, Button, Field, Input } from "@porkbot/ui";
 import { useState } from "react";
 import type {
   ComputerFileEntryView,
@@ -93,7 +93,10 @@ export function ComputerScreen({
   return (
     <section className="console" aria-busy={state.status === "loading"}>
       <header className="memory-header">
-        <h2>{state.bot.name}</h2>
+        <div className="bot-identity">
+          <BotAvatar id={state.bot.id} name={state.bot.name} color={state.bot.color} size={32} />
+          <h2>{state.bot.name}</h2>
+        </div>
       </header>
 
       {state.notice === null ? null : (

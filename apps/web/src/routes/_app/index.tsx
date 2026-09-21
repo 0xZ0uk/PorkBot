@@ -31,14 +31,30 @@ async function enrichBots(
 ): Promise<readonly BotListItem[]> {
   return Promise.all(
     bots.map(async (bot) => {
-      const [threads, computer] = await Promise.all([
+      const [threads, computer, avatarUrl] = await Promise.all([
         transport.listThreads(bot.id),
         readComputerHealth(transport, bot.id),
+        readAvatarUrl(transport, bot),
       ]);
 
-      return { bot, threads, computer, lastActivityAt: latestActivity(threads) };
+      return { bot, avatarUrl, threads, computer, lastActivityAt: latestActivity(threads) };
     }),
   );
+}
+
+async function readAvatarUrl(transport: BotsTransport, bot: Bot): Promise<string | null> {
+  if (bot.avatarKey === null) {
+    return null;
+  }
+
+  try {
+    const avatar = await transport.readAvatar(bot.id);
+    return `data:${avatar.contentType};base64,${avatar.data}`;
+  } catch {
+    // A missing object is treated like no avatar so the generated identity
+    // remains available while storage is repaired or an upload is retried.
+    return null;
+  }
 }
 
 function HomeRoute() {

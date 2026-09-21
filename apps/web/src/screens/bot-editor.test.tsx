@@ -22,11 +22,11 @@ afterEach(async () => {
   container.remove();
 });
 
-function props(bot = null as ReturnType<typeof fakeBot> | null) {
+function props(bot = null as ReturnType<typeof fakeBot> | null, avatarUrl: string | null = null) {
   return {
     bot,
     sections: [],
-    avatarUrl: null,
+    avatarUrl,
     computer: null,
     pending: false,
     notice: null,
@@ -41,6 +41,26 @@ function props(bot = null as ReturnType<typeof fakeBot> | null) {
 }
 
 describe("bot editor", () => {
+  it("previews the generated identity with the bot's colour field", async () => {
+    const screen = props({ ...fakeBot("bot-1", "Ada"), color: "#123456" });
+    await act(async () => root.render(<BotEditorScreen {...screen} />));
+
+    expect(container.querySelector(".pb-avatar svg")).not.toBeNull();
+    expect(container.querySelector(".pb-avatar")?.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelector(".pb-avatar")?.getAttribute("style")).toContain(
+      "--pb-avatar-color: #123456",
+    );
+  });
+
+  it("previews an uploaded avatar in place of the generated mark", async () => {
+    const screen = props(fakeBot("bot-1", "Ada"), "data:image/png;base64,ZmFrZQ==");
+    await act(async () => root.render(<BotEditorScreen {...screen} />));
+
+    expect(container.querySelector(".pb-avatar img")?.getAttribute("alt")).toBe("");
+    expect(container.querySelector(".pb-avatar svg")).toBeNull();
+    expect(container.textContent).toContain("Your uploaded avatar appears in the roster.");
+  });
+
   it("keeps an invalid create local and tells the operator what to do", async () => {
     const screen = props();
     await act(async () => root.render(<BotEditorScreen {...screen} />));

@@ -1,6 +1,6 @@
-import { Button } from "@porkbot/ui";
+import { BotAvatar, Button } from "@porkbot/ui";
 import { fileDownloadPath } from "@porkbot/contracts";
-import type { RunLiveness } from "@porkbot/contracts";
+import type { Bot, RunLiveness } from "@porkbot/contracts";
 import type { ThreadConsoleState } from "../console.ts";
 import { ToolCallEntry } from "./tool-call.tsx";
 
@@ -21,6 +21,9 @@ import { ToolCallEntry } from "./tool-call.tsx";
 
 export interface ThreadConsoleScreenProps {
   readonly state: ThreadConsoleState;
+  /** Optional until the shell supplies the selected bot to the console. */
+  readonly bot?: Bot;
+  readonly avatarUrl?: string | null;
   readonly onRetry: () => void;
   readonly onApprovalDecision?:
     | ((input: {
@@ -34,6 +37,8 @@ export interface ThreadConsoleScreenProps {
 
 export function ThreadConsoleScreen({
   state,
+  bot,
+  avatarUrl = null,
   onRetry,
   onApprovalDecision,
 }: ThreadConsoleScreenProps) {
@@ -71,6 +76,15 @@ export function ThreadConsoleScreen({
           {livenessLabel(liveness)}
         </p>
       )}
+      {bot === undefined ? null : (
+        <header className="thread-header">
+          <BotAvatar id={bot.id} name={bot.name} color={bot.color} imageUrl={avatarUrl} size={40} />
+          <div>
+            <h2>{bot.name}</h2>
+            <p className="muted">{bot.title || "Bot"}</p>
+          </div>
+        </header>
+      )}
       {state.entries.length === 0 ? (
         state.status === "ready" ? (
           <p className="muted">No messages yet.</p>
@@ -91,7 +105,20 @@ export function ThreadConsoleScreen({
                 key={entry.id}
                 className={entry.streaming ? "message message-streaming" : "message"}
               >
-                <span className="message-role muted">{entry.role === "user" ? "You" : "Bot"}</span>
+                <div className="message-attribution">
+                  {entry.role === "user" || bot === undefined ? null : (
+                    <BotAvatar
+                      id={bot.id}
+                      name={bot.name}
+                      color={bot.color}
+                      imageUrl={avatarUrl}
+                      size={24}
+                    />
+                  )}
+                  <span className="message-role muted">
+                    {entry.role === "user" ? "You" : (bot?.name ?? "Bot")}
+                  </span>
+                </div>
                 <p className="message-text">{entry.text}</p>
                 {entry.attachments.length === 0 ? null : (
                   <ul className="message-attachments">

@@ -42,6 +42,8 @@ export type ComputerHealth =
 
 export interface BotListItem {
   readonly bot: Bot;
+  /** A data URL for the stored avatar, or null for the generated identity. */
+  readonly avatarUrl: string | null;
   readonly threads: readonly Thread[];
   readonly lastActivityAt: string | null;
   readonly computer: ComputerHealth;
