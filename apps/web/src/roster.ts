@@ -180,6 +180,17 @@ async function readAvatarUrl(transport: RosterTransport, bot: Bot): Promise<stri
   }
 }
 
+/** The bot with this id anywhere in the roster, or null when it holds none. */
+export function findRosterBot(roster: Roster, botId: string | null): Bot | null {
+  if (botId === null) {
+    return null;
+  }
+
+  return (
+    [...roster.active, ...roster.archived].find((entry) => entry.bot.id === botId)?.bot ?? null
+  );
+}
+
 export interface RosterGroup {
   readonly id: string;
   readonly name: string | null;

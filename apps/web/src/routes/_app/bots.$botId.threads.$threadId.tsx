@@ -1,4 +1,5 @@
 import { createFileRoute, getRouteApi, useRouter } from "@tanstack/react-router";
+import { findRosterBot } from "../../roster.ts";
 import { ComposerScreen } from "../../screens/composer.tsx";
 import { ThreadConsoleScreen } from "../../screens/thread-console.tsx";
 import { stateFromLiveness } from "../../shell/bot-state.ts";
@@ -40,11 +41,11 @@ const appRoute = getRouteApi("/_app");
 function ThreadConsoleRoute() {
   const { botId, threadId } = Route.useParams();
   const { threads, approvals } = Route.useRouteContext();
-  const { bots } = appRoute.useLoaderData();
+  const { roster } = appRoute.useLoaderData();
   const router = useRouter();
   const { state, retry, noteSent, stopRun } = useThreadConsole({ transport: threads, threadId });
   const composer = useComposer(threads, threadId, noteSent);
-  const bot = bots.find((candidate) => candidate.id === botId);
+  const bot = findRosterBot(roster, botId);
 
   useShellHeaderState(stateFromLiveness(state.liveness));
 
@@ -53,7 +54,7 @@ function ThreadConsoleRoute() {
       <ThreadConsoleScreen
         botId={botId}
         state={state}
-        {...(bot === undefined ? {} : { bot })}
+        {...(bot === null ? {} : { bot })}
         onRetry={retry}
         {...(approvals === undefined
           ? {}
@@ -68,7 +69,7 @@ function ThreadConsoleRoute() {
       />
       <ComposerScreen
         state={composer.state}
-        {...(bot === undefined ? {} : { botName: bot.name })}
+        {...(bot === null ? {} : { botName: bot.name })}
         canStop={state.activeRunId !== null}
         stopping={state.stopping}
         stopError={state.stopError}
