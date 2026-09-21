@@ -11,16 +11,17 @@ import { Link } from "@tanstack/react-router";
  */
 
 export interface ToolResultScreenProps {
+  readonly botId: string;
   readonly threadId: string;
   readonly tool: string;
   readonly result: unknown;
 }
 
-export function ToolResultScreen({ threadId, tool, result }: ToolResultScreenProps) {
+export function ToolResultScreen({ botId, threadId, tool, result }: ToolResultScreenProps) {
   return (
     <section className="console">
       <p className="muted">
-        <Link to="/threads/$threadId" params={{ threadId }}>
+        <Link to="/bots/$botId/threads/$threadId" params={{ botId, threadId }}>
           Back to thread
         </Link>
       </p>

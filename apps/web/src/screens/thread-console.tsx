@@ -20,6 +20,7 @@ import { ToolCallEntry } from "./tool-call.tsx";
  */
 
 export interface ThreadConsoleScreenProps {
+  readonly botId: string;
   readonly state: ThreadConsoleState;
   /** Optional until the shell supplies the selected bot to the console. */
   readonly bot?: Bot;
@@ -36,6 +37,7 @@ export interface ThreadConsoleScreenProps {
 }
 
 export function ThreadConsoleScreen({
+  botId,
   state,
   bot,
   avatarUrl = null,
@@ -95,6 +97,7 @@ export function ThreadConsoleScreen({
             entry.kind === "tool" ? (
               <ToolCallEntry
                 key={entry.id}
+                botId={botId}
                 threadId={state.threadId}
                 runId={entry.runId}
                 call={entry.call}

@@ -282,7 +282,7 @@ describe("the console routes", () => {
     expect(container.textContent).toContain("Ada");
     expect(container.textContent).toContain("New thread");
 
-    const link = container.querySelector("a[href='/threads/thread-1']");
+    const link = container.querySelector("a[href='/bots/bot-1/threads/thread-1']");
 
     expect(link).not.toBeNull();
 
@@ -316,7 +316,7 @@ describe("the console routes", () => {
         connections: scriptedConnectionsTransport(),
         computer: scriptedComputerTransport(),
       },
-      createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
+      createMemoryHistory({ initialEntries: ["/bots/bot-1/threads/thread-1"] }),
     );
 
     await act(async () => {
@@ -337,6 +337,60 @@ describe("the console routes", () => {
     events.push(runCompleted("thread-1", "run-1", 4, "message-1"));
 
     await until(() => container.textContent?.includes("Hello") === true, "the completed text");
+  });
+
+  it("reports the thread's run state to the shell's header", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({
+      bots: [fakeBot("bot-1", "Ada")],
+      threads: [fakeThread("thread-1", "bot-1")],
+      events: events.procedure,
+      runs: {
+        "run-1": {
+          id: "run-1",
+          status: "running",
+          liveness: {
+            state: "working",
+            tool: "shell",
+            heartbeatLagMs: 1_000,
+            sinceProgressMs: 500,
+          },
+        },
+      },
+    });
+    const auth = fakeTransport(async () => actor);
+    const session = createSessionController({ transport: auth });
+    const router = createAppRouter(
+      {
+        auth,
+        session,
+        bots: scriptedBotsTransport(transport),
+        threads: transport,
+        memory: scriptedMemoryTransport(),
+        usage: scriptedUsageTransport(),
+        connections: scriptedConnectionsTransport(),
+        computer: scriptedComputerTransport(),
+      },
+      createMemoryHistory({ initialEntries: ["/bots/bot-1/threads/thread-1"] }),
+    );
+
+    await act(async () => {
+      await router.load();
+    });
+    await render(<RouterProvider router={router} />);
+    await until(() => events.calls.length === 1, "the subscription");
+
+    expect(container.querySelector(".shell-header [data-state]")).toBeNull();
+
+    events.push(runStarted("thread-1", "run-1", 1));
+
+    await until(
+      () => container.querySelector(".shell-header [data-state='working']") !== null,
+      "the header's working chip",
+    );
+    expect(container.querySelector(".shell-rail-row[aria-current='page']")?.textContent).toContain(
+      "Ada",
+    );
   });
 
   it("sends a message with an attachment from the composer, chips and all", async () => {
@@ -390,7 +444,7 @@ describe("the console routes", () => {
         connections: scriptedConnectionsTransport(),
         computer: scriptedComputerTransport(),
       },
-      createMemoryHistory({ initialEntries: ["/threads/thread-1"] }),
+      createMemoryHistory({ initialEntries: ["/bots/bot-1/threads/thread-1"] }),
     );
 
     await act(async () => {
@@ -475,7 +529,7 @@ describe("the console routes", () => {
         computer: scriptedComputerTransport(),
       },
       createMemoryHistory({
-        initialEntries: ["/threads/thread-1/tool-results/run-1/call-1"],
+        initialEntries: ["/bots/bot-1/threads/thread-1/tool-results/run-1/call-1"],
       }),
     );
 
@@ -487,7 +541,7 @@ describe("the console routes", () => {
     expect(container.textContent).toContain("Tool result");
     expect(container.textContent).toContain("shell");
     expect(container.textContent).toContain('"stdout": "the whole output"');
-    expect(container.querySelector("a[href='/threads/thread-1']")?.textContent).toBe(
+    expect(container.querySelector("a[href='/bots/bot-1/threads/thread-1']")?.textContent).toBe(
       "Back to thread",
     );
   });
@@ -507,7 +561,7 @@ describe("the console routes", () => {
         computer: scriptedComputerTransport(),
       },
       createMemoryHistory({
-        initialEntries: ["/threads/thread-1/tool-results/run-1/call-missing"],
+        initialEntries: ["/bots/bot-1/threads/thread-1/tool-results/run-1/call-missing"],
       }),
     );
 

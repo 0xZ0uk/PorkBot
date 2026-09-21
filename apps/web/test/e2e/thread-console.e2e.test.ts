@@ -100,7 +100,7 @@ interface MountedConsole {
  */
 async function mountConsole(
   api: ScriptedThreadApi,
-  path = `/threads/${threadId}`,
+  path = `/bots/bot-1/threads/${threadId}`,
 ): Promise<MountedConsole> {
   const auth = fakeAuth();
   const session = createSessionController({ transport: auth });
@@ -336,7 +336,7 @@ describe("the streaming console over the real wire", () => {
       const link = calls[0]?.querySelector("a.tool-call-artifact");
 
       expect(link?.getAttribute("href")).toBe(
-        `/threads/${threadId}/tool-results/${runId}/${callId}`,
+        `/bots/bot-1/threads/${threadId}/tool-results/${runId}/${callId}`,
       );
     } finally {
       await view.unmount();
@@ -346,7 +346,7 @@ describe("the streaming console over the real wire", () => {
     // carried and the full value the artifact holds are different values.
     const artifact = await mountConsole(
       api,
-      `/threads/${threadId}/tool-results/${runId}/${callId}`,
+      `/bots/bot-1/threads/${threadId}/tool-results/${runId}/${callId}`,
     );
 
     try {

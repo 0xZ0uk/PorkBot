@@ -30,6 +30,7 @@ import { useState } from "react";
  */
 
 export interface ToolCallEntryProps {
+  readonly botId: string;
   readonly threadId: string;
   /** The run the call belongs to; the artifact read is scoped by it. */
   readonly runId: string;
@@ -46,13 +47,24 @@ export interface ToolCallEntryProps {
 }
 
 /** The artifact view's path: the same triple the API read is addressed by. */
-export function toolResultPath(threadId: string, runId: string, callId: string): string {
-  return `/threads/${encodeURIComponent(threadId)}/tool-results/${encodeURIComponent(
-    runId,
-  )}/${encodeURIComponent(callId)}`;
+export function toolResultPath(
+  botId: string,
+  threadId: string,
+  runId: string,
+  callId: string,
+): string {
+  return `/bots/${encodeURIComponent(botId)}/threads/${encodeURIComponent(
+    threadId,
+  )}/tool-results/${encodeURIComponent(runId)}/${encodeURIComponent(callId)}`;
 }
 
-export function ToolCallEntry({ threadId, runId, call, onApprovalDecision }: ToolCallEntryProps) {
+export function ToolCallEntry({
+  botId,
+  threadId,
+  runId,
+  call,
+  onApprovalDecision,
+}: ToolCallEntryProps) {
   const failed = call.status === "failed";
   const pending = call.approval?.status === "pending";
   const artifact = call.resultArtifact;
@@ -90,7 +102,7 @@ export function ToolCallEntry({ threadId, runId, call, onApprovalDecision }: Too
             {artifact === undefined ? null : (
               <a
                 className="tool-call-artifact"
-                href={toolResultPath(threadId, runId, artifact.callId)}
+                href={toolResultPath(botId, threadId, runId, artifact.callId)}
               >
                 Full result ({formatBytes(artifact.bytes)})
               </a>

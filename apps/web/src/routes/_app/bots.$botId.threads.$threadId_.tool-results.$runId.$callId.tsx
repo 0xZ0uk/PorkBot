@@ -11,9 +11,13 @@ import { ToolResultScreen } from "../../screens/tool-result.tsx";
  *
  * The file name's trailing underscore makes this a sibling of the console
  * route rather than a child of it: the console route renders no outlet, so a
- * nested artifact would have appeared inside the transcript.
+ * nested artifact would have appeared inside the transcript. The bot id is in
+ * the path with the thread (slice 13.4) so the workspace's rail, header and
+ * inspector are the same on the artifact as on the thread it came from.
  */
-export const Route = createFileRoute("/_app/threads/$threadId_/tool-results/$runId/$callId")({
+export const Route = createFileRoute(
+  "/_app/bots/$botId/threads/$threadId_/tool-results/$runId/$callId",
+)({
   loader: ({ context, params }) =>
     context.threads.toolResult({
       threadId: params.threadId,
@@ -26,9 +30,9 @@ export const Route = createFileRoute("/_app/threads/$threadId_/tool-results/$run
 
 function ToolResultRoute() {
   const { tool, result } = Route.useLoaderData();
-  const { threadId } = Route.useParams();
+  const { botId, threadId } = Route.useParams();
 
-  return <ToolResultScreen threadId={threadId} tool={tool} result={result} />;
+  return <ToolResultScreen botId={botId} threadId={threadId} tool={tool} result={result} />;
 }
 
 function ToolResultUnavailable({ reset }: ErrorComponentProps) {

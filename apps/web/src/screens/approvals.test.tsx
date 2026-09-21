@@ -70,7 +70,9 @@ describe("the approvals screen", () => {
     expect(container.textContent).toContain("web_fetch");
     expect(container.textContent).toContain("https://example.invalid");
     expect(container.textContent).toContain("[redacted]");
-    expect(container.querySelector("a[href='/threads/thread-1?run=run-1']")).not.toBeNull();
+    expect(
+      container.querySelector("a[href='/bots/bot-1/threads/thread-1?run=run-1']"),
+    ).not.toBeNull();
 
     const deny = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "Deny",

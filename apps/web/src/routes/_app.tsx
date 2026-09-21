@@ -1,19 +1,17 @@
-import {
-  Link,
-  Outlet,
-  createFileRoute,
-  redirect,
-  useNavigate,
-  useRouter,
-} from "@tanstack/react-router";
-import { Button } from "@porkbot/ui";
+import { Outlet, createFileRoute, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 import { UnavailableScreen } from "../screens/unavailable.tsx";
+import { Workspace } from "../shell/workspace.tsx";
 
 /**
- * The layout every signed-in screen renders in. Its guard is the shell's
- * authorization: the session is resolved before a child route renders, a
- * signed-out visitor is redirected to sign-in, and a session read that failed
- * renders the unavailable screen rather than a signed-out lie.
+ * The layout every signed-in screen renders in: the three-pane workspace, with
+ * the roster and the pending approvals it needs (slice 13.4).
+ *
+ * Its guard is the shell's authorization: the session is resolved before a
+ * child route renders, a signed-out visitor is redirected to sign-in, and a
+ * session read that failed renders the unavailable screen rather than a
+ * signed-out lie. The roster read is deliberately not fatal — a rail that
+ * cannot list bots must not take the content pane down with it — so a failure
+ * becomes an empty rail that says so and offers the retry.
  */
 export const Route = createFileRoute("/_app")({
   beforeLoad: async ({ context }) => {
@@ -25,11 +23,26 @@ export const Route = createFileRoute("/_app")({
 
     return { sessionState: session };
   },
+  loader: async ({ context }) => {
+    try {
+      const [bots, pendingApprovals] = await Promise.all([
+        context.bots.listBots("active"),
+        context.approvals === undefined
+          ? Promise.resolve([])
+          : context.approvals.list({ status: "pending" }),
+      ]);
+
+      return { bots, pendingApprovals, rosterFailed: false };
+    } catch {
+      return { bots: [], pendingApprovals: [], rosterFailed: true };
+    }
+  },
   component: AppLayout,
 });
 
 function AppLayout() {
   const { session, sessionState } = Route.useRouteContext();
+  const { bots, pendingApprovals, rosterFailed } = Route.useLoaderData();
   const navigate = useNavigate();
   const router = useRouter();
 
@@ -56,28 +69,18 @@ function AppLayout() {
   }
 
   return (
-    <>
-      <header className="app-header">
-        <h1>
-          <Link to="/">PorkBot</Link>
-        </h1>
-        <div className="app-header-actions">
-          <Link to="/approvals">Approvals</Link>
-          <Link to="/settings">Settings</Link>
-          <Button
-            onClick={() => {
-              void signOut();
-            }}
-          >
-            Sign out
-          </Button>
-        </div>
-      </header>
-      {/* Focusable so the skip link and programmatic focus land somewhere
-          meaningful; the signed-in screens render inside it. */}
-      <main id="main" className="app-main" tabIndex={-1}>
-        <Outlet />
-      </main>
-    </>
+    <Workspace
+      bots={bots}
+      pendingApprovals={pendingApprovals}
+      rosterFailed={rosterFailed}
+      onRetryRoster={() => {
+        void router.invalidate();
+      }}
+      onSignOut={() => {
+        void signOut();
+      }}
+    >
+      <Outlet />
+    </Workspace>
   );
 }

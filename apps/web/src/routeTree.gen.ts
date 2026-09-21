@@ -23,12 +23,13 @@ import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings.mcp'
 import { Route as AppSettingsNotificationsRouteImport } from './routes/_app/settings.notifications'
 import { Route as AppSettingsSecretsRouteImport } from './routes/_app/settings.secrets'
 import { Route as AppSettingsUsageRouteImport } from './routes/_app/settings.usage'
-import { Route as AppThreadsThreadIdRouteImport } from './routes/_app/threads.$threadId'
+import { Route as AppBotsBotIdIndexRouteImport } from './routes/_app/bots.$botId.index'
 import { Route as AppBotsBotIdComputerRouteImport } from './routes/_app/bots.$botId.computer'
 import { Route as AppBotsBotIdEditRouteImport } from './routes/_app/bots.$botId.edit'
 import { Route as AppBotsBotIdMemoryRouteImport } from './routes/_app/bots.$botId.memory'
 import { Route as AppBotsBotIdUsageRouteImport } from './routes/_app/bots.$botId.usage'
-import { Route as AppThreadsThreadIdToolResultsRunIdCallIdRouteImport } from './routes/_app/threads.$threadId_.tool-results.$runId.$callId'
+import { Route as AppBotsBotIdThreadsThreadIdRouteImport } from './routes/_app/bots.$botId.threads.$threadId'
+import { Route as AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRouteImport } from './routes/_app/bots.$botId.threads.$threadId_.tool-results.$runId.$callId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -99,9 +100,9 @@ const AppSettingsUsageRoute = AppSettingsUsageRouteImport.update({
   path: '/settings/usage',
   getParentRoute: () => AppRoute,
 } as any)
-const AppThreadsThreadIdRoute = AppThreadsThreadIdRouteImport.update({
-  id: '/threads/$threadId',
-  path: '/threads/$threadId',
+const AppBotsBotIdIndexRoute = AppBotsBotIdIndexRouteImport.update({
+  id: '/bots/$botId/',
+  path: '/bots/$botId/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBotsBotIdComputerRoute = AppBotsBotIdComputerRouteImport.update({
@@ -124,10 +125,16 @@ const AppBotsBotIdUsageRoute = AppBotsBotIdUsageRouteImport.update({
   path: '/bots/$botId/usage',
   getParentRoute: () => AppRoute,
 } as any)
-const AppThreadsThreadIdToolResultsRunIdCallIdRoute =
-  AppThreadsThreadIdToolResultsRunIdCallIdRouteImport.update({
-    id: '/threads/$threadId_/tool-results/$runId/$callId',
-    path: '/threads/$threadId/tool-results/$runId/$callId',
+const AppBotsBotIdThreadsThreadIdRoute =
+  AppBotsBotIdThreadsThreadIdRouteImport.update({
+    id: '/bots/$botId/threads/$threadId',
+    path: '/bots/$botId/threads/$threadId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute =
+  AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRouteImport.update({
+    id: '/bots/$botId/threads/$threadId_/tool-results/$runId/$callId',
+    path: '/bots/$botId/threads/$threadId/tool-results/$runId/$callId',
     getParentRoute: () => AppRoute,
   } as any)
 
@@ -143,13 +150,14 @@ export interface FileRoutesByFullPath {
   '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/secrets': typeof AppSettingsSecretsRoute
   '/settings/usage': typeof AppSettingsUsageRoute
-  '/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
-  '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
+  '/bots/$botId/': typeof AppBotsBotIdIndexRoute
+  '/bots/$botId/threads/$threadId': typeof AppBotsBotIdThreadsThreadIdRoute
+  '/bots/$botId/threads/$threadId/tool-results/$runId/$callId': typeof AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
@@ -163,13 +171,14 @@ export interface FileRoutesByTo {
   '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/secrets': typeof AppSettingsSecretsRoute
   '/settings/usage': typeof AppSettingsUsageRoute
-  '/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/settings': typeof AppSettingsIndexRoute
   '/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
-  '/threads/$threadId/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
+  '/bots/$botId': typeof AppBotsBotIdIndexRoute
+  '/bots/$botId/threads/$threadId': typeof AppBotsBotIdThreadsThreadIdRoute
+  '/bots/$botId/threads/$threadId/tool-results/$runId/$callId': typeof AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -186,13 +195,14 @@ export interface FileRoutesById {
   '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
   '/_app/settings/secrets': typeof AppSettingsSecretsRoute
   '/_app/settings/usage': typeof AppSettingsUsageRoute
-  '/_app/threads/$threadId': typeof AppThreadsThreadIdRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/bots/$botId/computer': typeof AppBotsBotIdComputerRoute
   '/_app/bots/$botId/edit': typeof AppBotsBotIdEditRoute
   '/_app/bots/$botId/memory': typeof AppBotsBotIdMemoryRoute
   '/_app/bots/$botId/usage': typeof AppBotsBotIdUsageRoute
-  '/_app/threads/$threadId_/tool-results/$runId/$callId': typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
+  '/_app/bots/$botId/': typeof AppBotsBotIdIndexRoute
+  '/_app/bots/$botId/threads/$threadId': typeof AppBotsBotIdThreadsThreadIdRoute
+  '/_app/bots/$botId/threads/$threadId_/tool-results/$runId/$callId': typeof AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -208,13 +218,14 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/secrets'
     | '/settings/usage'
-    | '/threads/$threadId'
     | '/settings/'
     | '/bots/$botId/computer'
     | '/bots/$botId/edit'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
-    | '/threads/$threadId/tool-results/$runId/$callId'
+    | '/bots/$botId/'
+    | '/bots/$botId/threads/$threadId'
+    | '/bots/$botId/threads/$threadId/tool-results/$runId/$callId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -228,13 +239,14 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/secrets'
     | '/settings/usage'
-    | '/threads/$threadId'
     | '/settings'
     | '/bots/$botId/computer'
     | '/bots/$botId/edit'
     | '/bots/$botId/memory'
     | '/bots/$botId/usage'
-    | '/threads/$threadId/tool-results/$runId/$callId'
+    | '/bots/$botId'
+    | '/bots/$botId/threads/$threadId'
+    | '/bots/$botId/threads/$threadId/tool-results/$runId/$callId'
   id:
     | '__root__'
     | '/_app'
@@ -250,13 +262,14 @@ export interface FileRouteTypes {
     | '/_app/settings/notifications'
     | '/_app/settings/secrets'
     | '/_app/settings/usage'
-    | '/_app/threads/$threadId'
     | '/_app/settings/'
     | '/_app/bots/$botId/computer'
     | '/_app/bots/$botId/edit'
     | '/_app/bots/$botId/memory'
     | '/_app/bots/$botId/usage'
-    | '/_app/threads/$threadId_/tool-results/$runId/$callId'
+    | '/_app/bots/$botId/'
+    | '/_app/bots/$botId/threads/$threadId'
+    | '/_app/bots/$botId/threads/$threadId_/tool-results/$runId/$callId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -364,11 +377,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsUsageRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/threads/$threadId': {
-      id: '/_app/threads/$threadId'
-      path: '/threads/$threadId'
-      fullPath: '/threads/$threadId'
-      preLoaderRoute: typeof AppThreadsThreadIdRouteImport
+    '/_app/bots/$botId/': {
+      id: '/_app/bots/$botId/'
+      path: '/bots/$botId'
+      fullPath: '/bots/$botId/'
+      preLoaderRoute: typeof AppBotsBotIdIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/bots/$botId/computer': {
@@ -399,11 +412,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBotsBotIdUsageRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/threads/$threadId_/tool-results/$runId/$callId': {
-      id: '/_app/threads/$threadId_/tool-results/$runId/$callId'
-      path: '/threads/$threadId/tool-results/$runId/$callId'
-      fullPath: '/threads/$threadId/tool-results/$runId/$callId'
-      preLoaderRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRouteImport
+    '/_app/bots/$botId/threads/$threadId': {
+      id: '/_app/bots/$botId/threads/$threadId'
+      path: '/bots/$botId/threads/$threadId'
+      fullPath: '/bots/$botId/threads/$threadId'
+      preLoaderRoute: typeof AppBotsBotIdThreadsThreadIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/bots/$botId/threads/$threadId_/tool-results/$runId/$callId': {
+      id: '/_app/bots/$botId/threads/$threadId_/tool-results/$runId/$callId'
+      path: '/bots/$botId/threads/$threadId/tool-results/$runId/$callId'
+      fullPath: '/bots/$botId/threads/$threadId/tool-results/$runId/$callId'
+      preLoaderRoute: typeof AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRouteImport
       parentRoute: typeof AppRoute
     }
   }
@@ -419,13 +439,14 @@ interface AppRouteChildren {
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsSecretsRoute: typeof AppSettingsSecretsRoute
   AppSettingsUsageRoute: typeof AppSettingsUsageRoute
-  AppThreadsThreadIdRoute: typeof AppThreadsThreadIdRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
   AppBotsBotIdComputerRoute: typeof AppBotsBotIdComputerRoute
   AppBotsBotIdEditRoute: typeof AppBotsBotIdEditRoute
   AppBotsBotIdMemoryRoute: typeof AppBotsBotIdMemoryRoute
   AppBotsBotIdUsageRoute: typeof AppBotsBotIdUsageRoute
-  AppThreadsThreadIdToolResultsRunIdCallIdRoute: typeof AppThreadsThreadIdToolResultsRunIdCallIdRoute
+  AppBotsBotIdIndexRoute: typeof AppBotsBotIdIndexRoute
+  AppBotsBotIdThreadsThreadIdRoute: typeof AppBotsBotIdThreadsThreadIdRoute
+  AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute: typeof AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -438,14 +459,15 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsSecretsRoute: AppSettingsSecretsRoute,
   AppSettingsUsageRoute: AppSettingsUsageRoute,
-  AppThreadsThreadIdRoute: AppThreadsThreadIdRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
   AppBotsBotIdComputerRoute: AppBotsBotIdComputerRoute,
   AppBotsBotIdEditRoute: AppBotsBotIdEditRoute,
   AppBotsBotIdMemoryRoute: AppBotsBotIdMemoryRoute,
   AppBotsBotIdUsageRoute: AppBotsBotIdUsageRoute,
-  AppThreadsThreadIdToolResultsRunIdCallIdRoute:
-    AppThreadsThreadIdToolResultsRunIdCallIdRoute,
+  AppBotsBotIdIndexRoute: AppBotsBotIdIndexRoute,
+  AppBotsBotIdThreadsThreadIdRoute: AppBotsBotIdThreadsThreadIdRoute,
+  AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute:
+    AppBotsBotIdThreadsThreadIdToolResultsRunIdCallIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
