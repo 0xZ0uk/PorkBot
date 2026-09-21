@@ -188,6 +188,10 @@ services:
       # The worker's own role: read the run state it executes, own the job
       # queue's schema, and no domain write.
       DATABASE_URL: postgres://porkbot_worker:${PORKBOT_WORKER_DB_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
+      # Live runs resolve the same encrypted provider credentials the API
+      # stores; the worker needs the same keyring, never a provider key itself.
+      PORKBOT_CREDENTIAL_KEYS: ${PORKBOT_CREDENTIAL_KEYS:?}
+      PORKBOT_CREDENTIAL_ACTIVE_KEY: ${PORKBOT_CREDENTIAL_ACTIVE_KEY:?}
       # Where run-liveness notification links point. Required: a notification
       # whose link goes nowhere is worse than none.
       PORKBOT_WEB_ORIGIN: ${PORKBOT_WEB_ORIGIN:?}

@@ -1,6 +1,7 @@
 import { parseCronItems, run } from "graphile-worker";
 import type { CronItem, Runner } from "graphile-worker";
 import type { NotificationProvider } from "@porkbot/adapter-kit";
+import type { CredentialKeyring } from "@porkbot/db";
 import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
 import { createJobRegistry, defineJob } from "./job-registry.ts";
@@ -78,6 +79,8 @@ export interface WorkerOptions {
    */
   readonly executeRun: RunExecutor;
   readonly logger: Logger;
+  /** Unlocks the stored provider credentials used by live runs. */
+  readonly credentialKeys?: CredentialKeyring;
   /** Jobs Graphile may run at once. Defaults to 4. */
   readonly concurrency?: number;
   /** How long Graphile waits between polls, in milliseconds. Defaults to 2 s. */
@@ -121,7 +124,14 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
     options.runNotifications === undefined ? {} : { runNotifications: options.runNotifications };
   const registry = createJobRegistry({
     jobs: [
-      defineJob(runExecuteJob(options.executeRun, notifications)),
+      defineJob(
+        runExecuteJob(options.executeRun, {
+          ...notifications,
+          ...(options.credentialKeys === undefined
+            ? {}
+            : { credentialKeys: options.credentialKeys }),
+        }),
+      ),
       defineJob(leaseWatchdogJob(notifications)),
       defineJob(routineTickJob()),
       defineJob(

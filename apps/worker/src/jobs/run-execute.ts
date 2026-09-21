@@ -1,6 +1,6 @@
 import { decideReclaim, reclaimFailureMessage } from "@porkbot/core";
 import { createRepositories, expiredLeaseReason } from "@porkbot/db";
-import type { RunRecord, SystemActor, SystemRepositories } from "@porkbot/db";
+import type { CredentialKeyring, RunRecord, SystemActor, SystemRepositories } from "@porkbot/db";
 import { NotFoundError } from "@porkbot/effect";
 import type { Logger } from "@porkbot/logging";
 import { JobPayloadError } from "../job-registry.ts";
@@ -130,6 +130,8 @@ export interface RunExecution {
 export type RunExecutor = (execution: RunExecution) => Promise<void>;
 
 export interface RunExecuteJobOptions {
+  /** The same encrypted-credential keyring the API writes with. */
+  readonly credentialKeys?: CredentialKeyring;
   /**
    * The E8 delivery path (slice 8.7). A reclaimed run with nothing to resume is
    * failed here, and its timeout notification is the same one the watchdog
@@ -151,7 +153,11 @@ export function runExecuteJob(
 
       await context.withPgClient(async (client) => {
         const actor = systemActorForJob({ jobId: context.jobId, spaceId: payload.spaceId });
-        const repositories = createRepositories(actor, client);
+        const repositories = createRepositories(actor, client, {
+          ...(options.credentialKeys === undefined
+            ? {}
+            : { credentialKeys: options.credentialKeys }),
+        });
         const run = await findRun(repositories, payload.runId, logger);
 
         if (run === undefined) {

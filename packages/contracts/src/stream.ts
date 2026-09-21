@@ -21,6 +21,8 @@ import { ORPCError } from "./errors.ts";
  * answers — is rethrown, because retrying a cursor the server rejected would
  * loop forever. The attempt counter resets only when a frame is delivered, so
  * a server accepting connections that immediately end still backs off.
+ * Connection state is different: once the procedure has accepted the
+ * subscription, an idle thread is live even with no event to deliver yet.
  *
  * The loop is also the one authority on connection state: `onState` reports
  * `connecting`, `live`, `reconnecting` and `resumed` as they happen, so a
@@ -41,14 +43,11 @@ export interface ThreadEventsCallOptions {
 
 /**
  * The connection's phase, as a surface renders it. `connecting` is an attempt
- * before its first frame — the initial connection and every reconnect attempt
- * alike; `live` is a connection delivering frames with no earlier failed
- * attempt or ended stream; `reconnecting` is the backoff wait after one; and
- * `resumed` is the next connection delivering frames after it, so "the stream
- * came back" is an observable rather than an inference from timing. A first
- * connection that fails before any frame and a retry that delivers is
- * `resumed` too: from this client's side the stream was down and came back,
- * whether or not a frame had arrived before the drop.
+ * the server has not accepted yet; `live` is an accepted first connection;
+ * `reconnecting` is the backoff wait after one; and `resumed` is the next
+ * accepted connection after it. Acceptance, rather than the first event,
+ * decides `live`: an idle thread is still connected when it has no frame to
+ * send.
  */
 export type ThreadSubscriptionState = "connecting" | "live" | "reconnecting" | "resumed";
 
@@ -99,16 +98,16 @@ export async function* subscribeThreadEvents(
   while (!aborted()) {
     onState?.("connecting");
 
-    // Whether this attempt has delivered a frame yet. A connection that opens
-    // and ends without one was never live, so it must not report `live` and
-    // then `reconnecting` for what was really a single failed attempt.
-    let delivered = false;
-
     try {
       const stream = await events(input, {
         ...(signal === undefined ? {} : { signal }),
         ...(lastEventId === undefined ? {} : { lastEventId }),
       });
+
+      // Resolving the procedure means the server accepted the subscription.
+      // A new or idle thread may correctly hold it open without yielding a
+      // frame, so frame timing cannot decide whether the connection is live.
+      onState?.(dropped ? "resumed" : "live");
 
       for await (const event of stream) {
         const id = getEventMeta(event)?.id;
@@ -116,11 +115,6 @@ export async function* subscribeThreadEvents(
         if (id !== undefined) {
           lastEventId = id;
           attempt = 0;
-        }
-
-        if (!delivered) {
-          delivered = true;
-          onState?.(dropped ? "resumed" : "live");
         }
 
         yield event;

@@ -94,6 +94,8 @@ export type { Actor, SpaceMemberRole, SystemActor, UserActor } from "./actor.ts"
 // `createRepositories` through this type rather than naming `pg`.
 export type { Queryable } from "./queryable.ts";
 export { createRepositories } from "./repositories.ts";
+export { findQueuedRunDispatches, queuedRunDispatchBatchSize } from "./run-dispatch.ts";
+export type { QueuedRunDispatch } from "./run-dispatch.ts";
 export type {
   BotListScope,
   BotPatch,

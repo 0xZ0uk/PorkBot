@@ -53,15 +53,19 @@ export interface ThreadEventsServiceOptions {
   readonly cursors: CursorCodec;
   /** Events read per query; also the page size that walks a backlog. */
   readonly pageSize?: number;
+  /** Maximum latency for a persisted event whose fanout signal was lost. */
+  readonly pollIntervalMs?: number;
 }
 
 export const defaultEventPageSize = 100;
+export const defaultEventPollIntervalMs = 1_000;
 
 export function createThreadEventsService(
   options: ThreadEventsServiceOptions,
 ): ThreadEventsService {
   const { realtime, cursors } = options;
   const pageSize = options.pageSize ?? defaultEventPageSize;
+  const pollIntervalMs = options.pollIntervalMs ?? defaultEventPollIntervalMs;
 
   async function* replay(
     subscription: ThreadSubscription,
@@ -73,6 +77,7 @@ export function createThreadEventsService(
       userId: subscription.actor.userId,
     };
     const signals = realtime.subscribe(subscription.threadId, fromSeq)[Symbol.asyncIterator]();
+    let pendingSignal = signals.next();
     let lastSeq = fromSeq;
 
     try {
@@ -113,10 +118,17 @@ export function createThreadEventsService(
           continue;
         }
 
-        const signal = await nextSignal(signals, subscription.signal);
+        const wake = await nextSignal(pendingSignal, subscription.signal, pollIntervalMs);
 
-        if (signal.done) {
+        if (wake.kind === "aborted" || (wake.kind === "signal" && wake.result.done)) {
           return;
+        }
+
+        // Keep the same outstanding iterator read after a poll timeout. A
+        // second `next()` would overwrite an in-process waiter's resolver and
+        // turn a later signal into a leak instead of a wake-up.
+        if (wake.kind === "signal") {
+          pendingSignal = signals.next();
         }
       }
     } finally {
@@ -175,33 +187,47 @@ async function membershipActive(subscription: ThreadSubscription): Promise<boole
  * would otherwise stay parked on a signal that may never come while its client
  * is already gone.
  */
+type SignalWake =
+  | { readonly kind: "signal"; readonly result: IteratorResult<ThreadSignal> }
+  | { readonly kind: "poll" }
+  | { readonly kind: "aborted" };
+
 async function nextSignal(
-  signals: AsyncIterator<ThreadSignal>,
+  pending: Promise<IteratorResult<ThreadSignal>>,
   signal: AbortSignal | undefined,
-): Promise<IteratorResult<ThreadSignal>> {
-  const done: IteratorResult<ThreadSignal> = { done: true, value: undefined };
+  pollIntervalMs: number,
+): Promise<SignalWake> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const polled = new Promise<SignalWake>((resolve) => {
+    timer = setTimeout(() => resolve({ kind: "poll" }), pollIntervalMs);
+  });
 
-  if (signal === undefined) {
-    return signals.next();
-  }
-
-  if (signal.aborted) {
-    return done;
+  if (signal?.aborted === true) {
+    clearTimeout(timer);
+    return { kind: "aborted" };
   }
 
   let onAbort: (() => void) | undefined;
-  const aborted = new Promise<IteratorResult<ThreadSignal>>((resolve) => {
+  const aborted = new Promise<SignalWake>((resolve) => {
     onAbort = () => {
-      resolve(done);
+      resolve({ kind: "aborted" });
     };
 
-    signal.addEventListener("abort", onAbort, { once: true });
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 
   try {
-    return await Promise.race([signals.next(), aborted]);
+    return await Promise.race([
+      pending.then((result): SignalWake => ({ kind: "signal", result })),
+      polled,
+      aborted,
+    ]);
   } finally {
-    if (onAbort !== undefined) {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+
+    if (signal !== undefined && onAbort !== undefined) {
       signal.removeEventListener("abort", onAbort);
     }
   }

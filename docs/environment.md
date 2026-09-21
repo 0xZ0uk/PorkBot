@@ -264,18 +264,18 @@ source name.
 
 ## Where the schemas live
 
-| File                            | Owns                                                                                                                |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `.env.schema`                   | `APP_ENV`, `DATABASE_URL`, `LOG_LEVEL`, `PORKBOT_STORAGE_DIR`, `PORKBOT_SUPERVISOR_URL`, `PORKBOT_SUPERVISOR_TOKEN` |
-| `apps/api/.env.schema`          | `PORT`, auth, mail, the MCP callback, the credential keyring, the limits                                            |
-| `apps/worker/.env.schema`       | `PORT`, the notification webhook, `PORKBOT_WEB_ORIGIN`                                                              |
-| `apps/backup/.env.schema`       | `PORT`, the backup schedule, keyring, envelope and S3 target                                                        |
-| `apps/supervisor/.env.schema`   | `PORT`, the supervisor token, the computer settings                                                                 |
-| `apps/web/.env.schema`          | `PORT`, `PORKBOT_WEB_ROOT`                                                                                          |
-| `apps/desktop/.env.schema`      | the update feed and pinned public key                                                                               |
-| `packages/db/.env.schema`       | the two service-role passwords                                                                                      |
-| `packages/adapters/.env.schema` | the credential-proxy sidecar's injected values                                                                      |
-| `packages/canary/.env.schema`   | the supervisor connection and the failure-notification webhook the canary shares with the worker                    |
+| File                            | Owns                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `.env.schema`                   | Shared database, logging, storage, supervisor and provider-credential keyring values             |
+| `apps/api/.env.schema`          | `PORT`, auth, mail, the MCP callback and the limits                                              |
+| `apps/worker/.env.schema`       | `PORT`, the notification webhook, `PORKBOT_WEB_ORIGIN`                                           |
+| `apps/backup/.env.schema`       | `PORT`, the backup schedule, keyring, envelope and S3 target                                     |
+| `apps/supervisor/.env.schema`   | `PORT`, the supervisor token, the computer settings                                              |
+| `apps/web/.env.schema`          | `PORT`, `PORKBOT_WEB_ROOT`                                                                       |
+| `apps/desktop/.env.schema`      | the update feed and pinned public key                                                            |
+| `packages/db/.env.schema`       | the two service-role passwords                                                                   |
+| `packages/adapters/.env.schema` | the credential-proxy sidecar's injected values                                                   |
+| `packages/canary/.env.schema`   | the supervisor connection and the failure-notification webhook the canary shares with the worker |
 
 `deploy/porkbot.env.example` is the deployment template, and the `docs` CI tier
 compares this document against the schemas and the template in both directions.
