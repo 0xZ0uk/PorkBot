@@ -1,6 +1,6 @@
 import { avatarContentTypes, maxAvatarBytes } from "@porkbot/contracts";
 import { srgbAccent } from "@porkbot/tokens";
-import { Button, Field, Input, Select, Textarea } from "@porkbot/ui";
+import { BotAvatar, Button, Field, Input, Select, Textarea } from "@porkbot/ui";
 import { useState } from "react";
 import type { AvatarContentType, Bot, BotSection, ComputerView } from "@porkbot/contracts";
 import { formFromBot, validateBotForm } from "../bots.ts";
@@ -42,6 +42,8 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const editing = props.bot !== null;
   const archived = props.bot !== null && props.bot.archivedAt !== null;
+  const previewName = values.name.trim() || "New bot";
+  const previewId = props.bot?.id ?? "new-bot-preview";
 
   function field<Key extends keyof BotFormValues>(key: Key, value: BotFormValues[Key]): void {
     setValues({ ...values, [key]: value });
@@ -64,17 +66,25 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
         </p>
       )}
 
-      {editing ? (
-        <section className="editor-section">
-          <h3>Avatar</h3>
-          <div className="avatar-editor">
-            {props.avatarUrl === null ? (
-              <span className="bot-avatar bot-avatar-large" aria-label="No avatar">
-                {initials(props.bot.name)}
-              </span>
-            ) : (
-              <img className="bot-avatar bot-avatar-large" src={props.avatarUrl} alt="" />
-            )}
+      <section className="editor-section">
+        <h3>Avatar</h3>
+        <div className="avatar-editor">
+          <BotAvatar
+            id={previewId}
+            name={previewName}
+            color={values.color}
+            imageUrl={props.avatarUrl}
+            size={40}
+          />
+          <div className="avatar-preview-copy">
+            <strong>{previewName}</strong>
+            <p className="muted">
+              {props.avatarUrl === null
+                ? "Generated from this bot’s id and colour."
+                : "Your uploaded avatar appears in the roster."}
+            </p>
+          </div>
+          {editing ? (
             <div className="bot-actions">
               <Field label="Upload image" className="file-button" error={avatarError ?? undefined}>
                 <Input
@@ -105,9 +115,9 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
                 </Button>
               )}
             </div>
-          </div>
-        </section>
-      ) : null}
+          ) : null}
+        </div>
+      </section>
 
       <form
         className="editor-form"
@@ -297,16 +307,5 @@ function ComputerControls({
         </Button>
       </div>
     </div>
-  );
-}
-
-function initials(name: string): string {
-  return (
-    name
-      .trim()
-      .split(/\s+/u)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "?"
   );
 }

@@ -35,6 +35,7 @@ function item(id: string, kind: "healthy" | "stopped" | "failed"): BotListItem {
 
   return {
     bot,
+    avatarUrl: null,
     computer,
     threads: [fakeThread(`thread-${id}`, id)],
     lastActivityAt: "2026-02-02T12:00:00.000Z",

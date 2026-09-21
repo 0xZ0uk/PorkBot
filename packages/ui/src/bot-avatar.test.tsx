@@ -1,19 +1,20 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { BotAvatar } from "./bot-avatar.tsx";
+import { BotAvatar, botAvatarIdentity } from "./bot-avatar.tsx";
 
 describe("BotAvatar", () => {
-  it("draws the same mascot for the same id and a different one across ids", () => {
-    const first = renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" />);
-    const again = renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" />);
-    expect(again).toBe(first);
+  it("maps a range of ids deterministically without collapsing to one identity", () => {
+    const ids = Array.from({ length: 64 }, (_, index) => `bot-${String(index)}`);
+    const first = ids.map((id) => botAvatarIdentity(id));
+    const again = ids.map((id) => botAvatarIdentity(id));
 
-    const others = new Set(
-      ["a", "b", "c", "d", "e", "f"].map((id) =>
-        renderToStaticMarkup(<BotAvatar id={id} name={id} />),
-      ),
-    );
-    expect(others.size).toBeGreaterThan(1);
+    expect(again).toEqual(first);
+    expect(new Set(first.map((identity) => identity.shape)).size).toBeGreaterThan(1);
+    expect(new Set(first.map((identity) => identity.hueIndex)).size).toBeGreaterThan(1);
+    expect(new Set(first.map((identity) => identity.eyeStyle)).size).toBe(2);
+
+    const rendered = renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" />);
+    expect(rendered).toBe(renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" />));
   });
 
   it("uses the identity ramp by default and the bot's own colour over it", () => {
@@ -32,7 +33,7 @@ describe("BotAvatar", () => {
       <BotAvatar id="bot-alpha" name="Alpha" imageUrl="https://example.invalid/a.png" />,
     );
     expect(html).toContain("<img");
-    expect(html).toContain('alt="Alpha"');
+    expect(html).toContain('alt=""');
     expect(html).not.toContain("<svg");
   });
 
@@ -44,9 +45,19 @@ describe("BotAvatar", () => {
     }
   });
 
-  it("labels the mascot for assistive technology", () => {
+  it("keeps the mascot decorative because the adjacent name carries its meaning", () => {
     const html = renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" />);
-    expect(html).toContain('role="img"');
-    expect(html).toContain('aria-label="Alpha"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).not.toContain('role="img"');
+    expect(html).not.toContain('aria-label="Alpha"');
+  });
+
+  it("keeps an uploaded image decorative as well", () => {
+    const html = renderToStaticMarkup(
+      <BotAvatar id="bot-alpha" name="Alpha" imageUrl="https://example.invalid/a.png" />,
+    );
+
+    expect(html).toContain('alt=""');
+    expect(html).toContain('aria-hidden="true"');
   });
 });

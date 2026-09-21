@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { BotAvatar, Button } from "@porkbot/ui";
 import { useState } from "react";
 import type { Bot, BotSection, Thread } from "@porkbot/contracts";
 import type { ReactNode } from "react";
@@ -201,9 +201,13 @@ function BotCard({
     <li className={`bot bot-health-${item.computer.kind}`}>
       <div className="bot-header">
         <div className="bot-identity">
-          <span className="bot-avatar" aria-hidden="true">
-            {initials(bot.name)}
-          </span>
+          <BotAvatar
+            id={bot.id}
+            name={bot.name}
+            color={bot.color}
+            imageUrl={item.avatarUrl}
+            size={40}
+          />
           <div>
             <h3>{bot.name}</h3>
             <p className="muted">{bot.title || "Bot"}</p>
@@ -278,17 +282,6 @@ function Status({ health, archived }: Readonly<{ health: ComputerHealth; archive
   }
 
   return <span className={`bot-status bot-status-${health.kind}`}>{label}</span>;
-}
-
-function initials(name: string): string {
-  return (
-    name
-      .trim()
-      .split(/\s+/u)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "?"
-  );
 }
 
 function formatMoment(value: string): string {

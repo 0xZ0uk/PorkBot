@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeBot } from "../../test/fakes.ts";
 import type { ThreadConsoleState } from "../console.ts";
 import { ThreadConsoleScreen } from "./thread-console.tsx";
 
@@ -105,6 +106,22 @@ describe("the thread console screen", () => {
     expect(items).toHaveLength(2);
     expect(items.map((item) => item.textContent)).toEqual(["Youdo it", "BotHello"]);
     expect(items[1]?.className).toContain("message-streaming");
+  });
+
+  it("uses the bot identity in the header and assistant attribution", async () => {
+    await render(
+      <ThreadConsoleScreen
+        state={base}
+        bot={fakeBot("bot-1", "Ada")}
+        avatarUrl="data:image/png;base64,ZmFrZQ=="
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".thread-header")?.textContent).toContain("Ada");
+    expect(container.querySelectorAll(".message-attribution .pb-avatar")).toHaveLength(1);
+    expect(container.querySelectorAll('.pb-avatar img[alt=""]')).toHaveLength(2);
+    expect(container.textContent).toContain("AdaHello");
   });
 
   it("shows connection state only when the stream is not live", async () => {

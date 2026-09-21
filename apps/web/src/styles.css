@@ -115,6 +115,21 @@
   gap: var(--pb-space-xs);
 }
 
+.message-attribution,
+.thread-header {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+}
+
+.thread-header h2 {
+  margin: 0;
+}
+
+.thread-header p {
+  margin: 0;
+}
+
 .message-role {
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -539,24 +554,17 @@
   gap: var(--pb-space-md);
 }
 
-.bot-avatar {
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  object-fit: cover;
-  background: var(--pb-color-raised);
-  color: var(--pb-color-muted);
-  border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-pill);
-  font-weight: 700;
+.avatar-editor {
+  flex-wrap: wrap;
 }
 
-.bot-avatar-large {
-  width: 5rem;
-  height: 5rem;
+.avatar-preview-copy {
+  min-width: 10rem;
+  flex: 1;
+}
+
+.avatar-preview-copy p {
+  margin: var(--pb-space-2xs) 0 0;
 }
 
 .bot-status {

@@ -25,7 +25,16 @@ export {
   type StateChipProps,
   type StateChipState,
 } from "./badge.tsx";
-export { BotAvatar, type BotAvatarProps, type BotAvatarSize } from "./bot-avatar.tsx";
+export {
+  BotAvatar,
+  botAvatarIdentity,
+  botAvatarShapes,
+  type BotAvatarEyeStyle,
+  type BotAvatarIdentity,
+  type BotAvatarProps,
+  type BotAvatarShape,
+  type BotAvatarSize,
+} from "./bot-avatar.tsx";
 export { Card, type CardProps, type CardVariant } from "./card.tsx";
 export { Separator, type SeparatorProps } from "./separator.tsx";
 export { ScrollArea, type ScrollAreaProps } from "./scroll-area.tsx";
