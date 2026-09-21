@@ -8,6 +8,7 @@ import {
   revokeWarning,
 } from "../connections.ts";
 import type { ConnectionProbeState, ConnectionsState, NewConnectionInput } from "../connections.ts";
+import { ConnectionsSkeleton } from "./loading.tsx";
 
 /**
  * The connections screen (slice 9.3, PRD decisions 12, 13 and 19; stories 12,
@@ -70,8 +71,12 @@ export function ConnectionsScreen({
     );
   }
 
+  if (state.status === "loading") {
+    return <ConnectionsSkeleton />;
+  }
+
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <h2>Connections</h2>
         <Button

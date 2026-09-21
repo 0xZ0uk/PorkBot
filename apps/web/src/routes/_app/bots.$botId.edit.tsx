@@ -4,8 +4,10 @@ import type { AvatarContentType, BotSection, ComputerView } from "@porkbot/contr
 import { formToWriteInput, readComputerHealth } from "../../bots.ts";
 import type { BotFormValues } from "../../bots.ts";
 import { BotEditorScreen } from "../../screens/bot-editor.tsx";
+import { BotEditorSkeleton } from "../../screens/loading.tsx";
 
 export const Route = createFileRoute("/_app/bots/$botId/edit")({
+  pendingComponent: BotEditorSkeleton,
   loader: async ({ context, params }) => {
     const [bot, sections, computer] = await Promise.all([
       context.bots.getBot(params.botId),

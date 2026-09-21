@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { BotSecretAuthView } from "@porkbot/contracts";
 import { authLabel, forgetWarning, secretStatusLabel } from "../secrets.ts";
 import type { NewSecretInput, SecretsState } from "../secrets.ts";
+import { SecretsSkeleton } from "./loading.tsx";
 
 /**
  * The secrets surface (slice 11.5; slice 9.6's contract): one bot's stored
@@ -45,8 +46,12 @@ export function SecretsScreen({
     );
   }
 
+  if (state.status === "loading") {
+    return <SecretsSkeleton />;
+  }
+
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <h2>Secrets</h2>
         {state.bots.length === 0 ? null : (

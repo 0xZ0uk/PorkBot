@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { AccountScreen } from "../../screens/account.tsx";
+import { AccountSkeleton } from "../../screens/loading.tsx";
 
 /**
  * The account settings route. The loader reads the contract's answer — the
@@ -10,6 +11,7 @@ import { AccountScreen } from "../../screens/account.tsx";
  * function of the data.
  */
 export const Route = createFileRoute("/_app/settings/account")({
+  pendingComponent: AccountSkeleton,
   loader: ({ context }) => {
     if (context.ownership === undefined) {
       throw new Error("the ownership transport is not configured");

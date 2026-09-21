@@ -11,7 +11,8 @@ export type ToastInput = {
   /** One follow-up action, such as opening the run that finished. */
   readonly action?: {
     readonly label: string;
-    readonly onClick: () => void;
+    readonly href?: string;
+    readonly onClick?: () => void;
   };
 };
 
@@ -69,7 +70,7 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
             className={["pb-toast", toast.tone !== undefined && `pb-toast--${toast.tone}`]
               .filter(Boolean)
               .join(" ")}
-            role="status"
+            role={toast.tone === "destructive" ? "alert" : "status"}
           >
             <div className="pb-toast__header">
               <span className="pb-toast__title">{toast.title}</span>
@@ -84,9 +85,15 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
             {toast.body === undefined ? null : <p className="pb-toast__body">{toast.body}</p>}
             {toast.action === undefined ? null : (
               <div className="pb-toast__actions">
-                <Button variant="ghost" onClick={toast.action.onClick}>
-                  {toast.action.label}
-                </Button>
+                {toast.action.href === undefined ? (
+                  <Button variant="ghost" onClick={toast.action.onClick}>
+                    {toast.action.label}
+                  </Button>
+                ) : (
+                  <a className="pb-button pb-button--ghost" href={toast.action.href}>
+                    {toast.action.label}
+                  </a>
+                )}
               </div>
             )}
           </div>

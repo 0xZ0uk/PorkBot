@@ -26,6 +26,12 @@ export interface UseThreadConsoleResult {
   readonly retry: () => void;
   /** Folds a just-sent message into the view, for the composer's send. */
   readonly noteSent: (message: Message) => void;
+  /** Shows a local send before its request settles. */
+  readonly noteOptimistic: (message: Message, optimisticId: string) => void;
+  /** Replaces a local send with the persisted message. */
+  readonly settleSent: (optimisticId: string, message: Message) => void;
+  /** Keeps a failed local send visible with an inline failure state. */
+  readonly failSent: (optimisticId: string) => void;
   /** Asks the active run to stop; the composer's stop control is the caller. */
   readonly stopRun: () => void;
 }
@@ -57,9 +63,27 @@ export function useThreadConsole(options: UseThreadConsoleOptions): UseThreadCon
     },
     [console],
   );
+  const noteOptimistic = useCallback(
+    (message: Message, optimisticId: string) => {
+      console.noteOptimistic(message, optimisticId);
+    },
+    [console],
+  );
+  const settleSent = useCallback(
+    (optimisticId: string, message: Message) => {
+      console.settleSent(optimisticId, message);
+    },
+    [console],
+  );
+  const failSent = useCallback(
+    (optimisticId: string) => {
+      console.failSent(optimisticId);
+    },
+    [console],
+  );
   const stopRun = useCallback(() => {
     console.stopRun();
   }, [console]);
 
-  return { state, retry, noteSent, stopRun };
+  return { state, retry, noteSent, noteOptimistic, settleSent, failSent, stopRun };
 }

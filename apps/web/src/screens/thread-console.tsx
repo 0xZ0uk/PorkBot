@@ -8,6 +8,7 @@ import { formatDuration } from "../run-outcome.ts";
 import { RunCardEntry } from "./run-card.tsx";
 import { ToolCallEntry } from "./tool-call.tsx";
 import { useTranscriptAnchor } from "../use-transcript-anchor.ts";
+import { ThreadSkeleton } from "./loading.tsx";
 
 /**
  * The thread console: the transcript and the composer's sibling status
@@ -74,12 +75,16 @@ export function ThreadConsoleScreen({
     );
   }
 
+  if (state.status === "loading") {
+    return <ThreadSkeleton />;
+  }
+
   const connection = connectionLabel(state.connection);
   const liveness = state.liveness;
   const sessions = groupTranscriptSessions(state.entries);
 
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       {connection === null ? null : (
         <div className="console-state-row">
           <span className="console-connection" role="status">
@@ -185,6 +190,8 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
     "message",
     operator ? "message-user" : "message-bot",
     entry.streaming ? "message-streaming" : null,
+    entry.delivery === "sending" ? "message-pending" : null,
+    entry.delivery === "failed" ? "message-failed" : null,
   ]
     .filter((name): name is string => name !== null)
     .join(" ");
@@ -210,6 +217,15 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
             </>
           )}
         </div>
+        {entry.delivery === "sending" ? (
+          <span className="message-delivery" role="status">
+            Sending…
+          </span>
+        ) : entry.delivery === "failed" ? (
+          <span className="message-delivery message-delivery-failed" role="alert">
+            Not sent
+          </span>
+        ) : null}
         <Card variant="raised" className="message-bubble">
           <p className="message-text">{entry.text}</p>
           {entry.attachments.length === 0 ? null : (

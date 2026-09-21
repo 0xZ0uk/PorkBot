@@ -107,7 +107,12 @@ async function tick(): Promise<void> {
 
 function composerFor(
   transport: ComposerTransport,
-  options: { readonly onSent?: (message: Message) => void; readonly nonces?: string[] } = {},
+  options: {
+    readonly onOptimistic?: (message: Message, optimisticId: string) => void;
+    readonly onSent?: (message: Message) => void;
+    readonly onSendFailed?: (optimisticId: string) => void;
+    readonly nonces?: string[];
+  } = {},
 ) {
   let index = 0;
   const nonces = options.nonces ?? ["nonce-1", "nonce-2", "nonce-3", "nonce-4", "nonce-5"];
@@ -115,7 +120,9 @@ function composerFor(
   return createComposer({
     transport,
     threadId,
+    ...(options.onOptimistic === undefined ? {} : { onOptimistic: options.onOptimistic }),
     ...(options.onSent === undefined ? {} : { onSent: options.onSent }),
+    ...(options.onSendFailed === undefined ? {} : { onSendFailed: options.onSendFailed }),
     newNonce: () => nonces[index++] ?? `nonce-${String(index)}`,
   });
 }
@@ -294,7 +301,11 @@ describe("the composer", () => {
   it("sends the text and the settled attachments under one nonce", async () => {
     const { transport, sends, sendDeferreds, uploads } = scriptedTransport();
     const seen: Message[] = [];
-    const composer = composerFor(transport, { onSent: (message) => seen.push(message) });
+    const optimistic: { readonly message: Message; readonly id: string }[] = [];
+    const composer = composerFor(transport, {
+      onOptimistic: (message, id) => optimistic.push({ message, id }),
+      onSent: (message) => seen.push(message),
+    });
 
     composer.setText("take this");
     composer.addFiles([fileInput()]);
@@ -304,6 +315,19 @@ describe("the composer", () => {
     composer.send();
 
     expect(composer.state().sending).toBe(true);
+    expect(composer.state().text).toBe("");
+    expect(optimistic).toHaveLength(1);
+    expect(optimistic[0]).toMatchObject({
+      id: "optimistic-nonce-1",
+      message: {
+        id: "optimistic-nonce-1",
+        role: "user",
+        blocks: [
+          { type: "text", text: "take this" },
+          { type: "file", attachmentId: "attachment-1" },
+        ],
+      },
+    });
     expect(sends).toHaveLength(1);
     expect(sends[0]).toMatchObject({
       threadId,
@@ -323,7 +347,10 @@ describe("the composer", () => {
 
   it("keeps the draft when the send is refused", async () => {
     const { transport, sendDeferreds } = scriptedTransport();
-    const composer = composerFor(transport);
+    const failed: string[] = [];
+    const composer = composerFor(transport, {
+      onSendFailed: (optimisticId) => failed.push(optimisticId),
+    });
 
     composer.setText("keep me");
     composer.send();
@@ -335,6 +362,7 @@ describe("the composer", () => {
     expect(composer.state().sending).toBe(false);
     expect(composer.state().text).toBe("keep me");
     expect(composer.state().error).toBe("This thread is not available.");
+    expect(failed).toEqual(["optimistic-nonce-1"]);
   });
 
   it("retries once with the same nonce when the run ended mid-send", async () => {
