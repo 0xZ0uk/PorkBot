@@ -457,6 +457,15 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
     problems.push({ key: "PORKBOT_DOCKER_SOCKET", message: "must be an absolute host path" });
   }
 
+  const socketGid = valueOf("PORKBOT_DOCKER_SOCKET_GID");
+
+  if (socketGid !== "" && (!/^\d+$/.test(socketGid) || Number(socketGid) > 2_147_483_647)) {
+    problems.push({
+      key: "PORKBOT_DOCKER_SOCKET_GID",
+      message: "must be a numeric group id between 0 and 2147483647",
+    });
+  }
+
   const provider = valueOf("PORKBOT_COMPUTER_PROVIDER");
 
   if (provider !== "" && !providerKinds.has(provider)) {

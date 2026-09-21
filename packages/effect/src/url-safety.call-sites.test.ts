@@ -113,6 +113,14 @@ const sameOriginTransports: ReadonlyMap<string, SameOriginTransport> = new Map([
       mustDial: "options.serverUrl",
     },
   ],
+  [
+    "packages/testkit/src/deployment/measure.ts",
+    {
+      reason:
+        "the deployment measurement executes an authenticated workload script inside the supervisor and posts only to the supervisor origin configured by that service; the paths and request bodies are harness constants, and no user-supplied or third-party URL enters this same-origin control connection",
+      mustDial: "process.env.PORKBOT_SUPERVISOR_URL",
+    },
+  ],
 ]);
 
 const fetchCall = /(?<!safe)\bfetch\s*\(/g;

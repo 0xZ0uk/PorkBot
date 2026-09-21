@@ -76,7 +76,10 @@ guide](self-host.md#choosing-what-to-turn-on)).
   (default fifteen minutes; `0` disables) is parked: the container stops and the
   home volume stays. The next run boots it again.
 - **Non-standard daemon.** `PORKBOT_DOCKER_SOCKET` names the socket the
-  supervisor mounts; rootless Docker needs its own path.
+  supervisor mounts; rootless Docker needs its own path. Set
+  `PORKBOT_DOCKER_SOCKET_GID` to that socket's numeric group id when it is not
+  `0`, for example `stat -c '%g' "$PORKBOT_DOCKER_SOCKET"` on Linux. The
+  supervisor keeps its unprivileged image user and joins only that group.
 
 ## Configuring Daytona
 

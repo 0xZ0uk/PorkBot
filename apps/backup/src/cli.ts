@@ -35,12 +35,18 @@ import { latestPostgresObject, performBackupRun } from "./run.ts";
  * the shared logger. No command prints key material or a passphrase.
  */
 
-const logger = createLogger({ service: "@porkbot/backup" });
+const logger = createLogger({
+  service: "@porkbot/backup",
+  // The command's stdout is a machine-readable result; diagnostics belong on
+  // stderr so callers can safely pipe the result into a parser.
+  write: (line) => process.stderr.write(line),
+});
 
 const usage = `Usage: porkbot-backup <command> [options]
 
 Commands:
-  run        Take a backup now; add --if-due to respect the nightly schedule.
+  run        Take a backup now; add --if-due to respect the nightly schedule or
+             --force-drill to run the restore drill even when it is not due.
   status     Print the ledger, the destination's object counts and the envelope.
   restore    Restore a backup into a new database: --latest or --key <object key>,
              --database <name>, and optionally --envelope <path> when the
@@ -63,6 +69,7 @@ async function main(): Promise<number> {
       database: { type: "string" },
       envelope: { type: "string" },
       "if-due": { type: "boolean" },
+      "force-drill": { type: "boolean" },
       help: { type: "boolean" },
     },
   });
@@ -106,6 +113,7 @@ async function main(): Promise<number> {
             logger,
             retentionDays: paths.retentionDays,
             drillIntervalDays: paths.drillIntervalDays,
+            forceDrill: values["force-drill"] === true,
             now: () => new Date(),
           },
           previous,

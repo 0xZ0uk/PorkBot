@@ -28,6 +28,10 @@ out
 # Desktop packages and release artifacts
 .release
 
+# Deployment measurement samples; CI uploads these, the committed floor table
+# is the reviewed summary.
+artifacts/deployment-measurement
+
 # Local agent worktrees
 .worktrees
 .opencode

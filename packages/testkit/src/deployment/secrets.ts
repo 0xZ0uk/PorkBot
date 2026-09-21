@@ -41,6 +41,8 @@ export type DeploymentValueKind =
   | "setup-mcp-callback-url"
   /** The release tag from `--tag`, defaulting to the checkout's git SHA. */
   | "setup-image-tag"
+  /** The machine image from `--computer-image`, when a real provider is enabled. */
+  | "setup-computer-image"
   /** The credential-proxy image from `--proxy-image`, when enabled. */
   | "setup-proxy-image"
   /** The egress network from `--egress-network`, when enabled. */
@@ -51,10 +53,12 @@ export type DeploymentValueKind =
  * is the only one: the supervisor refuses a partial proxy configuration at
  * boot, so the template leaves all three settings empty and `setup` fills them
  * (generating the token) only when `--proxy-image` and `--egress-network` name
- * a proxy.
+ * a proxy. The machine image is also optional because the default deployment
+ * uses only the offline provider.
  */
 export const optionalDeploymentValueKinds: ReadonlySet<DeploymentValueKind> = new Set([
   "generated-proxy-token",
+  "setup-computer-image",
   "setup-proxy-image",
   "setup-proxy-egress-network",
 ]);
@@ -163,6 +167,12 @@ export const deploymentValuePlans: readonly DeploymentValuePlan[] = [
     sentinel: "@image-tag",
     kind: "setup-image-tag",
     why: "tags every built image with the release it came from",
+  },
+  {
+    key: "PORKBOT_COMPUTER_IMAGE",
+    sentinel: "@computer-image",
+    kind: "setup-computer-image",
+    why: "the machine image a Docker or cloud provider boots",
   },
   {
     key: "PORKBOT_COMPUTER_PROXY_IMAGE",

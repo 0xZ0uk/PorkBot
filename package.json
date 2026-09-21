@@ -34,6 +34,7 @@
     "deploy:down": "node packages/testkit/src/deployment/cli.ts down",
     "deploy:exec": "node packages/testkit/src/deployment/cli.ts exec",
     "deploy:logs": "node packages/testkit/src/deployment/cli.ts logs",
+    "deploy:measure": "node packages/testkit/src/deployment/cli.ts measure",
     "deploy:rollback": "node packages/testkit/src/deployment/cli.ts rollback",
     "deploy:setup": "node packages/testkit/src/deployment/cli.ts setup",
     "deploy:status": "node packages/testkit/src/deployment/cli.ts status",

@@ -51,10 +51,10 @@ and the idle sweep parks anything no run has used for `PORKBOT_COMPUTER_IDLE_MS`
 with the same guarantee. Ceilings are per bot: CPU, memory (swap pinned to the
 same ceiling), the process count, and a write-layer disk quota that only
 applies with `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt` on a daemon whose
-storage driver answers it. The defaults are one bot's share of the documented
-floor — a host of 4 vCPU and 8 GB plus roughly 2 GB and 50 GB+ of disk per bot,
-with 50 GB+ more for images — and the README setting the floors is the
-deployment contract, so raise the ceilings only after raising the host.
+storage driver answers it. The defaults are one bot's capacity share; the
+[measured deployment floor](operations-floor.md) records what the complete
+stack and a stated bot count actually used. Raise the ceilings only after
+raising the host.
 Snapshots stream the home through the archive API into a staging file that the
 shared snapshot store writes through the storage seam (slice 7.5). The image
 contract is a POSIX shell

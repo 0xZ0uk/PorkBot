@@ -41,11 +41,11 @@ and [the reverse proxy contract](reverse-proxy.md) is the contract it keeps.
 ## The host
 
 The supported shape is one Linux host with Docker Engine and the Compose v2
-plugin. The floor is **4 vCPU / 8 GB of memory** for the stack and one bot, plus
-**roughly 2 GB and 50 GB+ of disk per additional bot**, plus **50 GB+ for the
-machine images** a real computer provider boots. The [single-host deployment
-record](architecture/operations.md#single-host-deployment) shows the arithmetic
-against the per-service ceilings; the per-bot settings are
+plugin. Size a deployment from the committed [measured floor table](architecture/operations-floor.md),
+which separates idle usage from workload peaks and records the bot count and
+host shape it measured. The [single-host deployment
+record](architecture/operations.md#single-host-deployment) keeps the Compose
+ceilings and per-bot limits as the invariant; the per-bot settings are
 `PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB` and
 `PORKBOT_COMPUTER_DISK_MB`.
 
@@ -109,6 +109,21 @@ the origin and the loopback ports:
 pnpm deploy:status   # each service's state, health and published ports
 pnpm deploy:logs     # follow the logs
 ```
+
+To replace the measured record after changing the host, images or deployment
+limits, configure `PORKBOT_COMPUTER_IMAGE` so both provider paths are available
+and run:
+
+```sh
+pnpm deploy:measure
+```
+
+The command deliberately stops and cold-boots the live stack without rebuilding
+its images. It runs a migration, N offline and N Docker-provider computers both
+idle and working, a forced backup with its restore drill, and a default one-hour
+idle window. It writes the reviewed Markdown table to
+`docs/architecture/operations-floor.md` and raw JSON samples to the ignored
+measurement artifact directory; use `--idle-seconds` to shorten a CI run.
 
 ## The first sign-in
 

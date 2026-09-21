@@ -23,6 +23,7 @@ import {
 import { parseEnvFile, renderDeploymentEnv } from "../src/deployment/env-file.ts";
 import { caddyImage } from "../src/harness/images.ts";
 import { caddyProbePort } from "../src/proxy/caddy.ts";
+import { parseCgroupProbe } from "../src/deployment/measure.ts";
 import {
   deploymentValuePlans,
   generateDeploymentSecrets,
@@ -305,6 +306,26 @@ describe("the reverse proxy config", () => {
   });
 });
 
+describe("deployment measurement parsing", () => {
+  it("reads cgroup v2 memory and CPU counters", () => {
+    expect(
+      parseCgroupProbe(
+        [
+          "cgroup=cgroup-v2",
+          "memory_current_bytes=1234",
+          "memory_peak_bytes=5678",
+          "cpu_usage_usec=9012",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      source: "cgroup-v2",
+      memoryCurrentBytes: 1234,
+      memoryPeakBytes: 5678,
+      cpuUsageUsec: 9012,
+    });
+  });
+});
+
 describe("generating deployment secrets", () => {
   it("generates every generated key, and only generated keys", () => {
     const generated = generateDeploymentSecrets(countingBytes());
@@ -567,6 +588,10 @@ describe("validating the deployment env file", () => {
     const level = problemsFor((values) => values.set("LOG_LEVEL", "verbose"));
 
     expect(level.join("\n")).toMatch(/LOG_LEVEL: must be one of/);
+
+    const socketGid = problemsFor((values) => values.set("PORKBOT_DOCKER_SOCKET_GID", "not-a-gid"));
+
+    expect(socketGid.join("\n")).toMatch(/PORKBOT_DOCKER_SOCKET_GID: must be a numeric group id/);
   });
 
   it("accepts a complete optional configuration", () => {
@@ -701,6 +726,20 @@ describe("the deployment commands", () => {
     expect([...after]).toEqual([...before]);
   });
 
+  it("setup persists the optional machine image for a measured provider run", () => {
+    const { root, envFile } = workspace();
+    const image = "node:24.21.0-bookworm-slim@sha256:" + "a".repeat(64);
+
+    expect(
+      runDeploy(
+        ["setup", "--origin", testOrigin, "--computer-image", image],
+        contextFor(root).context,
+      ),
+    ).toBe(0);
+
+    expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_COMPUTER_IMAGE")).toBe(image);
+  });
+
   it("setup --force rotates the generated secrets and keeps the operator settings", () => {
     const { root, envFile } = workspace();
 
@@ -803,6 +842,67 @@ describe("the deployment commands", () => {
     );
     expect(up?.args).not.toContain("--build");
     expect(calls.some((call) => call.args.includes("--file"))).toBe(true);
+  });
+
+  it("measure runs every workload phase and writes a table plus raw report", () => {
+    const { root, envFile } = workspace();
+    const setup = contextFor(root);
+
+    expect(runDeploy(["setup", "--origin", testOrigin], setup.context)).toBe(0);
+
+    const values = parseEnvFile(readFileSync(envFile, "utf8"));
+    values.set("PORKBOT_COMPUTER_IMAGE", "node:24.21.0-bookworm-slim");
+    writeFileSync(envFile, [...values].map(([key, value]) => `${key}=${value}`).join("\n"), {
+      mode: 0o600,
+    });
+
+    const tablePath = path.join(root, "floor.md");
+    const rawPath = path.join(root, "measurement.json");
+    const { context, calls, out } = contextFor(root, {
+      results: (_command, args) =>
+        args.includes("--force-drill") ? { stdout: '{"drillStatus":"succeeded"}' } : undefined,
+    });
+
+    expect(
+      runDeploy(
+        [
+          "measure",
+          "--idle-seconds",
+          "0",
+          "--sample-interval-seconds",
+          "1",
+          "--table-path",
+          tablePath,
+          "--raw-path",
+          rawPath,
+        ],
+        context,
+      ),
+    ).toBe(0);
+
+    expect(existsSync(tablePath)).toBe(true);
+    expect(existsSync(rawPath)).toBe(true);
+    expect(readFileSync(tablePath, "utf8")).toContain("Measured deployment floor");
+
+    const report = JSON.parse(readFileSync(rawPath, "utf8")) as {
+      schemaVersion: number;
+      botCount: number;
+      providers: readonly { kind: string; bots: number }[];
+      workload: {
+        phases: readonly { id: string; completed: boolean }[];
+      };
+    };
+
+    expect(report.schemaVersion).toBe(1);
+    expect(report.botCount).toBe(1);
+    expect(report.providers.map((provider) => provider.kind)).toEqual(["offline", "docker"]);
+    expect(report.workload.phases.every((phase) => phase.completed)).toBe(true);
+    expect(calls.some((call) => call.args.includes("--no-build"))).toBe(true);
+    expect(calls.some((call) => call.args.includes("migrate"))).toBe(true);
+    expect(calls.some((call) => call.args.includes("backup"))).toBe(true);
+    expect(calls.some((call) => call.args.includes("--force-drill"))).toBe(true);
+    expect(calls.some((call) => call.args.includes("supervisor"))).toBe(true);
+    expect(out.join("\n")).toContain("Wrote measured floor table");
   });
 
   it("upgrade pulls, health-checks before migrating, then switches and records the prior tag", () => {

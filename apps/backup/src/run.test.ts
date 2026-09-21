@@ -204,6 +204,7 @@ function dependencies(overrides: {
   readonly postgres?: FakePostgres;
   readonly canary?: () => string | null;
   readonly drillIntervalDays?: number;
+  readonly forceDrill?: boolean;
 }) {
   const destination = overrides.destination ?? createMemoryStorage();
   const homes = overrides.homes ?? createMemoryStorage();
@@ -232,6 +233,7 @@ function dependencies(overrides: {
       logger,
       retentionDays: 30,
       drillIntervalDays: overrides.drillIntervalDays ?? 30,
+      forceDrill: overrides.forceDrill,
       now: () => new Date("2026-09-20T03:00:00.000Z"),
     },
   };
@@ -325,7 +327,7 @@ describe("a backup run", () => {
     expect(postgres.dropped).toEqual(postgres.created);
   });
 
-  it("skips the drill when one succeeded inside the interval", async () => {
+  it("skips an in-interval drill unless the caller explicitly forces it", async () => {
     const ledger = recordingLedger();
     const postgres = fakePostgres();
     const { dependencies: deps } = dependencies({
@@ -357,5 +359,16 @@ describe("a backup run", () => {
     await performBackupRun(deps, previous);
 
     expect(ledger.drills).toEqual([]);
+
+    const { dependencies: forcedDeps } = dependencies({
+      ledger: ledger.ledger,
+      postgres,
+      canary: () => ledger.last()?.canaryToken ?? null,
+      forceDrill: true,
+    });
+
+    await performBackupRun(forcedDeps, previous);
+
+    expect(ledger.drills).toHaveLength(1);
   });
 });

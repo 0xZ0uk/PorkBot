@@ -15,9 +15,9 @@
 #     The only pulled image is Postgres, pinned by the digest registered in
 #     dependencies.json.
 #   - Every service declares CPU and memory ceilings (deploy.resources.limits),
-#     and `docs/architecture/operations.md` (Single-host deployment) does the
-#     arithmetic against the host floor: 4 vCPU / 8 GB plus ~2 GB and 50 GB+ of
-#     disk per bot. Raise the ceilings here only after raising the host.
+#     and `docs/architecture/operations-floor.md` records measured usage. The
+#     ceilings remain the capacity invariant checked against the host shape.
+#     Raise them here only after raising the host.
 #   - Container logs are rotated, so a long-lived host does not fill its disk
 #     with one chatty process.
 #   - The proxy terminates HTTPS for the one public origin (slice 12.2) and is
@@ -341,6 +341,9 @@ services:
     environment:
       PORT: "3003"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The measurement harness runs its authenticated workload script inside
+      # this service and dials the service's own loopback origin.
+      PORKBOT_SUPERVISOR_URL: http://127.0.0.1:3003
       # The process credential the API presents to the internal computer
       # surface. Both sides read it from the environment.
       PORKBOT_SUPERVISOR_TOKEN: ${PORKBOT_SUPERVISOR_TOKEN:?}
@@ -383,6 +386,12 @@ services:
       - ${PORKBOT_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       - storage-data:/var/lib/porkbot/storage
       - computer-archives:/var/lib/porkbot/computer-archives
+    # The image runs as node. Carry the host socket's group so the process can
+    # use the mounted daemon without making the whole supervisor root. The
+    # default root group covers the common root-owned socket; rootless or
+    # custom daemons set PORKBOT_DOCKER_SOCKET_GID to the socket's group id.
+    group_add:
+      - "${PORKBOT_DOCKER_SOCKET_GID:-0}"
     deploy:
       resources:
         limits:

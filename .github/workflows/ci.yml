@@ -231,11 +231,13 @@ jobs:
   integration:
     name: integration
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     needs: [build]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+      - name: Expose the Docker socket group to the supervisor
+        run: echo "PORKBOT_DOCKER_SOCKET_GID=$(stat -c '%g' /var/run/docker.sock)" >> "$GITHUB_ENV"
       # The same command a developer runs. It builds the app images, starts
       # Postgres, api, worker, web and supervisor, and blocks on `--wait` until
       # every healthcheck passes, so a stack that starts here is the one
@@ -311,6 +313,34 @@ jobs:
 
           schema_after_rollback="$("${compose[@]}" exec -T postgres psql -U porkbot -d porkbot -Atc 'select count(*) from drizzle.__drizzle_migrations')"
           test "$schema_after_rollback" = "$schema_after_upgrade"
+
+          # The measurement workload needs both provider implementations. The
+          # deployment still defaults new bots to the offline emulator; this
+          # pinned Node image simply makes Docker selectable for the harness's
+          # explicit provider references without introducing a vendor image.
+          machine_image="$(node -p 'require("./dependencies.json").images.find((entry) => entry.name === "node").reference')"
+          pnpm deploy:setup --env-path "$deploy_env" --computer-image "$machine_image"
+          pnpm deploy:check --env-path "$deploy_env"
+          pnpm deploy:measure \
+            --env-path "$deploy_env" \
+            --bots 1 \
+            --idle-seconds 1 \
+            --sample-interval-seconds 1 \
+            --table-path "$RUNNER_TEMP/porkbot-measured-floor.md" \
+            --raw-path artifacts/deployment-measurement/ci.json
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const report = JSON.parse(readFileSync("artifacts/deployment-measurement/ci.json", "utf8"));
+            if (report.schemaVersion !== 1 || report.botCount !== 1 || !Array.isArray(report.samples) || report.samples.length === 0) {
+              throw new Error("deployment measurement report shape is incomplete");
+            }
+            const required = ["cold-boot", "migration", "idle-hour", "bots-offline-working", "bots-docker-working", "backup-restore-drill"];
+            for (const phase of required) {
+              if (!report.workload.phases.some((entry) => entry.id === phase && entry.completed === true)) {
+                throw new Error(`deployment measurement phase is incomplete: ${phase}`);
+              }
+            }
+          '
       # Cleanup is best effort and cannot hide a failed deployment check.
       - name: Stop deployment smoke stack
         if: always()
@@ -319,6 +349,13 @@ jobs:
         env:
           PORKBOT_DEPLOY_PROJECT: porkbot-deployment-ci
         run: pnpm deploy:down
+      - name: Upload deployment measurement samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-measurement
+          path: artifacts/deployment-measurement
+          if-no-files-found: warn
       # `always()` and `continue-on-error` together: cleanup runs even when the
       # tier is red, and a cleanup failure can never change the tier's result.
       - name: Destroy the testkit harness
