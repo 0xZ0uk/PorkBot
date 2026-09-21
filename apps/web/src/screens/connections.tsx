@@ -4,6 +4,7 @@ import type { Bot, Credential, ModelConnection, ModelFailureKind } from "@porkbo
 import {
   disconnectImpact,
   disconnectWarning,
+  replaceKeyWarning,
   revokeImpact,
   revokeWarning,
 } from "../connections.ts";
@@ -73,7 +74,7 @@ export function ConnectionsScreen({
   return (
     <section className="console" aria-busy={state.status === "loading"}>
       <header className="memory-header">
-        <h2>Connections</h2>
+        <h2>Models and connections</h2>
         <Button
           aria-expanded={creating}
           onClick={() => {
@@ -383,14 +384,33 @@ function CreateConnectionForm({
   const [credentialName, setCredentialName] = useState("model-key");
   const [credentialValue, setCredentialValue] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
-  const reuse = existingNames.includes(credentialName);
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
+  const trimmedName = credentialName.trim();
+  const reuse = existingNames.includes(trimmedName);
+  // A value under a stored name is a rotate: it confirms before the write, and
+  // emptying the field, renaming or editing the value disarms it — a rotate
+  // always follows a click on the confirmation the operator can see.
+  const replacing = confirmingReplace && reuse && credentialValue.trim() !== "";
 
   return (
     <form
       className="memory-form"
       onSubmit={(event) => {
         event.preventDefault();
-        void onSubmit({ label, baseUrl, credentialName, credentialValue, defaultModel });
+
+        if (reuse && credentialValue.trim() !== "" && !replacing) {
+          setConfirmingReplace(true);
+
+          return;
+        }
+
+        void onSubmit({
+          label,
+          baseUrl,
+          credentialName: trimmedName,
+          credentialValue,
+          defaultModel,
+        });
       }}
     >
       <Field label="Label">
@@ -422,6 +442,7 @@ function CreateConnectionForm({
           value={credentialName}
           onChange={(event) => {
             setCredentialName(event.target.value);
+            setConfirmingReplace(false);
           }}
         />
       </Field>
@@ -434,14 +455,22 @@ function CreateConnectionForm({
           value={credentialValue}
           onChange={(event) => {
             setCredentialValue(event.target.value);
+            setConfirmingReplace(false);
           }}
         />
       </Field>
       <p className="muted">
         {reuse
-          ? `A key named ${credentialName} is already stored; leave this blank to reuse it.`
+          ? `A key named ${trimmedName} is already stored; leave this blank to reuse it.`
           : "Stored encrypted; it is never shown again."}
       </p>
+
+      {replacing ? (
+        <p className="muted" role="status">
+          {replaceKeyWarning(trimmedName)}
+        </p>
+      ) : null}
+
       <Field label="Default model (optional)">
         <Input
           maxLength={200}
@@ -451,9 +480,21 @@ function CreateConnectionForm({
           }}
         />
       </Field>
-      <Button type="submit" disabled={pending}>
-        Connect
-      </Button>
+      <div className="memory-actions">
+        <Button type="submit" disabled={pending}>
+          {replacing ? "Replace key" : "Connect"}
+        </Button>
+        {replacing ? (
+          <Button
+            disabled={pending}
+            onClick={() => {
+              setConfirmingReplace(false);
+            }}
+          >
+            Cancel
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }

@@ -1,7 +1,7 @@
 import { Button, Field, Input, Select } from "@porkbot/ui";
 import { useState } from "react";
 import type { BotSecretAuthView } from "@porkbot/contracts";
-import { authLabel, forgetWarning, secretStatusLabel } from "../secrets.ts";
+import { authLabel, forgetWarning, rotateWarning, secretStatusLabel } from "../secrets.ts";
 import type { NewSecretInput, SecretsState } from "../secrets.ts";
 
 /**
@@ -12,9 +12,10 @@ import type { NewSecretInput, SecretsState } from "../secrets.ts";
  * never the value — no response carries one, so there is nothing to hide. The
  * bot picker is the list's scope: switching bots reads that bot's rows rather
  * than filtering the previous ones, so a secret can never appear under the
- * wrong name. Forgetting is the destructive write, and its confirmation says
- * what the clear costs: a request that uses the value fails until it is stored
- * again.
+ * wrong name. Forgetting and rotating are the destructive writes: forgetting
+ * confirms that the value is cleared and a request using it fails until it is
+ * stored again, and storing over an existing name — a rotate — confirms that
+ * the old value is replaced, with the same consequence.
  */
 
 export interface SecretsScreenProps {
@@ -95,6 +96,7 @@ export function SecretsScreen({
           {storing ? (
             <StoreSecretForm
               pending={state.pending === "store"}
+              existingNames={state.secrets.map((secret) => secret.name)}
               onSubmit={async (input) => {
                 if (await onStore(input)) {
                   setStoring(false);
@@ -181,24 +183,40 @@ function ForgetSecret({ name, pending, onForget }: ForgetSecretProps) {
 
 interface StoreSecretFormProps {
   readonly pending: boolean;
+  /** The stored names, so a store over one of them confirms the rotate. */
+  readonly existingNames: readonly string[];
   readonly onSubmit: (input: NewSecretInput) => Promise<void>;
 }
 
-function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
+function StoreSecretForm({ pending, existingNames, onSubmit }: StoreSecretFormProps) {
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [origin, setOrigin] = useState("");
   const [authType, setAuthType] = useState<"bearer" | "header" | "basic">("bearer");
   const [headerName, setHeaderName] = useState("x-api-key");
   const [username, setUsername] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const auth = authFor(authType, headerName, username);
+  // Recomputed on every render: a name edited away from an existing one
+  // disarms the confirmation rather than leaving a warning about a row that
+  // will not be touched. Any edit disarms it, so a rotate always follows a
+  // click on the confirmation the operator can see.
+  const trimmedName = name.trim();
+  const rotating = confirming && existingNames.includes(trimmedName);
 
   return (
     <form
       className="memory-form"
       onSubmit={(event) => {
         event.preventDefault();
-        void onSubmit({ name, value, origin, auth });
+
+        if (existingNames.includes(trimmedName) && !rotating) {
+          setConfirming(true);
+
+          return;
+        }
+
+        void onSubmit({ name: trimmedName, value, origin, auth });
       }}
     >
       <Field label="Name">
@@ -209,6 +227,7 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
           value={name}
           onChange={(event) => {
             setName(event.target.value);
+            setConfirming(false);
           }}
         />
       </Field>
@@ -220,6 +239,7 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
           value={value}
           onChange={(event) => {
             setValue(event.target.value);
+            setConfirming(false);
           }}
         />
       </Field>
@@ -275,9 +295,28 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
       ) : null}
 
       <p className="muted">Stored encrypted; it is never shown again.</p>
-      <Button type="submit" disabled={pending}>
-        Store
-      </Button>
+
+      {rotating ? (
+        <p className="muted" role="status">
+          {rotateWarning(trimmedName)}
+        </p>
+      ) : null}
+
+      <div className="memory-actions">
+        <Button type="submit" disabled={pending}>
+          {rotating ? "Replace value" : "Store"}
+        </Button>
+        {rotating ? (
+          <Button
+            disabled={pending}
+            onClick={() => {
+              setConfirming(false);
+            }}
+          >
+            Cancel
+          </Button>
+        ) : null}
+      </div>
     </form>
   );
 }

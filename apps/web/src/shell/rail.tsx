@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { Button, CountBadge, Icon, Input } from "@porkbot/ui";
+import { Button, CountBadge, Icon, Input, Menu } from "@porkbot/ui";
 import type { RosterEntry } from "../roster.ts";
 import { RosterRow } from "./roster-row.tsx";
+import { modeLabel, modes } from "./mode.ts";
 import type { Mode } from "./mode.ts";
 
 /**
@@ -13,6 +14,11 @@ import type { Mode } from "./mode.ts";
  * Since slice 13.6 the rail reads the same roster rows the home screen does —
  * identity, name, role, the state chip and the latest activity — so a bot
  * looks the same wherever it is listed.
+ *
+ * Since slice 13.13 the footer's mode control is the explicit three-way choice
+ * — System, Light, Dark — rather than a two-way toggle, so System is a
+ * selection the operator can make and see rather than a state that only exists
+ * before the first click. The menu's label is the current choice.
  */
 
 export interface RailProps {
@@ -21,7 +27,7 @@ export interface RailProps {
   readonly query: string;
   readonly onQuery: (query: string) => void;
   readonly mode: Mode;
-  readonly onToggleMode: () => void;
+  readonly onMode: (mode: Mode) => void;
   readonly onSignOut: () => void;
   readonly rosterFailed: boolean;
   readonly onRetryRoster?: (() => void) | undefined;
@@ -35,7 +41,7 @@ export function Rail({
   query,
   onQuery,
   mode,
-  onToggleMode,
+  onMode,
   onSignOut,
   rosterFailed,
   onRetryRoster,
@@ -48,7 +54,6 @@ export function Rail({
       : entries.filter((entry) =>
           `${entry.bot.name} ${entry.bot.title}`.toLowerCase().includes(needle),
         );
-  const nextMode = mode === "dark" ? "light" : "dark";
 
   return (
     <div className="shell-rail-inner">
@@ -109,17 +114,18 @@ export function Rail({
           <Icon name="settings" />
           <span className="shell-rail-foot-label">Settings</span>
         </Link>
-        <Button
+        <Menu
+          className="shell-rail-foot-mode"
           variant="ghost"
-          className="shell-rail-foot-row"
-          onClick={onToggleMode}
-          aria-label={`Switch to ${nextMode} mode`}
-        >
-          <Icon name={mode === "dark" ? "sun" : "moon"} />
-          <span className="shell-rail-foot-label">
-            {nextMode === "dark" ? "Dark mode" : "Light mode"}
-          </span>
-        </Button>
+          label={`Mode: ${modeLabel(mode)}`}
+          items={modes.map((candidate) => ({
+            id: candidate,
+            label: modeLabel(candidate),
+            onSelect: () => {
+              onMode(candidate);
+            },
+          }))}
+        />
         <Button variant="ghost" className="shell-rail-foot-row" onClick={onSignOut}>
           <Icon name="log-out" />
           <span className="shell-rail-foot-label">Sign out</span>

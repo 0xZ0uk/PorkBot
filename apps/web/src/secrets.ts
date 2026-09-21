@@ -85,6 +85,15 @@ export function forgetWarning(name: string): string {
   return `Forgetting ${name} clears the stored value now; a request that uses it fails until it is stored again.`;
 }
 
+/**
+ * The confirmation sentence for a store that replaces an existing value: the
+ * rotate. The old value is gone the moment the new one is stored, so the
+ * consequence is named before the write exactly like a forget's.
+ */
+export function rotateWarning(name: string): string {
+  return `A secret named ${name} is already stored. Storing now replaces its value; a request that used the old value fails until the new one is accepted.`;
+}
+
 /** The outcome sentence for a forget, shown after the write. */
 export function forgetOutcome(name: string, removed: boolean): string {
   return removed
