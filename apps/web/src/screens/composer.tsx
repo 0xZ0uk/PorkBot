@@ -1,5 +1,5 @@
 import { MAX_MESSAGE_TEXT_LENGTH } from "@porkbot/core";
-import { Button } from "@porkbot/ui";
+import { Button, Input, Textarea } from "@porkbot/ui";
 import { useRef } from "react";
 import type { ClipboardEvent, DragEvent, KeyboardEvent, ChangeEvent } from "react";
 import type { ComposerFileInput, ComposerState } from "../composer.ts";
@@ -154,8 +154,8 @@ export function ComposerScreen({
                   Retry
                 </Button>
               ) : null}
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 className="composer-file-remove"
                 aria-label={`Remove ${file.filename}`}
                 onClick={() => {
@@ -163,13 +163,13 @@ export function ComposerScreen({
                 }}
               >
                 Remove
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
       <div className="composer-row">
-        <textarea
+        <Textarea
           className="composer-text"
           aria-label="Message"
           placeholder="Message the bot — drop, choose, or paste files to attach"
@@ -182,7 +182,7 @@ export function ComposerScreen({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
         />
-        <input
+        <Input
           ref={chooser}
           type="file"
           multiple
@@ -198,7 +198,7 @@ export function ComposerScreen({
         >
           Attach files
         </Button>
-        <Button tone="primary" type="submit" disabled={!state.canSend}>
+        <Button variant="primary" type="submit" disabled={!state.canSend}>
           {state.sending ? "Sending…" : "Send"}
         </Button>
       </div>

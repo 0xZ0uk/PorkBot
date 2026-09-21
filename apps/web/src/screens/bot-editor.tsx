@@ -1,6 +1,6 @@
 import { avatarContentTypes, maxAvatarBytes } from "@porkbot/contracts";
 import { srgbAccent } from "@porkbot/tokens";
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input, Select, Textarea } from "@porkbot/ui";
 import { useState } from "react";
 import type { AvatarContentType, Bot, BotSection, ComputerView } from "@porkbot/contracts";
 import { formFromBot, validateBotForm } from "../bots.ts";
@@ -76,9 +76,8 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
               <img className="bot-avatar bot-avatar-large" src={props.avatarUrl} alt="" />
             )}
             <div className="bot-actions">
-              <label className="file-button">
-                Upload image
-                <input
+              <Field label="Upload image" className="file-button" error={avatarError ?? undefined}>
+                <Input
                   type="file"
                   accept={avatarContentTypes.join(",")}
                   disabled={props.pending}
@@ -99,7 +98,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
                     void props.onAvatar(file as File & { readonly type: AvatarContentType });
                   }}
                 />
-              </label>
+              </Field>
               {props.avatarUrl === null ? null : (
                 <Button disabled={props.pending} onClick={() => void props.onClearAvatar()}>
                   Remove
@@ -107,11 +106,6 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
               )}
             </div>
           </div>
-          {avatarError === null ? null : (
-            <p className="field-error" role="alert">
-              {avatarError}
-            </p>
-          )}
         </section>
       ) : null}
 
@@ -127,67 +121,56 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
       >
         <section className="editor-section">
           <h3>Identity</h3>
-          <label className="field">
-            <span>Name</span>
-            <input
+          <Field label="Name" error={errors.name}>
+            <Input
               value={values.name}
               maxLength={201}
               aria-invalid={errors.name === undefined ? undefined : true}
               onChange={(event) => field("name", event.target.value)}
             />
-            <FieldError error={errors.name} />
-          </label>
-          <label className="field">
-            <span>Title</span>
-            <input
+          </Field>
+          <Field label="Title" error={errors.title}>
+            <Input
               value={values.title}
               maxLength={201}
               aria-invalid={errors.title === undefined ? undefined : true}
               onChange={(event) => field("title", event.target.value)}
             />
-            <FieldError error={errors.title} />
-          </label>
-          <label className="field">
-            <span>Description</span>
-            <textarea
+          </Field>
+          <Field label="Description" error={errors.description}>
+            <Textarea
               rows={3}
               value={values.description}
               aria-invalid={errors.description === undefined ? undefined : true}
               onChange={(event) => field("description", event.target.value)}
             />
-            <FieldError error={errors.description} />
-          </label>
-          <label className="field color-field">
-            <span>Colour</span>
-            <input
+          </Field>
+          <Field label="Colour" className="color-field" error={errors.color}>
+            <Input
               type="color"
               value={values.color}
               aria-invalid={errors.color === undefined ? undefined : true}
               onChange={(event) => field("color", event.target.value)}
             />
-            <FieldError error={errors.color} />
-          </label>
+          </Field>
         </section>
 
         <section className="editor-section">
           <h3>Instructions</h3>
-          <label className="field">
-            <span>What should this bot do?</span>
-            <textarea
+          <Field label="What should this bot do?" error={errors.instructions}>
+            <Textarea
               rows={10}
               value={values.instructions}
               aria-invalid={errors.instructions === undefined ? undefined : true}
               onChange={(event) => field("instructions", event.target.value)}
             />
-            <FieldError error={errors.instructions} />
-          </label>
+          </Field>
         </section>
 
         <section className="editor-section">
           <h3>Section</h3>
-          <label className="field">
-            <span>Group</span>
-            <select
+          <Field label="Group">
+            <Select
               value={values.sectionId}
               onChange={(event) => field("sectionId", event.target.value)}
             >
@@ -197,13 +180,12 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
                   {section.name}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Field>
           <div className="inline-form">
-            <label className="field">
-              <span>New section</span>
-              <input value={newSection} onChange={(event) => setNewSection(event.target.value)} />
-            </label>
+            <Field label="New section">
+              <Input value={newSection} onChange={(event) => setNewSection(event.target.value)} />
+            </Field>
             <Button
               disabled={props.pending || newSection.trim().length === 0}
               onClick={() => {
@@ -222,16 +204,14 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
 
         <section className="editor-section">
           <h3>Computer</h3>
-          <label className="field">
-            <span>Provider</span>
-            <input
+          <Field label="Provider" error={errors.computerProvider}>
+            <Input
               value={values.computerProvider}
               placeholder="Deployment default"
               aria-invalid={errors.computerProvider === undefined ? undefined : true}
               onChange={(event) => field("computerProvider", event.target.value)}
             />
-            <FieldError error={errors.computerProvider} />
-          </label>
+          </Field>
           {editing && props.computer !== null ? (
             <ComputerControls
               health={props.computer}
@@ -244,7 +224,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
         </section>
 
         <div className="editor-save">
-          <Button type="submit" tone="primary" disabled={props.pending}>
+          <Button type="submit" variant="primary" disabled={props.pending}>
             {props.pending ? "Saving…" : editing ? "Save changes" : "Create bot"}
           </Button>
         </div>
@@ -265,7 +245,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
             <div className="confirm-row">
               <p className="muted">Confirm this change?</p>
               <Button
-                tone="primary"
+                variant="primary"
                 disabled={props.pending}
                 onClick={() => void (archived ? props.onRestore() : props.onArchive())}
               >
@@ -317,14 +297,6 @@ function ComputerControls({
         </Button>
       </div>
     </div>
-  );
-}
-
-function FieldError({ error }: Readonly<{ error: string | undefined }>) {
-  return error === undefined ? null : (
-    <span className="field-error" role="alert">
-      {error}
-    </span>
   );
 }
 

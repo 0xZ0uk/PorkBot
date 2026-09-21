@@ -1,5 +1,5 @@
 import type { Approval, Bot } from "@porkbot/contracts";
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input, Select } from "@porkbot/ui";
 import { useEffect, useMemo, useState } from "react";
 
 export interface ApprovalsScreenProps {
@@ -67,9 +67,8 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
       </header>
 
       <div className="approval-filters" aria-label="Approval filters">
-        <label className="field">
-          <span>Bot</span>
-          <select
+        <Field label="Bot">
+          <Select
             aria-label="Filter by bot"
             value={botId}
             onChange={(event) => setBotId(event.target.value)}
@@ -80,20 +79,18 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
                 {bot.name}
               </option>
             ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Run</span>
-          <input
+          </Select>
+        </Field>
+        <Field label="Run">
+          <Input
             aria-label="Filter by run"
             value={runId}
             onChange={(event) => setRunId(event.target.value)}
             placeholder="Run id"
           />
-        </label>
-        <label className="field">
-          <span>Status</span>
-          <select
+        </Field>
+        <Field label="Status">
+          <Select
             aria-label="Filter by status"
             value={status}
             onChange={(event) => setStatus(event.target.value as Approval["status"] | "")}
@@ -103,8 +100,8 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
             <option value="approved">Approved</option>
             <option value="denied">Denied</option>
             <option value="timed_out">Timed out</option>
-          </select>
-        </label>
+          </Select>
+        </Field>
       </div>
 
       {error ? (
@@ -158,7 +155,7 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
                   {approval.status === "pending" ? (
                     <dd className="approval-buttons">
                       <Button
-                        tone="primary"
+                        variant="primary"
                         disabled={busy !== null}
                         onClick={() => {
                           void decide(approval, "approve");

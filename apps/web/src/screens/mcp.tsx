@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input, Select } from "@porkbot/ui";
 import { useState } from "react";
 import type { McpServerDetail, McpServerSummary } from "@porkbot/contracts";
 import { liveGrants, removeWarning, revokeWarning, serverStatusLabel } from "../mcp.ts";
@@ -239,9 +239,8 @@ function McpDetail({
           <p className="muted">Every active bot has access.</p>
         ) : (
           <div className="memory-actions">
-            <label className="field">
-              <span>Grant to</span>
-              <select
+            <Field label="Grant to">
+              <Select
                 value={grantBotId}
                 disabled={state.pending !== null}
                 onChange={(event) => {
@@ -254,8 +253,8 @@ function McpDetail({
                     {bot.name}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </Field>
             <Button
               disabled={grantBotId === "" || state.pending !== null}
               onClick={() => {
@@ -390,9 +389,8 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
         );
       }}
     >
-      <label className="field">
-        <span>Name</span>
-        <input
+      <Field label="Name">
+        <Input
           required
           maxLength={120}
           value={name}
@@ -400,10 +398,9 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
             setName(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Server URL</span>
-        <input
+      </Field>
+      <Field label="Server URL">
+        <Input
           required
           type="url"
           maxLength={2_048}
@@ -413,10 +410,9 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
             setUrl(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Authentication</span>
-        <select
+      </Field>
+      <Field label="Authentication">
+        <Select
           value={auth}
           onChange={(event) => {
             setAuth(event.target.value as "none" | "oauth");
@@ -424,14 +420,13 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
         >
           <option value="none">None</option>
           <option value="oauth">OAuth</option>
-        </select>
-      </label>
+        </Select>
+      </Field>
 
       {auth === "oauth" ? (
         <>
-          <label className="field">
-            <span>Client ID</span>
-            <input
+          <Field label="Client ID">
+            <Input
               required
               maxLength={200}
               value={clientId}
@@ -439,10 +434,9 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
                 setClientId(event.target.value);
               }}
             />
-          </label>
-          <label className="field">
-            <span>Client secret (optional)</span>
-            <input
+          </Field>
+          <Field label="Client secret (optional)">
+            <Input
               type="password"
               autoComplete="off"
               maxLength={2_000}
@@ -451,7 +445,7 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
                 setClientSecret(event.target.value);
               }}
             />
-          </label>
+          </Field>
         </>
       ) : null}
 

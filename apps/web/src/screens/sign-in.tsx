@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Card, Field, Input } from "@porkbot/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { Credentials, SignupAvailability } from "../session.ts";
@@ -49,16 +49,15 @@ export function SignInScreen({ error, signup, onSubmit, footer }: SignInScreenPr
 
   return (
     <main id="main" className="screen" tabIndex={-1}>
-      <form className="card" onSubmit={handleSubmit} aria-busy={pending}>
+      <Card as="form" className="frame-card" onSubmit={handleSubmit} aria-busy={pending}>
         <h1>Sign in</h1>
         {error !== null && (
           <p id={errorId} className="form-error" role="alert" tabIndex={-1} ref={errorRef}>
             {error}
           </p>
         )}
-        <div className="field">
-          <label htmlFor="sign-in-email">Email</label>
-          <input
+        <Field label="Email" htmlFor="sign-in-email">
+          <Input
             id="sign-in-email"
             name="email"
             type="email"
@@ -68,10 +67,9 @@ export function SignInScreen({ error, signup, onSubmit, footer }: SignInScreenPr
             aria-describedby={error !== null ? errorId : undefined}
             onChange={(event) => setEmail(event.target.value)}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="sign-in-password">Password</label>
-          <input
+        </Field>
+        <Field label="Password" htmlFor="sign-in-password">
+          <Input
             id="sign-in-password"
             name="password"
             type="password"
@@ -81,12 +79,12 @@ export function SignInScreen({ error, signup, onSubmit, footer }: SignInScreenPr
             aria-describedby={error !== null ? errorId : undefined}
             onChange={(event) => setPassword(event.target.value)}
           />
-        </div>
-        <Button type="submit" tone="primary" disabled={pending}>
+        </Field>
+        <Button type="submit" variant="primary" disabled={pending}>
           {pending ? "Signing in…" : "Sign in"}
         </Button>
         {signup === "open" && footer}
-      </form>
+      </Card>
     </main>
   );
 }

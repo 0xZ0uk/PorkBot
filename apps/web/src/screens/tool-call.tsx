@@ -155,7 +155,7 @@ function ApprovalControls({
       </p>
       <div className="approval-buttons">
         <Button
-          tone="primary"
+          variant="primary"
           disabled={onDecision === undefined || busy !== null}
           onClick={() => {
             void decide("approve");

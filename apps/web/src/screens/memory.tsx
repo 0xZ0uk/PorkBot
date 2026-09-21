@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input, Textarea } from "@porkbot/ui";
 import { useState } from "react";
 import type { MemoryDocumentView } from "@porkbot/contracts";
 import type { MemoryNotice, MemoryScope, MemoryState } from "../memory.ts";
@@ -278,9 +278,8 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
         void onSubmit({ documentId: document.documentId, title, content, reason });
       }}
     >
-      <label className="field">
-        <span>Title</span>
-        <input
+      <Field label="Title">
+        <Input
           required
           maxLength={200}
           value={title}
@@ -288,10 +287,9 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
             setTitle(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Content</span>
-        <textarea
+      </Field>
+      <Field label="Content">
+        <Textarea
           required
           maxLength={8_000}
           rows={5}
@@ -300,10 +298,9 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
             setContent(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Why this change</span>
-        <input
+      </Field>
+      <Field label="Why this change">
+        <Input
           required
           maxLength={500}
           placeholder="Recorded on the revision"
@@ -312,7 +309,7 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
             setReason(event.target.value);
           }}
         />
-      </label>
+      </Field>
       <Button type="submit" disabled={pending}>
         Save
       </Button>
@@ -341,9 +338,8 @@ function RemoveForm({ documentId, pending, onSubmit }: RemoveFormProps) {
       }}
     >
       <p className="muted">Removing keeps the history and can be undone from the Removed list.</p>
-      <label className="field">
-        <span>Why remove it</span>
-        <input
+      <Field label="Why remove it">
+        <Input
           required
           maxLength={500}
           placeholder="Recorded on the revision"
@@ -352,7 +348,7 @@ function RemoveForm({ documentId, pending, onSubmit }: RemoveFormProps) {
             setReason(event.target.value);
           }}
         />
-      </label>
+      </Field>
       <Button type="submit" disabled={pending}>
         Delete
       </Button>

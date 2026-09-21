@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Select } from "@porkbot/ui";
 import { UsageReport } from "./usage.tsx";
 import { usageWindows } from "../settings-usage.ts";
 import type { SettingsUsageState, UsageWindow } from "../settings-usage.ts";
@@ -40,9 +40,8 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
     <section className="console" aria-busy={state.status === "loading"}>
       <header className="memory-header">
         <h2>Usage</h2>
-        <label className="field">
-          <span>Window</span>
-          <select
+        <Field label="Window">
+          <Select
             value={state.days}
             disabled={state.reloading}
             onChange={(event) => {
@@ -54,8 +53,8 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
                 {windowLabel(days)}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
       </header>
       <p className="muted">Recorded and displayed only; nothing here is metered or enforced.</p>
 

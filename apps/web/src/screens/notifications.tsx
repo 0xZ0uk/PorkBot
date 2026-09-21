@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input } from "@porkbot/ui";
 import type { NotificationKind } from "@porkbot/core";
 import { notificationLabel } from "../notifications.ts";
 import type { NotificationsState } from "../notifications.ts";
@@ -46,9 +46,8 @@ export function NotificationsScreen({ state, onToggle, onReload }: Notifications
       <ul className="settings-toggles">
         {state.preferences.map((preference) => (
           <li key={preference.kind} className="settings-toggle">
-            <label className="field">
-              <span>{notificationLabel(preference.kind)}</span>
-              <input
+            <Field label={notificationLabel(preference.kind)}>
+              <Input
                 type="checkbox"
                 checked={preference.enabled}
                 disabled={state.pending === preference.kind}
@@ -56,7 +55,7 @@ export function NotificationsScreen({ state, onToggle, onReload }: Notifications
                   onToggle(preference.kind, event.target.checked);
                 }}
               />
-            </label>
+            </Field>
           </li>
         ))}
       </ul>
