@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=390" />
+    <title>Interface mock — roster and thread at 390</title>
+    <link rel="stylesheet" href="mock.css" />
+  </head>
+  <body>
+    <!-- One pane at a time below 64rem; the switcher sheet replaces the rail. -->
+    <div class="phone">
+      <header class="phone-head">
+        <button class="icon-button" aria-label="Switch bot" aria-expanded="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 6h16" />
+            <path d="M4 12h16" />
+            <path d="M4 18h16" />
+          </svg>
+        </button>
+        <svg class="mascot mascot-32" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="2.5" y="2.5" width="27" height="27" rx="9" fill="var(--pb-id-3)" />
+          <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+          <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+        </svg>
+        <span class="phone-head-body">
+          <span class="phone-head-name">Ledger</span>
+          <span class="phone-head-meta">Bookkeeping</span>
+        </span>
+        <span class="chip chip-waiting" style="margin-left: auto"
+          ><span class="dot"></span>Waiting</span
+        >
+      </header>
+
+      <div class="transcript">
+        <div class="thread-column">
+          <div class="separator">Today · 09:31</div>
+
+          <div class="turn turn-user">
+            <div class="bubble">
+              <p>Send the 12 summaries to accounts@acme.example.</p>
+            </div>
+          </div>
+
+          <div class="turn turn-bot">
+            <svg class="mascot mascot-20" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="27" height="27" rx="9" fill="var(--pb-id-3)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <div>
+              <div class="attribution" style="margin-bottom: 0.375rem">
+                <span class="attribution-name">Ledger</span>
+                <span>09:31</span>
+              </div>
+              <div class="bubble">
+                <p>The send leaves your network, so I need your approval before it goes.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="tool-entry">
+            <button class="tool-summary">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--pb-warning)"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 8v4l2.5 2" />
+              </svg>
+              <span class="tool-name">gmail.send</span>
+              <span class="tool-target">12 messages</span>
+              <span class="tool-duration">waiting</span>
+            </button>
+          </div>
+
+          <div class="approval">
+            <div class="approval-head">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M12 3 2 20h20Z" />
+                <path d="M12 9v4" />
+                <path d="M12 17h.01" />
+              </svg>
+              Approval needed
+            </div>
+            <div class="approval-consequence">
+              Send 12 invoice summaries to accounts@acme.example. This leaves your network and
+              cannot be unsent.
+            </div>
+            <div class="approval-meta">
+              <span>gmail.send</span>
+              <span class="deadline">2h 14m left</span>
+            </div>
+            <div class="approval-actions">
+              <button class="pill pill-primary">Approve</button>
+              <button class="pill pill-ghost">Deny</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="composer-column">
+          <div class="composer-box">
+            <textarea
+              class="composer-input"
+              rows="1"
+              placeholder="Message Ledger"
+              aria-label="Message Ledger"
+            ></textarea>
+            <button class="composer-button composer-stop" aria-label="Stop the run">
+              <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                <rect width="12" height="12" rx="2" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="composer-button composer-send" aria-label="Send">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 19V5" />
+                <path d="m5 12 7-7 7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The switcher sheet: the same roster rows, one gesture from the thread. -->
+    <div class="sheet-scrim"></div>
+    <div class="sheet" role="dialog" aria-label="Switch bot">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-head">
+        <span>Bots</span>
+        <span>2 waiting</span>
+      </div>
+      <div class="sheet-body">
+        <div class="rail-list" style="padding: 0">
+          <button class="rail-row" style="--pb-id: var(--pb-id-1)">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="14" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Scout</span>
+              <span class="rail-row-activity">Reading a page</span>
+            </span>
+            <span class="chip chip-working"><span class="dot"></span>Working</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-3)" aria-current="true">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="27" height="27" rx="9" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Ledger</span>
+              <span class="rail-row-activity">Waiting for you</span>
+            </span>
+            <span class="chip chip-waiting"><span class="dot"></span>Waiting</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-5)">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M16 2.5 27.7 9.2v13.6L16 29.5 4.3 22.8V9.2Z" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Atlas</span>
+              <span class="rail-row-activity">Idle since 09:12</span>
+            </span>
+            <span class="chip chip-idle"><span class="dot"></span>Idle</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-2)">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="27" height="27" rx="14" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="15" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Ember</span>
+              <span class="rail-row-activity">Rate limited</span>
+            </span>
+            <span class="chip chip-failed"><span class="dot"></span>Failed</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-6)">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M16 3 29 27H3Z" fill="var(--pb-id)" />
+              <circle cx="11.5" cy="19" r="2.3" fill="var(--pb-bg)" />
+              <circle cx="20.5" cy="19" r="2.3" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Warden</span>
+              <span class="rail-row-activity">Stuck on shell</span>
+            </span>
+            <span class="chip chip-stuck"><span class="dot"></span>Stuck</span>
+          </button>
+
+          <button class="rail-row" style="--pb-id: var(--pb-id-4)">
+            <svg class="mascot mascot-24" viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="14" fill="var(--pb-id)" />
+              <ellipse cx="11.5" cy="15" rx="2" ry="2.8" fill="var(--pb-bg)" />
+              <ellipse cx="20.5" cy="15" rx="2" ry="2.8" fill="var(--pb-bg)" />
+            </svg>
+            <span class="rail-row-body">
+              <span class="rail-row-name">Piper</span>
+              <span class="rail-row-activity">Stopped by you</span>
+            </span>
+            <span class="chip chip-stopped"><span class="dot"></span>Stopped</span>
+          </button>
+        </div>
+
+        <div class="rail-foot" style="border-top: 1px solid var(--pb-border); margin-top: 0.5rem">
+          <button class="rail-foot-row">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            Approvals
+            <span class="chip chip-waiting count">2</span>
+          </button>
+          <button class="rail-foot-row">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.2a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4Z"
+              />
+            </svg>
+            Settings
+          </button>
+          <button class="rail-foot-row" data-theme-toggle>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+            </svg>
+            Dark mode
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const stored = localStorage.getItem("pb-mode");
+        const mode =
+          params.get("mode") ??
+          (stored === "light" || stored === "dark"
+            ? stored
+            : matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark");
+        document.documentElement.dataset.theme = mode;
+
+        for (const button of document.querySelectorAll("[data-theme-toggle]")) {
+          button.addEventListener("click", () => {
+            const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem("pb-mode", next);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
