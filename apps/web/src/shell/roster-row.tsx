@@ -173,6 +173,13 @@ function HomeRow({
           },
         },
         {
+          id: "routines",
+          label: "Routines",
+          onSelect: () => {
+            void navigate({ to: "/bots/$botId/routines", params: { botId: bot.id } });
+          },
+        },
+        {
           id: "usage",
           label: "Usage",
           onSelect: () => {

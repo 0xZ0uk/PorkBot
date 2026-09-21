@@ -24,6 +24,8 @@ import type {
   ModelConnection,
   ModelProbe,
   NotificationPreference,
+  Routine,
+  RoutineOutcome,
   RunGet,
   RunStop,
   Thread,
@@ -43,6 +45,7 @@ import type { McpTransport } from "../src/mcp.ts";
 import type { MemoryTransport } from "../src/memory.ts";
 import type { NotificationsTransport } from "../src/notifications.ts";
 import type { OwnershipTransport } from "../src/ownership.ts";
+import type { RoutinesTransport } from "../src/routines.ts";
 import type { SecretsTransport } from "../src/secrets.ts";
 import type { ConsoleTransport, UsageTransport } from "../src/transport.ts";
 
@@ -734,6 +737,125 @@ export function fakeUsage(overrides: Partial<UsageBot> = {}): UsageBot {
     total: fakeUsageTotals(),
     periods: [{ startsAt: "2026-01-02T00:00:00.000Z", ...fakeUsageTotals() }],
     ...overrides,
+  };
+}
+
+export function fakeRoutine(overrides: Partial<Routine> = {}): Routine {
+  return {
+    id: "routine-1",
+    botId: "bot-1",
+    threadId: "thread-routine-1",
+    instruction: "Summarise the inbox",
+    cron: "0 9 * * 1-5",
+    timezone: "UTC",
+    enabled: true,
+    nextRunAt: "2026-01-05T09:00:00.000Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function fakeRoutineOutcome(overrides: Partial<RoutineOutcome> = {}): RoutineOutcome {
+  return {
+    occurrenceId: "occurrence-1",
+    scheduledFor: "2026-01-02T09:00:00.000Z",
+    status: "success",
+    runId: "run-routine-1",
+    ...overrides,
+  };
+}
+
+export interface ScriptedRoutinesTransportOptions {
+  readonly routines?: readonly Routine[];
+  readonly outcomes?: Readonly<Record<string, readonly RoutineOutcome[]>>;
+  readonly preview?: readonly string[];
+  readonly testRun?: { readonly runId: string; readonly threadId: string };
+  readonly readFailure?: unknown;
+  readonly writeFailure?: unknown;
+}
+
+/** A small stateful fake for the list, editor, preview and ledger surface. */
+export function scriptedRoutinesTransport(
+  options: ScriptedRoutinesTransportOptions = {},
+): RoutinesTransport {
+  let routines = [...(options.routines ?? [])];
+  const outcomeRows = options.outcomes ?? {};
+
+  function readGuard(): void {
+    if (options.readFailure !== undefined) {
+      throw options.readFailure;
+    }
+  }
+
+  function writeGuard(): void {
+    if (options.writeFailure !== undefined) {
+      throw options.writeFailure;
+    }
+  }
+
+  return {
+    list: async (botId) => {
+      readGuard();
+
+      return routines.filter((routine) => routine.botId === botId);
+    },
+    create: async (input) => {
+      writeGuard();
+      const routine = fakeRoutine({
+        id: `routine-${String(routines.length + 1)}`,
+        botId: input.botId,
+        instruction: input.instruction,
+        cron: input.cron,
+        timezone: input.timezone,
+      });
+      routines = [...routines, routine];
+
+      return routine;
+    },
+    update: async (input) => {
+      writeGuard();
+      const current =
+        routines.find((routine) => routine.id === input.id) ?? fakeRoutine({ id: input.id });
+      const updated = {
+        ...current,
+        ...(input.instruction === undefined ? {} : { instruction: input.instruction }),
+        ...(input.cron === undefined ? {} : { cron: input.cron }),
+        ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      };
+      routines = routines.map((routine) => (routine.id === input.id ? updated : routine));
+
+      return updated;
+    },
+    remove: async (id) => {
+      writeGuard();
+      routines = routines.filter((routine) => routine.id !== id);
+
+      return { id };
+    },
+    preview: async () => {
+      readGuard();
+
+      return (
+        options.preview ?? [
+          "2026-01-05T09:00:00.000Z",
+          "2026-01-06T09:00:00.000Z",
+          "2026-01-07T09:00:00.000Z",
+        ]
+      );
+    },
+    testRun: async () => {
+      writeGuard();
+
+      return options.testRun ?? { runId: "run-test-1", threadId: "thread-routine-1" };
+    },
+    outcomes: async ({ id }) => {
+      readGuard();
+
+      return outcomeRows[id] ?? [];
+    },
   };
 }
 

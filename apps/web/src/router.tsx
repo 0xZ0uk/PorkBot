@@ -14,6 +14,7 @@ import {
   createHttpMemoryTransport,
   createHttpNotificationsTransport,
   createHttpOwnershipTransport,
+  createHttpRoutinesTransport,
   createHttpSecretsTransport,
   createHttpUsageTransport,
 } from "./transport.ts";
@@ -24,6 +25,7 @@ import type { McpTransport } from "./mcp.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type { NotificationsTransport } from "./notifications.ts";
 import type { OwnershipTransport } from "./ownership.ts";
+import type { RoutinesTransport } from "./routines.ts";
 import type { SecretsTransport } from "./secrets.ts";
 import type { AuthTransport, SessionController } from "./session.ts";
 import type { ApprovalTransport, ConsoleTransport, UsageTransport } from "./transport.ts";
@@ -58,6 +60,8 @@ export interface RouterContext {
   readonly ownership?: OwnershipTransport;
   /** The secrets settings surface's data: bots and their stored secrets. */
   readonly secrets?: SecretsTransport;
+  /** The selected bot's routine authoring surface and occurrence ledgers. */
+  readonly routines?: RoutinesTransport;
   /** The MCP settings surface's data: servers, tools and per-bot grants. */
   readonly mcp?: McpTransport;
 }
@@ -92,6 +96,7 @@ export function getRouter() {
     notifications: createHttpNotificationsTransport(),
     ownership: createHttpOwnershipTransport(),
     secrets: createHttpSecretsTransport(),
+    routines: createHttpRoutinesTransport(),
     mcp: createHttpMcpTransport(),
   });
 }

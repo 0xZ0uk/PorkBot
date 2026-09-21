@@ -86,6 +86,14 @@ export function Inspector({ bot, state, pendingApprovals, onNavigate }: Inspecto
             Memory
           </Link>
           <Link
+            to="/bots/$botId/routines"
+            params={{ botId: bot.id }}
+            className="shell-inspector-link"
+            onClick={onNavigate}
+          >
+            Routines
+          </Link>
+          <Link
             to="/bots/$botId/usage"
             params={{ botId: bot.id }}
             className="shell-inspector-link"
