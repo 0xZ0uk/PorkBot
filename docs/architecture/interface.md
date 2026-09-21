@@ -101,6 +101,16 @@ Slice 13.7 built this grammar and its captures — a streaming run, an attachmen
 and an upload failure, both modes — live under
 `docs/screenshots/conversation-*.png`.
 
+Slice 13.9 built the approval card and the queue that reads as one: the same
+card in the transcript and on `/approvals`, pending gates first with the live
+deadline counting down, and a gate whose deadline passes flipping to the
+timeout's denial in both surfaces rather than folding away. The captures are
+`docs/screenshots/approval-pending-*.png`,
+`docs/screenshots/approval-resolved-*.png`,
+`docs/screenshots/approvals-queue-*.png`,
+`docs/screenshots/approvals-history-*.png` and the design record's inline card
+at 390, `docs/screenshots/interface-approval-390-dark.png`.
+
 ## State vocabulary
 
 One vocabulary, one visual each. The words are the operator's; the mapping to
@@ -416,9 +426,15 @@ screenshots for the operator's verdict.
 | `interface-approval-390-dark.png`   | An inline approval card at the narrow width                  | 390   | dark  |
 | `interface-states-dark.png`         | The six state chips in rail context                          | 1280  | dark  |
 | `interface-states-light.png`        | The six state chips in rail context                          | 1280  | light |
+| `approval-pending-1280-dark.png`    | A pending gate's inline card beside a timed-out one          | 1280  | dark  |
+| `approval-resolved-1280-dark.png`   | The same thread with both gates resolved in place            | 1280  | dark  |
+| `approvals-queue-1280-dark.png`     | The queue: waiting gates first, then history                 | 1280  | dark  |
+| `approvals-history-1280-dark.png`   | An approved and a timed-out gate as history                  | 1280  | dark  |
 
-The first six rows are the mocks' captures from slice 13.1; the rest are
-targets for the slices that build them.
+The first six rows are the mocks' captures from slice 13.1; the rest began as
+targets for the slices that build them. Slice 13.9 landed the four approval
+rows above; each has a light pair under `docs/screenshots/` except the inline
+card at 390, which the design record names in dark only.
 
 ## Sign-off
 

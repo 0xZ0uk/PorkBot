@@ -1,6 +1,25 @@
 import type { Approval, Bot } from "@porkbot/contracts";
-import { Button, Field, Input, Select } from "@porkbot/ui";
+import type { ApprovalVote } from "@porkbot/core";
+import { Field, Input, Select } from "@porkbot/ui";
 import { useEffect, useMemo, useState } from "react";
+import { ApprovalCard, liveApprovalStatus, useApprovalClock } from "./approval-card.tsx";
+
+/**
+ * The approval queue (slice 13.9, story 40; design record, Conversation
+ * grammar).
+ *
+ * The queue is the same decision the transcript renders, mirrored: pending
+ * gates come first, soonest deadline first, each one the shared card with its
+ * consequence, its run and its two buttons. History follows with the same card
+ * in its resolved state, so what was approved, denied or timed out reads as a
+ * decision rather than as a table of raw records; the arguments stay behind
+ * the card's disclosure because the audit trail still needs them.
+ *
+ * The buckets are live, not the durable row's status: a pending row whose
+ * deadline has passed belongs to history already, because the store refuses a
+ * vote after `expires_at` and settles it as `timed_out` itself. That is what
+ * keeps a gate from sitting in the queue as though it were still answerable.
+ */
 
 export interface ApprovalsScreenProps {
   readonly approvals: readonly Approval[];
@@ -8,53 +27,106 @@ export interface ApprovalsScreenProps {
   readonly onDecision: (input: {
     readonly runId: string;
     readonly callId: string;
-    readonly vote: "approve" | "deny";
+    readonly vote: ApprovalVote;
   }) => Promise<Approval>;
 }
 
-/**
- * The operator's approval inbox and audit history. Pending rows are expanded
- * because the action and its redacted arguments are the decision, while
- * resolved rows stay folded so a long history remains scannable.
- */
 export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreenProps) {
   const [botId, setBotId] = useState("");
   const [runId, setRunId] = useState("");
   const [status, setStatus] = useState<Approval["status"] | "">("");
   const [overrides, setOverrides] = useState<Record<string, Approval>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     setOverrides({});
   }, [approvals]);
 
+  const rows = useMemo(
+    () => approvals.map((approval) => overrides[approvalKey(approval)] ?? approval),
+    [approvals, overrides],
+  );
+  const now = useApprovalClock(rows.some((approval) => approval.status === "pending"));
+
   const visible = useMemo(
     () =>
-      approvals
-        .map((approval) => overrides[approvalKey(approval)] ?? approval)
-        .filter(
-          (approval) =>
-            (botId === "" || approval.botId === botId) &&
-            (runId.trim() === "" || approval.runId.includes(runId.trim())) &&
-            (status === "" || approval.status === status),
-        ),
-    [approvals, botId, overrides, runId, status],
+      rows.filter((approval) => {
+        if (botId !== "" && approval.botId !== botId) {
+          return false;
+        }
+
+        if (runId.trim() !== "" && !approval.runId.includes(runId.trim())) {
+          return false;
+        }
+
+        if (
+          status !== "" &&
+          liveApprovalStatus(approval.status, approval.expiresAt, now) !== status
+        ) {
+          return false;
+        }
+
+        return true;
+      }),
+    [rows, botId, now, runId, status],
   );
 
-  async function decide(approval: Approval, vote: "approve" | "deny"): Promise<void> {
-    const key = approvalKey(approval);
-    setBusy(key);
-    setError(false);
+  const waiting = useMemo(
+    () =>
+      visible
+        .filter(
+          (approval) => liveApprovalStatus(approval.status, approval.expiresAt, now) === "pending",
+        )
+        .sort((left, right) => Date.parse(left.expiresAt) - Date.parse(right.expiresAt)),
+    [visible, now],
+  );
 
-    try {
-      const updated = await onDecision({ runId: approval.runId, callId: approval.callId, vote });
-      setOverrides((current) => ({ ...current, [key]: updated }));
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(null);
-    }
+  const history = useMemo(
+    () =>
+      visible
+        .filter(
+          (approval) => liveApprovalStatus(approval.status, approval.expiresAt, now) !== "pending",
+        )
+        .sort((left, right) => resolvedAt(right) - resolvedAt(left)),
+    [visible, now],
+  );
+
+  const botsById = useMemo(() => new Map(bots.map((bot) => [bot.id, bot])), [bots]);
+
+  async function decide(approval: Approval, vote: ApprovalVote): Promise<Approval> {
+    const updated = await onDecision({
+      runId: approval.runId,
+      callId: approval.callId,
+      vote,
+    });
+
+    setOverrides((current) => ({ ...current, [approvalKey(approval)]: updated }));
+
+    return updated;
+  }
+
+  function card(approval: Approval) {
+    const bot = botsById.get(approval.botId) ?? null;
+
+    return (
+      <li key={approvalKey(approval)}>
+        <ApprovalCard
+          tool={approval.tool}
+          arguments={approval.arguments}
+          status={approval.status}
+          expiresAt={approval.expiresAt}
+          reason={approval.reason}
+          decidedAt={approval.decidedAt}
+          bot={bot}
+          runId={approval.runId}
+          now={now}
+          transcriptHref={transcriptPath(approval)}
+          showArguments
+          {...(approval.status === "pending"
+            ? { onDecide: (vote: ApprovalVote) => decide(approval, vote) }
+            : {})}
+        />
+      </li>
+    );
   }
 
   return (
@@ -62,7 +134,7 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
       <header className="memory-header">
         <div>
           <h2>Approvals</h2>
-          <p className="muted">Review dangerous actions and what happened to them.</p>
+          <p className="muted">Decide what a bot may do, and see what was decided.</p>
         </div>
       </header>
 
@@ -104,86 +176,31 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
         </Field>
       </div>
 
-      {error ? (
-        <p className="form-error" role="alert">
-          The decision could not be recorded. Try again.
-        </p>
-      ) : null}
-
-      {visible.length === 0 ? (
+      {rows.length === 0 ? (
+        <p className="muted">Nothing has needed a decision yet.</p>
+      ) : visible.length === 0 ? (
         <p className="muted">No approvals match these filters.</p>
       ) : (
-        <ol className="approval-history">
-          {visible.map((approval) => (
-            <li
-              key={approvalKey(approval)}
-              className={
-                approval.status === "pending"
-                  ? "approval-record approval-record-pending"
-                  : "approval-record"
-              }
-            >
-              <details open={approval.status === "pending"}>
-                <summary className="approval-summary">
-                  <span className="approval-tool">{approval.tool}</span>
-                  <span className="approval-status">{statusLabel(approval.status)}</span>
-                  <span className="muted">Run {approval.runId}</span>
-                </summary>
-                <dl className="approval-body">
-                  <dt>Action</dt>
-                  <dd>{approval.tool}</dd>
-                  <dt>Arguments</dt>
-                  <dd>
-                    <pre className="tool-call-json">{json(approval.arguments)}</pre>
-                  </dd>
-                  <dt>Run</dt>
-                  <dd>
-                    <a
-                      href={`/bots/${encodeURIComponent(approval.botId)}/threads/${encodeURIComponent(approval.threadId)}?run=${encodeURIComponent(approval.runId)}`}
-                    >
-                      Open transcript
-                    </a>
-                  </dd>
-                  <dt>{approval.status === "timed_out" ? "Expired" : "Deadline"}</dt>
-                  <dd>{formatApprovalDate(approval.expiresAt)}</dd>
-                  {approval.decidedAt === null ? null : (
-                    <>
-                      <dt>Decided</dt>
-                      <dd>{formatApprovalDate(approval.decidedAt)}</dd>
-                    </>
-                  )}
-                  {approval.status === "pending" ? (
-                    <dd className="approval-buttons">
-                      <Button
-                        variant="primary"
-                        disabled={busy !== null}
-                        onClick={() => {
-                          void decide(approval, "approve");
-                        }}
-                      >
-                        {busy === approvalKey(approval) ? "Saving…" : "Approve"}
-                      </Button>
-                      <Button
-                        disabled={busy !== null}
-                        onClick={() => {
-                          void decide(approval, "deny");
-                        }}
-                      >
-                        Deny
-                      </Button>
-                    </dd>
-                  ) : null}
-                  {approval.reason === null ? null : (
-                    <>
-                      <dt>Reason</dt>
-                      <dd>{approval.reason}</dd>
-                    </>
-                  )}
-                </dl>
-              </details>
-            </li>
-          ))}
-        </ol>
+        <>
+          {waiting.length === 0 ? null : (
+            <section className="approval-section" aria-labelledby="approvals-waiting">
+              <h3 className="approval-section-title" id="approvals-waiting">
+                Waiting for you
+                <span className="approval-section-count">{waiting.length}</span>
+              </h3>
+              <ol className="approval-queue">{waiting.map((approval) => card(approval))}</ol>
+            </section>
+          )}
+
+          {history.length === 0 ? null : (
+            <section className="approval-section" aria-labelledby="approvals-history">
+              <h3 className="approval-section-title" id="approvals-history">
+                History
+              </h3>
+              <ol className="approval-queue">{history.map((approval) => card(approval))}</ol>
+            </section>
+          )}
+        </>
       )}
     </section>
   );
@@ -193,25 +210,26 @@ function approvalKey(approval: Pick<Approval, "runId" | "callId">): string {
   return `${approval.runId}:${approval.callId}`;
 }
 
-function statusLabel(status: Approval["status"]): string {
-  switch (status) {
-    case "pending":
-      return "Pending";
-    case "approved":
-      return "Approved";
-    case "denied":
-      return "Denied";
-    case "timed_out":
-      return "Timed out";
+/** The transcript deep link the card offers: the run's own position. */
+function transcriptPath(approval: Approval): string {
+  return `/bots/${encodeURIComponent(approval.botId)}/threads/${encodeURIComponent(
+    approval.threadId,
+  )}?run=${encodeURIComponent(approval.runId)}`;
+}
+
+/**
+ * When a row was resolved. A timed-out row carries the settling instant, and a
+ * row whose deadline passed but is not yet settled reads its deadline, so the
+ * history's order does not wait for the run to notice.
+ */
+function resolvedAt(approval: Approval): number {
+  const decided = approval.decidedAt === null ? Number.NaN : Date.parse(approval.decidedAt);
+
+  if (!Number.isNaN(decided)) {
+    return decided;
   }
-}
 
-function json(value: unknown): string {
-  return JSON.stringify(value ?? null, null, 2) ?? String(value);
-}
+  const deadline = Date.parse(approval.expiresAt);
 
-function formatApprovalDate(value: string): string {
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(deadline) ? 0 : deadline;
 }

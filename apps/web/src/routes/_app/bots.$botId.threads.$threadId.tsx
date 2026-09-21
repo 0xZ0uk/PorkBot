@@ -62,8 +62,13 @@ function ThreadConsoleRoute() {
               onApprovalDecision: async (
                 input: Parameters<NonNullable<typeof approvals>["decide"]>[0],
               ) => {
-                await approvals.decide(input);
+                const result = await approvals.decide(input);
+                // The shell's pending count re-reads with the decision; the
+                // card itself settles from the returned row, so a vote answers
+                // before the run's own event has made the round trip.
                 await router.invalidate();
+
+                return result.approval;
               },
             })}
       />

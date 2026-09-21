@@ -466,6 +466,46 @@ async function createHarness(): Promise<BrowserHarness> {
       });
       await systemRepositories.runs.update(run.id, lease, { status: "waiting_approval" });
 
+      // A second gate on the same run, already past its deadline and settled
+      // by the store, so the captures carry a timed-out card beside the
+      // pending one without waiting out a real ten-minute gate.
+      const timedOutCallId = randomUUID();
+      const expiredAt = new Date(Date.now() - 60_000);
+
+      await append({
+        schemaVersion: 1,
+        threadId,
+        runId: run.id,
+        type: "tool.requested",
+        callId: timedOutCallId,
+        tool: "file_write",
+        arguments: { path: "/srv/report.txt" },
+      });
+      await approvals.open({
+        runId: run.id,
+        callId: timedOutCallId,
+        tool: "file_write",
+        arguments: { path: "/srv/report.txt" },
+        expiresAt: expiredAt,
+      });
+      await approvals.resolveTimeout(run.id, timedOutCallId);
+      await append({
+        schemaVersion: 1,
+        threadId,
+        runId: run.id,
+        type: "approval.requested",
+        callId: timedOutCallId,
+        expiresAt: expiredAt.toISOString(),
+      });
+      await append({
+        schemaVersion: 1,
+        threadId,
+        runId: run.id,
+        type: "approval.resolved",
+        callId: timedOutCallId,
+        decision: "timed_out",
+      });
+
       return {
         runId: run.id,
         threadId,
@@ -708,6 +748,45 @@ async function captureWorkspace(
 }
 
 /**
+ * The approval captures (slice 13.9): the inline card with a pending gate and
+ * a timed-out one in the transcript, the queue that mirrors the same decision,
+ * and the thread once the operator answered, each in both modes; the narrow
+ * capture is the design record's inline card at 390. They land in
+ * `test-results/ui/` beside the conversation captures, which CI uploads and
+ * the pull request links.
+ */
+async function captureApprovalState(
+  page: Page,
+  name: string,
+  options: { readonly narrow?: boolean } = {},
+): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+
+  await mkdir(uiDir, { recursive: true });
+
+  for (const mode of ["dark", "light"] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.emulateMedia({ colorScheme: mode });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `${name}-1280-${mode}.png`) });
+  }
+
+  if (options.narrow === true) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(200);
+
+    const overflow = await page.evaluate(() => {
+      const pane = document.querySelector(".shell-pane");
+      return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
+    });
+
+    expect(overflow, "the approval card does not scroll sideways at 390").toBe(0);
+    await page.screenshot({ path: path.join(uiDir, `${name}-390-dark.png`) });
+  }
+}
+
+/**
  * The conversation's acceptance captures (slice 13.7): a run streaming, a
  * message with an attachment, and an upload failure on its row, each in both
  * modes. They land in `test-results/ui/` beside the shell's captures, which CI
@@ -857,14 +936,47 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.getByText("Start offline task", { exact: true })).toBeVisible();
 
     const run = await current.startRun(threadId);
-    await expect(page.getByText("shell", { exact: true })).toBeVisible();
+    // The card names the same tool as the timeline entry, so the assertion is
+    // scoped to the entry rather than the plain word.
+    await expect(page.locator(".tool-call-name", { hasText: "shell" })).toBeVisible();
     await expect(page.getByText(/Waiting for approval: shell/)).toBeVisible();
+
+    // The inline approval card (slice 13.9): the action, what it touches, the
+    // consequence, the live deadline and two buttons. The run also carries a
+    // gate that already timed out, so one capture holds both states and the
+    // resolved capture proves the first card answered.
+    const pendingCard = page.locator(".approval-card[data-approval-state='pending']");
+    const timedOutCard = page.locator(".approval-card[data-approval-state='timed_out']");
+
+    await expect(pendingCard).toHaveCount(1);
+    await expect(pendingCard.locator(".approval-card-title")).toHaveText("Approval needed");
+    await expect(pendingCard.locator(".approval-card-consequence")).toHaveText(
+      "Run echo offline on the bot's computer.",
+    );
+    await expect(pendingCard.locator(".approval-card-target")).toHaveText("echo offline");
+    await expect(pendingCard.locator("time")).toHaveText(/left$/);
+    await expect(timedOutCard).toHaveCount(1);
+    await expect(timedOutCard.locator(".approval-card-title")).toHaveText("Timed out");
+    await expect(timedOutCard.locator(".approval-card-decision")).toHaveText(
+      "The deadline passed, so the run was denied.",
+    );
+    await captureApprovalState(page, "approval-pending", { narrow: true });
 
     await page.goto(`${current.origin}/approvals`);
     await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
-    await expect(page.locator(".approval-status")).toHaveText("Pending");
-    await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.locator(".approval-status")).toHaveText("Approved");
+    await expect(page.locator("#approvals-waiting")).toBeVisible();
+    await expect(page.locator("#approvals-history")).toBeVisible();
+    await expect(page.locator(".approval-card[data-approval-state='pending']")).toHaveCount(1);
+    await expect(page.locator(".approval-card[data-approval-state='timed_out']")).toHaveCount(1);
+    await captureApprovalState(page, "approvals-queue");
+
+    await page
+      .locator(".approval-card[data-approval-state='pending']")
+      .getByRole("button", { name: "Approve" })
+      .click();
+    await expect(page.locator(".approval-card[data-approval-state='approved']")).toHaveCount(1);
+    await expect(page.locator("#approvals-waiting")).toHaveCount(0);
+    await captureApprovalState(page, "approvals-history");
 
     await page.goto(`${current.origin}/bots/${botId}/threads/${threadId}`);
     await page.getByLabel("Message", { exact: true }).fill("Steer this run");
@@ -874,7 +986,11 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
     // A streaming run: the tokens have landed and the run is still live, so
     // the capture shows the bubbles, the attribution and the stop control.
+    // The approval card has resolved in place rather than folding away.
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
+    await expect(page.locator(".approval-card[data-approval-state='approved']")).toHaveCount(1);
+    await expect(page.locator(".approval-card[data-approval-state='timed_out']")).toHaveCount(1);
+    await captureApprovalState(page, "approval-resolved");
     await captureConversationState(page, "conversation-streaming");
 
     await rpc(page, "runs/stop", { runId: run.runId });
@@ -883,7 +999,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
     await page.reload();
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
-    await expect(page.getByText("shell", { exact: true })).toBeVisible();
+    await expect(page.locator(".tool-call-name", { hasText: "shell" })).toBeVisible();
     expect(await repositories.routines.listForBot(botId)).toHaveLength(1);
 
     // An attachment: staged, uploaded and sent, then read back as the card in

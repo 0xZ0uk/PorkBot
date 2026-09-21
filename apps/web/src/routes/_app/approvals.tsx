@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { ApprovalsScreen } from "../../screens/approvals.tsx";
 
@@ -23,6 +23,7 @@ export const Route = createFileRoute("/_app/approvals")({
 function ApprovalsRoute() {
   const { approvals: initial, bots } = Route.useLoaderData();
   const { approvals } = Route.useRouteContext();
+  const router = useRouter();
 
   if (approvals === undefined) {
     return <ApprovalsUnavailable reset={() => undefined} />;
@@ -32,7 +33,14 @@ function ApprovalsRoute() {
     <ApprovalsScreen
       approvals={initial}
       bots={bots}
-      onDecision={async (input) => (await approvals.decide(input)).approval}
+      onDecision={async (input) => {
+        const result = await approvals.decide(input);
+        // The shell's pending count re-reads with the decision, so the rail's
+        // badge drops in the same act that settles the card.
+        await router.invalidate();
+
+        return result.approval;
+      }}
     />
   );
 }
