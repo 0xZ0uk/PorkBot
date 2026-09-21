@@ -3,15 +3,18 @@ import {
   themeStorageKey,
   themeStyleSheet as tokensThemeStyleSheet,
 } from "@porkbot/tokens";
+import { registerStyleSheet } from "@porkbot/ui";
 
 /**
- * The shell's theme: the tokens' mode-aware custom properties plus the base
- * element rules.
+ * The shell's theme: the tokens' mode-aware custom properties, the base
+ * element rules and the register's component rules.
  *
  * `@porkbot/tokens` owns the values, the mode policy and the pre-paint
- * bootstrap; this module adds the document rules the shell needs on top. The
- * lint rule in `@porkbot/eslint-config` fails a hardcoded colour in a UI
- * surface, so this module is how a surface gets one without writing it down.
+ * bootstrap; `@porkbot/ui` owns the register's classes and their states; this
+ * module adds the document rules the shell needs and puts the three in the one
+ * `<style>` the shell inlines. The lint rules in `@porkbot/eslint-config` fail
+ * a hardcoded colour and a hand-rolled primitive in a UI surface, so this
+ * module is how a surface gets either without writing it down.
  */
 
 const baseStyles = [
@@ -34,6 +37,6 @@ const baseStyles = [
 ].join("");
 
 /** The single `<style>` the document shell inlines before the bundle runs. */
-export const themeStyleSheet = `${tokensThemeStyleSheet}${baseStyles}`;
+export const themeStyleSheet = `${tokensThemeStyleSheet}${baseStyles}${registerStyleSheet}`;
 
 export { themeBootstrapScript, themeStorageKey };

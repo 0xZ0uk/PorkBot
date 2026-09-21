@@ -6,10 +6,10 @@
  *
  * `@porkbot/tokens` is deliberately not a surface package: it is where the
  * literal colours are defined, so the rule would only flag the one file they
- * belong in.
+ * belong in. The selectors are assembled with the register's markup rule in
+ * `ui-register.js`, which is the single config a surface gets; this module is
+ * the colour half.
  */
-
-import { typescriptSourceFiles } from "./source-files.js";
 
 export const uiSurfacePackages = [
   "@porkbot/ui",
@@ -21,7 +21,7 @@ export const uiSurfacePackages = [
 const hexColor = /#[0-9a-fA-F]{3,8}\b/;
 const functionalColor = /\b(?:rgb|rgba|hsl|hsla|oklch|oklab)\(/;
 
-function colorSelectors(packageName) {
+export function uiColorSelectors(packageName) {
   const message =
     `Hardcoded colour in "${packageName}": import the semantic tokens from ` +
     `"@porkbot/tokens" instead. AGENTS.md (UI) makes this a lint rule so a theme ` +
@@ -31,26 +31,5 @@ function colorSelectors(packageName) {
     { selector: `Literal[value=/${hexColor.source}/]`, message },
     { selector: `Literal[value=/${functionalColor.source}/]`, message },
     { selector: `TemplateElement[value.raw=/${hexColor.source}/]`, message },
-  ];
-}
-
-/**
- * Returns the colour rule for a UI surface, or nothing for a package the rule
- * does not govern. Kept beside the module map so a new surface is registered in
- * a reviewable list rather than inheriting the rule by accident.
- */
-export function uiColorConfigsFor(packageName) {
-  if (!uiSurfacePackages.includes(packageName)) {
-    return [];
-  }
-
-  return [
-    {
-      name: `porkbot/ui-colors/${packageName}`,
-      files: typescriptSourceFiles,
-      rules: {
-        "no-restricted-syntax": ["error", ...colorSelectors(packageName)],
-      },
-    },
   ];
 }

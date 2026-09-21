@@ -247,7 +247,7 @@ function BotCard({
           </p>
           <Button
             disabled={pending}
-            tone="primary"
+            variant="primary"
             onClick={() => {
               void (archived ? onRestore(bot.id) : onArchive(bot.id));
             }}

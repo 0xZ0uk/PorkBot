@@ -24,6 +24,12 @@ describe("the shell theme", () => {
     expect(themeStyleSheet).toContain("outline:2px solid var(--pb-color-accent)");
   });
 
+  it("carries the register's component rules and their states", () => {
+    expect(themeStyleSheet).toContain(".pb-button{");
+    expect(themeStyleSheet).toContain(".pb-input,.pb-textarea,.pb-select{");
+    expect(themeStyleSheet).toContain(".pb-button:focus-visible");
+  });
+
   it("ships the pre-paint mode script with the key it reads", () => {
     expect(themeBootstrapScript).toContain(themeStorageKey);
     expect(themeBootstrapScript).toContain("dataset.theme");

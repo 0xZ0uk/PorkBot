@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input, Select } from "@porkbot/ui";
 import { useState } from "react";
 import type { BotSecretAuthView } from "@porkbot/contracts";
 import { authLabel, forgetWarning, secretStatusLabel } from "../secrets.ts";
@@ -67,9 +67,8 @@ export function SecretsScreen({
         ) : null
       ) : (
         <>
-          <label className="field">
-            <span>Bot</span>
-            <select
+          <Field label="Bot">
+            <Select
               value={state.selectedBotId ?? ""}
               disabled={state.pending !== null}
               onChange={(event) => {
@@ -81,8 +80,8 @@ export function SecretsScreen({
                   {bot.name}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Field>
 
           {state.notice === null ? null : (
             <p
@@ -202,9 +201,8 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
         void onSubmit({ name, value, origin, auth });
       }}
     >
-      <label className="field">
-        <span>Name</span>
-        <input
+      <Field label="Name">
+        <Input
           required
           maxLength={64}
           placeholder="api_token"
@@ -213,10 +211,9 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
             setName(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Value</span>
-        <input
+      </Field>
+      <Field label="Value">
+        <Input
           required
           type="password"
           autoComplete="off"
@@ -225,10 +222,9 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
             setValue(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Origin</span>
-        <input
+      </Field>
+      <Field label="Origin">
+        <Input
           required
           type="url"
           maxLength={2_048}
@@ -238,10 +234,9 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
             setOrigin(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Authentication</span>
-        <select
+      </Field>
+      <Field label="Authentication">
+        <Select
           value={authType}
           onChange={(event) => {
             setAuthType(event.target.value as "bearer" | "header" | "basic");
@@ -250,13 +245,12 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
           <option value="bearer">Bearer token</option>
           <option value="header">Custom header</option>
           <option value="basic">Basic</option>
-        </select>
-      </label>
+        </Select>
+      </Field>
 
       {authType === "header" ? (
-        <label className="field">
-          <span>Header name</span>
-          <input
+        <Field label="Header name">
+          <Input
             required
             maxLength={120}
             value={headerName}
@@ -264,13 +258,12 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
               setHeaderName(event.target.value);
             }}
           />
-        </label>
+        </Field>
       ) : null}
 
       {authType === "basic" ? (
-        <label className="field">
-          <span>Username</span>
-          <input
+        <Field label="Username">
+          <Input
             required
             maxLength={200}
             value={username}
@@ -278,7 +271,7 @@ function StoreSecretForm({ pending, onSubmit }: StoreSecretFormProps) {
               setUsername(event.target.value);
             }}
           />
-        </label>
+        </Field>
       ) : null}
 
       <p className="muted">Stored encrypted; it is never shown again.</p>

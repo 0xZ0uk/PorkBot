@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input, Select } from "@porkbot/ui";
 import { useState } from "react";
 import type { Bot, Credential, ModelConnection, ModelFailureKind } from "@porkbot/contracts";
 import {
@@ -144,9 +144,8 @@ export function ConnectionsScreen({
           <ul className="connection-bot-list">
             {state.bots.map((bot) => (
               <li key={bot.id} className="connection-bot">
-                <label className="field">
-                  <span>{bot.name}</span>
-                  <select
+                <Field label={bot.name}>
+                  <Select
                     disabled={state.pending === bot.id}
                     value={bot.modelConnectionId ?? ""}
                     onChange={(event) => {
@@ -161,8 +160,8 @@ export function ConnectionsScreen({
                         {connection.label}
                       </option>
                     ))}
-                  </select>
-                </label>
+                  </Select>
+                </Field>
               </li>
             ))}
           </ul>
@@ -394,9 +393,8 @@ function CreateConnectionForm({
         void onSubmit({ label, baseUrl, credentialName, credentialValue, defaultModel });
       }}
     >
-      <label className="field">
-        <span>Label</span>
-        <input
+      <Field label="Label">
+        <Input
           required
           maxLength={200}
           value={label}
@@ -404,10 +402,9 @@ function CreateConnectionForm({
             setLabel(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Base URL</span>
-        <input
+      </Field>
+      <Field label="Base URL">
+        <Input
           required
           type="url"
           maxLength={2_048}
@@ -417,10 +414,9 @@ function CreateConnectionForm({
             setBaseUrl(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>Credential name</span>
-        <input
+      </Field>
+      <Field label="Credential name">
+        <Input
           required
           maxLength={200}
           value={credentialName}
@@ -428,10 +424,9 @@ function CreateConnectionForm({
             setCredentialName(event.target.value);
           }}
         />
-      </label>
-      <label className="field">
-        <span>API key</span>
-        <input
+      </Field>
+      <Field label="API key">
+        <Input
           type="password"
           autoComplete="off"
           required={!reuse}
@@ -441,22 +436,21 @@ function CreateConnectionForm({
             setCredentialValue(event.target.value);
           }}
         />
-      </label>
+      </Field>
       <p className="muted">
         {reuse
           ? `A key named ${credentialName} is already stored; leave this blank to reuse it.`
           : "Stored encrypted; it is never shown again."}
       </p>
-      <label className="field">
-        <span>Default model (optional)</span>
-        <input
+      <Field label="Default model (optional)">
+        <Input
           maxLength={200}
           value={defaultModel}
           onChange={(event) => {
             setDefaultModel(event.target.value);
           }}
         />
-      </label>
+      </Field>
       <Button type="submit" disabled={pending}>
         Connect
       </Button>

@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Card, Field, Input } from "@porkbot/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { Registration } from "../session.ts";
@@ -47,16 +47,15 @@ export function SignUpScreen({ error, onSubmit, footer }: SignUpScreenProps) {
 
   return (
     <main id="main" className="screen" tabIndex={-1}>
-      <form className="card" onSubmit={handleSubmit} aria-busy={pending}>
+      <Card as="form" className="frame-card" onSubmit={handleSubmit} aria-busy={pending}>
         <h1>Create account</h1>
         {error !== null && (
           <p id={errorId} className="form-error" role="alert" tabIndex={-1} ref={errorRef}>
             {error}
           </p>
         )}
-        <div className="field">
-          <label htmlFor="sign-up-name">Name</label>
-          <input
+        <Field label="Name" htmlFor="sign-up-name">
+          <Input
             id="sign-up-name"
             name="name"
             type="text"
@@ -66,10 +65,9 @@ export function SignUpScreen({ error, onSubmit, footer }: SignUpScreenProps) {
             aria-describedby={error !== null ? errorId : undefined}
             onChange={(event) => setName(event.target.value)}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="sign-up-email">Email</label>
-          <input
+        </Field>
+        <Field label="Email" htmlFor="sign-up-email">
+          <Input
             id="sign-up-email"
             name="email"
             type="email"
@@ -79,10 +77,9 @@ export function SignUpScreen({ error, onSubmit, footer }: SignUpScreenProps) {
             aria-describedby={error !== null ? errorId : undefined}
             onChange={(event) => setEmail(event.target.value)}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="sign-up-password">Password</label>
-          <input
+        </Field>
+        <Field label="Password" htmlFor="sign-up-password">
+          <Input
             id="sign-up-password"
             name="password"
             type="password"
@@ -92,12 +89,12 @@ export function SignUpScreen({ error, onSubmit, footer }: SignUpScreenProps) {
             aria-describedby={error !== null ? errorId : undefined}
             onChange={(event) => setPassword(event.target.value)}
           />
-        </div>
-        <Button type="submit" tone="primary" disabled={pending}>
+        </Field>
+        <Button type="submit" variant="primary" disabled={pending}>
           {pending ? "Creating account…" : "Create account"}
         </Button>
         {footer}
-      </form>
+      </Card>
     </main>
   );
 }

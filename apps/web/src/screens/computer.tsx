@@ -1,4 +1,4 @@
-import { Button } from "@porkbot/ui";
+import { Button, Field, Input } from "@porkbot/ui";
 import { useState } from "react";
 import type {
   ComputerFileEntryView,
@@ -241,7 +241,7 @@ function Machine({
           <p className="muted">{resetWarning(state)}</p>
           <div className="memory-actions">
             <Button
-              tone="primary"
+              variant="primary"
               disabled={busy}
               onClick={() => {
                 setArmingReset(false);
@@ -294,9 +294,8 @@ function Terminal({
           void onRun(next);
         }}
       >
-        <label className="field">
-          <span>Command</span>
-          <input
+        <Field label="Command">
+          <Input
             value={command}
             autoComplete="off"
             spellCheck={false}
@@ -305,7 +304,7 @@ function Terminal({
               setCommand(event.target.value);
             }}
           />
-        </label>
+        </Field>
         <Button type="submit" disabled={pending || command.trim() === ""}>
           {pending ? "Running…" : "Run"}
         </Button>
@@ -429,7 +428,7 @@ function ProviderOption({
   return (
     <li className="provider-option">
       <label>
-        <input
+        <Input
           type="radio"
           name="computer-provider"
           checked={checked}

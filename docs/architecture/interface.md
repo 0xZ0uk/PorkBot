@@ -335,9 +335,23 @@ at 64rem and in the switcher sheet below it.
 
 ## Component register
 
-Slice 13.3 lands the primitives in `@porkbot/ui`; this record names them and
+Slice 13.3 landed the primitives in `@porkbot/ui`; this record names them and
 the composites the shell builds from them, so a later slice knows what exists
-before it writes chrome.
+before it writes chrome. The register's stylesheet is
+`registerStyleSheet` in `@porkbot/ui` and the web shell inlines it beside the
+tokens' sheet, so the states below are CSS rules over `--pb-*` properties rather
+than per-screen styling; `packages/ui/src/style-sheet.test.tsx` fails on a
+colour literal and on a class the sheet does not draw. The icons are one set
+drawn in `@porkbot/ui` on a 24-unit grid with `currentColor`, so a glyph
+cannot carry a colour of its own and no screen pastes a platform emoji. The
+rule that a screen composes the register is checked rather than remembered:
+`packages/eslint-config/ui-register.js` names the markup each primitive owns and
+the lint rule fails a surface that writes it, with a fixture per entry and a
+test tying the register's component names to the package's exports. The
+register's specimen captures — the components and the overlays, each mode — live
+under `docs/screenshots/register-light.png`, `register-dark.png` and the
+overlays pair beside them, taken at 1280 from the register's own stylesheet;
+the screens' chrome is now the register's markup rather than a copy of it.
 
 | Primitive                                                 | States to cover                                  | Used by                                               |
 | --------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
@@ -349,6 +363,7 @@ before it writes chrome.
 | Separator                                                 | horizontal, vertical                             | Inspector, menus, settings                            |
 | Scroll area                                               | overflow, focus within                           | Rail, transcript, inspector                           |
 | Tabs                                                      | active, hover, focus-visible                     | Computer surface (screen, terminal, files), settings  |
+| Icon                                                      | the one set; no colour or emoji                  | Icon buttons, state chips, menu and toast chrome      |
 | Menu                                                      | open, keyboard, destructive item                 | Lifecycle state control, rail footer, message actions |
 | Dialog and sheet                                          | open, close, escape, focus return                | Confirmation, provider picker, switcher               |
 | Tooltip                                                   | hover, focus                                     | Icon-only controls                                    |
