@@ -969,7 +969,7 @@ describe("the computer route", () => {
   }
 
   function buttonByText(text: string): HTMLButtonElement {
-    const found = [...container.querySelectorAll("button")].find(
+    const found = [...document.body.querySelectorAll("button")].find(
       (button) => button.textContent === text,
     );
 
@@ -980,18 +980,26 @@ describe("the computer route", () => {
     return found as HTMLButtonElement;
   }
 
-  it("shows the deployment's providers and stores a switch", async () => {
+  async function click(text: string): Promise<void> {
+    await act(async () => {
+      buttonByText(text).click();
+    });
+  }
+
+  it("shows the deployment's providers in the sheet and stores a switch", async () => {
     const computer = scriptedComputerTransport({
       bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
       computer: { assigned: true, state: "running", instanceId: "i-1" },
     });
     await mountComputer(computer);
 
-    expect(container.textContent).toContain("Where this bot's computer runs");
-    expect(container.textContent).toContain("Offline emulator");
-    expect(container.textContent).toContain("Local Docker");
+    await click("Change");
 
-    const docker = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')][2];
+    expect(document.body.textContent).toContain("Where this bot's computer runs");
+    expect(document.body.textContent).toContain("Offline emulator");
+    expect(document.body.textContent).toContain("Local Docker");
+
+    const docker = [...document.body.querySelectorAll<HTMLInputElement>('input[type="radio"]')][2];
 
     if (docker === undefined) {
       throw new Error("the Docker radio is missing");
@@ -1001,11 +1009,9 @@ describe("the computer route", () => {
       docker.click();
     });
 
-    expect(container.textContent).toContain("does not move this bot's home");
+    expect(document.body.textContent).toContain("does not move this bot's home");
 
-    await act(async () => {
-      buttonByText("Switch to Local Docker").click();
-    });
+    await click("Switch to Local Docker");
 
     await until(
       () => container.textContent?.includes("This bot now runs on Local Docker.") === true,

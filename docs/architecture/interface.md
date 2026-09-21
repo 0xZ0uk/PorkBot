@@ -144,6 +144,29 @@ bot returns to when nothing is known to be waiting. Working, stuck, failed and
 stopped arrive with the per-bot run read the run-surface slice owns, and they
 fill in the same chip rather than a second one.
 
+## Computer surface
+
+The bot's computer is a surface, not a form (slice 13.10; the epic's "The
+computer is a surface" decision). The screen is the primary tab: a window frame
+whose body shows the live view where a provider offers frames and states
+plainly where none does. No provider offers frames in v1.0 — the seam is
+reserved and issue #178 owns the stream — so the body names the machine's state
+and points at the tabs that do show it. The terminal and the file view are tabs
+beside the screen, each reading the machine's state rather than a supervisor
+refusal when it is not running, and the snapshot list stays below them with its
+per-row restore.
+
+| Decision                                                                                                                      | Source                                              | Reason                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lifecycle is one control: its trigger is the machine's state word, and its menu states what each verb does                    | Linear's state menus; the epic's state-control rule | Four buttons made the operator read four consequences before every act; one control answers "what is it" and "what can I do" together.                               |
+| Reset and recover confirm before acting, and reset's item carries the destructive colour                                      | The epic's destructive-action rule                  | Both can leave a machine that does not exist; the confirmation is where the loss and the empty home are named.                                                       |
+| The provider choice is a sheet that says what each kind is and why one is unavailable, and a choice still arms a confirmation | iOS sheets; the epic's provider-picker rule         | The picker is a decision with consequences, not a radio list that writes on click, and an unavailable kind shows its classified reason before a bot is stored on it. |
+| The screen body is an empty state that names the machine's state; no fabricated frame and no take-control control             | The epic's "states plainly where they do not" rule  | A blank frame reads as a load, and a control whose capability does not exist would answer the supervisor's deliberate refusal.                                       |
+| The terminal and file views are tabs, gated by the machine's state                                                            | The epic's "secondary tabs" rule                    | Watching, running a command and reading a file are one machine seen three ways; stacking them made the surface a form again.                                         |
+
+Slice 13.10's captures live under `docs/screenshots/computer-*.png` and the
+design record's `interface-computer-1280-*.png` pair was regenerated with them.
+
 ## Scales
 
 The token set landed in `@porkbot/tokens` in slice 13.2 and the register builds
@@ -426,6 +449,11 @@ screenshots for the operator's verdict.
 | `interface-thread-390-light.png`    | The same screen in the light mode                            | 390   | light |
 | `interface-computer-1280-dark.png`  | The computer surface, its tabs, its state control, inspector | 1280  | dark  |
 | `interface-computer-1280-light.png` | The same screen in the light mode                            | 1280  | light |
+| `computer-lifecycle.png`            | The lifecycle menu, each verb stating what it does           | 1280  | dark  |
+| `computer-reset.png`                | The reset confirmation, naming what is lost and what is kept | 1280  | dark  |
+| `computer-provider.png`             | The provider sheet with an unavailable kind and its reason   | 1280  | dark  |
+| `computer-switch-confirm.png`       | The switch confirmation with the snapshot path               | 1280  | dark  |
+| `computer-stopped.png`              | The stopped machine's surface and state control              | 1280  | dark  |
 | `interface-shell-768-dark.png`      | The middle breakpoint: the pane switcher, no rail            | 768   | dark  |
 | `interface-approval-390-dark.png`   | An inline approval card at the narrow width                  | 390   | dark  |
 | `interface-states-dark.png`         | The six state chips in rail context                          | 1280  | dark  |

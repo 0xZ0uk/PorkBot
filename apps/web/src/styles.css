@@ -1896,18 +1896,168 @@
   max-width: 24rem;
 }
 
-.provider-choice {
-  border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-lg);
-  padding: var(--pb-space-md);
+/*
+ * The computer surface (slice 13.10): the state control and provider row, the
+ * screen frame with its chrome, the terminal and file tabs, and the snapshot
+ * list. The frame is the surface's one raised edge; the body inside it is
+ * where a v1.1 live view will land (issue #178).
+ */
+
+.computer {
+  width: 100%;
+  max-width: none;
   margin: 0;
 }
 
-.provider-choice legend {
-  padding: 0 var(--pb-space-xs);
-  font-size: 0.875rem;
-  color: var(--pb-color-muted);
+.computer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pb-space-md);
+  flex-wrap: wrap;
 }
+
+.computer-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+}
+
+.computer-state-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: var(--pb-radius-pill);
+  background: transparent;
+  border: 1px solid var(--pb-color-muted);
+}
+
+.computer-state-dot[data-state="running"] {
+  background: var(--pb-color-success);
+  border-color: var(--pb-color-success);
+}
+
+.computer-state-dot[data-state="gone"] {
+  background: var(--pb-color-destructive);
+  border-color: var(--pb-color-destructive);
+}
+
+.computer-provider {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  flex-wrap: wrap;
+}
+
+.computer-provider-name {
+  font-weight: 500;
+}
+
+.computer-frame {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-xl);
+}
+
+.computer-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-sm) var(--pb-space-md);
+  background: var(--pb-color-raised);
+  border-bottom: 1px solid var(--pb-color-border);
+}
+
+.computer-lights {
+  display: inline-flex;
+  gap: var(--pb-space-2xs);
+}
+
+.computer-lights span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--pb-radius-pill);
+  background: var(--pb-color-border);
+}
+
+.computer-address {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.computer-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pb-space-xs);
+  min-height: 20rem;
+  padding: var(--pb-space-xl);
+  text-align: center;
+}
+
+.computer-view-state {
+  margin: 0;
+  font-size: var(--pb-type-display-size);
+  line-height: var(--pb-type-display-line-height);
+  font-weight: var(--pb-type-display-weight);
+}
+
+.computer-view .muted {
+  max-width: 34rem;
+}
+
+.computer-snapshots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+}
+
+.computer-snapshots h3 {
+  margin: 0;
+  font-size: var(--pb-type-heading-size);
+  line-height: var(--pb-type-heading-line-height);
+  font-weight: var(--pb-type-heading-weight);
+}
+
+.computer-snapshot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-xs);
+}
+
+.computer-snapshot {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  flex-wrap: wrap;
+  padding: var(--pb-space-sm) var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-md);
+}
+
+.computer-snapshot-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  flex-wrap: wrap;
+}
+
+/* The provider sheet (slice 13.10): one row per choice, its readiness answer
+   and, when it is unavailable, the classified reason the supervisor reported. */
 
 .provider-list {
   list-style: none;
@@ -1919,25 +2069,27 @@
 }
 
 .provider-option {
-  display: flex;
-  align-items: center;
-  gap: var(--pb-space-sm);
-  flex-wrap: wrap;
-  padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-surface);
+  background: var(--pb-color-background);
   border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-md);
+  border-radius: var(--pb-radius-lg);
 }
 
 .provider-option label {
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--pb-space-sm);
-  flex-wrap: wrap;
+  padding: var(--pb-space-sm) var(--pb-space-md);
   cursor: pointer;
 }
 
-.provider-option input:disabled + .provider-name {
+.provider-choice-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.provider-option input:disabled + .provider-choice-body .provider-name {
   color: var(--pb-color-muted);
 }
 
@@ -1946,31 +2098,35 @@
 }
 
 .provider-detail {
-  font-family: var(--pb-font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+}
+
+.provider-availability {
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  white-space: nowrap;
 }
 
 .provider-unavailable {
   color: var(--pb-color-destructive);
-  margin-left: auto;
 }
 
-.provider-confirm {
-  margin-top: var(--pb-space-sm);
+@media (max-width: 40rem) {
+  .provider-option label {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .provider-availability {
+    grid-column: 2;
+  }
 }
 
-.machine,
 .terminal,
 .files {
   display: flex;
   flex-direction: column;
   gap: var(--pb-space-sm);
-}
-
-.machine h3,
-.terminal h3,
-.files h3 {
-  margin: 0;
 }
 
 .terminal-form {

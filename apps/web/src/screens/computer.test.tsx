@@ -9,15 +9,16 @@ import { ComputerScreen } from "./computer.tsx";
 import { fakeBot, fakeProvider, fakeSnapshot } from "../../test/fakes.ts";
 
 /**
- * The computer screen in a real DOM: the provider list reads each kind's
- * readiness answer, an unavailable kind is a disabled radio rather than a
- * selection that fails later, the switch confirmation states what does not
- * move and offers the snapshot path, the lifecycle controls enable exactly the
- * verbs the machine's state allows, reset arms a confirmation that names what
- * is lost, the terminal submits commands, and the file view navigates.
+ * The computer screen in a real DOM: the screen tab is a window frame whose
+ * body states plainly where no live view exists, the lifecycle control's menu
+ * states what each verb does and the destructive pair confirms, the terminal
+ * and file views are tabs beside the screen, the provider sheet answers what
+ * each kind is and why one is unavailable, and a snapshot arms its restore.
  *
  * The fixture is the state a loaded controller would hand over, so no network
- * and no controller is involved — the screen is a function of its props.
+ * and no controller is involved — the screen is a function of its props. The
+ * register's sheet and dialogs portal into `document.body`, so the queries
+ * read the body rather than the mount div.
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -89,10 +90,13 @@ async function render(element: ReactElement): Promise<void> {
   });
 }
 
+/** Every button on the page: the mount div and the register's portals alike. */
+function buttons(): HTMLButtonElement[] {
+  return [...document.body.querySelectorAll<HTMLButtonElement>("button")];
+}
+
 function buttonWith(label: string): HTMLButtonElement {
-  const button = [...container.querySelectorAll("button")].find(
-    (candidate) => candidate.textContent === label,
-  );
+  const button = buttons().find((candidate) => candidate.textContent === label);
 
   if (button === undefined) {
     throw new Error(`no button labelled "${label}"`);
@@ -101,11 +105,122 @@ function buttonWith(label: string): HTMLButtonElement {
   return button;
 }
 
-function radios(): HTMLInputElement[] {
-  return [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+async function click(element: HTMLElement): Promise<void> {
+  await act(async () => {
+    element.click();
+  });
 }
 
-describe("the provider list", () => {
+/** Opens the lifecycle control's menu and returns the item the label names. */
+async function menuItem(trigger: string, item: string): Promise<HTMLButtonElement> {
+  await click(buttonWith(trigger));
+
+  return buttonWith(item);
+}
+
+function radios(): HTMLInputElement[] {
+  return [...document.body.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+}
+
+async function openProviderSheet(): Promise<void> {
+  await click(buttonWith("Change"));
+}
+
+describe("the screen surface", () => {
+  it("renders the machine's state as a word, not a sentence", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(
+          state({
+            bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+            computer: { assigned: true, state: "running" },
+          }),
+        )}
+      />,
+    );
+
+    expect(document.body.querySelector(".computer-view-state")?.textContent).toBe("Running");
+    expect(document.body.textContent).not.toContain("The machine is running.");
+  });
+
+  it("states plainly that no live view exists where frames do not", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(
+          state({
+            bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+            computer: { assigned: true, state: "running" },
+          }),
+        )}
+      />,
+    );
+
+    expect(document.body.textContent).toContain("No live view");
+    expect(document.body.querySelector(".computer-frame")).not.toBeNull();
+    // No provider offers frames in v1.0, so the surface renders no control
+    // that would answer the supervisor's `not_implemented`.
+    expect(buttons().some((button) => button.textContent === "Take control")).toBe(false);
+  });
+
+  it("says there is no machine yet for a bot that has never run", async () => {
+    await render(<ComputerScreen {...screenProps(state())} />);
+
+    expect(document.body.querySelector(".computer-view-state")?.textContent).toBe("No machine");
+    expect(document.body.textContent).toContain("It is created the first time this bot runs.");
+  });
+});
+
+describe("the tabs", () => {
+  it("offers the screen, terminal and files, and keeps the machine's answer in each", async () => {
+    const props = screenProps(
+      state({
+        computer: { assigned: true, state: "running" },
+        terminal: {
+          pending: false,
+          entries: [
+            { command: "echo hi", exitCode: 0, stdout: "hi\n", stderr: "", truncated: false },
+          ],
+        },
+        files: {
+          path: "",
+          entries: [{ name: "notes.md", kind: "file", sizeBytes: 12 }],
+          preview: null,
+          pending: false,
+          refusal: null,
+        },
+      }),
+    );
+    await render(<ComputerScreen {...props} />);
+
+    for (const label of ["Screen", "Terminal", "Files"]) {
+      expect(buttonWith(label)).toBeDefined();
+    }
+
+    await click(buttonWith("Terminal"));
+    expect(document.body.textContent).toContain("$ echo hi");
+
+    await click(buttonWith("Files"));
+    expect(document.body.textContent).toContain("notes.md");
+  });
+
+  it("says the machine is not running rather than offering a dead terminal", async () => {
+    await render(
+      <ComputerScreen
+        {...screenProps(
+          state({
+            bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+            computer: { assigned: true, state: "stopped" },
+          }),
+        )}
+      />,
+    );
+
+    expect(document.body.textContent).toContain("Start the machine to use its terminal and files.");
+    expect(document.body.querySelector(".terminal")).toBeNull();
+  });
+});
+
+describe("the provider sheet", () => {
   it("marks an unavailable provider unavailable and disables its radio", async () => {
     const providers = {
       defaultKind: "offline",
@@ -115,11 +230,22 @@ describe("the provider list", () => {
       ],
     };
     await render(<ComputerScreen {...screenProps(state({ providers }))} />);
+    await openProviderSheet();
 
-    expect(container.textContent).toContain("Unavailable · Credentials refused");
+    expect(document.body.textContent).toContain("Unavailable · Credentials refused");
     expect(radios()).toHaveLength(3);
     // Offline and the deployment default are available; Docker is not.
     expect(radios().map((radio) => radio.disabled)).toEqual([false, false, true]);
+  });
+
+  it("says what each provider is beside its name", async () => {
+    await render(<ComputerScreen {...screenProps(state())} />);
+    await openProviderSheet();
+
+    expect(document.body.textContent).toContain("An in-process emulator on this deployment");
+    expect(document.body.textContent).toContain(
+      "A container on the host that serves this deployment",
+    );
   });
 
   it("checks the radio the bot's stored selection names", async () => {
@@ -128,11 +254,12 @@ describe("the provider list", () => {
         {...screenProps(state({ bot: { ...fakeBot("bot-1", "Ada"), computerProvider: "docker" } }))}
       />,
     );
+    await openProviderSheet();
 
     const checked = radios().find((radio) => radio.checked);
 
     expect(checked).toBeDefined();
-    expect(container.textContent).toContain("Local Docker");
+    expect(checked?.closest(".provider-option")?.textContent).toContain("Local Docker");
   });
 
   it("warns about a stored kind the deployment no longer configures", async () => {
@@ -146,8 +273,28 @@ describe("the provider list", () => {
         )}
       />,
     );
+    await openProviderSheet();
 
-    expect(container.textContent).toContain("does not configure");
+    expect(document.body.textContent).toContain("does not configure");
+  });
+
+  it("arms the switch and closes the sheet when a provider is chosen", async () => {
+    const props = screenProps(state());
+    await render(<ComputerScreen {...props} />);
+    await openProviderSheet();
+
+    const docker = radios().find((radio) =>
+      radio.closest(".provider-option")?.textContent?.includes("Local Docker"),
+    );
+
+    if (docker === undefined) {
+      throw new Error("the Docker radio is missing");
+    }
+
+    await click(docker);
+
+    expect(props.onChoose).toHaveBeenCalledWith({ kind: "docker" });
+    expect(document.body.querySelector(".provider-list")).toBeNull();
   });
 });
 
@@ -162,18 +309,14 @@ describe("the switch confirmation", () => {
     );
     await render(<ComputerScreen {...props} />);
 
-    expect(container.textContent).toContain("does not move this bot's home");
+    expect(document.body.textContent).toContain("does not move this bot's home");
     const snapshot = buttonWith("Take a snapshot");
     expect(snapshot.disabled).toBe(false);
 
-    await act(async () => {
-      snapshot.click();
-    });
+    await click(snapshot);
     expect(props.onSnapshot).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
-      buttonWith("Switch to Local Docker").click();
-    });
+    await click(buttonWith("Switch to Local Docker"));
     expect(props.onConfirm).toHaveBeenCalledTimes(1);
   });
 
@@ -187,9 +330,7 @@ describe("the switch confirmation", () => {
     const props = screenProps(state({ candidate: { kind: null } }));
     await render(<ComputerScreen {...props} />);
 
-    await act(async () => {
-      buttonWith("Cancel").click();
-    });
+    await click(buttonWith("Cancel"));
     expect(props.onCancel).toHaveBeenCalledTimes(1);
   });
 });
@@ -200,81 +341,104 @@ describe("the snapshots section", () => {
     const props = screenProps(state({ snapshots: [snapshot] }));
     await render(<ComputerScreen {...props} />);
 
-    expect(container.textContent).toContain("2.0 KB");
+    expect(document.body.textContent).toContain("2.0 KB");
 
-    await act(async () => {
-      buttonWith("Restore").click();
-    });
+    await click(buttonWith("Restore"));
+    expect(document.body.textContent).toContain("Restoring replaces this machine's home.");
 
-    expect(container.textContent).toContain("Restoring replaces this machine's home.");
-
-    await act(async () => {
-      buttonWith("Restore").click();
-    });
+    await click(buttonWith("Restore"));
     expect(props.onRestore).toHaveBeenCalledWith(snapshot.id);
   });
 
   it("says there is nothing captured yet", async () => {
     await render(<ComputerScreen {...screenProps(state())} />);
 
-    expect(container.textContent).toContain("No snapshots yet.");
+    expect(document.body.textContent).toContain("No snapshots yet.");
   });
 });
 
-describe("the machine controls", () => {
-  it("enables exactly the verbs the machine's state allows", async () => {
-    await render(
-      <ComputerScreen
-        {...screenProps(state({ computer: { assigned: true, state: "stopped" } }))}
-      />,
-    );
-
-    expect(buttonWith("Start").disabled).toBe(false);
-    expect(buttonWith("Stop").disabled).toBe(true);
-    expect(buttonWith("Reset").disabled).toBe(false);
-    expect(buttonWith("Recover").disabled).toBe(false);
+describe("the lifecycle control", () => {
+  const running = state({
+    bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+    computer: { assigned: true, state: "running" },
   });
 
-  it("disables start on a running machine and every lifecycle verb with no machine", async () => {
+  it("states what each verb does and enables exactly what the machine allows", async () => {
+    await render(<ComputerScreen {...screenProps(running)} />);
+
+    const start = await menuItem("Running", "Start — bring the machine up");
+    expect(start.disabled).toBe(true);
+    expect(buttonWith("Stop — park it, keeping the home").disabled).toBe(false);
+    expect(buttonWith("Reset — destroy the machine and its home").disabled).toBe(false);
+    expect(buttonWith("Recover — adopt it, or create a fresh one").disabled).toBe(false);
+  });
+
+  it("enables start on a stopped machine", async () => {
     await render(
       <ComputerScreen
-        {...screenProps(state({ computer: { assigned: true, state: "running" } }))}
+        {...screenProps(
+          state({
+            bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+            computer: { assigned: true, state: "stopped" },
+          }),
+        )}
       />,
     );
 
-    expect(buttonWith("Start").disabled).toBe(true);
-    expect(buttonWith("Stop").disabled).toBe(false);
+    await click(buttonWith("Stopped"));
+    expect(buttonWith("Start — bring the machine up").disabled).toBe(false);
+    expect(buttonWith("Stop — park it, keeping the home").disabled).toBe(true);
+  });
 
+  it("keeps every verb out of reach for a bot with no machine", async () => {
     await render(<ComputerScreen {...screenProps(state())} />);
 
-    for (const label of ["Start", "Stop", "Reset", "Recover"]) {
+    await click(buttonWith("No machine"));
+
+    for (const label of [
+      "Start — bring the machine up",
+      "Stop — park it, keeping the home",
+      "Reset — destroy the machine and its home",
+      "Recover — adopt it, or create a fresh one",
+    ]) {
       expect(buttonWith(label).disabled).toBe(true);
     }
   });
 
-  it("arms a reset confirmation that names what is lost and runs the verb", async () => {
-    const props = screenProps(
-      state({ computer: { assigned: true, state: "running" }, snapshots: [fakeSnapshot()] }),
-    );
+  it("runs a plain verb on selection", async () => {
+    const props = screenProps(running);
     await render(<ComputerScreen {...props} />);
 
-    await act(async () => {
-      buttonWith("Reset").click();
-    });
+    const stop = await menuItem("Running", "Stop — park it, keeping the home");
+    await click(stop);
 
-    expect(container.textContent).toContain("Snapshots are kept");
+    expect(props.onLifecycle).toHaveBeenCalledWith("stop");
+  });
 
-    await act(async () => {
-      buttonWith("Reset the machine").click();
-    });
+  it("confirms a reset and names what is destroyed", async () => {
+    const props = screenProps({ ...running, snapshots: [fakeSnapshot()] });
+    await render(<ComputerScreen {...props} />);
+
+    const reset = await menuItem("Running", "Reset — destroy the machine and its home");
+    await click(reset);
+
+    expect(document.body.textContent).toContain("Snapshots are kept");
+
+    await click(buttonWith("Reset the machine"));
     expect(props.onLifecycle).toHaveBeenCalledWith("reset");
   });
 
-  it("says the machine is not running rather than offering a dead terminal", async () => {
-    await render(<ComputerScreen {...screenProps(state())} />);
+  it("confirms a recover and names the empty home it can create", async () => {
+    const props = screenProps(running);
+    await render(<ComputerScreen {...props} />);
 
-    expect(container.textContent).toContain("Start the machine to use its terminal and files.");
-    expect(container.querySelector(".terminal")).toBeNull();
+    const recover = await menuItem("Running", "Recover — adopt it, or create a fresh one");
+    await click(recover);
+
+    expect(document.body.textContent).toContain("empty home");
+
+    await click(buttonWith("Recover the machine"));
+    expect(props.onLifecycle).toHaveBeenCalledWith("recover");
   });
 });
 
@@ -293,13 +457,14 @@ describe("the terminal", () => {
       }),
     );
     await render(<ComputerScreen {...props} />);
+    await click(buttonWith("Terminal"));
 
-    expect(container.textContent).toContain("$ echo hi");
-    expect(container.textContent).toContain("not found");
-    expect(container.textContent).toContain("Exit code 1");
+    expect(document.body.textContent).toContain("$ echo hi");
+    expect(document.body.textContent).toContain("not found");
+    expect(document.body.textContent).toContain("Exit code 1");
 
-    const input = container.querySelector<HTMLInputElement>(".terminal-form input");
-    const form = container.querySelector<HTMLFormElement>(".terminal-form");
+    const input = document.body.querySelector<HTMLInputElement>(".terminal-form input");
+    const form = document.body.querySelector<HTMLFormElement>(".terminal-form");
     expect(input).not.toBeNull();
     expect(form).not.toBeNull();
 
@@ -319,8 +484,9 @@ describe("the terminal", () => {
         {...screenProps(state({ computer: { assigned: true, state: "running" } }))}
       />,
     );
+    await click(buttonWith("Terminal"));
 
-    expect(container.textContent).toContain("No commands run yet.");
+    expect(document.body.textContent).toContain("No commands run yet.");
   });
 });
 
@@ -338,18 +504,15 @@ describe("the file view", () => {
       }),
     );
     await render(<ComputerScreen {...props} />);
+    await click(buttonWith("Files"));
 
-    expect(container.textContent).toContain("Home");
+    expect(document.body.textContent).toContain("Home");
     expect(buttonWith("Up").disabled).toBe(true);
 
-    await act(async () => {
-      buttonWith("projects/").click();
-    });
+    await click(buttonWith("projects/"));
     expect(props.onOpenDirectory).toHaveBeenCalledWith(entries[1]);
 
-    await act(async () => {
-      buttonWith("notes.md").click();
-    });
+    await click(buttonWith("notes.md"));
     expect(props.onOpenFile).toHaveBeenCalledWith(entries[0]);
   });
 
@@ -367,14 +530,13 @@ describe("the file view", () => {
       }),
     );
     await render(<ComputerScreen {...props} />);
+    await click(buttonWith("Files"));
 
-    expect(container.textContent).toContain("/projects");
-    expect(container.textContent).toContain("hello");
-    expect(container.textContent).toContain("Only the first part of the file is shown.");
+    expect(document.body.textContent).toContain("/projects");
+    expect(document.body.textContent).toContain("hello");
+    expect(document.body.textContent).toContain("Only the first part of the file is shown.");
 
-    await act(async () => {
-      buttonWith("Up").click();
-    });
+    await click(buttonWith("Up"));
     expect(props.onOpenParent).toHaveBeenCalledTimes(1);
   });
 
@@ -395,8 +557,9 @@ describe("the file view", () => {
         )}
       />,
     );
+    await click(buttonWith("Files"));
 
-    expect(container.textContent).toContain("That directory could not be listed.");
-    expect(container.textContent).toContain("projects/");
+    expect(document.body.textContent).toContain("That directory could not be listed.");
+    expect(document.body.textContent).toContain("projects/");
   });
 });

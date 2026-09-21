@@ -12,27 +12,30 @@ import type {
 } from "@porkbot/contracts";
 
 /**
- * The bot-computer screen's state machine (slices 9.4 and 11.4, PRD stories 27
- * and 31, decision 20): a framework-free controller like the memory and
- * connections screens', so the screen renders one state object and the
+ * The bot-computer screen's state machine (slices 9.4, 11.4 and 13.10, PRD
+ * stories 27 and 31, decision 20): a framework-free controller like the memory
+ * and connections screens', so the screen renders one state object and the
  * read/write rules live where a unit test can drive them without a DOM.
  *
  * The controller owns the operator's questions. Is the machine up, and what
  * can I do to it: the lifecycle verbs the supervisor owns — boot, stop, reset,
- * recover — each one write, and a reset is destructive enough that the screen
- * asks first. What is happening inside it: the terminal runs commands through
- * the same supervisor exec seam the model's shell tool uses, and the file view
- * lists the bot's home and reads one file from it, both home-scoped. Where
- * does this bot run: the bot's stored `computerProvider` is the selection,
- * `null` means the deployment's default, and the two are distinguishable
- * because they are different fields rather than a guess. Which providers exist
- * and which are usable: the deployment answers through `computers.providers`,
- * and an unavailable kind is rendered as unavailable with the classified
- * reason the supervisor reported — never smoothed into a checkmark the first
- * run would contradict. What happens when I switch: the warning is a pure
- * function of state the screen already holds, so the same sentence is computed
- * before the write for the confirmation and after it for the outcome, exactly
- * like the connections screen's revoke.
+ * recover — each one write, and the destructive pair (reset and recover, both
+ * of which can leave a machine that does not exist) is stated before it acts.
+ * The screen's own chrome reads that state as a state — one word with a
+ * control beside it — rather than as a sentence (design record, State
+ * vocabulary; issue #234). What is happening inside it: the terminal runs
+ * commands through the same supervisor exec seam the model's shell tool uses,
+ * and the file view lists the bot's home and reads one file from it, both
+ * home-scoped. Where does this bot run: the bot's stored `computerProvider` is
+ * the selection, `null` means the deployment's default, and the two are
+ * distinguishable because they are different fields rather than a guess. Which
+ * providers exist and which are usable: the deployment answers through
+ * `computers.providers`, and an unavailable kind is rendered as unavailable
+ * with the classified reason the supervisor reported — never smoothed into a
+ * checkmark the first run would contradict. What happens when I switch: the
+ * warning is a pure function of state the screen already holds, so the same
+ * sentence is computed before the write for the confirmation and after it for
+ * the outcome, exactly like the connections screen's revoke.
  *
  * The snapshot path is explicit because a provider switch moves nothing. A
  * home lives on one provider's machine and a snapshot is an archive in the
@@ -42,12 +45,14 @@ import type {
  * decision and each failure keeps the previous state readable.
  *
  * Screen watch and takeover are deliberately absent (PRD story 28, issue
- * #178): v1.0's observability is the tool-call timeline beside this terminal
- * and file view. The seam is already reserved at the bottom of the stack —
+ * #178): v1.0's observability is the terminal and file tabs beside the screen
+ * surface. The seam is already reserved at the bottom of the stack —
  * `ComputerProvider` declares optional `frames()` and `input()`, and the
  * supervisor's capability-gated `/frames` and `/input` paths answer
- * `not_implemented` — so a v1.1 stream lands as one adapter plus this screen's
- * next section, not as a redesign. Nothing in this module names a frame.
+ * `not_implemented` — so a v1.1 stream lands as one adapter plus the screen
+ * surface's body and its take-control control, not as a redesign. The surface
+ * therefore states plainly that no live view exists today, and nothing in this
+ * module names a frame.
  */
 
 /** A provider the operator can choose: a kind, or `null` for the deployment default. */
@@ -262,23 +267,115 @@ export function selectionUnconfigured(state: Pick<ComputerState, "bot" | "provid
   return !state.providers.providers.some((provider) => provider.kind === kind);
 }
 
-/** The machines' state as one sentence: nothing assigned, or what the provider reported. */
-export function computerSentence(state: Pick<ComputerState, "bot" | "computer">): string {
-  if (state.bot === null || state.bot.computerId === null || state.computer === null) {
-    return "No machine yet. It is created the first time this bot runs.";
+/**
+ * The machine's state as the surface states it: one word and one hook, not a
+ * sentence (design record, State vocabulary). `unassigned` is the bot with no
+ * machine yet — a normal answer the screen renders, not an error.
+ */
+export type MachineState = "unassigned" | "running" | "stopped" | "gone";
+
+export function machineState(state: Pick<ComputerState, "bot" | "computer">): MachineState {
+  if (
+    state.bot === null ||
+    state.bot.computerId === null ||
+    state.computer === null ||
+    !state.computer.assigned
+  ) {
+    return "unassigned";
   }
 
-  if (!state.computer.assigned) {
-    return "No machine yet. It is created the first time this bot runs.";
-  }
+  return state.computer.state;
+}
 
-  switch (state.computer.state) {
+/** The word the lifecycle control shows; the same word the screen's body reads. */
+export function machineStateWord(state: Pick<ComputerState, "bot" | "computer">): string {
+  switch (machineState(state)) {
+    case "unassigned":
+      return "No machine";
     case "running":
-      return "The machine is running.";
+      return "Running";
     case "stopped":
-      return "The machine is stopped. Its home stays on the provider.";
+      return "Stopped";
     case "gone":
-      return "The machine is gone. Its home is no longer on the provider.";
+      return "Gone";
+  }
+}
+
+/**
+ * What the screen surface says where no live view exists. A provider offers no
+ * frames in v1.0 (issue #178 reserves the stream for v1.1), so the surface
+ * states that plainly and points at the tabs that do show the machine, rather
+ * than rendering an empty frame that looks like a load.
+ */
+export function machineStateNote(state: Pick<ComputerState, "bot" | "computer">): string {
+  switch (machineState(state)) {
+    case "unassigned":
+      return "It is created the first time this bot runs.";
+    case "running":
+      return "No live view: this provider sends no frames yet. The terminal and files tabs show what the machine is doing.";
+    case "stopped":
+      return "Start the machine to use its terminal and files.";
+    case "gone":
+      return "The provider no longer holds it. Recover to create a fresh machine; its home is not on the provider.";
+  }
+}
+
+/**
+ * The confirmation sentence for a recover, computed from state the screen
+ * already holds. Recover asks the provider to bring the machine back: one it
+ * still holds is adopted or started, and one it no longer holds is created
+ * fresh — which is why the sentence names the empty home before the write.
+ */
+export function recoverWarning(state: Pick<ComputerState, "snapshots">): string {
+  return state.snapshots.length === 0
+    ? "Recovering adopts this machine if the provider still holds it and creates a fresh one if not. A fresh machine starts with an empty home; nothing is snapshotted."
+    : "Recovering adopts this machine if the provider still holds it and creates a fresh one if not. A fresh machine starts with an empty home; snapshots are kept, and one can be restored into it.";
+}
+
+/**
+ * The one-line statement each lifecycle verb carries in the control's menu, so
+ * the menu says what the action does before it is chosen (issue #234). The
+ * destructive pair reads as a consequence, and Reset keeps the register's
+ * destructive colour because the item destroys the machine's home.
+ */
+export function lifecycleActionLabel(action: ComputerLifecycleAction): string {
+  switch (action) {
+    case "boot":
+      return "Start — bring the machine up";
+    case "stop":
+      return "Stop — park it, keeping the home";
+    case "reset":
+      return "Reset — destroy the machine and its home";
+    case "recover":
+      return "Recover — adopt it, or create a fresh one";
+  }
+}
+
+/** The lifecycle write in flight, or `null` when `pending` is another write. */
+export function lifecyclePending(
+  pending: ComputerState["pending"],
+): ComputerLifecycleAction | null {
+  return pending === "boot" || pending === "stop" || pending === "reset" || pending === "recover"
+    ? pending
+    : null;
+}
+
+/**
+ * What one configured kind is, in a sentence, for the provider sheet (issue
+ * #234). The three v1.0 kinds answer from the operator documentation
+ * (`docs/computers.md`); a kind a future deployment configures reads as
+ * itself rather than as a blank.
+ */
+export function providerDescription(kind: string): string {
+  switch (kind) {
+    case "offline":
+      return "An in-process emulator on this deployment; not a security boundary.";
+    case "docker":
+      return "A container on the host that serves this deployment, on its own isolated network.";
+    case "daytona":
+      return "A sandbox in the Daytona cloud.";
+    default:
+      return "";
   }
 }
 
