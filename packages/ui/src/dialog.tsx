@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -29,6 +29,15 @@ const focusableSelector = [
  * Tab and Shift+Tab stay inside it, Escape and a backdrop press close it, and
  * closing returns focus to the element that opened it. A sheet is the same
  * behaviour anchored to the viewport's bottom.
+ *
+ * The portal targets its own container, created and removed with this
+ * component, rather than `document.body` directly. React attaches its event
+ * listeners to a portal's container and never detaches them while the
+ * container lives; a container that outlives its root leaves those listeners
+ * on `document.body`, where a second React root in the same document — the
+ * test harness mounts the app twice to prove a reload — can dispatch an event
+ * into the stale root's fiber tree. One container per dialog keeps the
+ * listeners and their lifetime together.
  */
 function DialogSurface({
   variant,
@@ -43,6 +52,21 @@ function DialogSurface({
   const previousFocus = useRef<Element | null>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const [container] = useState(() =>
+    typeof document === "undefined" ? null : document.createElement("div"),
+  );
+
+  useEffect(() => {
+    if (container === null) {
+      return;
+    }
+
+    document.body.append(container);
+
+    return () => {
+      container.remove();
+    };
+  }, [container]);
 
   useEffect(() => {
     if (!open) {
@@ -61,7 +85,7 @@ function DialogSurface({
     };
   }, [open]);
 
-  if (!open) {
+  if (!open || container === null) {
     return null;
   }
 
@@ -137,7 +161,7 @@ function DialogSurface({
         {actions === undefined ? null : <div className="pb-dialog__actions">{actions}</div>}
       </div>
     </div>,
-    document.body,
+    container,
   );
 }
 
