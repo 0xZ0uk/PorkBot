@@ -110,7 +110,7 @@ export function createFileStore(actor: UserActor, database: Queryable): FileStor
         throw new NotFoundError("thread", input.threadId);
       }
 
-      return row;
+      return sized(row);
     },
 
     findAttachments: (threadId, ids) => readAttachments(database, actor.spaceId, threadId, ids),
@@ -128,7 +128,7 @@ export function createFileStore(actor: UserActor, database: Queryable): FileStor
       const attachment = attachments[0];
 
       if (attachment !== undefined) {
-        return attachment;
+        return sized(attachment);
       }
 
       const { rows: artifacts } = await database.query<StoredFile>(
@@ -137,7 +137,7 @@ export function createFileStore(actor: UserActor, database: Queryable): FileStor
         [id, actor.spaceId],
       );
 
-      return requiredRow(artifacts, "file", id);
+      return sized(requiredRow(artifacts, "file", id));
     },
   };
 }
@@ -167,7 +167,7 @@ export function createRunFileStore(actor: SystemActor, database: Queryable): Run
       const inserted = rows[0];
 
       if (inserted !== undefined) {
-        return inserted;
+        return sized(inserted);
       }
 
       // The conflict was resolved at the index: the call already recorded an
@@ -179,7 +179,7 @@ export function createRunFileStore(actor: SystemActor, database: Queryable): Run
         [actor.spaceId, input.runId, input.callId],
       );
 
-      return requiredRow(existing, "run", input.runId);
+      return sized(requiredRow(existing, "run", input.runId));
     },
   };
 }
@@ -214,5 +214,15 @@ async function readAttachments(
     throw new NotFoundError("attachment", missing);
   }
 
-  return rows;
+  return rows.map(sized);
+}
+
+/**
+ * `size_bytes` is a Postgres `bigint` in both tables, and the driver answers a
+ * bigint as a string; the store's contract is a number, so every row it returns
+ * is normalized here rather than by each caller — the API's upload answer and a
+ * message's file blocks both carry it.
+ */
+function sized<T extends { readonly sizeBytes: number }>(row: T): T {
+  return { ...row, sizeBytes: Number(row.sizeBytes) };
 }

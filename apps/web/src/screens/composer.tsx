@@ -1,15 +1,22 @@
 import { MAX_MESSAGE_TEXT_LENGTH } from "@porkbot/core";
-import { Button, Input, Textarea } from "@porkbot/ui";
+import { Button, Card, Icon, IconButton, Input, Textarea } from "@porkbot/ui";
 import { useRef } from "react";
 import type { ClipboardEvent, DragEvent, KeyboardEvent, ChangeEvent } from "react";
 import type { ComposerFileInput, ComposerState } from "../composer.ts";
 
 /**
- * The message composer (slice 11.3): the textarea, the staged files, and the
- * send. Every fact on screen is the controller's state — which files are
- * staged, which are still in flight, which failed and why, and whether the
+ * The message composer (slice 11.3; design record, Conversation grammar): the
+ * text area, the staged files and the send, plus the run's stop control while
+ * a run is live. Every fact on screen is the controller's state — which files
+ * are staged, which are still in flight, which failed and why, and whether the
  * send is live — so the render is the same whether a file arrived by drag,
  * the chooser, or a paste.
+ *
+ * The composer is the obvious place to type: it holds the emphasis of the
+ * pane's bottom, its placeholder names the bot the message goes to, and
+ * sending while a run is active steers that run — steering is just talking.
+ * Stopping is the one destructive act, so it is its own control beside the
+ * send, disabled from the moment the request is out until the run settles.
  *
  * Files stage as they arrive, and a staged row is the feedback the story asks
  * for before anything is sent: name, type, size, and the intake refusal when
@@ -27,6 +34,15 @@ import type { ComposerFileInput, ComposerState } from "../composer.ts";
 
 export interface ComposerScreenProps {
   readonly state: ComposerState;
+  /** The selected bot, so the placeholder says where the message goes. */
+  readonly botName?: string | undefined;
+  /** True while a run is active and can be asked to stop. */
+  readonly canStop?: boolean | undefined;
+  /** True between a stop request and the run settling. */
+  readonly stopping?: boolean | undefined;
+  /** The sentence a failed stop request produced, or null. */
+  readonly stopError?: string | null | undefined;
+  readonly onStop?: (() => void) | undefined;
   readonly onText: (text: string) => void;
   readonly onFiles: (files: readonly ComposerFileInput[]) => void;
   readonly onRemoveFile: (key: string) => void;
@@ -58,6 +74,11 @@ function offer(
 
 export function ComposerScreen({
   state,
+  botName,
+  canStop = false,
+  stopping = false,
+  stopError = null,
+  onStop,
   onText,
   onFiles,
   onRemoveFile,
@@ -127,7 +148,12 @@ export function ComposerScreen({
       {state.files.length === 0 ? null : (
         <ul className="composer-files">
           {state.files.map((file) => (
-            <li key={file.key} className={`composer-file composer-file-${file.status}`}>
+            <Card
+              as="li"
+              variant="raised"
+              key={file.key}
+              className={`composer-file composer-file-${file.status}`}
+            >
               <span className="composer-file-name">{file.filename}</span>
               <span className="composer-file-meta muted">
                 {file.contentType} · {formatBytes(file.sizeBytes)}
@@ -164,7 +190,7 @@ export function ComposerScreen({
               >
                 Remove
               </Button>
-            </li>
+            </Card>
           ))}
         </ul>
       )}
@@ -172,7 +198,7 @@ export function ComposerScreen({
         <Textarea
           className="composer-text"
           aria-label="Message"
-          placeholder="Message the bot — drop, choose, or paste files to attach"
+          placeholder={botName === undefined ? "Message the bot" : `Message ${botName}`}
           value={state.text}
           maxLength={MAX_MESSAGE_TEXT_LENGTH}
           rows={2}
@@ -196,12 +222,26 @@ export function ComposerScreen({
             chooser.current?.click();
           }}
         >
+          <Icon name="plus" size={14} />
           Attach files
         </Button>
+        {canStop && onStop !== undefined ? (
+          <IconButton
+            label={stopping ? "Stopping the run" : "Stop the run"}
+            icon="stop"
+            disabled={stopping}
+            onClick={onStop}
+          />
+        ) : null}
         <Button variant="primary" type="submit" disabled={!state.canSend}>
           {state.sending ? "Sending…" : "Send"}
         </Button>
       </div>
+      {stopError === null ? null : (
+        <p className="form-error" role="alert">
+          {stopError}
+        </p>
+      )}
       {state.error === null ? null : (
         <p className="form-error" role="alert">
           {state.error}

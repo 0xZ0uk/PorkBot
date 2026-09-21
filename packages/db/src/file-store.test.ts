@@ -114,6 +114,25 @@ describe("uploading an attachment", () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it("answers a bigint size as a number, whatever the driver sent", async () => {
+    // The driver answers a Postgres bigint as a string; the store's contract
+    // is a number, so the cast is the store's, not every caller's.
+    const asString = { ...attachmentRecord(), sizeBytes: "2048" as unknown as number };
+    const database = scripted([asString]);
+    const files = createFileStore(owner, database);
+
+    const created = await files.createAttachment({
+      threadId: "thread-1",
+      filename: "report.pdf",
+      contentType: "application/pdf",
+      sizeBytes: 2_048,
+      storageKey: "files/space-1/random",
+    });
+
+    expect(created.sizeBytes).toBe(2_048);
+    expect(typeof created.sizeBytes).toBe("number");
+  });
 });
 
 describe("resolving a send's attachments", () => {

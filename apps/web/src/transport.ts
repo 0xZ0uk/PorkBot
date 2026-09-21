@@ -289,6 +289,7 @@ export function createHttpConsoleTransport(
     createThread: (botId) => client.threads.create({ botId }),
     toolResult: (input) => client.threads.toolResult(input),
     run: (runId) => client.runs.get({ runId }),
+    stop: (runId) => client.runs.stop({ runId }),
     send: (input) => client.threads.send({ ...input, attachmentIds: [...input.attachmentIds] }),
     uploadAttachment: uploadAttachment(base),
 

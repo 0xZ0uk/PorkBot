@@ -26,6 +26,8 @@ export interface UseThreadConsoleResult {
   readonly retry: () => void;
   /** Folds a just-sent message into the view, for the composer's send. */
   readonly noteSent: (message: Message) => void;
+  /** Asks the active run to stop; the composer's stop control is the caller. */
+  readonly stopRun: () => void;
 }
 
 export function useThreadConsole(options: UseThreadConsoleOptions): UseThreadConsoleResult {
@@ -55,6 +57,9 @@ export function useThreadConsole(options: UseThreadConsoleOptions): UseThreadCon
     },
     [console],
   );
+  const stopRun = useCallback(() => {
+    console.stopRun();
+  }, [console]);
 
-  return { state, retry, noteSent };
+  return { state, retry, noteSent, stopRun };
 }

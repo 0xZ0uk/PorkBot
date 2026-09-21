@@ -58,6 +58,21 @@
   color: var(--pb-color-muted);
 }
 
+/* Present for assistive technology, absent from the painting: the operator's
+   turn is carried by alignment and fill, but a screen reader still gets the
+   word. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /*
  * The workspace shell (slice 13.4; design record, Shell anatomy): a roster
  * rail, the content pane and the context inspector at 64rem and wider, and one
@@ -409,11 +424,93 @@
 }
 
 .console-status {
-  font-size: 0.875rem;
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
 }
 
 .console-liveness-stuck {
   color: var(--pb-color-destructive);
+}
+
+/*
+ * The conversation (slice 13.7; design record, Conversation grammar). The
+ * transcript scrolls itself rather than the pane, so its newest turn can be
+ * anchored and a jump control can sit above the composer, which owns the
+ * pane's bottom.
+ */
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+  height: 100%;
+  min-height: 0;
+}
+
+.conversation > .console {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.console-state-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--pb-space-sm);
+}
+
+.console-connection {
+  display: inline-flex;
+}
+
+.conversation-transcript {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.transcript-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: var(--pb-space-sm) var(--pb-space-sm) var(--pb-space-xl);
+}
+
+.thread-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-lg);
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.transcript-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-md);
+}
+
+.transcript-separator {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  margin: 0;
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  font-weight: var(--pb-type-meta-weight);
+}
+
+.transcript-separator::before,
+.transcript-separator::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--pb-color-border);
 }
 
 .transcript {
@@ -422,34 +519,61 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--pb-space-lg);
+  gap: var(--pb-space-md);
 }
 
 .message {
   display: flex;
-  flex-direction: column;
-  gap: var(--pb-space-xs);
+  gap: var(--pb-space-sm);
+  max-width: 85%;
 }
 
-.message-attribution,
-.thread-header {
+.message-user {
+  align-self: flex-end;
+}
+
+.message-bot {
+  align-self: flex-start;
+}
+
+.message-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-2xs);
+}
+
+.message-attribution {
   display: flex;
   align-items: center;
-  gap: var(--pb-space-sm);
-}
-
-.thread-header h2 {
-  margin: 0;
-}
-
-.thread-header p {
-  margin: 0;
+  gap: var(--pb-space-xs);
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
 }
 
 .message-role {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--pb-color-foreground);
+  font-weight: var(--pb-type-meta-weight);
+}
+
+/* The operator's turn is filled and end-aligned; the bot's sits on the pane's
+   surface and start-aligned. The speaker-side corner drops to `sm`, which is
+   the tail without drawing one. */
+.message-user .message-bubble {
+  align-self: flex-end;
+  background: var(--pb-color-raised);
+  border-bottom-right-radius: var(--pb-radius-sm);
+}
+
+.message-bot .message-bubble {
+  border-bottom-left-radius: var(--pb-radius-sm);
+}
+
+.message .message-bubble {
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-md);
+  box-shadow: var(--pb-elevation-raised);
 }
 
 .message-text {
@@ -463,22 +587,87 @@
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--pb-space-xs);
+  width: 100%;
+}
+
+.message-attachments .attachment-card {
+  gap: 0;
+  padding: 0;
+  background: var(--pb-color-background);
+  border-radius: var(--pb-radius-lg);
 }
 
 .message-attachment {
-  display: inline-block;
-  padding: var(--pb-space-xs) var(--pb-space-sm);
-  font-size: 0.875rem;
-  background: var(--pb-color-surface);
-  border: 1px solid var(--pb-color-border);
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-sm);
+  color: var(--pb-color-foreground);
+  text-decoration: none;
+  border-radius: var(--pb-radius-lg);
+}
+
+.message-attachment:hover {
+  background: var(--pb-color-raised);
+}
+
+.message-attachment:focus-visible {
+  outline: 2px solid var(--pb-color-accent);
+  outline-offset: -2px;
+}
+
+.attachment-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--pb-color-muted);
+  background: var(--pb-color-raised);
   border-radius: var(--pb-radius-md);
+}
+
+.attachment-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-name {
+  overflow-wrap: anywhere;
+  font-size: var(--pb-type-code-size);
+  font-weight: 500;
+}
+
+.attachment-meta {
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+}
+
+.attachment-action {
+  margin-left: auto;
+  color: var(--pb-color-info);
+  font-size: var(--pb-type-meta-size);
+  font-weight: var(--pb-type-meta-weight);
+}
+
+.transcript-jump {
+  position: absolute;
+  bottom: var(--pb-space-md);
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+}
+
+.transcript-jump .pb-button {
+  box-shadow: var(--pb-elevation-overlay);
 }
 
 .composer {
   width: 100%;
-  max-width: 48rem;
+  max-width: 44rem;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -486,7 +675,8 @@
   padding: var(--pb-space-sm);
   background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-md);
+  border-radius: var(--pb-radius-xl);
+  box-shadow: var(--pb-elevation-raised);
 }
 
 .composer-drop {
@@ -504,20 +694,19 @@
   gap: var(--pb-space-xs);
 }
 
-.composer-file {
-  display: flex;
+.composer-files .composer-file {
+  flex-direction: row;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--pb-space-sm);
   padding: var(--pb-space-xs) var(--pb-space-sm);
   background: var(--pb-color-background);
-  border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
-  font-size: 0.875rem;
+  font-size: var(--pb-type-body-size);
 }
 
-.composer-file-invalid,
-.composer-file-failed {
+.composer-files .composer-file-invalid,
+.composer-files .composer-file-failed {
   border-color: var(--pb-color-destructive);
 }
 
@@ -527,7 +716,7 @@
 }
 
 .composer-file-meta {
-  font-size: 0.75rem;
+  font-size: var(--pb-type-meta-size);
 }
 
 .composer-file-progress {
@@ -541,15 +730,11 @@
   color: var(--pb-color-destructive);
 }
 
-.composer-file-remove {
+.composer-files .composer-file-remove {
   margin-left: auto;
   padding: 0;
   color: var(--pb-color-muted);
-  background: none;
-  border: none;
-  font: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
+  font-size: var(--pb-type-meta-size);
   text-decoration: underline;
 }
 
@@ -559,15 +744,15 @@
   gap: var(--pb-space-sm);
 }
 
-.composer-text {
+.composer .composer-text {
   flex: 1;
-  padding: var(--pb-space-sm);
-  color: var(--pb-color-foreground);
-  background: var(--pb-color-background);
-  border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-md);
-  font: inherit;
+  background: transparent;
+  border-color: transparent;
   resize: vertical;
+}
+
+.composer .composer-text:focus-visible {
+  border-color: var(--pb-color-accent);
 }
 
 .composer-chooser {
@@ -686,6 +871,24 @@
   display: inline-block;
   margin-top: var(--pb-space-xs);
   font-size: 0.875rem;
+}
+
+/* A produced file is a card with one open action, the same grammar as a
+   message's attachment (design record, Conversation grammar). */
+.tool-call .artifact-card {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  width: fit-content;
+  max-width: 100%;
+  margin-top: var(--pb-space-sm);
+  padding: var(--pb-space-sm);
+  background: var(--pb-color-background);
+  border-radius: var(--pb-radius-lg);
+}
+
+.tool-call .artifact-card .tool-call-artifact {
+  margin-top: 0;
 }
 
 .tool-result-title {

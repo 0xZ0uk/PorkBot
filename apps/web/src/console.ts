@@ -3,6 +3,7 @@ import type {
   Message,
   RunGet,
   RunLiveness,
+  RunStop,
   ThreadEventsProcedure,
   ThreadSubscriptionState,
 } from "@porkbot/contracts";
@@ -75,6 +76,8 @@ export interface ThreadConsoleTransport {
   transcript(threadId: string): Promise<readonly Message[]>;
   /** One run's persisted liveness, assessed by the API at request time. */
   run(runId: string): Promise<RunGet>;
+  /** Asks a live run to stop; the run's own frames are what settle it. */
+  stop(runId: string): Promise<RunStop>;
   readonly events: ThreadEventsProcedure;
 }
 
@@ -84,6 +87,12 @@ export interface TranscriptMessageEntry {
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly text: string;
+  /**
+   * When the persisted row was written, in ISO form. The transcript's session
+   * separators read it; a message only the stream knows (a steering turn
+   * before its next mount) carries `null` and inherits the session beside it.
+   */
+  readonly createdAt: string | null;
   /**
    * The stored files the message's blocks carry (slice 7.6). Only the
    * transcript row knows them — a steering message that arrived as a
@@ -115,6 +124,12 @@ export interface ThreadConsoleState {
   readonly connection: ThreadSubscriptionState;
   /** The newest active run's liveness, or `null` when none is running. */
   readonly liveness: RunLiveness | null;
+  /** The newest active run, or `null` when nothing is running. */
+  readonly activeRunId: string | null;
+  /** True between a stop request and the run settling; the control is off. */
+  readonly stopping: boolean;
+  /** The sentence a failed stop request produced, or `null`. */
+  readonly stopError: string | null;
 }
 
 export interface ThreadConsoleOptions {
@@ -155,6 +170,12 @@ export interface ThreadConsole {
    * no-op.
    */
   noteSent(message: Message): void;
+  /**
+   * Asks the newest active run to stop. The request is a mark, not a
+   * transition: the console stays `stopping` until the run's own frames settle
+   * it, and a no-op when nothing is running or a request is already out.
+   */
+  stopRun(): void;
 }
 
 /**
@@ -168,6 +189,13 @@ const streamUnreadable = "The stream could not be read.";
 
 function refusalFor(error: unknown): string {
   return error instanceof ORPCError && error.code === "NOT_FOUND" ? notAvailable : streamUnreadable;
+}
+
+/** What a failed stop request says; a run that finished needs no request. */
+function stopFailureFor(error: unknown): string {
+  return error instanceof ORPCError && error.code === "NOT_FOUND"
+    ? "This run already finished."
+    : "The stop could not be requested; try again.";
 }
 
 /**
@@ -205,6 +233,9 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     refusal: null,
     connection: "connecting",
     liveness: null,
+    activeRunId: null,
+    stopping: false,
+    stopError: null,
   };
   // Bumped by stop/retry, so a slow fetch or frame from an earlier run never
   // writes into the state of a later one.
@@ -216,6 +247,9 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
   // and a poll that returns after that is ignored.
   let livenessRunId: string | null = null;
   let livenessTimer: ReturnType<typeof setInterval> | undefined;
+  // The run a stop request was made for, so the run settling — not the timer —
+  // is what clears it.
+  let stoppingRunId: string | null = null;
 
   function setState(next: Partial<ThreadConsoleState>): void {
     state = { ...state, ...next };
@@ -242,6 +276,22 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
    */
   function syncLiveness(): void {
     const active = newestActiveRun(snapshot);
+
+    // A run that ended, or a different run that started, is no longer the run a
+    // stop was asked of: the request's own state clears with the active run.
+    // This is checked before the liveness transition, because a poll that
+    // already cleared the followed run must not keep the stop state alive.
+    if (active !== state.activeRunId) {
+      setState({ activeRunId: active });
+
+      if (active !== stoppingRunId) {
+        stoppingRunId = null;
+
+        if (state.stopping || state.stopError !== null) {
+          setState({ stopping: false, stopError: null });
+        }
+      }
+    }
 
     if (active === livenessRunId) {
       return;
@@ -302,6 +352,24 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     setState({ liveness: read.liveness });
   }
 
+  /**
+   * The one refusal path: the stream could not be read, so nothing below the
+   * alert renders and every live reading — liveness, the active run, a stop in
+   * flight — is dropped with it.
+   */
+  function refuse(refusal: string): void {
+    stopLiveness();
+    stoppingRunId = null;
+    setState({
+      status: "refused",
+      refusal,
+      liveness: null,
+      activeRunId: null,
+      stopping: false,
+      stopError: null,
+    });
+  }
+
   async function run(current: number, active: AbortController): Promise<void> {
     let fetched: readonly Message[];
 
@@ -309,8 +377,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       fetched = await transport.transcript(threadId);
     } catch (error) {
       if (current === generation) {
-        stopLiveness();
-        setState({ status: "refused", refusal: refusalFor(error), liveness: null });
+        refuse(refusalFor(error));
       }
 
       return;
@@ -354,8 +421,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
         if (!reduced.ok) {
           // A contradiction in the stream is not something to repair here: the
           // reducer refuses to guess and the console says so.
-          stopLiveness();
-          setState({ status: "refused", refusal: streamUnreadable, liveness: null });
+          refuse(streamUnreadable);
 
           return;
         }
@@ -367,8 +433,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       }
     } catch (error) {
       if (current === generation) {
-        stopLiveness();
-        setState({ status: "refused", refusal: refusalFor(error), liveness: null });
+        refuse(refusalFor(error));
       }
     }
   }
@@ -393,6 +458,9 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       connection: "connecting",
       entries: [],
       liveness: null,
+      activeRunId: null,
+      stopping: false,
+      stopError: null,
     });
     void run(generation, controller);
   }
@@ -452,6 +520,37 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       sentMessages = [...sentMessages, message];
       setState({ entries: mergeTranscript(allMessages(), snapshot) });
     },
+
+    stopRun: () => {
+      const runId = newestActiveRun(snapshot);
+
+      if (runId === null || stoppingRunId !== null) {
+        return;
+      }
+
+      stoppingRunId = runId;
+      const current = generation;
+      setState({ stopping: true, stopError: null });
+
+      void transport
+        .stop(runId)
+        .then(() => {
+          // The mark is recorded. The run's own frames — `stopping`, then a
+          // terminal status — are what the console renders from here, so the
+          // request itself has nothing left to publish.
+        })
+        .catch((failure: unknown) => {
+          // The stream is still the source of truth: a request that failed
+          // leaves the run exactly as the frames describe it, and the operator
+          // may ask again.
+          if (current !== generation || stoppingRunId !== runId) {
+            return;
+          }
+
+          stoppingRunId = null;
+          setState({ stopping: false, stopError: stopFailureFor(failure) });
+        });
+    },
   };
 }
 
@@ -502,6 +601,7 @@ export function mergeTranscript(
         id: message.id,
         role: message.role,
         text: live === undefined ? (messageText(message.blocks) ?? "") : live.text,
+        createdAt: message.createdAt,
         attachments: messageFiles(message.blocks) ?? [],
         streaming: live !== undefined && !live.complete,
       },
@@ -520,6 +620,9 @@ export function mergeTranscript(
         id: message.id,
         role: message.role,
         text: message.text,
+        // The stream does not carry the row's write time; a turn only the
+        // stream knows inherits the session of the message beside it.
+        createdAt: null,
         attachments: [],
         streaming: !message.complete,
       },
