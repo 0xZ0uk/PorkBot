@@ -1,5 +1,5 @@
 import { fileDownloadPath } from "@porkbot/contracts";
-import type { Bot, RunLiveness } from "@porkbot/contracts";
+import type { Approval, Bot, RunLiveness } from "@porkbot/contracts";
 import type { FileMessageBlock } from "@porkbot/core";
 import { Badge, BotAvatar, Button, Card, Icon, ScrollArea } from "@porkbot/ui";
 import type { ThreadConsoleState, TranscriptEntry, TranscriptMessageEntry } from "../console.ts";
@@ -45,7 +45,7 @@ export interface ThreadConsoleScreenProps {
         readonly callId: string;
         readonly vote: "approve" | "deny";
         readonly reason?: string;
-      }) => Promise<void>)
+      }) => Promise<Approval>)
     | undefined;
 }
 
@@ -130,6 +130,7 @@ export function ThreadConsoleScreen({
                           threadId={state.threadId}
                           runId={entry.runId}
                           call={entry.call}
+                          {...(bot === undefined ? {} : { bot })}
                           {...(onApprovalDecision === undefined ? {} : { onApprovalDecision })}
                         />
                       ) : (

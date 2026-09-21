@@ -1,7 +1,8 @@
 import { fileDownloadPath } from "@porkbot/contracts";
-import type { ToolCallSnapshot } from "@porkbot/core";
-import { Button, Card, Icon } from "@porkbot/ui";
-import { useState } from "react";
+import type { Approval, Bot } from "@porkbot/contracts";
+import type { ApprovalVote, ToolCallSnapshot } from "@porkbot/core";
+import { Card, Icon } from "@porkbot/ui";
+import { ApprovalCard } from "./approval-card.tsx";
 
 /**
  * One tool call in the console's timeline: which tool ran, with what
@@ -15,6 +16,12 @@ import { useState } from "react";
  * which resolves the whole value through the API. A failed call is marked in
  * the danger token and shows the error text the run recorded, which is where
  * the typed provider reason lives.
+ *
+ * A gated call (slice 13.9) renders the shared approval card beside the entry,
+ * outside the disclosure, so the decision, its consequence and its deadline
+ * stay on screen while the run is parked and after it settles — a resolved gate
+ * that folded the row closed would be the silent disappearance the card exists
+ * to prevent.
  *
  * The screen is router-free: the artifact links are plain anchors, so the
  * component renders the same in a test as in the app, and a reload of either
@@ -35,14 +42,16 @@ export interface ToolCallEntryProps {
   /** The run the call belongs to; the artifact read is scoped by it. */
   readonly runId: string;
   readonly call: ToolCallSnapshot;
+  /** The selected bot, for the identity on the approval card. */
+  readonly bot?: Bot | undefined;
   /** The thread route wires this to the actor-scoped approval procedure. */
   readonly onApprovalDecision?:
     | ((input: {
         readonly runId: string;
         readonly callId: string;
-        readonly vote: "approve" | "deny";
+        readonly vote: ApprovalVote;
         readonly reason?: string;
-      }) => Promise<void>)
+      }) => Promise<Approval>)
     | undefined;
 }
 
@@ -63,16 +72,17 @@ export function ToolCallEntry({
   threadId,
   runId,
   call,
+  bot,
   onApprovalDecision,
 }: ToolCallEntryProps) {
   const failed = call.status === "failed";
-  const pending = call.approval?.status === "pending";
+  const approval = call.approval;
   const artifact = call.resultArtifact;
   const download = recordedArtifact(call.result);
 
   return (
     <li className={failed ? "tool-call tool-call-failed" : "tool-call"}>
-      <details className="tool-call-details" open={pending}>
+      <details className="tool-call-details">
         <summary className="tool-call-summary">
           <span className="tool-call-name">{call.tool}</span>
           <span className="tool-call-run muted">Run {runId}</span>
@@ -108,18 +118,24 @@ export function ToolCallEntry({
               </a>
             )}
           </dd>
-          {pending ? (
-            <dd className="approval-controls-cell">
-              <ApprovalControls
-                runId={runId}
-                callId={call.callId}
-                expiresAt={call.approval.expiresAt}
-                onDecision={onApprovalDecision}
-              />
-            </dd>
-          ) : null}
         </dl>
       </details>
+      {approval === undefined ? null : (
+        <ApprovalCard
+          tool={call.tool}
+          arguments={call.arguments}
+          status={approval.status}
+          expiresAt={approval.expiresAt}
+          reason={approval.reason ?? null}
+          bot={bot ?? null}
+          {...(onApprovalDecision === undefined
+            ? {}
+            : {
+                onDecide: (vote: ApprovalVote) =>
+                  onApprovalDecision({ runId, callId: call.callId, vote }),
+              })}
+        />
+      )}
       {download === undefined ? null : (
         <Card className="artifact-card">
           <span className="attachment-icon" aria-hidden="true">
@@ -131,70 +147,6 @@ export function ToolCallEntry({
         </Card>
       )}
     </li>
-  );
-}
-
-function ApprovalControls({
-  runId,
-  callId,
-  expiresAt,
-  onDecision,
-}: {
-  readonly runId: string;
-  readonly callId: string;
-  readonly expiresAt: string;
-  readonly onDecision?: ToolCallEntryProps["onApprovalDecision"];
-}) {
-  const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
-  const [error, setError] = useState(false);
-
-  async function decide(vote: "approve" | "deny"): Promise<void> {
-    if (onDecision === undefined) {
-      return;
-    }
-
-    setBusy(vote);
-    setError(false);
-
-    try {
-      await onDecision({ runId, callId, vote });
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div className="approval-controls">
-      <p className="approval-deadline muted">
-        Waiting for your decision until {formatApprovalDeadline(expiresAt)}.
-      </p>
-      <div className="approval-buttons">
-        <Button
-          variant="primary"
-          disabled={onDecision === undefined || busy !== null}
-          onClick={() => {
-            void decide("approve");
-          }}
-        >
-          {busy === "approve" ? "Approving…" : "Approve"}
-        </Button>
-        <Button
-          disabled={onDecision === undefined || busy !== null}
-          onClick={() => {
-            void decide("deny");
-          }}
-        >
-          {busy === "deny" ? "Denying…" : "Deny"}
-        </Button>
-      </div>
-      {error ? (
-        <p className="form-error" role="alert">
-          The decision could not be recorded. Try again.
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -275,10 +227,4 @@ function formatDuration(durationMs: number): string {
 
 function formatBytes(bytes: number): string {
   return bytes < 1_024 ? `${bytes} B` : `${(bytes / 1_024).toFixed(1)} KiB`;
-}
-
-function formatApprovalDeadline(value: string): string {
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }

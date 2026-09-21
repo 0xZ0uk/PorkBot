@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { Approval } from "@porkbot/contracts";
 import type { ToolCallSnapshot } from "@porkbot/core";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -455,33 +456,113 @@ describe("the tool-call timeline", () => {
     expect(container.querySelector(".tool-call-status")?.textContent).toBe("Waiting for approval");
   });
 
-  it("answers a pending approval from the transcript with its run and call", async () => {
-    const onApprovalDecision = vi.fn().mockResolvedValue(undefined);
+  it("renders the approval card with its consequence and live deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 
+    try {
+      await render(
+        <ThreadConsoleScreen
+          botId="bot-1"
+          state={withCall(
+            call({
+              tool: "web_fetch",
+              arguments: { url: "https://example.invalid" },
+              approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" },
+            }),
+          )}
+          onRetry={vi.fn()}
+        />,
+      );
+
+      const card = container.querySelector(".approval-card");
+
+      expect(card?.getAttribute("data-approval-state")).toBe("pending");
+      expect(card?.textContent).toContain("Approval needed");
+      expect(card?.textContent).toContain(
+        "Fetch https://example.invalid. The request leaves this machine.",
+      );
+      expect(card?.querySelector("time")?.textContent).toBe("5m left");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("answers a pending approval from the transcript with its run and call", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const onApprovalDecision = vi.fn().mockResolvedValue({
+      id: "approval-1",
+      botId: "bot-1",
+      threadId: "thread-1",
+      runId: "run-1",
+      callId: "call-1",
+      tool: "shell",
+      arguments: {},
+      status: "approved",
+      expiresAt: "2026-01-01T00:05:00.000Z",
+      decidedBy: "user-1",
+      decidedAt: "2026-01-01T00:00:30.000Z",
+      reason: null,
+    } satisfies Approval);
+
+    try {
+      await render(
+        <ThreadConsoleScreen
+          botId="bot-1"
+          state={withCall(
+            call({ approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" } }),
+          )}
+          onRetry={vi.fn()}
+          onApprovalDecision={onApprovalDecision}
+        />,
+      );
+
+      const approve = [...container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Approve",
+      );
+
+      await act(async () => {
+        approve?.click();
+      });
+
+      expect(onApprovalDecision).toHaveBeenCalledWith({
+        runId: "run-1",
+        callId: "call-1",
+        vote: "approve",
+      });
+      expect(container.querySelector(".approval-card")?.getAttribute("data-approval-state")).toBe(
+        "approved",
+      );
+      expect(container.querySelectorAll(".approval-card button")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a timed-out gate visible as a denial beside the collapsed call", async () => {
     await render(
       <ThreadConsoleScreen
         botId="bot-1"
         state={withCall(
-          call({ approval: { status: "pending", expiresAt: "2026-01-01T00:05:00.000Z" } }),
+          call({
+            status: "failed",
+            error: 'tool "web_fetch" failed (timed_out): the approval timed out',
+            approval: { status: "timed_out", expiresAt: "2025-12-31T23:55:00.000Z" },
+          }),
         )}
         onRetry={vi.fn()}
-        onApprovalDecision={onApprovalDecision}
+        onApprovalDecision={vi.fn()}
       />,
     );
 
-    const approve = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent === "Approve",
-    );
+    const card = container.querySelector(".approval-card");
 
-    await act(async () => {
-      approve?.click();
-    });
-
-    expect(onApprovalDecision).toHaveBeenCalledWith({
-      runId: "run-1",
-      callId: "call-1",
-      vote: "approve",
-    });
+    expect(card?.getAttribute("data-approval-state")).toBe("timed_out");
+    expect(card?.textContent).toContain("Timed out");
+    expect(card?.textContent).toContain("The deadline passed, so the run was denied.");
+    expect(container.querySelector("details.tool-call-details")?.hasAttribute("open")).toBe(false);
+    expect(card?.querySelectorAll("button")).toHaveLength(0);
   });
 });
 
