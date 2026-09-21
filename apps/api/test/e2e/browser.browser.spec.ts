@@ -246,7 +246,10 @@ function offlineComputer(computer: ComputerEmulator): ComputerLifecycleProvider 
       return computer.ensure(ref);
     },
     recover: (ref: ComputerRef) => computer.ensure(ref),
-    providers: async () => ({ defaultKind: "offline", kinds: ["offline"] }),
+    // The fixture serves the emulator and reports a second kind the deployment
+    // does not configure, so the provider sheet's unavailable row and its
+    // reason are exercised rather than only asserted.
+    providers: async () => ({ defaultKind: "offline", kinds: ["offline", "docker"] }),
     validateProvider: async (kind: string) => ({
       kind,
       available: kind === "offline",
@@ -876,6 +879,77 @@ async function captureApprovalState(
 }
 
 /**
+ * The computer surface's acceptance captures (slice 13.10): the running
+ * machine with its tabs and state control in both modes, the lifecycle menu
+ * that states what each verb does, the reset confirmation, the provider sheet
+ * and the stopped machine. They land in `test-results/ui/` beside the shell's
+ * captures, which CI uploads and the pull request links, and each state is
+ * exercised here rather than only asserted, so the capture is of the real
+ * client against the real API. The machine is left running.
+ */
+async function captureComputer(page: Page): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+  const surface = page.locator(".computer-view-state");
+
+  await mkdir(uiDir, { recursive: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  for (const mode of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    // Park the pointer away from the controls so a capture never shows a
+    // hover state the state under test does not have.
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `interface-computer-1280-${mode}.png`) });
+  }
+
+  await page.emulateMedia({ colorScheme: "dark" });
+
+  // The lifecycle menu, open: every verb states what it does before it is
+  // chosen.
+  await page.getByRole("button", { name: /machine actions/ }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Reset — destroy the machine and its home" }),
+  ).toBeVisible();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(uiDir, "computer-lifecycle.png") });
+
+  // The destructive verb confirms, naming what is lost and what is kept.
+  await page.getByRole("menuitem", { name: "Reset — destroy the machine and its home" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(uiDir, "computer-reset.png") });
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // The provider sheet: what each kind is and why one is unavailable, then the
+  // confirmation a choice still arms.
+  await page.getByRole("button", { name: "Change" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(uiDir, "computer-provider.png") });
+  // A press, not `check()`: the radio is controlled by the stored selection,
+  // so choosing arms the confirmation rather than flipping the radio itself.
+  await page.getByRole("radio", { name: /^Offline emulator/ }).click();
+  await expect(page.getByText("does not move this bot's home")).toBeVisible();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(uiDir, "computer-switch-confirm.png") });
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // The stopped machine: the surface states the state, and the terminal and
+  // files say the machine is not running rather than offering a dead shell.
+  await page.getByRole("button", { name: /machine actions/ }).click();
+  await page.getByRole("menuitem", { name: "Stop — park it, keeping the home" }).click();
+  await expect(surface).toHaveText("Stopped");
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(uiDir, "computer-stopped.png") });
+
+  await page.getByRole("button", { name: /machine actions/ }).click();
+  await page.getByRole("menuitem", { name: "Start — bring the machine up" }).click();
+  await expect(surface).toHaveText("Running");
+}
+
+/**
  * The console's acceptance captures (slices 13.7 and 13.8): the conversation's
  * streaming run, attachment and upload failure, and the run surface's live
  * strip and report cards, each in both modes. They land in `test-results/ui/`
@@ -1002,15 +1076,19 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(modelConnection.getByText(/Reachable · 1 model · streaming/)).toBeVisible();
 
     await page.goto(`${current.origin}/bots/${botId}/computer`);
-    await expect(page.getByText(/The machine is gone/)).toBeVisible();
-    await page.getByRole("button", { name: "Start" }).click();
-    await expect(page.getByText("The machine is running.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Stop" }).click();
-    await expect(page.getByText(/The machine is stopped/)).toBeVisible();
-    await page.getByRole("button", { name: "Start" }).click();
-    await expect(page.getByText("The machine is running.", { exact: true })).toBeVisible();
+    // The surface states the machine's state as a state: gone until the first
+    // start, and the frame says plainly where no live view exists.
+    await expect(page.locator(".computer-view-state")).toHaveText("Gone");
+    await page.getByRole("button", { name: /machine actions/ }).click();
+    await page.getByRole("menuitem", { name: "Start — bring the machine up" }).click();
+    await expect(page.locator(".computer-view-state")).toHaveText("Running");
+    await expect(page.getByText("No live view", { exact: false })).toBeVisible();
+
+    await captureComputer(page);
+
+    await page.getByRole("tab", { name: "Terminal" }).click();
     await page.getByLabel("Command", { exact: true }).fill("echo offline");
-    await page.getByRole("button", { name: "Run" }).click();
+    await page.getByRole("button", { name: "Run", exact: true }).click();
     await expect(page.getByText("$ echo offline", { exact: true })).toBeVisible();
     await expect(page.locator("pre.terminal-stdout")).toHaveText("offline");
 
