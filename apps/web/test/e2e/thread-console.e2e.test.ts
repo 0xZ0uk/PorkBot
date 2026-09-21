@@ -316,9 +316,22 @@ describe("the streaming console over the real wire", () => {
       // prompt, before the answer.
       const items = [...view.container.querySelectorAll(".transcript > li")];
 
+      // The run's report card closes its steps: after the two calls and before
+      // the answer, the same anchor the timeline uses.
       expect(
-        items.map((item) => item.querySelector(".tool-call-name")?.textContent ?? null),
-      ).toEqual([null, "shell", "rm", null]);
+        items.map(
+          (item) =>
+            item.querySelector(".tool-call-name")?.textContent ??
+            (item.classList.contains("run-card") ? "card" : null),
+        ),
+      ).toEqual([null, "shell", "rm", "card", null]);
+
+      const card = view.container.querySelector(".run-card");
+
+      expect(card?.querySelector(".run-card-title")?.textContent).toBe("Run finished");
+      expect(
+        [...(card?.querySelectorAll(".run-card-line") ?? [])].map((line) => line.textContent),
+      ).toEqual(["✓shell — cat report.txt", '→tool "rm" failed (timed_out): no answer']);
 
       const calls = [...view.container.querySelectorAll(".tool-call")];
 
@@ -333,7 +346,9 @@ describe("the streaming console over the real wire", () => {
       expect(calls[0]?.textContent).toContain("[redacted]");
       expect(view.container.textContent).not.toContain("sk-live");
 
-      const link = calls[0]?.querySelector("a.tool-call-artifact");
+      // The artifact is reachable from the collapsed line, not only from the
+      // expanded body.
+      const link = calls[0]?.querySelector("summary a.tool-call-artifact");
 
       expect(link?.getAttribute("href")).toBe(
         `/bots/bot-1/threads/${threadId}/tool-results/${runId}/${callId}`,
