@@ -424,13 +424,94 @@
   gap: var(--pb-space-md);
 }
 
-.console-status {
+/*
+ * The live strip (slice 13.8, story 22). The dot carries the state the shell
+ * vocabulary names — identity hue while working, accent while waiting on the
+ * operator, warning while stuck, muted once the signal is lost — and the step
+ * names what the run is doing. The pulse is the register's ambient budget and
+ * stops under reduced motion.
+ */
+
+.live-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-sm) var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-lg);
+  font-size: var(--pb-type-body-size);
+  line-height: var(--pb-type-body-line-height);
+}
+
+.live-strip-dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--pb-radius-pill);
+  background: var(--pb-color-muted);
+}
+
+.live-strip-step {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.live-strip-beat {
+  margin-left: auto;
+  flex: none;
   font-size: var(--pb-type-meta-size);
   line-height: var(--pb-type-meta-line-height);
 }
 
-.console-liveness-stuck {
-  color: var(--pb-color-destructive);
+.live-strip-starting .live-strip-dot,
+.live-strip-thinking .live-strip-dot,
+.live-strip-working .live-strip-dot {
+  background: var(--pb-live-color, var(--pb-color-accent));
+  animation: live-strip-pulse var(--pb-motion-ambient) ease-in-out infinite;
+}
+
+.live-strip-waiting .live-strip-dot {
+  background: var(--pb-color-accent);
+}
+
+.live-strip-stopping .live-strip-dot {
+  background: transparent;
+  border: 1px solid var(--pb-color-muted);
+}
+
+.live-strip-stuck .live-strip-dot,
+.live-strip-stale .live-strip-dot {
+  background: var(--pb-color-warning);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pb-color-warning) 30%, transparent);
+}
+
+.live-strip-stuck .live-strip-step {
+  color: var(--pb-color-warning);
+}
+
+.live-strip-stale .live-strip-step,
+.live-strip-stale .live-strip-beat {
+  color: var(--pb-color-warning);
+}
+
+@keyframes live-strip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-strip-starting .live-strip-dot,
+  .live-strip-thinking .live-strip-dot,
+  .live-strip-working .live-strip-dot {
+    animation: none;
+  }
 }
 
 /*
@@ -781,13 +862,28 @@
   cursor: pointer;
 }
 
-.tool-call-run {
-  font-size: 0.75rem;
-}
-
 .tool-call-name {
+  flex: none;
   font-family: var(--pb-font-mono);
   font-size: 0.875rem;
+}
+
+/* The one-line target: the argument that names what the call acted on, cut to
+   the row rather than wrapped, so every entry stays one line. */
+.tool-call-target {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.875rem;
+}
+
+.tool-call-meta {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--pb-space-sm);
 }
 
 .tool-call-status {
@@ -802,8 +898,23 @@
 }
 
 .tool-call-duration {
-  margin-left: auto;
   font-size: 0.75rem;
+}
+
+.tool-call-chevron {
+  display: inline-flex;
+  color: var(--pb-color-muted);
+  transition: transform var(--pb-motion-fast) var(--pb-motion-standard);
+}
+
+.tool-call-details[open] .tool-call-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-call-chevron {
+    transition: none;
+  }
 }
 
 .tool-call-body {
@@ -983,6 +1094,13 @@
   font-size: 0.875rem;
 }
 
+/* The artifact link rides the collapsed line, so the audit is one click from
+   the row itself rather than only from the expanded body. */
+.tool-call-artifact-inline {
+  margin-top: 0;
+  font-size: var(--pb-type-meta-size);
+}
+
 /* A produced file is a card with one open action, the same grammar as a
    message's attachment (design record, Conversation grammar). */
 .tool-call .artifact-card {
@@ -999,6 +1117,87 @@
 
 .tool-call .artifact-card .tool-call-artifact {
   margin-top: 0;
+}
+
+/*
+ * The report card (slice 13.8, story 39; design record, Conversation grammar):
+ * a settled run's ✓ and → lines above the prose it wrote. The card is the same
+ * surface as a bubble, so the outcome reads as part of the run rather than as
+ * a second pane.
+ */
+
+.run-card {
+  display: flex;
+}
+
+.run-card-body {
+  width: 100%;
+  gap: var(--pb-space-sm);
+  padding: var(--pb-space-md);
+}
+
+.run-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+}
+
+.run-card-icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--pb-color-success);
+}
+
+.run-card-icon-failed {
+  color: var(--pb-color-destructive);
+}
+
+.run-card-title {
+  margin: 0;
+  font-size: var(--pb-type-heading-size);
+  line-height: var(--pb-type-heading-line-height);
+  font-weight: var(--pb-type-heading-weight);
+}
+
+.run-card-note {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+}
+
+.run-card-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-2xs);
+}
+
+.run-card-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pb-space-sm);
+}
+
+.run-card-mark {
+  flex: none;
+  width: 0.875rem;
+  font-weight: 600;
+}
+
+.run-card-mark-done {
+  color: var(--pb-color-success);
+}
+
+.run-card-mark-follow-up {
+  color: var(--pb-color-muted);
+}
+
+.run-card-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .tool-result-title {

@@ -2,7 +2,10 @@ import { fileDownloadPath } from "@porkbot/contracts";
 import type { Approval, Bot, RunLiveness } from "@porkbot/contracts";
 import type { FileMessageBlock } from "@porkbot/core";
 import { Badge, BotAvatar, Button, Card, Icon, ScrollArea } from "@porkbot/ui";
+import type { CSSProperties } from "react";
 import type { ThreadConsoleState, TranscriptEntry, TranscriptMessageEntry } from "../console.ts";
+import { formatDuration } from "../run-outcome.ts";
+import { RunCardEntry } from "./run-card.tsx";
 import { ToolCallEntry } from "./tool-call.tsx";
 import { useTranscriptAnchor } from "../use-transcript-anchor.ts";
 
@@ -23,9 +26,10 @@ import { useTranscriptAnchor } from "../use-transcript-anchor.ts";
  * action; a tool call keeps its own timeline entry in place in the
  * transcript. Connection state is a chip rather than a sentence — a live
  * stream shows no chrome, and only `connecting`, `reconnecting` and
- * `resumed` appear. The running run's liveness line names the step and the
- * heartbeat lag, so work and a hang read differently (slice 6.10, story 22);
- * slice 13.8 turns it into the live strip.
+ * `resumed` appear. The live strip names the step and the heartbeat lag, so
+ * work and a hang read differently, and it goes stale when the liveness read
+ * does (slice 6.10, story 22; slice 13.8). A settled run closes with its
+ * report card above the prose it wrote (slice 13.8, story 39).
  *
  * The transcript scrolls itself rather than the pane: it opens on the newest
  * turn, follows a streaming run while the reader is at the bottom, and offers
@@ -76,30 +80,22 @@ export function ThreadConsoleScreen({
 
   return (
     <section className="console" aria-busy={state.status === "loading"}>
-      {connection === null && liveness === null ? null : (
+      {connection === null ? null : (
         <div className="console-state-row">
-          {connection === null ? null : (
-            <span className="console-connection" role="status">
-              <Badge tone="info">
-                <Icon name="info" size={12} />
-                {connection}
-              </Badge>
-            </span>
-          )}
-          {liveness === null ? null : (
-            <p
-              className={
-                liveness.state === "stuck"
-                  ? "console-status console-liveness-stuck"
-                  : "console-status muted"
-              }
-              role="status"
-              data-liveness={liveness.state}
-            >
-              {livenessLabel(liveness)}
-            </p>
-          )}
+          <span className="console-connection" role="status">
+            <Badge tone="info">
+              <Icon name="info" size={12} />
+              {connection}
+            </Badge>
+          </span>
         </div>
+      )}
+      {liveness === null ? null : (
+        <LiveStrip
+          liveness={liveness}
+          stale={state.livenessStale}
+          {...(bot === undefined ? {} : { color: bot.color })}
+        />
       )}
       <div className="conversation-transcript">
         <ScrollArea
@@ -122,26 +118,36 @@ export function ThreadConsoleScreen({
                     </p>
                   )}
                   <ol className="transcript">
-                    {session.entries.map((entry) =>
-                      entry.kind === "tool" ? (
-                        <ToolCallEntry
-                          key={entry.id}
-                          botId={botId}
-                          threadId={state.threadId}
-                          runId={entry.runId}
-                          call={entry.call}
-                          {...(bot === undefined ? {} : { bot })}
-                          {...(onApprovalDecision === undefined ? {} : { onApprovalDecision })}
-                        />
-                      ) : (
+                    {session.entries.map((entry) => {
+                      if (entry.kind === "tool") {
+                        return (
+                          <ToolCallEntry
+                            key={entry.id}
+                            botId={botId}
+                            threadId={state.threadId}
+                            runId={entry.runId}
+                            call={entry.call}
+                            {...(bot === undefined ? {} : { bot })}
+                            {...(onApprovalDecision === undefined ? {} : { onApprovalDecision })}
+                          />
+                        );
+                      }
+
+                      if (entry.kind === "run") {
+                        return (
+                          <RunCardEntry key={entry.id} run={entry.run} outcome={entry.outcome} />
+                        );
+                      }
+
+                      return (
                         <MessageTurn
                           key={entry.id}
                           entry={entry}
                           {...(bot === undefined ? {} : { bot })}
                           avatarUrl={avatarUrl}
                         />
-                      ),
-                    )}
+                      );
+                    })}
                   </ol>
                 </div>
               ))
@@ -258,29 +264,70 @@ function connectionLabel(connection: ThreadConsoleState["connection"]): string |
 }
 
 /**
- * The one line that says what the run is doing and whether it is still getting
- * anywhere: the step, and the heartbeat lag that tells a live worker from a
- * silent one. A stuck run says how long progress has been missing; everything
- * else carries the lag so the operator can see the beat without reading a log.
+ * The live strip (slice 13.8, story 22): the step the run is on and the beat
+ * that says whether it is still getting anywhere. The dot carries the state
+ * the shell's vocabulary already names — the identity hue while working, the
+ * accent while the run waits on the operator, the warning colour while stuck —
+ * and the step names what is happening in the operator's words.
+ *
+ * Staleness is the one state the run does not have: when the liveness read
+ * fails, the last assessment is still true as of its last read, so the strip
+ * keeps the step and says the signal stopped instead of presenting a frozen
+ * beat as current. `data-liveness` is the hook a test or a stylesheet reads.
  */
-function livenessLabel(liveness: RunLiveness): string {
-  const beat = `heartbeat ${formatDuration(liveness.heartbeatLagMs)} ago`;
+function LiveStrip({
+  liveness,
+  stale,
+  color,
+}: {
+  readonly liveness: RunLiveness;
+  readonly stale: boolean;
+  readonly color?: string | null;
+}) {
+  const state = stale ? "stale" : liveness.state;
+  const style =
+    color === undefined || color === null
+      ? undefined
+      : ({ "--pb-live-color": color } as CSSProperties);
 
+  return (
+    <div
+      className={["live-strip", `live-strip-${state}`].join(" ")}
+      data-liveness={state}
+      role="status"
+      style={style}
+    >
+      <span className="live-strip-dot" aria-hidden="true" />
+      <span className="live-strip-step">{stepLabel(liveness)}</span>
+      <span className="live-strip-beat muted">
+        {stale ? "signal lost" : `heartbeat ${formatDuration(liveness.heartbeatLagMs)} ago`}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * What the run is doing, in the operator's words: the step the API assessed,
+ * with the tool when one is named. A stuck run says how long progress has been
+ * missing; everything else stays a word, because the beat beside it is the
+ * liveness signal.
+ */
+function stepLabel(liveness: RunLiveness): string {
   switch (liveness.state) {
     case "starting":
-      return `Starting… · ${beat}`;
+      return "Starting…";
     case "thinking":
-      return `Thinking… · ${beat}`;
+      return "Thinking…";
     case "working":
-      return liveness.tool === null ? `Working… · ${beat}` : `Running ${liveness.tool}… · ${beat}`;
+      return liveness.tool === null ? "Working…" : `Running ${liveness.tool}…`;
     case "waiting":
       return liveness.tool === null
-        ? `Waiting for approval… · ${beat}`
-        : `Waiting for approval: ${liveness.tool}… · ${beat}`;
+        ? "Waiting for approval…"
+        : `Waiting for approval: ${liveness.tool}…`;
     case "stopping":
-      return `Stopping… · ${beat}`;
+      return "Stopping…";
     case "stuck":
-      return `Stuck — no progress for ${formatDuration(liveness.sinceProgressMs)} · ${beat}`;
+      return `Stuck — no progress for ${formatDuration(liveness.sinceProgressMs)}`;
   }
 }
 
@@ -384,18 +431,4 @@ function formatBytes(bytes: number): string {
   const kib = bytes / 1_024;
 
   return kib < 1_024 ? `${kib.toFixed(1)} KiB` : `${(kib / 1_024).toFixed(1)} MiB`;
-}
-
-/** Durations in seconds under a minute, minutes under ten, then whole minutes. */
-function formatDuration(milliseconds: number): string {
-  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
-
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-
-  return minutes >= 10 || rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
 }

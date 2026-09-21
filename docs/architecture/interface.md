@@ -111,6 +111,10 @@ timeout's denial in both surfaces rather than folding away. The captures are
 `docs/screenshots/approvals-history-*.png` and the design record's inline card
 at 390, `docs/screenshots/interface-approval-390-dark.png`.
 
+Slice 13.8 built the run surface: the live strip, the collapsed tool timeline
+entry and the report card. Its captures — a run mid-call, a completed run and
+a failed run, both modes — live under `docs/screenshots/run-surface-*.png`.
+
 ## State vocabulary
 
 One vocabulary, one visual each. The words are the operator's; the mapping to

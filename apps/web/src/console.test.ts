@@ -455,9 +455,23 @@ describe("the thread console", () => {
       console
         .state()
         .entries.map((entry) =>
-          entry.kind === "tool" ? `tool:${entry.call.tool}` : `${entry.role}:${entry.text}`,
+          entry.kind === "tool"
+            ? `tool:${entry.call.tool}`
+            : entry.kind === "run"
+              ? `run:${entry.run.status}`
+              : `${entry.role}:${entry.text}`,
         ),
-    ).toEqual(["user:audit it", "tool:shell", "tool:rm", "assistant:Done"]);
+    ).toEqual(["user:audit it", "tool:shell", "tool:rm", "run:completed", "assistant:Done"]);
+
+    // The report card reads the same calls the timeline renders: a ✓ line per
+    // completed call and a → line for the failure, so the outcome is scannable
+    // without parsing the entries above it.
+    const card = console.state().entries.find((entry) => entry.kind === "run");
+
+    expect(card?.outcome).toEqual([
+      { kind: "done", text: "shell — ls" },
+      { kind: "follow_up", text: 'tool "rm" failed (timed_out): no answer' },
+    ]);
 
     const tools = console.state().entries.filter((entry) => entry.kind === "tool");
 
@@ -479,6 +493,70 @@ describe("the thread console", () => {
         durationMs: 30_000,
       },
     });
+
+    console.stop();
+  });
+
+  it("cards a settled run and leaves an active run uncarded", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({
+      transcript: [
+        textMessage({ id: "message-0", threadId, seq: 0, role: "user", text: "write it", runId }),
+      ],
+      events: events.procedure,
+    });
+    const console = consoleFor(transport);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+    events.push(
+      toolRequested(threadId, runId, 2, "call-1", "file_write", {
+        path: "report.md",
+        content: "offline",
+      }),
+    );
+    events.push(
+      toolCompleted(
+        threadId,
+        runId,
+        3,
+        "call-1",
+        {
+          ok: true,
+          path: "report.md",
+          bytes: 2_048,
+          artifact: {
+            id: "01900000-0000-7000-8000-00000000a1f0",
+            filename: "summary.md",
+            contentType: "text/markdown",
+            sizeBytes: 2_048,
+          },
+        },
+        { durationMs: 40 },
+      ),
+    );
+
+    await until(
+      () => console.state().entries.some((entry) => entry.kind === "tool"),
+      "the tool entry",
+    );
+    // A live run has no outcome yet: the card waits for the terminal event.
+    expect(console.state().entries.some((entry) => entry.kind === "run")).toBe(false);
+
+    events.push(runCompleted(threadId, runId, 4, messageId));
+    await until(
+      () => console.state().entries.some((entry) => entry.kind === "run"),
+      "the report card",
+    );
+
+    const card = console.state().entries.find((entry) => entry.kind === "run");
+
+    expect(card?.outcome).toEqual([
+      { kind: "done", text: "file_write — report.md" },
+      { kind: "follow_up", text: "Handed off summary.md" },
+    ]);
 
     console.stop();
   });
@@ -565,6 +643,46 @@ describe("the console's liveness follow", () => {
 
     expect(scripted.runCalls).toHaveLength(calls);
     expect(console.state().status).toBe("ready");
+
+    console.stop();
+  });
+
+  it("marks the signal stale when the read keeps failing, and clears it on the next good one", async () => {
+    const events = createScriptedEvents();
+    const scripted = scriptedThreadTransport({
+      events: events.procedure,
+      runs: { [runId]: assessment },
+    });
+    let offline = false;
+    const flaky = {
+      ...scripted,
+      async run(readRunId: string) {
+        scripted.runCalls.push(readRunId);
+
+        if (offline) {
+          throw new Error("the network is gone");
+        }
+
+        return assessment;
+      },
+    };
+    const console = livenessConsole(flaky);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+    await until(() => console.state().liveness !== null, "the first assessment");
+    expect(console.state().livenessStale).toBe(false);
+
+    offline = true;
+    await until(() => console.state().livenessStale, "the stale signal");
+    // The last assessment is kept: the strip still names the step it last saw,
+    // and the stale mark is what says the number is no longer current.
+    expect(console.state().liveness).toEqual(assessment.liveness);
+
+    offline = false;
+    await until(() => !console.state().livenessStale, "the signal to recover");
 
     console.stop();
   });
@@ -671,6 +789,39 @@ describe("the console's sent messages", () => {
       streaming: false,
     });
     expect(sent?.attachments).toEqual([fileBlock]);
+
+    console.stop();
+  });
+
+  it("keeps a sent message when the run's first frame arrives", async () => {
+    const events = createScriptedEvents();
+    const console = consoleFor(
+      scriptedThreadTransport({
+        transcript: [
+          textMessage({ id: "message-0", threadId, seq: 0, role: "user", text: "earlier" }),
+        ],
+        events: events.procedure,
+      }),
+    );
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    console.noteSent(fileMessage("message-9", 1, "with a file"));
+    events.push(runStarted(threadId, runId, 1));
+    events.push(toolRequested(threadId, runId, 2, "call-1", "shell", { command: "ls" }));
+
+    await until(
+      () => console.state().entries.some((entry) => entry.kind === "tool"),
+      "the run's frame",
+    );
+
+    // The fold re-reads the same message list the fetch path does, so a run's
+    // first frame cannot drop the turn the operator just sent.
+    expect(messagesOf(console.state()).map((entry) => entry.id)).toEqual([
+      "message-0",
+      "message-9",
+    ]);
 
     console.stop();
   });

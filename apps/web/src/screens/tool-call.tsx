@@ -1,21 +1,24 @@
-import { fileDownloadPath } from "@porkbot/contracts";
 import type { Approval, Bot } from "@porkbot/contracts";
 import type { ApprovalVote, ToolCallSnapshot } from "@porkbot/core";
 import { Card, Icon } from "@porkbot/ui";
+import { recordedArtifact, toolTarget } from "../run-outcome.ts";
 import { ApprovalCard } from "./approval-card.tsx";
 
 /**
- * One tool call in the console's timeline: which tool ran, with what
- * arguments, what came back, how long it took, and whether it failed.
+ * One tool call in the console's timeline: which tool ran, what it acted on,
+ * what came back, how long it took, and whether it failed.
  *
- * The row collapses to the four facts a reader scans — name, status, duration —
- * and expands to the JSON itself, because the arguments and results can be
- * arbitrarily large and most of the time nobody is auditing them. When the
- * result was too large for the event stream, the event carries a bounded
- * preview and a pointer; the row says so and links to the artifact route,
- * which resolves the whole value through the API. A failed call is marked in
- * the danger token and shows the error text the run recorded, which is where
- * the typed provider reason lives.
+ * The row collapses to the four facts a reader scans — name, target, status,
+ * duration — and expands to the JSON itself, because the arguments and results
+ * can be arbitrarily large and most of the time nobody is auditing them. The
+ * target is the one-line reading of the arguments the report card also uses,
+ * so the card and the timeline name the same thing. When the result was too
+ * large for the event stream, the event carries a bounded preview and a
+ * pointer; the collapsed line links to the artifact route, which resolves the
+ * whole value through the API, so the audit is one click from the row even
+ * before it is expanded. A failed call is marked in the danger token on the
+ * collapsed line and shows the error text the run recorded, which is where the
+ * typed provider reason lives.
  *
  * A gated call (slice 13.9) renders the shared approval card beside the entry,
  * outside the disclosure, so the decision, its consequence and its deadline
@@ -79,21 +82,38 @@ export function ToolCallEntry({
   const approval = call.approval;
   const artifact = call.resultArtifact;
   const download = recordedArtifact(call.result);
+  const target = toolTarget(call);
 
   return (
     <li className={failed ? "tool-call tool-call-failed" : "tool-call"}>
       <details className="tool-call-details">
         <summary className="tool-call-summary">
           <span className="tool-call-name">{call.tool}</span>
-          <span className="tool-call-run muted">Run {runId}</span>
-          <span
-            className={failed ? "tool-call-status tool-call-status-failed" : "tool-call-status"}
-          >
-            {statusLabel(call)}
+          {target === null ? null : <span className="tool-call-target muted">{target}</span>}
+          <span className="tool-call-meta">
+            <span
+              className={failed ? "tool-call-status tool-call-status-failed" : "tool-call-status"}
+            >
+              {statusLabel(call)}
+            </span>
+            {artifact === undefined ? null : (
+              <a
+                className="tool-call-artifact tool-call-artifact-inline"
+                href={toolResultPath(botId, threadId, runId, artifact.callId)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                Full result ({formatBytes(artifact.bytes)})
+              </a>
+            )}
+            {call.durationMs === undefined ? null : (
+              <span className="tool-call-duration muted">{formatDuration(call.durationMs)}</span>
+            )}
+            <span className="tool-call-chevron" aria-hidden="true">
+              <Icon name="chevron-right" size={14} />
+            </span>
           </span>
-          {call.durationMs === undefined ? null : (
-            <span className="tool-call-duration muted">{formatDuration(call.durationMs)}</span>
-          )}
         </summary>
         <dl className="tool-call-body">
           <dt>Arguments</dt>
@@ -108,14 +128,6 @@ export function ToolCallEntry({
               <pre className="tool-call-json">{json(call.result)}</pre>
             ) : (
               <p className="muted">{statusLabel(call)}.</p>
-            )}
-            {artifact === undefined ? null : (
-              <a
-                className="tool-call-artifact"
-                href={toolResultPath(botId, threadId, runId, artifact.callId)}
-              >
-                Full result ({formatBytes(artifact.bytes)})
-              </a>
             )}
           </dd>
         </dl>
@@ -148,47 +160,6 @@ export function ToolCallEntry({
       )}
     </li>
   );
-}
-
-/** The stored artifact a result carries, when it is a shape this build reads. */
-function recordedArtifact(
-  result: unknown,
-):
-  | { readonly filename: string; readonly sizeBytes: number; readonly downloadPath: string }
-  | undefined {
-  if (typeof result !== "object" || result === null || Array.isArray(result)) {
-    return undefined;
-  }
-
-  const value = (result as Record<string, unknown>)["artifact"];
-
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  const id = record["id"];
-  const filename = record["filename"];
-  const sizeBytes = record["sizeBytes"];
-
-  if (typeof id !== "string" || !isStoredFileId(id)) {
-    return undefined;
-  }
-
-  if (typeof filename !== "string" || filename === "") {
-    return undefined;
-  }
-
-  if (typeof sizeBytes !== "number" || !Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
-    return undefined;
-  }
-
-  return { filename, sizeBytes, downloadPath: fileDownloadPath(id) };
-}
-
-/** A stored-file id: the UUID the row's route resolves. */
-function isStoredFileId(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 /**
