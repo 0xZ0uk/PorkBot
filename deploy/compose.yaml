@@ -341,6 +341,9 @@ services:
     environment:
       PORT: "3003"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The measurement harness runs its authenticated workload script inside
+      # this service and dials the service's own loopback origin.
+      PORKBOT_SUPERVISOR_URL: http://127.0.0.1:3003
       # The process credential the API presents to the internal computer
       # surface. Both sides read it from the environment.
       PORKBOT_SUPERVISOR_TOKEN: ${PORKBOT_SUPERVISOR_TOKEN:?}

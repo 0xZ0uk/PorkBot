@@ -665,7 +665,7 @@ const action = ${JSON.stringify(action)};
 const provider = ${JSON.stringify(provider)};
 const botCount = ${String(botCount)};
 const token = process.env.PORKBOT_SUPERVISOR_TOKEN ?? "";
-const base = "http://127.0.0.1:3003";
+const base = process.env.PORKBOT_SUPERVISOR_URL ?? "";
 const command = ${JSON.stringify(command)};
 const refs = Array.from({ length: botCount }, (_, index) => ({
   computerId: "porkbot-measure-" + provider + "-" + String(index + 1),
