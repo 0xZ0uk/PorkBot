@@ -14,7 +14,7 @@
   top: calc(-1 * var(--pb-space-xl));
   z-index: 1;
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   color: var(--pb-color-foreground);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
@@ -41,7 +41,7 @@
   flex-direction: column;
   gap: var(--pb-space-md);
   padding: var(--pb-space-lg);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -60,7 +60,7 @@
 .field label,
 .field > span {
   font-size: 0.875rem;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .field input,
@@ -69,7 +69,7 @@
   padding: var(--pb-space-sm);
   color: var(--pb-color-foreground);
   background: var(--pb-color-background);
-  border: 1px solid var(--pb-color-input);
+  border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
   font: inherit;
 }
@@ -82,14 +82,14 @@
   margin: 0;
   padding: var(--pb-space-sm);
   color: var(--pb-color-foreground);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-destructive);
   border-radius: var(--pb-radius-md);
 }
 
 .muted {
   margin: 0;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .app-header {
@@ -98,7 +98,7 @@
   justify-content: space-between;
   gap: var(--pb-space-md);
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border-bottom: 1px solid var(--pb-color-border);
 }
 
@@ -177,7 +177,7 @@
   display: inline-block;
   padding: var(--pb-space-xs) var(--pb-space-sm);
   font-size: 0.875rem;
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }
@@ -190,14 +190,14 @@
   flex-direction: column;
   gap: var(--pb-space-sm);
   padding: var(--pb-space-sm);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }
 
 .composer-drop {
-  border-color: var(--pb-color-primary);
-  outline: 2px dashed var(--pb-color-primary);
+  border-color: var(--pb-color-accent);
+  outline: 2px dashed var(--pb-color-accent);
   outline-offset: -4px;
 }
 
@@ -240,7 +240,7 @@
   flex: 1;
   min-width: 6rem;
   height: 0.5rem;
-  accent-color: var(--pb-color-primary);
+  accent-color: var(--pb-color-accent);
 }
 
 .composer-file-detail {
@@ -250,7 +250,7 @@
 .composer-file-remove {
   margin-left: auto;
   padding: 0;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
   background: none;
   border: none;
   font: inherit;
@@ -270,7 +270,7 @@
   padding: var(--pb-space-sm);
   color: var(--pb-color-foreground);
   background: var(--pb-color-background);
-  border: 1px solid var(--pb-color-input);
+  border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
   font: inherit;
   resize: vertical;
@@ -283,7 +283,7 @@
 .tool-call {
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
 }
 
 .tool-call-failed {
@@ -314,7 +314,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .tool-call-status-failed {
@@ -337,7 +337,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .tool-call-body dd {
@@ -409,7 +409,7 @@
   gap: var(--pb-space-md);
   flex-wrap: wrap;
   padding: var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -430,13 +430,13 @@
 
 .approval-record {
   padding: var(--pb-space-sm);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }
 
 .approval-record-pending {
-  border-color: var(--pb-color-primary);
+  border-color: var(--pb-color-accent);
 }
 
 .approval-summary {
@@ -455,7 +455,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .approval-body {
@@ -469,7 +469,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .approval-body dd {
@@ -477,7 +477,7 @@
 }
 
 .approval-body a {
-  color: var(--pb-color-primary);
+  color: var(--pb-color-accent);
 }
 
 @media (max-width: 40rem) {
@@ -502,7 +502,7 @@
   flex-direction: column;
   gap: var(--pb-space-sm);
   padding: var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -521,7 +521,7 @@
 
 .bot-list a,
 .thread-list a {
-  color: var(--pb-color-primary);
+  color: var(--pb-color-accent);
 }
 
 .bot-actions {
@@ -549,7 +549,7 @@
   align-items: flex-start;
   gap: var(--pb-space-sm);
   padding: var(--pb-space-xl);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px dashed var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -584,8 +584,8 @@
   align-items: center;
   justify-content: center;
   object-fit: cover;
-  background: var(--pb-color-muted);
-  color: var(--pb-color-muted-foreground);
+  background: var(--pb-color-raised);
+  color: var(--pb-color-muted);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-pill);
   font-weight: 700;
@@ -602,7 +602,7 @@
   padding: var(--pb-space-xs) var(--pb-space-sm);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-pill);
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
   font-size: 0.75rem;
   white-space: nowrap;
 }
@@ -637,7 +637,7 @@
 
 .editor-section {
   padding: var(--pb-space-lg);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -669,7 +669,7 @@
 .file-button {
   display: inline-flex;
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
   cursor: pointer;
@@ -750,7 +750,7 @@
   flex-direction: column;
   gap: var(--pb-space-sm);
   padding: var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -776,7 +776,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .memory-revision {
@@ -796,7 +796,7 @@
 }
 
 .memory-summary {
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -885,7 +885,7 @@
 
 .usage-period {
   padding: var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -903,7 +903,7 @@
 }
 
 .usage-totals dt {
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .usage-totals dd {
@@ -932,7 +932,7 @@
   flex-direction: column;
   gap: var(--pb-space-sm);
   padding: var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-lg);
 }
@@ -953,8 +953,8 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--pb-color-primary);
-  border: 1px solid var(--pb-color-primary);
+  color: var(--pb-color-accent);
+  border: 1px solid var(--pb-color-accent);
   border-radius: var(--pb-radius-md);
   padding: 0 var(--pb-space-xs);
 }
@@ -973,7 +973,7 @@
 
 .connection-details dt {
   font-size: 0.875rem;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .connection-details dd {
@@ -1019,7 +1019,7 @@
   gap: var(--pb-space-sm);
   flex-wrap: wrap;
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }
@@ -1049,7 +1049,7 @@
 .provider-choice legend {
   padding: 0 var(--pb-space-xs);
   font-size: 0.875rem;
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .provider-list {
@@ -1067,7 +1067,7 @@
   gap: var(--pb-space-sm);
   flex-wrap: wrap;
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }
@@ -1081,7 +1081,7 @@
 }
 
 .provider-option input:disabled + .provider-name {
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .provider-name {
@@ -1144,7 +1144,7 @@
 .file-content {
   margin: 0;
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
   font-family: var(--pb-font-mono);
@@ -1155,7 +1155,7 @@
 }
 
 .terminal-command {
-  color: var(--pb-color-muted-foreground);
+  color: var(--pb-color-muted);
 }
 
 .terminal-stderr {
@@ -1209,7 +1209,7 @@
 
 .settings-index-item {
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }
@@ -1229,7 +1229,7 @@
 
 .settings-toggle {
   padding: var(--pb-space-sm) var(--pb-space-md);
-  background: var(--pb-color-card);
+  background: var(--pb-color-surface);
   border: 1px solid var(--pb-color-border);
   border-radius: var(--pb-radius-md);
 }

@@ -1,6 +1,6 @@
 import { HeadContent, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { themeStyleSheet } from "../theme.ts";
+import { themeBootstrapScript, themeStyleSheet } from "../theme.ts";
 import { NotFoundScreen } from "../screens/not-found.tsx";
 import "../styles.css";
 import type { RouterContext } from "../router.tsx";
@@ -28,6 +28,9 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       <head>
         <HeadContent />
         <style dangerouslySetInnerHTML={{ __html: themeStyleSheet }} />
+        {/* Applies a stored mode choice before the first paint; a system
+            preference is left to the stylesheet's media query. */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body>
         {/* The first focusable element on every screen, so a keyboard user can

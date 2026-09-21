@@ -118,12 +118,85 @@ the thread header, the inspector and a notification cannot disagree.
 
 ## Scales
 
-The token set lands in `@porkbot/tokens` in slice 13.2 and the register builds
-on it in 13.3; the values are fixed here so a screen never invents one. A
-surface writes a token name, never a value, and the existing hardcoded-colour
-lint rule already proves the colour half.
+The token set landed in `@porkbot/tokens` in slice 13.2 and the register builds
+on it in 13.3; a surface writes a token name, never a value, and the
+hardcoded-colour lint rule proves the colour half. The palette below is
+measured: `packages/tokens/src/index.test.ts` holds the contrast floors and
+fails a value that drops below one, so the numbers here are a check rather than
+a claim. The mocks in [`interface-mocks/`](interface-mocks/) still carry the
+provisional 13.1 values; this table and the token package are the measured set,
+and the palette's specimen capture lives under `docs/screenshots/tokens-light.png`
+and `docs/screenshots/tokens-dark.png`.
+
+### Palette
+
+The surfaces are monochrome at hue 285, and the mode's lightness is the only
+difference between them, so dark mode elevates by surface rather than by shadow.
+
+| Token                   | Light                      | Dark                       | Used for                              |
+| ----------------------- | -------------------------- | -------------------------- | ------------------------------------- |
+| `--pb-color-background` | `oklch(0.9850 0.0020 285)` | `oklch(0.1600 0.0050 285)` | The page behind the panes             |
+| `--pb-color-surface`    | `oklch(1.0000 0 0)`        | `oklch(0.2000 0.0060 285)` | Cards, rail, inspector, bubbles       |
+| `--pb-color-raised`     | `oklch(0.9650 0.0030 285)` | `oklch(0.2400 0.0070 285)` | Hover, selected rows, nested surfaces |
+| `--pb-color-border`     | `oklch(0.9000 0.0050 285)` | `oklch(0.2900 0.0080 285)` | Separators and control outlines       |
+| `--pb-color-foreground` | `oklch(0.2400 0.0100 285)` | `oklch(0.9300 0.0040 285)` | Body text                             |
+| `--pb-color-muted`      | `oklch(0.5000 0.0120 285)` | `oklch(0.6800 0.0120 285)` | Timestamps, labels, secondary text    |
+
+The accent is warm — a rose, not the stock blue nobody chose — because the
+accent means "your turn" and the state it marks is the one the product is
+about. It fills the waiting chip and its badge and is a text colour everywhere
+else, so it is measured twice: against the three surfaces it sits on and
+against the foreground it carries.
+
+| Token                               | Light                      | Dark                       | Measurement                                         |
+| ----------------------------------- | -------------------------- | -------------------------- | --------------------------------------------------- |
+| `--pb-color-accent`                 | `oklch(0.5720 0.2345 350)` | `oklch(0.7200 0.2055 350)` | ≥ 4.56:1 light, ≥ 6.00:1 dark on all three surfaces |
+| `--pb-color-accent-foreground`      | `oklch(0.9900 0.0040 350)` | `oklch(0.1800 0.0100 350)` | 4.90:1 on the accent, 6.87:1 in dark                |
+| `--pb-color-success`                | `oklch(0.5250 0.1422 150)` | `oklch(0.7200 0.1945 150)` | ≥ 4.56:1 light, ≥ 7.16:1 dark                       |
+| `--pb-color-warning`                | `oklch(0.5450 0.1132 75)`  | `oklch(0.7200 0.1491 75)`  | ≥ 4.57:1 light, ≥ 6.49:1 dark                       |
+| `--pb-color-info`                   | `oklch(0.5370 0.1210 240)` | `oklch(0.7200 0.1595 240)` | ≥ 4.56:1 light, ≥ 6.76:1 dark                       |
+| `--pb-color-destructive`            | `oklch(0.5670 0.2238 30)`  | `oklch(0.7200 0.1715 30)`  | ≥ 4.57:1 light, ≥ 6.18:1 dark                       |
+| `--pb-color-destructive-foreground` | `oklch(0.9900 0.0040 30)`  | `oklch(0.1800 0.0100 30)`  | 4.91:1 on the destructive, 7.07:1 in dark           |
+
+Every state colour is measured on `--pb-color-background`, `--pb-color-surface`
+and `--pb-color-raised`; the table states the tightest of the three. The accent
+sits 0.157 (light) and 0.133 (dark) from destructive in OKLab — three times the
+ramp's distinctness floor — so "waiting for you" cannot read as a failure, and
+warning's amber stays at least 0.12 from both in either mode.
+
+### Identity ramp
+
+The ramp is twelve hues, `15° + 30° × n`, at a fixed lightness per mode: 0.60
+light and 0.72 dark. Chroma is the largest the sRGB gamut holds at that
+lightness, kept a little inside the boundary and capped at 0.15 (light) and
+0.13 (dark) so identity stays a tint rather than a second state colour. The
+minimum contrast below is against `--pb-color-raised`, the lightest dark surface
+and the darkest light one.
+
+| Position     | Hue | Light                      | Dark                       | Contrast light / dark |
+| ------------ | --- | -------------------------- | -------------------------- | --------------------- |
+| `identity1`  | 15  | `oklch(0.6000 0.1470 15)`  | `oklch(0.7200 0.1274 15)`  | 3.84 / 6.26           |
+| `identity2`  | 45  | `oklch(0.6000 0.1470 45)`  | `oklch(0.7200 0.1274 45)`  | 3.78 / 6.36           |
+| `identity3`  | 75  | `oklch(0.6000 0.1244 75)`  | `oklch(0.7200 0.1274 75)`  | 3.64 / 6.52           |
+| `identity4`  | 105 | `oklch(0.6000 0.1251 105)` | `oklch(0.7200 0.1274 105)` | 3.52 / 6.72           |
+| `identity5`  | 135 | `oklch(0.6000 0.1470 135)` | `oklch(0.7200 0.1274 135)` | 3.39 / 6.92           |
+| `identity6`  | 165 | `oklch(0.6000 0.1239 165)` | `oklch(0.7200 0.1274 165)` | 3.35 / 7.03           |
+| `identity7`  | 195 | `oklch(0.6000 0.1005 195)` | `oklch(0.7200 0.1205 195)` | 3.40 / 6.99           |
+| `identity8`  | 225 | `oklch(0.6000 0.1116 225)` | `oklch(0.7200 0.1274 225)` | 3.46 / 6.85           |
+| `identity9`  | 255 | `oklch(0.6000 0.1470 255)` | `oklch(0.7200 0.1274 255)` | 3.59 / 6.64           |
+| `identity10` | 285 | `oklch(0.6000 0.1470 285)` | `oklch(0.7200 0.1274 285)` | 3.73 / 6.43           |
+| `identity11` | 315 | `oklch(0.6000 0.1470 315)` | `oklch(0.7200 0.1274 315)` | 3.82 / 6.30           |
+| `identity12` | 345 | `oklch(0.6000 0.1470 345)` | `oklch(0.7200 0.1274 345)` | 3.86 / 6.25           |
+
+Every hue clears the 3:1 non-text floor on all three surfaces, and the closest
+pair of hues is 0.0559 apart in OKLab in light and 0.0645 in dark, above the
+0.05 distinctness floor the token test enforces — so two bots in a rail are
+never two shades of one colour.
 
 ### Type
+
+Each step is three custom properties: `--pb-type-<step>-size`,
+`--pb-type-<step>-line-height` and `--pb-type-<step>-weight`.
 
 | Token     | Size / line height   | Weight | Used for                                      |
 | --------- | -------------------- | ------ | --------------------------------------------- |
@@ -131,26 +204,31 @@ lint rule already proves the colour half.
 | `title`   | 1.125rem / 1.5rem    | 600    | Pane headers and the thread header's bot name |
 | `heading` | 0.9375rem / 1.375rem | 600    | Inspector section headers                     |
 | `body`    | 0.875rem / 1.375rem  | 400    | Messages, controls, prose                     |
-| `meta`    | 0.75rem / 1rem       | 500    | Timestamps, chip words, labels                |
 | `code`    | 0.8125rem / 1.25rem  | 400    | Tool detail, terminal, file preview           |
+| `meta`    | 0.75rem / 1rem       | 500    | Timestamps, chip words, labels                |
 
 Body is 14px because a workspace is dense and a messaging surface at 16px
 wraps a two-sentence turn into a wall. The source is Grok Bot's message
 metrics and the current app's browser defaults; the reason is that 14px with a
 1.375 line height holds a comfortable measure at the 44rem column, and `meta`
-is a real step rather than the current uppercase treatment of body text.
+is a real step rather than the current uppercase treatment of body text. Sizes
+descend from `display` to `meta` in declaration order; `code` is the monospace
+step between body and meta, not a rank of its own.
 
 ### Space
 
 A 4px rhythm, named by size: `2xs` 0.125rem, `xs` 0.25rem, `sm` 0.5rem, `md`
-0.75rem, `lg` 1rem, `xl` 1.5rem, `2xl` 2rem, `3xl` 3rem, `4xl` 4rem. The
-existing tokens are a coarser subset (`md` is 1rem, `xl` is 2.5rem); 13.2 is
-the only slice allowed to move a value, and after it a name means one value
-everywhere. Source: shadcn's spacing conventions and the current
-`packages/tokens`; reason: a dense list needs a 12px step that does not exist
-today, and a scale with holes invites a literal.
+0.75rem, `lg` 1rem, `xl` 1.5rem, `2xl` 2rem, `3xl` 3rem, `4xl` 4rem; each is
+the custom property `--pb-space-<name>`. The pre-13.2 tokens were a coarser
+subset (`md` was 1rem, `xl` was 2.5rem); 13.2 was the only slice allowed to
+move a value, and after it a name means one value everywhere. Source: shadcn's
+spacing conventions and the current `packages/tokens`; reason: a dense list
+needs a 12px step that did not exist, and a scale with holes invites a literal.
 
 ### Radius and elevation
+
+Each radius step is `--pb-radius-<name>` and each elevation level is
+`--pb-elevation-<name>`.
 
 | Token  | Value    | Used for                         |
 | ------ | -------- | -------------------------------- |
@@ -174,6 +252,8 @@ corners and Material's elevation; reason: shadows are nearly invisible on a
 near-black surface, and a tail drawn as a shape breaks at every width.
 
 ### Motion
+
+Each step is `--pb-motion-<name>`.
 
 | Token      | Value                                     |
 | ---------- | ----------------------------------------- |
@@ -214,19 +294,24 @@ accent is reserved for the operator.
 The accent is warm — a rose rather than the stock blue nobody chose — because
 the accent means "your turn" and the state it marks is the one the product is
 about. It must stay distinguishable from destructive red and warning amber in
-both modes; 13.2 measures every value against both surfaces and records the
-numbers. Source: Rakazo's monochrome-plus-one-colour discipline and shadcn's
-token roles; reason: when identity already owns the spectrum, an accent that
-also decorates leaves nothing to mean "attention".
+both modes; 13.2 measured every value against the three surfaces and the
+foregrounds it carries, and the palette tables above hold the numbers. Source:
+Rakazo's monochrome-plus-one-colour discipline and shadcn's token roles;
+reason: when identity already owns the spectrum, an accent that also decorates
+leaves nothing to mean "attention".
 
 ## Mode policy
 
 Dark is the default for a new deployment, light is first-class, and the mode
 is an explicit choice: System, Light or Dark, stored per browser in
-`localStorage`. Until a choice is made the system preference decides; after
-it, the choice wins. The first paint declares light on `:root` and dark behind
-the media query, and an explicit `data-theme` overrides both before the bundle
-runs, so there is no flash and no OS override of a deliberate choice.
+`localStorage` under `porkbot.theme`. Until a choice is made the system
+preference decides; after it, the choice wins. `themeStyleSheet` in
+`@porkbot/tokens` declares light on `:root` and dark behind the media query,
+then repeats both as `[data-theme="light"]` and `[data-theme="dark"]` after the
+media query, so an explicit choice wins by source order. `themeBootstrapScript`
+reads the stored key and sets `data-theme` before the bundle runs, so there is
+no flash and no OS override of a deliberate choice; the mode control (slice
+13.13) writes the key.
 
 Source: the current `theme.ts` and shadcn's `.dark` class convention. Reason:
 one operator, one device preference, and a choice that a nighttime OS schedule

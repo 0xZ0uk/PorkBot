@@ -23,11 +23,14 @@ credential exchange posts to Better Auth's routes under `/api/auth` (slice 12.1
 mounts the handler), the session cookie stays `HttpOnly` and JavaScript never
 reads it, and `deployment.status` decides whether sign-in offers registration.
 
-Colour and type come from `@porkbot/tokens`, which holds the shadcn theme in
-its light and dark modes: `theme.ts` turns the palette into `--pb-*` custom
-properties inlined into the shell's first paint, the light values on `:root`
-and the dark ones behind `prefers-color-scheme`, so the first paint follows the
-system with no script. Inter and JetBrains Mono are self-hosted through the
+Colour and type come from `@porkbot/tokens`, which holds PorkBot's own palette
+— monochrome surfaces, one warm accent, the state colours and a twelve-position
+identity ramp — in its light and dark modes. `themeStyleSheet` turns the palette
+and the scales into `--pb-*` custom properties, declares light on `:root` and
+dark behind `prefers-color-scheme`, and repeats both as `[data-theme]` rules so
+a stored choice wins over the system; `themeBootstrapScript` applies that choice
+before the bundle runs, and `apps/web`'s `theme.ts` appends the shell's document
+rules. Inter and JetBrains Mono are self-hosted through the
 bundle, so the desktop's offline build needs no network for type. The surfaces
 and stylesheet name only those properties, and the lint rule in
 `@porkbot/eslint-config` fails a hardcoded colour — hex, `rgb()`, `hsl()` or
