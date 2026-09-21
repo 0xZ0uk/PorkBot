@@ -228,7 +228,8 @@ export function scriptedThreadTransport(
         })()),
 
     listBots: async () => options.bots ?? [],
-    listThreads: async () => options.threads ?? [],
+    listThreads: async (botId) =>
+      (options.threads ?? []).filter((thread) => thread.botId === botId),
     createThread: async () => options.newThread ?? notExercised(),
 
     async run(runId) {
@@ -290,23 +291,46 @@ export function scriptedThreadTransport(
   };
 }
 
+export interface ScriptedBotsTransportOptions {
+  /** The active bots; the console transport's list is the default. */
+  readonly active?: readonly Bot[];
+  /** The archived bots; none is the default. */
+  readonly archived?: readonly Bot[];
+  readonly sections?: readonly BotSection[];
+  readonly archiveBot?: (botId: string) => Promise<Bot>;
+  readonly restoreBot?: (botId: string) => Promise<Bot>;
+  readonly setPinned?: (botId: string, pinned: boolean) => Promise<Bot>;
+}
+
 export function scriptedBotsTransport(
   consoleTransport: Pick<ConsoleTransport, "listBots" | "listThreads"> = scriptedThreadTransport(),
+  options: ScriptedBotsTransportOptions = {},
 ): BotsTransport {
   const notExercised = (): never => {
     throw new Error("not exercised by this test");
   };
 
   return {
-    listBots: async (scope) => (scope === "active" ? consoleTransport.listBots() : []),
+    listBots: async (scope) => {
+      if (scope === "active") {
+        return options.active ?? consoleTransport.listBots();
+      }
+
+      if (scope === "archived") {
+        return options.archived ?? [];
+      }
+
+      return [...(options.active ?? []), ...(options.archived ?? [])];
+    },
     getBot: async () => notExercised(),
-    listSections: async (): Promise<readonly BotSection[]> => [],
+    listSections: async (): Promise<readonly BotSection[]> => options.sections ?? [],
     listThreads: (botId) => consoleTransport.listThreads(botId),
     computerStatus: async () => ({ assigned: false }),
     createBot: async () => notExercised(),
     updateBot: async () => notExercised(),
-    archiveBot: async () => notExercised(),
-    restoreBot: async () => notExercised(),
+    archiveBot: options.archiveBot ?? (async () => notExercised()),
+    restoreBot: options.restoreBot ?? (async () => notExercised()),
+    setPinned: options.setPinned ?? (async () => notExercised()),
     createSection: async () => notExercised(),
     readAvatar: async () => notExercised(),
     setAvatar: async () => notExercised(),

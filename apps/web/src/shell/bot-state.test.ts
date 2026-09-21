@@ -1,6 +1,6 @@
 import type { RunLiveness } from "@porkbot/contracts";
 import { describe, expect, it } from "vitest";
-import { stateFromLiveness, stateFromPending } from "./bot-state.ts";
+import { stateFromLiveness, stateFromPending, stateFromRoster } from "./bot-state.ts";
 
 function liveness(state: RunLiveness["state"]): RunLiveness {
   return { state, tool: null, heartbeatLagMs: 1_000, sinceProgressMs: 1_000 };
@@ -23,5 +23,10 @@ describe("the shell's bot state", () => {
   it("is waiting only while something waits", () => {
     expect(stateFromPending(0)).toBeNull();
     expect(stateFromPending(2)).toBe("waiting");
+  });
+
+  it("gives every roster row a word: waiting, or idle", () => {
+    expect(stateFromRoster(0)).toBe("idle");
+    expect(stateFromRoster(3)).toBe("waiting");
   });
 });

@@ -598,6 +598,58 @@ function threadIdFromUrl(url: string): string {
 }
 
 /**
+ * The roster's acceptance captures (slice 13.6): a populated roster, the empty
+ * roster a fresh operator lands on, and the archived group. They land in
+ * `test-results/ui/` beside the shell captures, which CI uploads and the pull
+ * request links; the archived group is captured open because that is the state
+ * the slice adds.
+ */
+async function captureRoster(
+  page: Page,
+  origin: string,
+  name: string,
+  options: {
+    readonly archived?: boolean;
+    readonly narrow?: boolean;
+    readonly modes?: readonly ("dark" | "light")[];
+  } = {},
+): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(origin);
+  await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
+  // The loader is what fills the rows; wait for the roster to settle rather
+  // than for the heading alone, so a capture is never of a loading pane.
+  await expect(page.locator(".roster-card, .empty-state").first()).toBeVisible();
+
+  if (options.archived === true) {
+    await page.getByRole("button", { name: /^Archived \(/ }).click();
+    await expect(page.getByRole("button", { name: "Hide archived" })).toBeVisible();
+  }
+
+  for (const mode of options.modes ?? ["dark"]) {
+    await page.emulateMedia({ colorScheme: mode });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `${name}-1280-${mode}.png`) });
+  }
+
+  if (options.narrow === true) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(200);
+
+    const overflow = await page.evaluate(() => {
+      const pane = document.querySelector(".shell-pane");
+      return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
+    });
+
+    expect(overflow, "the roster does not scroll sideways at 390").toBe(0);
+    await page.screenshot({ path: path.join(uiDir, `${name}-390-dark.png`) });
+  }
+}
+
+/**
  * The shell's acceptance captures (slice 13.4): the workspace at 1280 and 390
  * in both modes, plus the narrow switcher sheet. They land in
  * `test-results/ui/` beside the release screenshot, which CI uploads and the
@@ -728,6 +780,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
 
+    // The empty roster (slice 13.6): the home a fresh operator lands on,
+    // before the first teammate exists.
+    await captureRoster(page, current.origin, "roster-empty");
+
     const repositories = await current.bindActor(page);
 
     await page.goto(`${current.origin}/bots/new`);
@@ -790,7 +846,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.locator("pre.terminal-stdout")).toHaveText("offline");
 
     await page.goto(current.origin);
-    await page.getByRole("button", { name: "New thread" }).click();
+    const helper = page.locator(".roster-card").filter({ hasText: "Offline Helper" });
+
+    await helper.getByRole("button", { name: "Actions for Offline Helper" }).click();
+    await page.getByRole("menuitem", { name: "New thread" }).click();
     await expect(page).toHaveURL(/\/bots\/[^/]+\/threads\/[^/]+$/);
     const threadId = threadIdFromUrl(page.url());
     await page.getByLabel("Message", { exact: true }).fill("Start offline task");
@@ -855,6 +914,46 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.unroute("**/threads/*/attachments**");
 
     await captureWorkspace(page, current.origin, botId, threadId);
+
+    // The roster captures need more than one teammate, and a bot in the
+    // archived group: both are seeded over the API because the capture is
+    // about how the rows render, not how a bot is created.
+    await rpc(page, "bots/create", {
+      name: "Ledger",
+      title: "Bookkeeping",
+      color: "#2563eb",
+      spawnKey: randomUUID(),
+    });
+    await rpc(page, "bots/create", {
+      name: "Scout",
+      title: "Reading a page",
+      color: "#16a34a",
+      spawnKey: randomUUID(),
+    });
+    const retired = await rpc<{ readonly id: string }>(page, "bots/create", {
+      name: "Piper",
+      title: "Errands",
+      color: "#d946ef",
+      spawnKey: randomUUID(),
+    });
+
+    await rpc(page, "bots/archive", { id: retired.id });
+
+    // Pin one teammate through the row's own menu, so the pinned group is
+    // exercised rather than staged before the captures.
+    await page.goto(current.origin);
+
+    const ledger = page.locator(".roster-card").filter({ hasText: "Ledger" });
+
+    await ledger.getByRole("button", { name: "Actions for Ledger" }).click();
+    await page.getByRole("menuitem", { name: "Pin" }).click();
+    await expect(page.getByRole("heading", { name: "Pinned" })).toBeVisible();
+
+    await captureRoster(page, current.origin, "roster-home", {
+      modes: ["dark", "light"],
+      narrow: true,
+    });
+    await captureRoster(page, current.origin, "roster-archived", { archived: true });
   } finally {
     if (!page.isClosed()) {
       await page.screenshot({ path: screenshotPath, fullPage: true });

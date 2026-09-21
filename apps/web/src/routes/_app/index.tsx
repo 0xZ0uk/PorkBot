@@ -1,64 +1,23 @@
-import { Link, createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
-import type { ErrorComponentProps } from "@tanstack/react-router";
-import { Button } from "@porkbot/ui";
+import { createFileRoute, getRouteApi, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { latestActivity, readComputerHealth } from "../../bots.ts";
-import type { BotListItem, BotsTransport } from "../../bots.ts";
 import { HomeScreen } from "../../screens/home.tsx";
-import type { Bot } from "@porkbot/contracts";
+
+/**
+ * The roster's home route (slice 13.6). The roster itself is read by the shell
+ * layout so the rail and this screen list the same rows; the route owns the
+ * writes a row can make — a new thread, a pin, an archive and a restore — and
+ * hands the outcome back through the router's invalidate, so both surfaces
+ * reload the roster the write produced.
+ */
+
+const appRoute = getRouteApi("/_app");
 
 export const Route = createFileRoute("/_app/")({
-  loader: async ({ context }) => {
-    const [activeBots, archivedBots, sections] = await Promise.all([
-      context.bots.listBots("active"),
-      context.bots.listBots("archived"),
-      context.bots.listSections(),
-    ]);
-    const [active, archived] = await Promise.all([
-      enrichBots(context.bots, activeBots),
-      enrichBots(context.bots, archivedBots),
-    ]);
-
-    return { active, archived, sections };
-  },
   component: HomeRoute,
-  errorComponent: HomeUnavailable,
 });
 
-async function enrichBots(
-  transport: BotsTransport,
-  bots: readonly Bot[],
-): Promise<readonly BotListItem[]> {
-  return Promise.all(
-    bots.map(async (bot) => {
-      const [threads, computer, avatarUrl] = await Promise.all([
-        transport.listThreads(bot.id),
-        readComputerHealth(transport, bot.id),
-        readAvatarUrl(transport, bot),
-      ]);
-
-      return { bot, avatarUrl, threads, computer, lastActivityAt: latestActivity(threads) };
-    }),
-  );
-}
-
-async function readAvatarUrl(transport: BotsTransport, bot: Bot): Promise<string | null> {
-  if (bot.avatarKey === null) {
-    return null;
-  }
-
-  try {
-    const avatar = await transport.readAvatar(bot.id);
-    return `data:${avatar.contentType};base64,${avatar.data}`;
-  } catch {
-    // A missing object is treated like no avatar so the generated identity
-    // remains available while storage is repaired or an upload is retried.
-    return null;
-  }
-}
-
 function HomeRoute() {
-  const { active, archived, sections } = Route.useLoaderData();
+  const { roster, rosterFailed } = appRoute.useLoaderData();
   const { bots: botsTransport, threads } = Route.useRouteContext();
   const navigate = useNavigate();
   const router = useRouter();
@@ -77,6 +36,20 @@ function HomeRoute() {
       });
     } catch {
       setError("The thread could not be started. Try again.");
+    } finally {
+      setPendingBotId(null);
+    }
+  }
+
+  async function changePin(botId: string, pinned: boolean): Promise<void> {
+    setPendingBotId(botId);
+    setError(null);
+
+    try {
+      await botsTransport.setPinned(botId, pinned);
+      await router.invalidate();
+    } catch {
+      setError("The bot could not be pinned. Try again.");
     } finally {
       setPendingBotId(null);
     }
@@ -104,56 +77,20 @@ function HomeRoute() {
 
   return (
     <HomeScreen
-      active={active}
-      archived={archived}
-      sections={sections}
+      roster={roster}
+      failed={rosterFailed}
+      onRetry={() => {
+        void router.invalidate();
+      }}
       pendingBotId={pendingBotId}
       error={error}
+      onCreate={() => {
+        void navigate({ to: "/bots/new" });
+      }}
       onNewThread={(botId) => void createThread(botId)}
       onArchive={(botId) => changeArchive(botId, "archive")}
       onRestore={(botId) => changeArchive(botId, "restore")}
-      renderCreate={() => <Link to="/bots/new">New bot</Link>}
-      renderEdit={(bot) => (
-        <Link to="/bots/$botId/edit" params={{ botId: bot.id }}>
-          Edit
-        </Link>
-      )}
-      renderMemory={(bot) => (
-        <Link to="/bots/$botId/memory" params={{ botId: bot.id }}>
-          Memory
-        </Link>
-      )}
-      renderUsage={(bot) => (
-        <Link to="/bots/$botId/usage" params={{ botId: bot.id }}>
-          Usage
-        </Link>
-      )}
-      renderComputer={(bot) => (
-        <Link to="/bots/$botId/computer" params={{ botId: bot.id }}>
-          Computer
-        </Link>
-      )}
-      renderThread={(thread) => (
-        <li key={thread.id}>
-          <Link
-            to="/bots/$botId/threads/$threadId"
-            params={{ botId: thread.botId, threadId: thread.id }}
-          >
-            Thread · {new Date(thread.updatedAt).toLocaleString()}
-          </Link>
-        </li>
-      )}
+      onPin={(botId, pinned) => void changePin(botId, pinned)}
     />
-  );
-}
-
-function HomeUnavailable({ reset }: ErrorComponentProps) {
-  return (
-    <section className="console">
-      <p className="form-error" role="alert">
-        The bot list could not be loaded.
-      </p>
-      <Button onClick={reset}>Try again</Button>
-    </section>
   );
 }

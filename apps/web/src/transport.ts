@@ -346,6 +346,7 @@ export function createHttpBotsTransport(options: HttpAuthTransportOptions = {}):
     updateBot: (id, input) => client.bots.update({ id, ...input }),
     archiveBot: (id) => client.bots.archive({ id }),
     restoreBot: (id) => client.bots.restore({ id }),
+    setPinned: (id, pinned) => client.bots.update({ id, pinned }),
     createSection: (name) => client.sections.create({ name }),
     readAvatar: (id) => client.bots.avatar({ id }),
     setAvatar: (input) => client.bots.setAvatar(input),

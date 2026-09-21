@@ -124,6 +124,12 @@ the thread header, the inspector and a notification cannot disagree.
 | The rail never reorders by state; a count badge carries the attention instead                   | Linear's inbox; Slack's unread badge                                              | Reordering a list under a reader's cursor is worse than a badge, and a bot's position is part of how the operator finds it.                     |
 | State is a dot plus a word, never a colour alone, and a screen reader gets the word             | WCAG 1.4.1                                                                        | Colour-only state fails accessibility and cannot be asserted from a screenshot; the word is what a test and a reader both read.                 |
 
+The roster (slice 13.6) renders the words the shell can stand behind today:
+waiting for you when an approval is pending, and idle otherwise — the state a
+bot returns to when nothing is known to be waiting. Working, stuck, failed and
+stopped arrive with the per-bot run read the run-surface slice owns, and they
+fill in the same chip rather than a second one.
+
 ## Scales
 
 The token set landed in `@porkbot/tokens` in slice 13.2 and the register builds
@@ -381,7 +387,7 @@ the screens' chrome is now the register's markup rather than a copy of it.
 
 | Composite                    | Built from                                           | Where                                           |
 | ---------------------------- | ---------------------------------------------------- | ----------------------------------------------- |
-| Rail row                     | avatar, name, latest activity, state chip            | The roster                                      |
+| Rail row                     | avatar, name, role, latest activity, state chip      | The roster                                      |
 | Bubble                       | card, attribution, timestamp separator               | The transcript                                  |
 | Attachment and artifact card | card, file metadata, one action                      | Inside a bubble                                 |
 | Report card                  | card, ✓ and → lines, tool entries                    | Closes a run                                    |

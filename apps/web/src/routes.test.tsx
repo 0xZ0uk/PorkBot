@@ -265,7 +265,7 @@ describe("the shell's route guards", () => {
 });
 
 describe("the console routes", () => {
-  it("lists a bot's threads on the home screen", async () => {
+  it("lists the roster on the home screen with its actions behind a menu", async () => {
     const router = appWith(
       async () => actor,
       scriptedThreadTransport({
@@ -280,19 +280,24 @@ describe("the console routes", () => {
     await render(<RouterProvider router={router} />);
 
     expect(container.textContent).toContain("Ada");
-    expect(container.textContent).toContain("New thread");
 
-    const link = container.querySelector("a[href='/bots/bot-1/threads/thread-1']");
+    const row = [...container.querySelectorAll(".roster-card")].find((card) =>
+      card.textContent?.includes("Ada"),
+    );
+    const trigger = row?.querySelector("button[aria-haspopup='menu']");
 
-    expect(link).not.toBeNull();
+    expect(trigger).toBeDefined();
 
-    const memoryLink = container.querySelector("a[href='/bots/bot-1/memory']");
+    await act(async () => {
+      (trigger as HTMLButtonElement).click();
+    });
 
-    expect(memoryLink?.textContent).toBe("Memory");
+    const menu = document.body.querySelector("[role='menu']");
+    const labels = [...(menu?.querySelectorAll("[role='menuitem']") ?? [])].map(
+      (item) => item.textContent,
+    );
 
-    const usageLink = container.querySelector("a[href='/bots/bot-1/usage']");
-
-    expect(usageLink?.textContent).toBe("Usage");
+    expect(labels).toEqual(["Open", "New thread", "Edit", "Memory", "Usage", "Pin", "Archive"]);
   });
 
   it("renders a thread's streamed text on the console route", async () => {

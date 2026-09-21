@@ -1,8 +1,9 @@
 import { useRouterState } from "@tanstack/react-router";
-import type { Approval, Bot } from "@porkbot/contracts";
+import type { Approval } from "@porkbot/contracts";
 import { BotAvatar, IconButton, Sheet, StateChip } from "@porkbot/ui";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import type { Roster, RosterEntry } from "../roster.ts";
 import { stateFromPending } from "./bot-state.ts";
 import { ShellHeaderProvider } from "./header-state.tsx";
 import type { ShellHeaderState } from "./header-state.tsx";
@@ -26,7 +27,7 @@ import { useMediaQuery } from "./use-media-query.ts";
  */
 
 export interface WorkspaceProps {
-  readonly bots: readonly Bot[];
+  readonly roster: Roster;
   readonly pendingApprovals: readonly Approval[];
   /** True when the roster read failed; the rail says so instead of lying empty. */
   readonly rosterFailed?: boolean | undefined;
@@ -53,7 +54,7 @@ function botIdFromMatches(matches: readonly { readonly params: unknown }[]): str
 }
 
 export function Workspace({
-  bots,
+  roster,
   pendingApprovals,
   rosterFailed,
   onRetryRoster,
@@ -79,10 +80,25 @@ export function Workspace({
     return counts;
   }, [pendingApprovals]);
 
-  const selected = bots.find((bot) => bot.id === selectedBotId) ?? null;
+  const selectedEntry =
+    [...roster.active, ...roster.archived].find((entry) => entry.bot.id === selectedBotId) ?? null;
+  const selected = selectedEntry?.bot ?? null;
   const pendingForBot = selected === null ? 0 : (pendingByBot.get(selected.id) ?? 0);
   const state = stateFromPending(pendingForBot) ?? reported?.state ?? null;
   const inspectorVisible = narrow ? inspectorSheetOpen : inspectorOpen;
+
+  // The selected bot's row shows the live run its route reported, so the rail
+  // and the header carry one word for one bot; every other row keeps the
+  // state the roster read.
+  const entries = useMemo(() => {
+    if (state === null || selectedBotId === null) {
+      return roster.active;
+    }
+
+    return roster.active.map((entry): RosterEntry =>
+      entry.bot.id === selectedBotId ? { ...entry, state } : entry,
+    );
+  }, [roster.active, state, selectedBotId]);
 
   function toggleInspector(): void {
     if (narrow) {
@@ -105,8 +121,7 @@ export function Workspace({
 
   const rail = (
     <Rail
-      bots={bots}
-      pendingByBot={pendingByBot}
+      entries={entries}
       pendingCount={pendingApprovals.length}
       query={query}
       onQuery={setQuery}
