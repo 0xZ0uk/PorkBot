@@ -297,7 +297,16 @@ describe("the console routes", () => {
       (item) => item.textContent,
     );
 
-    expect(labels).toEqual(["Open", "New thread", "Edit", "Memory", "Usage", "Pin", "Archive"]);
+    expect(labels).toEqual([
+      "Open",
+      "New thread",
+      "Edit",
+      "Memory",
+      "Routines",
+      "Usage",
+      "Pin",
+      "Archive",
+    ]);
   });
 
   it("renders a thread's streamed text on the console route", async () => {

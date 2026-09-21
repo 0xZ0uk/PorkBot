@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeUsage, textMessage } from "../test/fakes.ts";
+import { fakeRoutine, fakeRoutineOutcome, fakeUsage, textMessage } from "../test/fakes.ts";
 import {
   createHttpAuthTransport,
   createHttpConsoleTransport,
+  createHttpRoutinesTransport,
   createHttpUsageTransport,
 } from "./transport.ts";
 
@@ -91,6 +92,78 @@ describe("the web transports", () => {
       "https://console.example.invalid/rpc/usage/bot",
     ]);
     expect(JSON.parse(fetched.calls[0]?.body ?? "{}")).toEqual({ json: { botId: "bot-1" } });
+  });
+
+  it("maps the routine authoring seam to the contract's routes", async () => {
+    vi.stubGlobal("location", { origin: "https://console.example.invalid" });
+    const routine = fakeRoutine();
+    const outcome = fakeRoutineOutcome();
+    const fireTimes = ["2026-01-05T09:00:00.000Z", "2026-01-06T09:00:00.000Z"];
+    const fetched = stubFetch((call) => {
+      switch (call) {
+        case 0:
+          return { routines: [routine] };
+        case 1:
+        case 2:
+          return routine;
+        case 3:
+          return { id: routine.id };
+        case 4:
+          return { fireTimes };
+        case 5:
+          return { runId: "run-test-1", threadId: routine.threadId };
+        case 6:
+          return { outcomes: [outcome] };
+        default:
+          throw new Error(`unexpected routine request ${String(call)}`);
+      }
+    });
+    const transport = createHttpRoutinesTransport();
+
+    await expect(transport.list("bot-1")).resolves.toEqual([routine]);
+    await expect(
+      transport.create({
+        botId: "bot-1",
+        instruction: routine.instruction,
+        cron: routine.cron,
+        timezone: routine.timezone,
+      }),
+    ).resolves.toEqual(routine);
+    await expect(transport.update({ id: routine.id, enabled: false })).resolves.toEqual(routine);
+    await expect(transport.remove(routine.id)).resolves.toEqual({ id: routine.id });
+    await expect(
+      transport.preview({ cron: routine.cron, timezone: routine.timezone, count: 2 }),
+    ).resolves.toEqual(fireTimes);
+    await expect(
+      transport.testRun({ id: routine.id, clientNonce: "routine-test:nonce-1" }),
+    ).resolves.toEqual({ runId: "run-test-1", threadId: routine.threadId });
+    await expect(transport.outcomes({ id: routine.id, limit: 20 })).resolves.toEqual([outcome]);
+
+    expect(fetched.calls.map((call) => call.url)).toEqual([
+      "https://console.example.invalid/rpc/routines/list",
+      "https://console.example.invalid/rpc/routines/create",
+      "https://console.example.invalid/rpc/routines/update",
+      "https://console.example.invalid/rpc/routines/remove",
+      "https://console.example.invalid/rpc/routines/preview",
+      "https://console.example.invalid/rpc/routines/testRun",
+      "https://console.example.invalid/rpc/routines/outcomes",
+    ]);
+    expect(fetched.calls.map((call) => JSON.parse(call.body))).toEqual([
+      { json: { botId: "bot-1" } },
+      {
+        json: {
+          botId: "bot-1",
+          instruction: routine.instruction,
+          cron: routine.cron,
+          timezone: routine.timezone,
+        },
+      },
+      { json: { id: routine.id, enabled: false } },
+      { json: { id: routine.id } },
+      { json: { cron: routine.cron, timezone: routine.timezone, count: 2 } },
+      { json: { id: routine.id, clientNonce: "routine-test:nonce-1" } },
+      { json: { id: routine.id, limit: 20 } },
+    ]);
   });
 
   it("walks the transcript pages forward so the newest turn is included", async () => {

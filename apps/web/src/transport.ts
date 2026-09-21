@@ -10,6 +10,8 @@ import type {
   Approval,
   Bot,
   Message,
+  Routine,
+  RoutineOutcome,
   Thread,
   UploadedAttachment,
   UsageBot,
@@ -25,6 +27,7 @@ import type { McpTransport } from "./mcp.ts";
 import type { MemoryTransport } from "./memory.ts";
 import type { NotificationsTransport } from "./notifications.ts";
 import type { OwnershipTransport } from "./ownership.ts";
+import type { RoutinesTransport } from "./routines.ts";
 import type { SecretsTransport } from "./secrets.ts";
 import type {
   AuthTransport,
@@ -391,6 +394,31 @@ export function createHttpUsageTransport(options: HttpAuthTransportOptions = {})
 
   return {
     forBot: (botId, days) => client.usage.bot(days === undefined ? { botId } : { botId, days }),
+  };
+}
+
+/**
+ * The routines authoring surface: one bot's live rows, the scheduler-backed
+ * preview, mutations, manual test runs and the occurrence ledger. The screen
+ * never constructs an RPC payload itself; every value crosses this seam in the
+ * contract's shape.
+ */
+export function createHttpRoutinesTransport(
+  options: HttpAuthTransportOptions = {},
+): RoutinesTransport {
+  const client = createApiClient({ url: resolveRpcUrl(options) });
+
+  return {
+    list: async (botId): Promise<readonly Routine[]> =>
+      (await client.routines.list({ botId })).routines,
+    create: (input) => client.routines.create(input),
+    update: (input) => client.routines.update(input),
+    remove: (id) => client.routines.remove({ id }),
+    preview: async (input): Promise<readonly string[]> =>
+      (await client.routines.preview(input)).fireTimes,
+    testRun: (input) => client.routines.testRun(input),
+    outcomes: async (input): Promise<readonly RoutineOutcome[]> =>
+      (await client.routines.outcomes(input)).outcomes,
   };
 }
 
