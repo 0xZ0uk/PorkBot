@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/brand/porkbot-mascot.png" alt="PorkBot's mascot: a pink pig's head with two capsule eyes" width="180">
+</p>
+
 # PorkBot
 
 PorkBot is a self-hosted, single-operator AI teammate platform. This repository is the
