@@ -950,6 +950,47 @@ async function captureComputer(page: Page): Promise<void> {
 }
 
 /**
+ * The settings captures (slice 13.13): the one panel and each of its six
+ * sections, in both modes, with the explicit mode control exercised rather
+ * than emulated — the capture is of the choice the slice adds. They land in
+ * `test-results/ui/` beside the shell's captures, which CI uploads and the
+ * pull request links, and the panel is the real client reading the real API,
+ * so a section that holds nothing says so.
+ */
+async function captureSettings(page: Page, origin: string): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+  const sections = ["models", "mcp", "secrets", "notifications", "usage", "account"];
+
+  await mkdir(uiDir, { recursive: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${origin}/settings`);
+  await expect(page.locator("#account")).toBeVisible();
+
+  for (const mode of ["Dark", "Light"] as const) {
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    await page.waitForTimeout(200);
+
+    await page.evaluate(() => {
+      document.querySelector(".shell-pane")?.scrollTo(0, 0);
+    });
+    await page.waitForTimeout(200);
+    await page.screenshot({
+      path: path.join(uiDir, `interface-settings-1280-${mode.toLowerCase()}.png`),
+    });
+
+    for (const id of sections) {
+      await page.evaluate((sectionId) => {
+        document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
+      }, id);
+      await page.waitForTimeout(200);
+      await page.screenshot({
+        path: path.join(uiDir, `settings-${id}-1280-${mode.toLowerCase()}.png`),
+      });
+    }
+  }
+}
+
+/**
  * The console's acceptance captures (slices 13.7 and 13.8): the conversation's
  * streaming run, attachment and upload failure, and the run surface's live
  * strip and report cards, each in both modes. They land in `test-results/ui/`
@@ -1062,15 +1103,18 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     });
     expect(routine.botId).toBe(botId);
 
-    await page.goto(`${current.origin}/settings/connections`);
-    await page.getByRole("button", { name: "New connection" }).click();
-    await page.getByLabel("Label", { exact: true }).fill("Offline model");
-    await page.getByLabel("Base URL", { exact: true }).fill(current.model.baseUrl);
-    await page.getByLabel("Credential name", { exact: true }).fill("offline-model-emulator");
-    await page.getByLabel("API key", { exact: true }).fill("offline");
-    await page.getByLabel("Default model (optional)", { exact: true }).fill("porkbot-e2e");
-    await page.getByRole("button", { name: "Connect" }).click();
-    const modelConnection = page.locator(".connection").filter({ hasText: "Offline model" });
+    // The settings panel mounts all six sections at once, so the connections
+    // section is the scope for the flow that follows.
+    await page.goto(`${current.origin}/settings`);
+    const models = page.locator("#models");
+    await models.getByRole("button", { name: "New connection" }).click();
+    await models.getByLabel("Label", { exact: true }).fill("Offline model");
+    await models.getByLabel("Base URL", { exact: true }).fill(current.model.baseUrl);
+    await models.getByLabel("Credential name", { exact: true }).fill("offline-model-emulator");
+    await models.getByLabel("API key", { exact: true }).fill("offline");
+    await models.getByLabel("Default model (optional)", { exact: true }).fill("porkbot-e2e");
+    await models.getByRole("button", { name: "Connect" }).click();
+    const modelConnection = models.locator(".connection").filter({ hasText: "Offline model" });
     await expect(modelConnection).toBeVisible();
     await modelConnection.getByRole("button", { name: "Test" }).click();
     await expect(modelConnection.getByText(/Reachable · 1 model · streaming/)).toBeVisible();
@@ -1224,6 +1268,21 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await captureConsoleState(page, "run-surface-failed");
 
     await captureWorkspace(page, current.origin, botId, threadId);
+
+    // The settings panel with something in every section it can seed offline:
+    // a stored secret and a notification switch over the API, beside the
+    // connection, the bots and the usage the flow already produced. MCP stays
+    // empty because its install needs a reachable HTTPS server, which the
+    // offline fixture does not have; the section says so.
+    await rpc(page, "botSecrets/put", {
+      botId,
+      name: "api_token",
+      value: "fixture-value",
+      origin: "https://api.example.invalid",
+      auth: { type: "bearer" },
+    });
+    await rpc(page, "notifications/setPreference", { kind: "run.failed", enabled: true });
+    await captureSettings(page, current.origin);
 
     // The roster captures need more than one teammate, and a bot in the
     // archived group: both are seeded over the API because the capture is

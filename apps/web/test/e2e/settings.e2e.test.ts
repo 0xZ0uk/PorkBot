@@ -128,6 +128,21 @@ async function mountSettings(api: ScriptedSettingsApi, path: string): Promise<Mo
   };
 }
 
+/**
+ * One section of the single settings surface. Every query is scoped to its
+ * section because the panel mounts all six at once: a bare `querySelector`
+ * would read the first control on the page rather than the section under test.
+ */
+function section(container: HTMLElement, id: string): HTMLElement {
+  const found = container.querySelector<HTMLElement>(`#${id}`);
+
+  if (found === null) {
+    throw new Error(`no settings section #${id}`);
+  }
+
+  return found;
+}
+
 function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
   const found = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
     (button) => button.textContent === text,
@@ -163,7 +178,7 @@ function setValue(element: HTMLInputElement | HTMLSelectElement, value: string):
 describe("the settings area over the real wire", () => {
   it("flips a notification switch and renders the server's set", async () => {
     const api = await startScriptedSettingsApi();
-    const view = await mountSettings(api, "/settings/notifications");
+    const view = await mountSettings(api, "/settings");
 
     try {
       await until(
@@ -193,7 +208,7 @@ describe("the settings area over the real wire", () => {
 
   it("reads every bot's usage and re-reads when the window changes", async () => {
     const api = await startScriptedSettingsApi({ bots: [fakeBot("bot-1", "Ada")] });
-    const view = await mountSettings(api, "/settings/usage");
+    const view = await mountSettings(api, "/settings");
 
     try {
       await until(() => api.usageWindows.length > 0, "the per-bot report");
@@ -202,7 +217,7 @@ describe("the settings area over the real wire", () => {
       expect(view.container.textContent).toContain("Recorded and displayed only");
       expect(api.usageWindows).toEqual([30]);
 
-      const select = view.container.querySelector("select") as HTMLSelectElement;
+      const select = section(view.container, "usage").querySelector("select") as HTMLSelectElement;
 
       await act(async () => {
         setValue(select, "90");
@@ -218,7 +233,7 @@ describe("the settings area over the real wire", () => {
 
   it("shows the deployment's owner and the actor's role", async () => {
     const api = await startScriptedSettingsApi({ ownerEmail: "ops@example.invalid" });
-    const view = await mountSettings(api, "/settings/account");
+    const view = await mountSettings(api, "/settings");
 
     try {
       await until(
@@ -239,7 +254,7 @@ describe("the settings area over the real wire", () => {
       bots: [fakeBot("bot-1", "Ada")],
       secrets: [fakeBotSecret({ name: "api_token" })],
     });
-    const view = await mountSettings(api, "/settings/secrets");
+    const view = await mountSettings(api, "/settings");
 
     try {
       await until(
@@ -247,13 +262,15 @@ describe("the settings area over the real wire", () => {
         "the secret row",
       );
 
-      await click(view.container, "Forget");
+      const secrets = section(view.container, "secrets");
 
-      expect(view.container.textContent).toContain(
+      await click(secrets, "Forget");
+
+      expect(secrets.textContent).toContain(
         "Forgetting api_token clears the stored value now; a request that uses it fails until it is stored again.",
       );
 
-      await click(view.container, "Forget value");
+      await click(secrets, "Forget value");
 
       await until(
         () => view.container.textContent?.includes("The stored value was cleared.") === true,
@@ -274,7 +291,7 @@ describe("the settings area over the real wire", () => {
       servers: [fakeMcpServerDetail({ id: "server-1", name: "Fixture server" })],
       grants: [["server-1", "bot-1"]],
     });
-    const view = await mountSettings(api, "/settings/mcp");
+    const view = await mountSettings(api, "/settings");
 
     try {
       await until(
@@ -282,20 +299,21 @@ describe("the settings area over the real wire", () => {
         "the server list",
       );
 
-      await click(view.container, "Open");
+      const mcp = section(view.container, "mcp");
+
+      await click(mcp, "Open");
       await until(
-        () =>
-          view.container.querySelector(".connection-key")?.textContent?.includes("Ada") === true,
+        () => mcp.querySelector(".connection-key")?.textContent?.includes("Ada") === true,
         "the grant row",
       );
 
-      await click(view.container, "Remove");
+      await click(mcp, "Remove");
 
-      expect(view.container.textContent).toContain(
+      expect(mcp.textContent).toContain(
         "Removing Fixture server deletes 1 tool and its stored credential; 1 bot loses access.",
       );
 
-      await click(view.container, "Remove server");
+      await click(mcp, "Remove server");
 
       await until(() => api.servers.length === 0, "the removal");
       await until(
@@ -315,7 +333,7 @@ describe("the settings area over the real wire", () => {
     const api = await startScriptedSettingsApi({
       authorizationUrl: "https://auth.example.invalid/consent",
     });
-    const view = await mountSettings(api, "/settings/mcp");
+    const view = await mountSettings(api, "/settings");
 
     try {
       await until(
@@ -323,9 +341,11 @@ describe("the settings area over the real wire", () => {
         "the empty list",
       );
 
-      await click(view.container, "Install server");
+      const mcp = section(view.container, "mcp");
 
-      const form = view.container.querySelector("form.memory-form") as HTMLFormElement;
+      await click(mcp, "Install server");
+
+      const form = mcp.querySelector("form.memory-form") as HTMLFormElement;
       const [name, url] = [...form.querySelectorAll("input")] as HTMLInputElement[];
       const select = form.querySelector("select") as HTMLSelectElement;
 
@@ -350,7 +370,7 @@ describe("the settings area over the real wire", () => {
         "the consent link",
       );
 
-      const consent = [...view.container.querySelectorAll<HTMLAnchorElement>("a")].find(
+      const consent = [...mcp.querySelectorAll<HTMLAnchorElement>("a")].find(
         (link) => link.textContent === "Open the consent page",
       );
 
@@ -369,7 +389,7 @@ describe("the settings area over the real wire", () => {
       bots: [fakeBot("bot-1", "Ada")],
       enabled: ["run.failed"],
     });
-    const first = await mountSettings(api, "/settings/notifications");
+    const first = await mountSettings(api, "/settings");
 
     try {
       await until(
@@ -383,7 +403,7 @@ describe("the settings area over the real wire", () => {
       await first.unmount();
     }
 
-    const second = await mountSettings(api, "/settings/notifications");
+    const second = await mountSettings(api, "/settings");
 
     try {
       await until(

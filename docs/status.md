@@ -188,8 +188,8 @@ is the write half of the encrypted store whose list can only answer masks.
 The connections settings surface lands with slice 9.3. `credentials.remove`
 revokes a stored credential by name, and a probe stamps the connection's
 `lastUsedAt`, so the list can say when a request last left for an endpoint
-instead of implying a stored hope. The web surface at `/settings/connections`
-reads each connection as its label, endpoint host, credential name and derived
+instead of implying a stored hope. The web surface's models and connections
+section reads each connection as its label, endpoint host, credential name and derived
 mask, last use and the probe's own answer, including "streaming unsupported"; it
 creates one by storing the key through `credentials.store` and naming it with
 `modelConnections.create`, revokes a key behind a confirmation that names the
@@ -198,25 +198,35 @@ default from a bot's own connection. The e2e tier drives create, revoke, probe
 and the default swap against a scripted API over a real socket, and the screen
 is captured under `docs/screenshots/`.
 
-The settings area lands with slice 11.5. `/settings` is the directory: models,
-MCP servers, secrets, notifications, usage and account, one line each, every
-entry a route the index test walks so an added surface without a link fails the
-suite. Models stays the connections surface at `/settings/connections`; the
-other five are new. `/settings/mcp` installs a server by URL, shows the status
-discovery reported — `pending_authorization` beside the consent link, never a
-success it did not observe — lists its tools, grants it per bot, and confirms an
-uninstall with how many tools and bots it takes down. `/settings/secrets` reads
-one bot's secrets as names, destinations and statuses, stores a value and
+The settings area lands with slice 11.5, and slice 13.13 turns its index of six
+link cards into one surface. `/settings` is the panel: models and connections,
+MCP servers, secrets, notifications, usage and account, each section rendered
+inline with its current values — no section needs a click to say what it holds —
+under a sticky section nav whose every link resolves to a section the panel
+renders. The mode control sits in the panel's head as an explicit System, Light
+or Dark choice, and the rail footer's menu offers the same three; both write the
+same stored key, so the choice persists and wins over the system preference on
+the next first paint, and System is a real choice that puts the media query back
+in charge. Models and connections creates a connection by storing the key
+through `credentials.store` and naming it with `modelConnections.create`,
+revokes a key behind a confirmation that names the connections and bots it
+breaks, replaces a stored key behind a rotate confirmation, and distinguishes
+the server's one space default from a bot's own connection. MCP servers installs
+a server by URL, shows the status discovery reported — `pending_authorization`
+beside the consent link, never a success it did not observe — lists its tools,
+grants it per bot, and confirms an uninstall with how many tools and bots it
+takes down. Secrets reads one bot's rows as names, destinations and statuses,
+stores a value — confirming a store over a stored name as the rotate it is — and
 forgets one behind a confirmation that says the value is cleared immediately.
-`/settings/notifications` renders the switches with the quiet defaults the store
-answers. `/settings/usage` fans out over the active bots and re-reads every bot
-when the window changes, under the sentence that the figures are recorded and
-displayed only; the per-bot report is the same component the bot route renders.
-`/settings/account` reads the new authenticated `account.ownership`, which pairs
-the actor's role with the deployment's configured admin address or `null` when
-none was configured. The e2e tier drives a switch flip, a window change, a
-forget, an install and an uninstall against a scripted API over a real socket,
-and the index is captured under `docs/screenshots/`.
+Notifications renders the switches with the quiet defaults the store answers.
+Usage fans out over the active bots and re-reads every bot when the window
+changes, under the sentence that the figures are recorded and displayed only;
+the per-bot report is the same component the bot route renders. Account reads
+the new authenticated `account.ownership`, which pairs the actor's role with
+the deployment's configured admin address or `null` when none was configured.
+The e2e tier drives a switch flip, a window change, a forget, an install and an
+uninstall against a scripted API over a real socket, and the panel and each of
+its six sections are captured under `docs/screenshots/` in both modes.
 
 Choosing where a bot runs lands with slice 9.4. `computers.providers` is the
 deployment's own answer — every kind its supervisor configured, each asked to

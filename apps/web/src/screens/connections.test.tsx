@@ -400,6 +400,51 @@ describe("creating a connection", () => {
       defaultModel: "fixture-model",
     });
   });
+
+  it("confirms a value under a stored name as a rotate before it writes", async () => {
+    const props = screenProps(state({ credentials: [fakeCredential()] }));
+
+    await render(<ConnectionsScreen {...props} />);
+    await click("New connection");
+
+    const inputs = [...container.querySelectorAll("input")];
+
+    await act(async () => {
+      const [label, baseUrl, credentialName, credentialValue] = inputs;
+
+      if (
+        label === undefined ||
+        baseUrl === undefined ||
+        credentialName === undefined ||
+        credentialValue === undefined
+      ) {
+        throw new Error("the create form did not render its fields");
+      }
+
+      setValue(label, "Local models");
+      setValue(baseUrl, "https://models.example.invalid/v1");
+      setValue(credentialName, "model-key");
+      setValue(credentialValue, "sk-live-0123456789abcdef");
+      container.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true }));
+    });
+
+    // The first submit only arms the confirmation; the rotate writes on the
+    // second, and the sentence names the value it replaces.
+    expect(props.onCreate).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(
+      "A key named model-key is already stored. Storing now replaces it; connections that use it send the new key from their next request.",
+    );
+
+    await click("Replace key");
+
+    expect(props.onCreate).toHaveBeenCalledWith({
+      label: "Local models",
+      baseUrl: "https://models.example.invalid/v1",
+      credentialName: "model-key",
+      credentialValue: "sk-live-0123456789abcdef",
+      defaultModel: "",
+    });
+  });
 });
 
 /** Sets a controlled input's value the way React's onChange reads it. */

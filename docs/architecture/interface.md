@@ -361,14 +361,17 @@ preference decides; after it, the choice wins. `themeStyleSheet` in
 then repeats both as `[data-theme="light"]` and `[data-theme="dark"]` after the
 media query, so an explicit choice wins by source order. `themeBootstrapScript`
 reads the stored key and sets `data-theme` before the bundle runs, so there is
-no flash and no OS override of a deliberate choice; the shell's interim
-light/dark toggle (slice 13.4) writes the key, and slice 13.13 replaces it with
-the explicit System, Light, Dark control.
+no flash and no OS override of a deliberate choice; a stored System sets
+nothing, which is what leaves the media query in charge. Since slice 13.13 the
+control is the explicit System, Light, Dark choice in the settings panel's head
+and in the rail footer's menu, which the switcher sheet carries below 64rem.
+Both write the same key, and System is a selection the operator can see rather
+than a state that only exists before the first click.
 
 Source: the current `theme.ts` and shadcn's `.dark` class convention. Reason:
 one operator, one device preference, and a choice that a nighttime OS schedule
-silently reverses is not a choice. The mode control lives in the rail footer
-at 64rem and in the switcher sheet below it.
+silently reverses is not a choice. The mode control lives in the settings
+panel's head, in the rail footer at 64rem and in the switcher sheet below it.
 
 ## Anti-goals
 
@@ -414,7 +417,7 @@ the screens' chrome is now the register's markup rather than a copy of it.
 | Card                                                      | flat, raised, interactive                        | Report cards, attachments, inspector sections         |
 | Separator                                                 | horizontal, vertical                             | Inspector, menus, settings                            |
 | Scroll area                                               | overflow, focus within                           | Rail, transcript, inspector                           |
-| Tabs                                                      | active, hover, focus-visible                     | Computer surface (screen, terminal, files), settings  |
+| Tabs                                                      | active, hover, focus-visible                     | Computer surface (screen, terminal, files)            |
 | Icon                                                      | the one set; no colour or emoji                  | Icon buttons, state chips, menu and toast chrome      |
 | Menu                                                      | open, keyboard, destructive item                 | Lifecycle state control, rail footer, message actions |
 | Dialog and sheet                                          | open, close, escape, focus return                | Confirmation, provider picker, switcher               |
@@ -441,32 +444,36 @@ in place and attaches the new capture to its pull request; the acceptance
 slice re-captures the whole set and lays it beside the mocks and the reference
 screenshots for the operator's verdict.
 
-| Capture                             | Shows                                                        | Width | Mode  |
-| ----------------------------------- | ------------------------------------------------------------ | ----- | ----- |
-| `interface-thread-1280-dark.png`    | Roster, thread, inspector, all six states in the rail        | 1280  | dark  |
-| `interface-thread-1280-light.png`   | The same screen in the light mode                            | 1280  | light |
-| `interface-thread-390-dark.png`     | The thread and the switcher sheet, one pane, no scroll       | 390   | dark  |
-| `interface-thread-390-light.png`    | The same screen in the light mode                            | 390   | light |
-| `interface-computer-1280-dark.png`  | The computer surface, its tabs, its state control, inspector | 1280  | dark  |
-| `interface-computer-1280-light.png` | The same screen in the light mode                            | 1280  | light |
-| `computer-lifecycle.png`            | The lifecycle menu, each verb stating what it does           | 1280  | dark  |
-| `computer-reset.png`                | The reset confirmation, naming what is lost and what is kept | 1280  | dark  |
-| `computer-provider.png`             | The provider sheet with an unavailable kind and its reason   | 1280  | dark  |
-| `computer-switch-confirm.png`       | The switch confirmation with the snapshot path               | 1280  | dark  |
-| `computer-stopped.png`              | The stopped machine's surface and state control              | 1280  | dark  |
-| `interface-shell-768-dark.png`      | The middle breakpoint: the pane switcher, no rail            | 768   | dark  |
-| `interface-approval-390-dark.png`   | An inline approval card at the narrow width                  | 390   | dark  |
-| `interface-states-dark.png`         | The six state chips in rail context                          | 1280  | dark  |
-| `interface-states-light.png`        | The six state chips in rail context                          | 1280  | light |
-| `approval-pending-1280-dark.png`    | A pending gate's inline card beside a timed-out one          | 1280  | dark  |
-| `approval-resolved-1280-dark.png`   | The same thread with both gates resolved in place            | 1280  | dark  |
-| `approvals-queue-1280-dark.png`     | The queue: waiting gates first, then history                 | 1280  | dark  |
-| `approvals-history-1280-dark.png`   | An approved and a timed-out gate as history                  | 1280  | dark  |
+| Capture                             | Shows                                                                     | Width | Mode  |
+| ----------------------------------- | ------------------------------------------------------------------------- | ----- | ----- |
+| `interface-thread-1280-dark.png`    | Roster, thread, inspector, all six states in the rail                     | 1280  | dark  |
+| `interface-thread-1280-light.png`   | The same screen in the light mode                                         | 1280  | light |
+| `interface-thread-390-dark.png`     | The thread and the switcher sheet, one pane, no scroll                    | 390   | dark  |
+| `interface-thread-390-light.png`    | The same screen in the light mode                                         | 390   | light |
+| `interface-computer-1280-dark.png`  | The computer surface, its tabs, its state control, inspector              | 1280  | dark  |
+| `interface-computer-1280-light.png` | The same screen in the light mode                                         | 1280  | light |
+| `computer-lifecycle.png`            | The lifecycle menu, each verb stating what it does                        | 1280  | dark  |
+| `computer-reset.png`                | The reset confirmation, naming what is lost and what is kept              | 1280  | dark  |
+| `computer-provider.png`             | The provider sheet with an unavailable kind and its reason                | 1280  | dark  |
+| `computer-switch-confirm.png`       | The switch confirmation with the snapshot path                            | 1280  | dark  |
+| `computer-stopped.png`              | The stopped machine's surface and state control                           | 1280  | dark  |
+| `interface-shell-768-dark.png`      | The middle breakpoint: the pane switcher, no rail                         | 768   | dark  |
+| `interface-approval-390-dark.png`   | An inline approval card at the narrow width                               | 390   | dark  |
+| `interface-states-dark.png`         | The six state chips in rail context                                       | 1280  | dark  |
+| `interface-states-light.png`        | The six state chips in rail context                                       | 1280  | light |
+| `approval-pending-1280-dark.png`    | A pending gate's inline card beside a timed-out one                       | 1280  | dark  |
+| `approval-resolved-1280-dark.png`   | The same thread with both gates resolved in place                         | 1280  | dark  |
+| `approvals-queue-1280-dark.png`     | The queue: waiting gates first, then history                              | 1280  | dark  |
+| `approvals-history-1280-dark.png`   | An approved and a timed-out gate as history                               | 1280  | dark  |
+| `interface-settings-1280-dark.png`  | The settings panel: six sections inline, the sticky nav, the mode control | 1280  | dark  |
+| `interface-settings-1280-light.png` | The same panel in the light mode                                          | 1280  | light |
 
 The first six rows are the mocks' captures from slice 13.1; the rest began as
 targets for the slices that build them. Slice 13.9 landed the four approval
 rows above; each has a light pair under `docs/screenshots/` except the inline
-card at 390, which the design record names in dark only.
+card at 390, which the design record names in dark only. Slice 13.13 landed the
+two settings rows above and captured each of the six sections in both modes
+beside them, as `settings-<section>-1280-<mode>.png`.
 
 ## Sign-off
 

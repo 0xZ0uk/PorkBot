@@ -356,6 +356,9 @@ describe("@porkbot/tokens", () => {
       expect(boot("light")).toBe("light");
       expect(boot("dark")).toBe("dark");
       expect(boot(null)).toBeUndefined();
+      // An explicit System choice is stored like any other; it just leaves the
+      // media query in charge, which is the same as never having chosen.
+      expect(boot("system")).toBeUndefined();
       expect(boot("sepia")).toBeUndefined();
       expect(boot(null, true)).toBeUndefined();
     });

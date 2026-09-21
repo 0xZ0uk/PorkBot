@@ -92,7 +92,7 @@ async function mountConnections(api: ScriptedConnectionsApi): Promise<MountedCon
       connections: createHttpConnectionsTransport({ origin: api.url }),
       computer: scriptedComputerTransport(),
     },
-    createMemoryHistory({ initialEntries: ["/settings/connections"] }),
+    createMemoryHistory({ initialEntries: ["/settings"] }),
   );
   const container = document.createElement("div");
 
