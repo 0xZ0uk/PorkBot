@@ -94,6 +94,7 @@ interface BrowserHarness {
   bindActor(page: Page): Promise<UserRepositories>;
   attachComputer(botId: string): Promise<void>;
   seedMemory(botId: string): Promise<void>;
+  seedUsage(botId: string): Promise<void>;
   startRun(threadId: string, options?: StartRunOptions): Promise<BrowserRun>;
   close(): Promise<void>;
 }
@@ -366,6 +367,43 @@ async function createHarness(): Promise<BrowserHarness> {
 
       if (!result.ok) {
         throw new Error("the browser fixture could not seed memory");
+      }
+    },
+    async seedUsage(botId) {
+      const query = queryable(database);
+      const { rows } = await query.query<{ readonly id: string }>(
+        "select id from run where bot_id = $1 order by created_at desc, id desc limit 1",
+        [botId],
+      );
+      const runId = rows[0]?.id;
+
+      if (runId === undefined) {
+        throw new Error("the browser fixture needs a run before seeding usage");
+      }
+
+      // The offline fixture drives scripted events rather than a live model, so
+      // no usage rows exist; the ledger is seeded with the shape a week of
+      // calls would leave, including one day whose provider reported nothing.
+      // It is a fixture for the capture, not a claim about the runtime.
+      const days: readonly {
+        readonly daysAgo: number;
+        readonly input: number | null;
+        readonly output: number | null;
+      }[] = [
+        { daysAgo: 0, input: 4820, output: 1290 },
+        { daysAgo: 1, input: 2360, output: 640 },
+        { daysAgo: 2, input: null, output: null },
+        { daysAgo: 4, input: 980, output: 260 },
+        { daysAgo: 5, input: 1510, output: 410 },
+      ];
+
+      for (const day of days) {
+        await query.query(
+          "insert into usage_record (space_id, bot_id, run_id, provider, model, input_tokens, output_tokens, created_at) " +
+            "select r.space_id, r.bot_id, r.id, 'offline', 'porkbot-e2e', $2, $3, " +
+            "now() - make_interval(days => $4) from run r where r.id = $1",
+          [runId, day.input, day.output, day.daysAgo],
+        );
       }
     },
     async startRun(threadId, options = {}) {
@@ -876,6 +914,66 @@ async function captureApprovalState(
 }
 
 /**
+ * The memory captures (slice 13.12): a document card with its revision
+ * timeline open, and the Removed scope where the tombstone is marked. They
+ * land in `test-results/ui/` beside the shell's captures, which CI uploads and
+ * the pull request links, and the history is opened through the screen's own
+ * control rather than staged.
+ */
+async function captureMemory(
+  page: Page,
+  name: string,
+  options: { readonly history?: boolean } = {},
+): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+
+  await mkdir(uiDir, { recursive: true });
+
+  if (options.history === true) {
+    await page.locator(".memory-document").first().getByRole("button", { name: "History" }).click();
+    await expect(page.locator(".memory-timeline-entry").first()).toBeVisible();
+  }
+
+  for (const mode of ["dark", "light"] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.emulateMedia({ colorScheme: mode });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `${name}-1280-${mode}.png`) });
+  }
+}
+
+/**
+ * The usage captures (slice 13.12): one bot's report (stat tiles and daily
+ * bars) and the settings report that fans out over every bot. They land in
+ * `test-results/ui/` beside the memory captures, which CI uploads and the pull
+ * request links.
+ */
+async function captureUsage(page: Page, origin: string, botId: string): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+
+  await mkdir(uiDir, { recursive: true });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${origin}/bots/${botId}/usage`);
+  await expect(page.locator(".usage-stat").first()).toBeVisible();
+
+  for (const mode of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `usage-bot-1280-${mode}.png`) });
+  }
+
+  await page.goto(`${origin}/settings/usage`);
+  await expect(page.locator(".usage-stat").first()).toBeVisible();
+
+  for (const mode of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `usage-settings-1280-${mode}.png`) });
+  }
+}
+
+/**
  * The console's acceptance captures (slices 13.7 and 13.8): the conversation's
  * streaming run, attachment and upload failure, and the run surface's live
  * strip and report cards, each in both modes. They land in `test-results/ui/`
@@ -980,6 +1078,32 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await memoryForm.getByRole("button", { name: "Save" }).click();
     await expect(memoryCard.getByRole("heading", { name: "Release note updated" })).toBeVisible();
 
+    // The memory captures (slice 13.12): the card with its revision timeline
+    // open, then the Removed scope where the tombstone is marked, then the
+    // restore that puts the fixture back.
+    await captureMemory(page, "memory-history", { history: true });
+
+    await memoryCard.getByRole("button", { name: "Remove" }).click();
+    await memoryCard.locator("form.memory-form").locator("input").fill("Release done");
+    await memoryCard.getByRole("button", { name: "Remove document" }).click();
+    await expect(page.getByText("Nothing remembered yet")).toBeVisible();
+    await page.getByRole("radio", { name: "Removed" }).click();
+    await expect(page.locator(".memory-document--removed")).toBeVisible();
+    await captureMemory(page, "memory-removed");
+
+    await page
+      .locator(".memory-document--removed")
+      .getByRole("button", { name: "Restore", exact: true })
+      .click();
+    await page
+      .locator(".memory-document--removed")
+      .locator("form.memory-form")
+      .getByRole("button", { name: "Restore revision" })
+      .click();
+    await expect(page.getByText("Nothing removed")).toBeVisible();
+    await page.getByRole("radio", { name: "Current" }).click();
+    await expect(memoryCard.getByRole("heading", { name: "Release note updated" })).toBeVisible();
+
     const routine = await rpc<{ readonly botId: string }>(page, "routines/create", {
       botId,
       instruction: "Check the offline queue",
@@ -1026,6 +1150,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.getByText("Start offline task", { exact: true })).toBeVisible();
 
     const run = await current.startRun(threadId);
+    // The run exists, so the usage ledger can be seeded with the shape a week
+    // of calls leaves before the usage captures at the end of the flow.
+    await current.seedUsage(botId);
+
     // The card names the same tool as the timeline entry, so the assertion is
     // scoped to the entry rather than the plain word.
     await expect(page.locator(".tool-call-name", { hasText: "shell" })).toBeVisible();
@@ -1146,6 +1274,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await captureConsoleState(page, "run-surface-failed");
 
     await captureWorkspace(page, current.origin, botId, threadId);
+
+    // The usage captures (slice 13.12): one bot's report and the settings
+    // report over every bot, after the run that produced the ledger exists.
+    await captureUsage(page, current.origin, botId);
 
     // The roster captures need more than one teammate, and a bot in the
     // archived group: both are seeded over the API because the capture is

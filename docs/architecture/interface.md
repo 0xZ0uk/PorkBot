@@ -115,6 +115,28 @@ Slice 13.8 built the run surface: the live strip, the collapsed tool timeline
 entry and the report card. Its captures — a run mid-call, a completed run and
 a failed run, both modes — live under `docs/screenshots/run-surface-*.png`.
 
+## Records
+
+Memory and usage are the two places a bot's own record is read: what it
+remembers, and what it spent. Both are reports rather than dumps — a document
+card names the last change's hand and instant before its text, and a total is
+a tile and a bar before it is a digit.
+
+| Decision                                                                                                                        | Source                                                                     | Reason                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A memory document is a card whose revision history is a timeline inside it, not a stack of boxes                                | Rakazo's structured work as report cards                                   | The card is the audit trail's home; the timeline makes the current state its last point rather than a revision number a reader has to infer.                           |
+| Current and Removed are a segmented control, and a tombstone keeps its card with a destructive mark and a dashed edge           | Linear's segmented controls; GitHub's archived badges                      | The scope is a filter, not navigation, and "this one is removed" must survive a glance rather than live in a scope label alone.                                        |
+| Removing and restoring are inline confirmations that state the consequence and carry the reason the wire records                | The design record's anti-goal: no modal where an inline card does          | The decision stays beside the document it concerns, and the consequence — history kept, restore becomes the newest revision — is what the operator is answering.       |
+| A card reads the last change's hand and instant from the list's own joined revision                                             | The store's list already joins the revision its row points at              | A card that must open every document's history to say "who last touched this" pays a query per card for a glance; the joined list is one read.                         |
+| Usage is a report: stat tiles for the totals and bars whose length is the reported tokens of a day or a teammate, in monochrome | GitHub Actions' spend summaries; the monochrome-plus-one-colour discipline | The shape of the spend is what a total alone hides, and the accent belongs to "waiting for you", so a second accent would spend the colour the state vocabulary needs. |
+| Every usage surface carries the informational mark and the recorded-only sentence                                               | The contract's own out-of-scope line (PRD #183)                            | A total must never read as a meter: there is no budget, limit or plan on the wire, and the mark says so where the numbers are.                                         |
+| A null token figure renders as "Not reported" and a day whose provider reported nothing draws words, not a zero bar             | The usage contract's nullable figures                                      | A provider that stayed silent is unknown, not free; a zero bar would be a measurement nobody made.                                                                     |
+
+Slice 13.12 built the memory and usage reports. Its captures — a document card
+with its revision timeline open, the removed scope with its tombstone, and the
+per-bot and per-period usage reports, each in both modes — live under
+`docs/screenshots/memory-*.png` and `docs/screenshots/usage-*.png`.
+
 ## State vocabulary
 
 One vocabulary, one visual each. The words are the operator's; the mapping to
@@ -434,6 +456,14 @@ screenshots for the operator's verdict.
 | `approval-resolved-1280-dark.png`   | The same thread with both gates resolved in place            | 1280  | dark  |
 | `approvals-queue-1280-dark.png`     | The queue: waiting gates first, then history                 | 1280  | dark  |
 | `approvals-history-1280-dark.png`   | An approved and a timed-out gate as history                  | 1280  | dark  |
+| `memory-history-1280-dark.png`      | A document card with its revision timeline open              | 1280  | dark  |
+| `memory-history-1280-light.png`     | The same screen in the light mode                            | 1280  | light |
+| `memory-removed-1280-dark.png`      | The Removed scope with a tombstone still restorable          | 1280  | dark  |
+| `memory-removed-1280-light.png`     | The same screen in the light mode                            | 1280  | light |
+| `usage-bot-1280-dark.png`           | One bot's report: tiles and the daily spend as bars          | 1280  | dark  |
+| `usage-bot-1280-light.png`          | The same screen in the light mode                            | 1280  | light |
+| `usage-settings-1280-dark.png`      | The per-bot comparison and every bot's report                | 1280  | dark  |
+| `usage-settings-1280-light.png`     | The same screen in the light mode                            | 1280  | light |
 
 The first six rows are the mocks' captures from slice 13.1; the rest began as
 targets for the slices that build them. Slice 13.9 landed the four approval

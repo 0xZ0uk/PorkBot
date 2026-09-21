@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { MemoryScreen } from "../../screens/memory.tsx";
 import { useMemory } from "../../use-memory.ts";
 
@@ -22,19 +22,14 @@ function MemoryRoute() {
   });
 
   return (
-    <>
-      <p className="muted">
-        <Link to="/">Back to bots</Link>
-      </p>
-      <MemoryScreen
-        state={state}
-        onScope={setScope}
-        onRetry={load}
-        onToggleHistory={toggleHistory}
-        onSave={save}
-        onRemove={remove}
-        onRestore={restore}
-      />
-    </>
+    <MemoryScreen
+      state={state}
+      onScope={setScope}
+      onRetry={load}
+      onToggleHistory={toggleHistory}
+      onSave={save}
+      onRemove={remove}
+      onRestore={restore}
+    />
   );
 }

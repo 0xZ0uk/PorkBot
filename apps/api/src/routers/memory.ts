@@ -29,20 +29,12 @@ import { authenticated } from "../gate.ts";
  */
 export function createMemoryRouter() {
   const list = authenticated.memory.list.handler(async ({ input, context }) => {
-    if (input.scope === "deleted") {
-      const records = await context.repositories.memory.listDeleted(input.botId);
+    const records =
+      input.scope === "deleted"
+        ? await context.repositories.memory.listDeleted(input.botId)
+        : await context.repositories.memory.list(input.botId);
 
-      return { documents: records.map(deletedDocumentOutput) };
-    }
-
-    const documents = await context.repositories.memory.list(input.botId);
-
-    return {
-      documents: documents.map((document): MemoryDocumentView => ({
-        ...document,
-        deletedAt: null,
-      })),
-    };
+    return { documents: records.map(documentOutput) };
   });
 
   const revisions = authenticated.memory.revisions.handler(async ({ input, context }) => {
@@ -88,7 +80,7 @@ export function createMemoryRouter() {
   return authenticated.memory.router({ list, revisions, update, remove, restore });
 }
 
-function deletedDocumentOutput(record: MemoryDocumentRecord): MemoryDocumentView {
+function documentOutput(record: MemoryDocumentRecord): MemoryDocumentView {
   return {
     documentId: record.documentId,
     kind: record.kind,
@@ -96,6 +88,9 @@ function deletedDocumentOutput(record: MemoryDocumentRecord): MemoryDocumentView
     content: record.content,
     revision: record.revision,
     deletedAt: record.deletedAt,
+    lastChangedOrigin: record.lastChangedOrigin,
+    lastChangedBy: record.lastChangedBy,
+    lastChangedAt: record.lastChangedAt,
   };
 }
 

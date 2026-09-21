@@ -1,15 +1,22 @@
+import { Badge } from "@porkbot/ui";
 import type { UsageBot, UsageTotalsView } from "@porkbot/contracts";
 
 /**
- * One bot's recorded token usage (slice 8.8, story 34): the all-time total and
- * the window's UTC days, newest first. The settings surface (slice 11.5)
- * renders the same report once per bot, so the two surfaces cannot disagree
- * about what a null figure means.
+ * One bot's recorded token usage (slice 13.12, story 34; design record,
+ * Records): a report rather than a definition list.
  *
- * The screen is a plain function of the contract's answer. It has one rule the
- * numbers depend on: a null token figure is "Not reported", never a zero, so a
- * provider that stayed silent reads as unknown rather than free. A day list
- * that is empty stays a sentence rather than thirty zero rows.
+ * The report reads in two steps. The all-time total is a row of stat tiles —
+ * input, output and calls — and the window's UTC days are bars whose length is
+ * the day's reported tokens, split into the input and output segments, so the
+ * shape of the spend is visible and not only its digits. The header carries
+ * the informational mark the contract insists on: recorded and displayed only,
+ * never metered or enforced.
+ *
+ * The settings surface (slice 11.5) renders the same report once per bot, so
+ * the two surfaces cannot disagree about what a null figure means. That rule
+ * is the report's one invariant: a null token figure is "Not reported", never
+ * a zero, so a provider that stayed silent reads as unknown rather than free.
+ * A window with no calls stays one sentence rather than thirty empty bars.
  */
 
 export interface UsageScreenProps {
@@ -18,18 +25,25 @@ export interface UsageScreenProps {
 
 export function UsageScreen({ usage }: UsageScreenProps) {
   return (
-    <section className="console">
-      <h2>Usage</h2>
+    <section className="console usage-screen">
+      <header className="memory-header">
+        <div>
+          <h2>Usage</h2>
+          <p className="muted">Recorded and displayed only; nothing here is metered or enforced.</p>
+        </div>
+        <Badge tone="info">Informational</Badge>
+      </header>
       <UsageReport usage={usage} />
     </section>
   );
 }
 
 /**
- * One bot's numbers, without the page around them: the all-time total and the
- * window's UTC days, newest first. The settings surface renders one of these
- * per bot under the bot's name, and the per-bot route renders one under its
- * own heading, so both surfaces read the same figures from one component.
+ * One bot's numbers, without the page around them: the all-time total as stat
+ * tiles and the window's UTC days as bars, newest first. The settings surface
+ * renders one of these per bot under the bot's name, and the per-bot route
+ * renders one under its own heading, so both surfaces read the same figures
+ * from one component.
  */
 export function UsageReport({ usage }: UsageScreenProps) {
   const empty = usage.total.reported === 0 && usage.total.unreported === 0;
@@ -40,48 +54,105 @@ export function UsageReport({ usage }: UsageScreenProps) {
 
   return (
     <>
-      <UsageTotals totals={usage.total} heading="All time" />
-      {usage.periods.length === 0 ? (
-        <p className="muted">No usage in this period.</p>
-      ) : (
-        <ul className="usage-list">
-          {usage.periods.map((period) => (
-            <li key={period.startsAt} className="usage-period">
-              <UsageTotals totals={period} heading={formatDay(period.startsAt)} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <section className="usage-section" aria-label="All time">
+        <h3 className="usage-section-title">All time</h3>
+        <UsageStats totals={usage.total} />
+      </section>
+
+      <section className="usage-section" aria-label="Daily spend">
+        <h3 className="usage-section-title">Daily spend</h3>
+        {usage.periods.length === 0 ? (
+          <p className="muted">No usage in this period.</p>
+        ) : (
+          <UsageChart periods={usage.periods} />
+        )}
+      </section>
     </>
   );
 }
 
-/**
- * One period's numbers. The partial-coverage sentence only appears when some
- * calls reported and some did not; when nothing reported, the figures already
- * say "Not reported" and the count would only repeat them.
- */
-function UsageTotals({ totals, heading }: { totals: UsageTotalsView; heading: string }) {
+/** The three figures, as tiles: label above value, never a definition list. */
+function UsageStats({ totals }: { readonly totals: UsageTotalsView }) {
   const calls = totals.reported + totals.unreported;
   const partial = totals.reported > 0 && totals.unreported > 0;
 
   return (
-    <div className="usage-totals">
-      <h3>{heading}</h3>
-      <dl>
-        <dt>Input</dt>
-        <dd>{tokenText(totals.inputTokens)}</dd>
-        <dt>Output</dt>
-        <dd>{tokenText(totals.outputTokens)}</dd>
-        <dt>Calls</dt>
-        <dd>{String(calls)}</dd>
-      </dl>
+    <div className="usage-stats">
+      <div className="usage-stat">
+        <span className="usage-stat-label">Input tokens</span>
+        <span className="usage-stat-value">{tokenText(totals.inputTokens)}</span>
+      </div>
+      <div className="usage-stat">
+        <span className="usage-stat-label">Output tokens</span>
+        <span className="usage-stat-value">{tokenText(totals.outputTokens)}</span>
+      </div>
+      <div className="usage-stat">
+        <span className="usage-stat-label">Calls</span>
+        <span className="usage-stat-value">{String(calls)}</span>
+      </div>
       {partial ? (
-        <p className="muted">
+        <p className="usage-partial muted">
           {String(totals.unreported)} of {String(calls)} not reported
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The window's days as bars, newest first. A bar's length is the day's
+ * reported tokens against the busiest day in the window, and its two segments
+ * are input and output, so a spike and a mix both read at a glance. A day
+ * whose provider reported nothing has no length to draw, so it carries the
+ * words instead of a zero bar.
+ */
+function UsageChart({ periods }: { readonly periods: UsageBot["periods"] }) {
+  const totals = periods.map((period) => ({
+    input: period.inputTokens ?? 0,
+    output: period.outputTokens ?? 0,
+  }));
+  const busiest = Math.max(1, ...totals.map((total) => total.input + total.output));
+
+  return (
+    <figure className="usage-chart">
+      <ul className="usage-bars">
+        {periods.map((period, index) => {
+          const total = totals[index] ?? { input: 0, output: 0 };
+          const reported = period.inputTokens !== null || period.outputTokens !== null;
+
+          return (
+            <li key={period.startsAt} className="usage-bar-row">
+              <time className="usage-bar-day muted" dateTime={period.startsAt}>
+                {formatDay(period.startsAt)}
+              </time>
+              <span className="usage-bar-track">
+                {reported ? (
+                  <>
+                    <span
+                      className="usage-bar-segment usage-bar-segment--input"
+                      style={{ width: `${String((total.input / busiest) * 100)}%` }}
+                    />
+                    <span
+                      className="usage-bar-segment usage-bar-segment--output"
+                      style={{ width: `${String((total.output / busiest) * 100)}%` }}
+                    />
+                  </>
+                ) : null}
+              </span>
+              <span className="usage-bar-total">
+                {reported ? tokenText(total.input + total.output) : "Not reported"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <figcaption className="usage-legend muted">
+        <span className="usage-swatch usage-swatch--input" aria-hidden="true" />
+        Input
+        <span className="usage-swatch usage-swatch--output" aria-hidden="true" />
+        Output
+      </figcaption>
+    </figure>
   );
 }
 

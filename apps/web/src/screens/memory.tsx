@@ -1,28 +1,26 @@
-import { Button, Field, Input, Textarea } from "@porkbot/ui";
+import { Badge, Button, Card, Field, Input, SegmentedControl, Textarea } from "@porkbot/ui";
 import { useState } from "react";
-import type { MemoryDocumentView } from "@porkbot/contracts";
+import type { MemoryDocumentView, MemoryRevisionView } from "@porkbot/contracts";
 import type { MemoryNotice, MemoryScope, MemoryState } from "../memory.ts";
 
 /**
- * The memory screen (slice 8.3, PRD decision 21; story 24): what a bot
- * remembers, correctable in place.
+ * The memory screen (slice 13.12, stories 23 and 24; design record, Records):
+ * what a bot remembers, correctable in place.
  *
- * The screen is a function of the controller's state. A live document card
- * reads as title, kind and revision with its content as the primary text — a
- * long note is summarized by a native disclosure rather than dumped, and the
- * full text is one expansion away. Its actions are the operator's: correct it
- * (title, content, why), remove it (with a reason), and open the history.
+ * A document is a card. The card names its kind and title, the text the bot
+ * carries, and the last change's hand and instant — read from the list's own
+ * joined revision rather than inferred — with the revision history as a
+ * timeline inside the card instead of a stack of boxes. Every revision offers
+ * the restore that reapplies it, so a wrong rewrite is visible and reversible
+ * rather than silent.
  *
- * The history is the audit trail: every revision with who made it, when, why,
- * and the state at the time, so a wrong rewrite is visible rather than silent.
- * Restoring a revision reapplies it as the next one; the reason recorded is
- * the action itself, because the revision's own "why" is history and a restore
- * does not rewrite it. The `Removed` scope lists tombstones with a restore
- * button, which is how a deleted document comes back under its own id.
- *
- * Empty and long states are designed, not left raw: an empty scope says so in
- * one sentence, and a document whose content overflows is folded behind a
- * summary instead of filling the page.
+ * The scopes are a segmented control: Current and Removed are one glance
+ * apart, and a removed document keeps its dashed card, its destructive mark
+ * and the instant of its removal. Removing and restoring are inline
+ * confirmations that state the consequence — the history survives a removal,
+ * and a restore becomes the newest revision — and both carry the reason the
+ * wire records. A restore from the Removed list names the tombstone revision
+ * the list already holds, so the screen never guesses a revision number.
  */
 
 export interface MemoryScreenProps {
@@ -53,6 +51,21 @@ const kindLabels: Record<MemoryDocumentView["kind"], string> = {
   decision: "Decision",
 };
 
+const scopeOptions = [
+  { value: "active", label: "Current" },
+  { value: "deleted", label: "Removed" },
+] as const;
+
+/** The origin as the operator's word: the store's author is an id, not a name. */
+function originLabel(origin: MemoryRevisionView["origin"]): string {
+  return origin === "agent_proposed" ? "Bot" : "You";
+}
+
+/** One instant, as its own calendar date and time; the exact value stays in the DOM. */
+function formatInstant(iso: string): string {
+  return new Date(iso).toLocaleString();
+}
+
 export function MemoryScreen({
   state,
   onScope,
@@ -74,34 +87,32 @@ export function MemoryScreen({
   }
 
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console memory-screen" aria-busy={state.status === "loading"}>
       <header className="memory-header">
-        <h2>Memory</h2>
-        <div className="memory-scopes" role="group" aria-label="Which documents to show">
-          <Button
-            aria-pressed={state.scope === "active"}
-            onClick={() => {
-              onScope("active");
-            }}
-          >
-            Current
-          </Button>
-          <Button
-            aria-pressed={state.scope === "deleted"}
-            onClick={() => {
-              onScope("deleted");
-            }}
-          >
-            Removed
-          </Button>
+        <div>
+          <h2>Memory</h2>
+          <p className="muted">What this bot remembers, correctable in place.</p>
         </div>
+        <SegmentedControl
+          label="Which documents to show"
+          options={scopeOptions}
+          value={state.scope}
+          onChange={(scope) => {
+            onScope(scope as MemoryScope);
+          }}
+        />
       </header>
 
       {state.documents.length === 0 ? (
         state.status === "ready" ? (
-          <p className="muted">
-            {state.scope === "active" ? "Nothing remembered yet." : "Nothing removed."}
-          </p>
+          <div className="empty-state">
+            <h3>{state.scope === "active" ? "Nothing remembered yet" : "Nothing removed"}</h3>
+            <p className="muted">
+              {state.scope === "active"
+                ? "This bot has no durable documents."
+                : "A removed document keeps its history and can be restored."}
+            </p>
+          </div>
         ) : null
       ) : (
         <ul className="memory-list">
@@ -153,22 +164,43 @@ function MemoryDocumentCard({
 }: MemoryDocumentCardProps) {
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // Which revision is being confirmed, and where the request came from: the
+  // tombstone's own button confirms under the actions, a timeline entry
+  // confirms inside itself, and the two are never drawn together.
+  const [restoring, setRestoring] = useState<{
+    readonly revision: number;
+    readonly from: "card" | "timeline";
+  } | null>(null);
+  const removed = document.deletedAt !== null;
 
-  async function restore(revision: number): Promise<void> {
-    await onRestore({
-      documentId: document.documentId,
-      revision,
-      reason: `Restored revision ${revision}`,
-    });
+  async function restore(revision: number, reason: string): Promise<boolean> {
+    const applied = await onRestore({ documentId: document.documentId, revision, reason });
+
+    if (applied) {
+      setRestoring(null);
+    }
+
+    return applied;
   }
 
   return (
-    <li className={document.deletedAt === null ? "memory-document" : "memory-document removed"}>
+    <Card
+      as="li"
+      variant="raised"
+      className={removed ? "memory-document memory-document--removed" : "memory-document"}
+      data-removed={removed ? "true" : undefined}
+    >
       <div className="memory-document-header">
         <h3>{document.title}</h3>
-        <span className="memory-kind">{kindLabels[document.kind]}</span>
+        <Badge>{kindLabels[document.kind]}</Badge>
+        {removed ? <Badge tone="destructive">Removed</Badge> : null}
         <span className="memory-revision muted">v{document.revision}</span>
       </div>
+
+      <p className="memory-meta muted">
+        Last change by {originLabel(document.lastChangedOrigin)} ·{" "}
+        <time dateTime={document.lastChangedAt}>{formatInstant(document.lastChangedAt)}</time>
+      </p>
 
       <MemoryText text={document.content} className="memory-content" />
 
@@ -184,9 +216,10 @@ function MemoryDocumentCard({
       <div className="memory-actions">
         {scope === "deleted" ? (
           <Button
+            variant="primary"
             disabled={pending}
             onClick={() => {
-              void restore(document.revision);
+              setRestoring({ revision: document.revision, from: "card" });
             }}
           >
             Restore
@@ -203,13 +236,14 @@ function MemoryDocumentCard({
               {editing ? "Cancel" : "Edit"}
             </Button>
             <Button
+              variant="destructive"
               disabled={pending}
               onClick={() => {
                 setEditing(false);
-                setRemoving(!removing);
+                setRemoving(true);
               }}
             >
-              {removing ? "Cancel" : "Delete"}
+              Remove
             </Button>
           </>
         )}
@@ -236,21 +270,52 @@ function MemoryDocumentCard({
       ) : null}
 
       {removing ? (
-        <RemoveForm
-          documentId={document.documentId}
+        <RemoveConfirm
+          document={document}
           pending={pending}
-          onSubmit={async (input) => {
-            if (await onRemove(input)) {
+          onCancel={() => {
+            setRemoving(false);
+          }}
+          onSubmit={async (reason) => {
+            const applied = await onRemove({ documentId: document.documentId, reason });
+
+            if (applied) {
               setRemoving(false);
             }
+
+            return applied;
           }}
         />
       ) : null}
 
-      {historyOpen ? (
-        <RevisionHistory history={history} pending={pending} onRestore={restore} />
+      {restoring?.from === "card" ? (
+        <RestoreConfirm
+          document={document}
+          revision={restoring.revision}
+          pending={pending}
+          onCancel={() => {
+            setRestoring(null);
+          }}
+          onSubmit={(reason) => restore(restoring.revision, reason)}
+        />
       ) : null}
-    </li>
+
+      {historyOpen ? (
+        <RevisionTimeline
+          document={document}
+          history={history}
+          pending={pending}
+          restoring={restoring?.from === "timeline" ? restoring.revision : null}
+          onRestore={(revision) => {
+            setRestoring({ revision, from: "timeline" });
+          }}
+          onCancelRestore={() => {
+            setRestoring(null);
+          }}
+          onSubmitRestore={(revision, reason) => restore(revision, reason)}
+        />
+      ) : null}
+    </Card>
   );
 }
 
@@ -310,23 +375,28 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
           }}
         />
       </Field>
-      <Button type="submit" disabled={pending}>
+      <Button className="memory-inline-action" type="submit" variant="primary" disabled={pending}>
         Save
       </Button>
     </form>
   );
 }
 
-interface RemoveFormProps {
-  readonly documentId: string;
+interface RemoveConfirmProps {
+  readonly document: MemoryDocumentView;
   readonly pending: boolean;
-  readonly onSubmit: (input: {
-    readonly documentId: string;
-    readonly reason: string;
-  }) => Promise<void>;
+  readonly onCancel: () => void;
+  readonly onSubmit: (reason: string) => Promise<boolean>;
 }
 
-function RemoveForm({ documentId, pending, onSubmit }: RemoveFormProps) {
+/**
+ * A removal is a confirmation that names its consequence: the document leaves
+ * the current list, its history and its id stay, and the Removed scope can
+ * bring it back. It is inline rather than a modal — the card the decision is
+ * about stays visible — and the reason is required because the wire records
+ * one.
+ */
+function RemoveConfirm({ document, pending, onCancel, onSubmit }: RemoveConfirmProps) {
   const [reason, setReason] = useState("");
 
   return (
@@ -334,10 +404,13 @@ function RemoveForm({ documentId, pending, onSubmit }: RemoveFormProps) {
       className="memory-form"
       onSubmit={(event) => {
         event.preventDefault();
-        void onSubmit({ documentId, reason });
+        void onSubmit(reason);
       }}
     >
-      <p className="muted">Removing keeps the history and can be undone from the Removed list.</p>
+      <p className="memory-consequence" role="note">
+        Removing &quot;{document.title}&quot; leaves Current. Its history and its id are kept, and
+        you can restore it from Removed.
+      </p>
       <Field label="Why remove it">
         <Input
           required
@@ -349,20 +422,98 @@ function RemoveForm({ documentId, pending, onSubmit }: RemoveFormProps) {
           }}
         />
       </Field>
-      <Button type="submit" disabled={pending}>
-        Delete
-      </Button>
+      <div className="memory-actions">
+        <Button disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="destructive" disabled={pending || reason.trim() === ""}>
+          Remove document
+        </Button>
+      </div>
     </form>
   );
 }
 
-interface RevisionHistoryProps {
-  readonly history: MemoryState["history"][string] | undefined;
+interface RestoreConfirmProps {
+  readonly document: MemoryDocumentView;
+  readonly revision: number;
   readonly pending: boolean;
-  readonly onRestore: (revision: number) => Promise<void>;
+  readonly onCancel: () => void;
+  readonly onSubmit: (reason: string) => Promise<boolean>;
 }
 
-function RevisionHistory({ history, pending, onRestore }: RevisionHistoryProps) {
+/**
+ * A restore is a confirmation too: the chosen revision becomes the newest
+ * revision, and a removed document returns to Current. It is inline beside the
+ * revision — or in the tombstone's card — and the reason is prefilled with the
+ * action so the operator confirms rather than authors it.
+ */
+function RestoreConfirm({ document, revision, pending, onCancel, onSubmit }: RestoreConfirmProps) {
+  const [reason, setReason] = useState(`Restored revision ${String(revision)}`);
+  const removed = document.deletedAt !== null;
+
+  return (
+    <form
+      className="memory-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit(reason);
+      }}
+    >
+      <p className="memory-consequence" role="note">
+        {removed
+          ? `Restoring revision ${String(revision)} returns "${document.title}" to Current as its newest revision.`
+          : `Restoring revision ${String(revision)} makes its text the newest revision; nothing already recorded is erased.`}
+      </p>
+      <Field label="Why restore it">
+        <Input
+          required
+          maxLength={500}
+          value={reason}
+          onChange={(event) => {
+            setReason(event.target.value);
+          }}
+        />
+      </Field>
+      <div className="memory-actions">
+        <Button disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" disabled={pending || reason.trim() === ""}>
+          Restore revision
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+interface RevisionTimelineProps {
+  readonly document: MemoryDocumentView;
+  readonly history: MemoryState["history"][string] | undefined;
+  readonly pending: boolean;
+  readonly restoring: number | null;
+  readonly onRestore: (revision: number) => void;
+  readonly onCancelRestore: () => void;
+  readonly onSubmitRestore: (revision: number, reason: string) => Promise<boolean>;
+}
+
+/**
+ * The history as a timeline: oldest first, each entry a marker on one vertical
+ * rule, with who, when, why and the text at the time. A restore is offered on
+ * every revision; the newest entry is marked so the current state is visible
+ * in the history rather than inferred from the number. Choosing a revision
+ * opens the confirmation inside that entry, so the text being reapplied and
+ * the consequence sit together.
+ */
+function RevisionTimeline({
+  document,
+  history,
+  pending,
+  restoring,
+  onRestore,
+  onCancelRestore,
+  onSubmitRestore,
+}: RevisionTimelineProps) {
   if (history === undefined || history.status === "loading") {
     return <p className="muted">Loading history…</p>;
   }
@@ -375,33 +526,46 @@ function RevisionHistory({ history, pending, onRestore }: RevisionHistoryProps) 
     );
   }
 
+  const latest = history.revisions[history.revisions.length - 1]?.revision;
+
   return (
-    <ol className="revision-list">
+    <ol className="memory-timeline">
       {history.revisions.map((revision) => (
         <li
           key={revision.revision}
-          className={revision.deleted ? "revision revision-deleted" : "revision"}
+          className="memory-timeline-entry"
+          data-latest={revision.revision === latest ? "true" : undefined}
+          data-deleted={revision.deleted ? "true" : undefined}
         >
-          <div className="revision-header">
+          <span className="memory-timeline-marker" aria-hidden="true" />
+          <div className="memory-timeline-header">
             <span className="memory-revision muted">v{revision.revision}</span>
-            <span className="revision-author">
-              {revision.origin === "agent_proposed" ? "Bot" : "You"}
-            </span>
+            <span>{originLabel(revision.origin)}</span>
             <time className="muted" dateTime={revision.createdAt}>
-              {new Date(revision.createdAt).toLocaleString()}
+              {formatInstant(revision.createdAt)}
             </time>
-            {revision.deleted ? <span className="revision-removed">Removed</span> : null}
+            {revision.deleted ? <Badge tone="destructive">Removed</Badge> : null}
           </div>
-          <p className="revision-reason">{revision.reason}</p>
-          <MemoryText text={revision.content} className="revision-content" />
+          <p className="memory-timeline-reason">{revision.reason}</p>
+          <MemoryText text={revision.content} className="memory-timeline-content" />
           <Button
+            className="memory-inline-action"
             disabled={pending}
             onClick={() => {
-              void onRestore(revision.revision);
+              onRestore(revision.revision);
             }}
           >
             Restore this revision
           </Button>
+          {restoring === revision.revision ? (
+            <RestoreConfirm
+              document={document}
+              revision={revision.revision}
+              pending={pending}
+              onCancel={onCancelRestore}
+              onSubmit={(reason) => onSubmitRestore(revision.revision, reason)}
+            />
+          ) : null}
         </li>
       ))}
     </ol>
