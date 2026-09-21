@@ -655,6 +655,27 @@ async function captureWorkspace(
   await expect(page).toHaveURL(new RegExp(`/bots/${botId}$`));
 }
 
+/**
+ * The conversation's acceptance captures (slice 13.7): a run streaming, a
+ * message with an attachment, and an upload failure on its row, each in both
+ * modes. They land in `test-results/ui/` beside the shell's captures, which CI
+ * uploads and the pull request links, and each state is exercised here rather
+ * than only asserted, so the capture is of the real client against the real
+ * API.
+ */
+async function captureConversationState(page: Page, name: string): Promise<void> {
+  const uiDir = path.resolve("test-results/ui");
+
+  await mkdir(uiDir, { recursive: true });
+
+  for (const mode of ["dark", "light"] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.emulateMedia({ colorScheme: mode });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(uiDir, `${name}-1280-${mode}.png`) });
+  }
+}
+
 let harness: BrowserHarness | undefined;
 
 test.beforeAll(async () => {
@@ -791,6 +812,12 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByText("Steer this run", { exact: true })).toBeVisible();
     await run.continueAfterApproval();
+
+    // A streaming run: the tokens have landed and the run is still live, so
+    // the capture shows the bubbles, the attribution and the stop control.
+    await expect(page.getByText(/offline assistant response/)).toBeVisible();
+    await captureConversationState(page, "conversation-streaming");
+
     await rpc(page, "runs/stop", { runId: run.runId });
     await run.cancel();
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
@@ -799,6 +826,33 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
     await expect(page.getByText("shell", { exact: true })).toBeVisible();
     expect(await repositories.routines.listForBot(botId)).toHaveLength(1);
+
+    // An attachment: staged, uploaded and sent, then read back as the card in
+    // the operator's bubble.
+    await page
+      .locator(".composer input[type='file']")
+      .setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
+    await expect(page.locator(".composer-file-ready")).toBeVisible();
+    await page.getByLabel("Message", { exact: true }).fill("Here is the note");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.locator("a.message-attachment")).toBeVisible();
+    await captureConversationState(page, "conversation-attachment");
+
+    // An upload failure: the route refuses, and the row says so while the
+    // draft stands.
+    await page.route("**/threads/*/attachments**", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "offline" }),
+      });
+    });
+    await page
+      .locator(".composer input[type='file']")
+      .setInputFiles({ name: "lost.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
+    await expect(page.locator(".composer-file-failed")).toBeVisible();
+    await captureConversationState(page, "conversation-upload-failed");
+    await page.unroute("**/threads/*/attachments**");
 
     await captureWorkspace(page, current.origin, botId, threadId);
   } finally {

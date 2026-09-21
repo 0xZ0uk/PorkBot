@@ -5,6 +5,7 @@ import type { RunEvent } from "@porkbot/core";
 import { describe, expect, it } from "vitest";
 import {
   createScriptedEvents,
+  runCancelled,
   runCompleted,
   runStarted,
   scriptedThreadTransport,
@@ -111,6 +112,7 @@ describe("the thread console", () => {
         id: "message-0",
         role: "user",
         text: "do it",
+        createdAt: "2026-01-01T00:00:00.000Z",
         attachments: [],
         streaming: false,
       },
@@ -119,6 +121,8 @@ describe("the thread console", () => {
         id: messageId,
         role: "assistant",
         text: "Hello",
+        // The stream does not carry the row's write time.
+        createdAt: null,
         attachments: [],
         streaming: false,
       },
@@ -163,6 +167,8 @@ describe("the thread console", () => {
         id: messageId,
         role: "assistant",
         text: "One two",
+        // The stream does not carry the row's write time.
+        createdAt: null,
         attachments: [],
         streaming: false,
       },
@@ -224,6 +230,7 @@ describe("the thread console", () => {
         id: "message-0",
         role: "user",
         text: "say hello",
+        createdAt: "2026-01-01T00:00:00.000Z",
         attachments: [],
         streaming: false,
       },
@@ -232,6 +239,7 @@ describe("the thread console", () => {
         id: messageId,
         role: "assistant",
         text: "Hello world",
+        createdAt: "2026-01-01T00:00:00.000Z",
         attachments: [],
         streaming: false,
       },
@@ -379,6 +387,7 @@ describe("the thread console", () => {
         id: "message-0",
         role: "user",
         text: "",
+        createdAt: "2026-01-01T00:00:00.000Z",
         attachments: [],
         streaming: false,
       },
@@ -739,6 +748,97 @@ describe("the console's sent messages", () => {
       "token.delta",
       "run.completed",
     ]);
+
+    console.stop();
+  });
+});
+
+describe("the console's stop request", () => {
+  it("asks the active run once and holds the control until the run settles", async () => {
+    const events = createScriptedEvents();
+    let settleStop: () => void = () => undefined;
+    const transport = scriptedThreadTransport({
+      events: events.procedure,
+      stop: (id) =>
+        new Promise((resolve) => {
+          settleStop = () => {
+            resolve({ id, status: "cancelled", stopRequestedAt: "2026-01-01T00:00:00.000Z" });
+          };
+        }),
+    });
+    const console = consoleFor(transport);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+    await until(() => console.state().activeRunId === runId, "the active run");
+
+    // A second ask while the first is in flight is the same request.
+    console.stopRun();
+    console.stopRun();
+
+    expect(transport.stopCalls).toEqual([runId]);
+    expect(console.state().stopping).toBe(true);
+    expect(console.state().stopError).toBeNull();
+
+    settleStop();
+
+    // The request landed while the run is still live; the frames settle it.
+    await until(() => console.state().stopping === true, "the pending stop");
+    expect(console.state().activeRunId).toBe(runId);
+
+    events.push(runCancelled(threadId, runId, 2));
+    await until(() => console.state().activeRunId === null, "the settled run");
+
+    expect(console.state().stopping).toBe(false);
+
+    console.stop();
+  });
+
+  it("names a failed request and leaves the run exactly as the stream has it", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({
+      events: events.procedure,
+      stop: async () => {
+        throw new ORPCError("NOT_FOUND", {
+          defined: true,
+          status: 404,
+          message: "no such run",
+        });
+      },
+    });
+    const console = consoleFor(transport);
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    events.push(runStarted(threadId, runId, 1));
+    await until(() => console.state().activeRunId === runId, "the active run");
+
+    console.stopRun();
+
+    await until(() => console.state().stopError !== null, "the failure sentence");
+
+    expect(console.state().stopError).toBe("This run already finished.");
+    expect(console.state().stopping).toBe(false);
+    expect(console.state().activeRunId).toBe(runId);
+
+    console.stop();
+  });
+
+  it("is a no-op when no run is active", async () => {
+    const events = createScriptedEvents();
+    const transport = scriptedThreadTransport({ events: events.procedure });
+    const console = consoleFor(transport);
+
+    console.start();
+    await until(() => console.state().status === "ready", "the transcript");
+
+    console.stopRun();
+
+    expect(transport.stopCalls).toEqual([]);
+    expect(console.state().stopping).toBe(false);
 
     console.stop();
   });

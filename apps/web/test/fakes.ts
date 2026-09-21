@@ -25,6 +25,7 @@ import type {
   ModelProbe,
   NotificationPreference,
   RunGet,
+  RunStop,
   Thread,
   ThreadEventsCallOptions,
   ThreadEventsProcedure,
@@ -164,6 +165,11 @@ export interface ScriptedThreadTransportOptions {
    */
   readonly runs?: Readonly<Record<string, RunGet>> | (() => Readonly<Record<string, RunGet>>);
   /**
+   * The console's stop request. The default answers the run as stopped; a
+   * test that wants a refusal installs its own.
+   */
+  readonly stop?: (runId: string) => Promise<RunStop>;
+  /**
    * The composer's send seam. The default throws, so a console test that
    * never sends stays honest; a composer test installs the answer or the
    * refusal it wants and reads `sendCalls` for what the send carried.
@@ -184,11 +190,13 @@ export function scriptedThreadTransport(
 ): ConsoleTransport & {
   readonly transcriptCalls: string[];
   readonly runCalls: string[];
+  readonly stopCalls: string[];
   readonly sendCalls: Parameters<ConsoleTransport["send"]>[0][];
   readonly uploadCalls: Parameters<ConsoleTransport["uploadAttachment"]>[0][];
 } {
   const transcriptCalls: string[] = [];
   const runCalls: string[] = [];
+  const stopCalls: string[] = [];
   const sendCalls: Parameters<ConsoleTransport["send"]>[0][] = [];
   const uploadCalls: Parameters<ConsoleTransport["uploadAttachment"]>[0][] = [];
   const notExercised = (): never => {
@@ -198,6 +206,7 @@ export function scriptedThreadTransport(
   return {
     transcriptCalls,
     runCalls,
+    stopCalls,
     sendCalls,
     uploadCalls,
 
@@ -250,6 +259,19 @@ export function scriptedThreadTransport(
       }
 
       return stored;
+    },
+
+    async stop(runId) {
+      stopCalls.push(runId);
+      const stop =
+        options.stop ??
+        (async (id: string): Promise<RunStop> => ({
+          id,
+          status: "cancelled",
+          stopRequestedAt: "2026-01-01T00:00:00.000Z",
+        }));
+
+      return stop(runId);
     },
 
     async send(input) {
@@ -563,6 +585,17 @@ export function runCompleted(
     runId,
     type: "run.completed",
     messageId,
+  };
+}
+
+export function runCancelled(threadId: string, runId: string, seq: number): RunEvent {
+  return {
+    schemaVersion: RUN_EVENT_SCHEMA_VERSION,
+    seq,
+    threadId,
+    runId,
+    type: "run.cancelled",
+    reason: "operator",
   };
 }
 

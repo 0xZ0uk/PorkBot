@@ -112,6 +112,60 @@ describe("the composer screen", () => {
     ).toBe(true);
   });
 
+  it("names the bot in the placeholder", async () => {
+    await render(<ComposerScreen state={state()} botName="Ada" {...handlers()} />);
+
+    expect(textarea().getAttribute("placeholder")).toBe("Message Ada");
+
+    await render(<ComposerScreen state={state()} {...handlers()} />);
+
+    expect(textarea().getAttribute("placeholder")).toBe("Message the bot");
+  });
+
+  it("offers the stop control while a run is active and reports the request", async () => {
+    const onStop = vi.fn();
+
+    await render(<ComposerScreen state={state()} canStop onStop={onStop} {...handlers()} />);
+
+    const stop = container.querySelector("button[aria-label='Stop the run']");
+
+    expect(stop).not.toBeNull();
+
+    await act(async () => {
+      (stop as HTMLButtonElement).click();
+    });
+
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the stop control while the request is out and shows its refusal", async () => {
+    await render(
+      <ComposerScreen
+        state={state()}
+        canStop
+        stopping
+        stopError="The stop could not be requested; try again."
+        onStop={vi.fn()}
+        {...handlers()}
+      />,
+    );
+
+    const stop = container.querySelector(
+      "button[aria-label='Stopping the run']",
+    ) as HTMLButtonElement;
+
+    expect(stop.disabled).toBe(true);
+    expect(container.querySelector("[role='alert']")?.textContent).toBe(
+      "The stop could not be requested; try again.",
+    );
+  });
+
+  it("shows no stop control when no run is active", async () => {
+    await render(<ComposerScreen state={state()} {...handlers()} />);
+
+    expect(container.querySelector("button[aria-label='Stop the run']")).toBeNull();
+  });
+
   it("reports typing and sends on Enter, never on Shift+Enter", async () => {
     const calls = handlers();
 

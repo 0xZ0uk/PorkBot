@@ -1,6 +1,6 @@
 import { fileDownloadPath } from "@porkbot/contracts";
 import type { ToolCallSnapshot } from "@porkbot/core";
-import { Button } from "@porkbot/ui";
+import { Button, Card, Icon } from "@porkbot/ui";
 import { useState } from "react";
 
 /**
@@ -121,9 +121,14 @@ export function ToolCallEntry({
         </dl>
       </details>
       {download === undefined ? null : (
-        <a className="tool-call-artifact tool-call-download" href={download.downloadPath}>
-          Download {download.filename} ({formatBytes(download.sizeBytes)})
-        </a>
+        <Card className="artifact-card">
+          <span className="attachment-icon" aria-hidden="true">
+            <Icon name="download" size={14} />
+          </span>
+          <a className="tool-call-artifact tool-call-download" href={download.downloadPath}>
+            Download {download.filename} ({formatBytes(download.sizeBytes)})
+          </a>
+        </Card>
       )}
     </li>
   );
