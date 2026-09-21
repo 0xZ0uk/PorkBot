@@ -175,10 +175,13 @@ active release running; a failed switch attempts to restore it.
   [`docs/reverse-proxy.md`](../reverse-proxy.md) is the contract and the runbook for when it does not.
   A proxy that cannot reach the API answers unhealthy, and Caddy keeps its
   certificates in the `caddy-data` volume across restarts.
-- **Resource floors and per-bot sizing.** The host floor is 4 vCPU / 8 GB for
-  the stack, plus roughly 2 GB and 50 GB+ of disk per bot, with 50 GB+ more for
-  images (PRD decision 32; ["A bot's computer"](computers.md#a-bots-computer)). The stack's ceilings fit
-  inside the base with headroom for the OS, the Docker daemon and the bots:
+- **Resource floors and per-bot sizing.** The [measured deployment floor](operations-floor.md)
+  is the sizing record: it names the host shape, bot count, idle usage and
+  workload peaks instead of presenting a sum of possible ceilings as observed
+  usage. Re-run `pnpm deploy:measure` after changing images, limits or host
+  shape; it cold-boots the live stack without rebuilding and uploads the raw
+  samples from the run. The stack's ceilings remain a separate invariant,
+  checked below and against one bot's configured share:
 
   | service            | CPU ceiling | memory ceiling |
   | ------------------ | ----------- | -------------- |
@@ -191,12 +194,10 @@ active release running; a failed switch attempts to restore it.
   | proxy              | 0.1         | 128 MB         |
   | supervisor         | 0.2         | 384 MB         |
 
-  Summed, the stack's ceilings are 3.0 vCPU and about 5.5 GB, so the base host
-  runs the stack and one bot at its default `PORKBOT_COMPUTER_CPUS` (1) and
-  `PORKBOT_COMPUTER_MEMORY_MB` (2048) with roughly 0.5 GB of memory left for
-  the OS and the Docker daemon. Each additional bot adds its own ~2 GB and
-  `PORKBOT_COMPUTER_DISK_MB` (10240), so the floor for N bots is
-  4 vCPU / (8 + 2N) GB and (50 + 50N) GB+ of disk. Raise the ceilings in
+  The test invariant still sums the ceilings: the declared stack is 3.0 vCPU
+  and about 5.5 GB, and the default one-bot share is
+  `PORKBOT_COMPUTER_CPUS` (1) plus `PORKBOT_COMPUTER_MEMORY_MB` (2048). This is
+  a capacity guard, not the measured floor. Raise the ceilings in
   `deploy/compose.yaml` only after raising the host; the per-bot settings live
   in the env file and are re-read at supervisor boot.
 

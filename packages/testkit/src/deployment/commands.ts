@@ -7,13 +7,21 @@ import {
   replaceImageTag,
   writeReleaseState,
 } from "./release.ts";
+import {
+  defaultMeasurementBotCount,
+  defaultMeasurementIdleSeconds,
+  defaultMeasurementRawPath,
+  defaultMeasurementSampleIntervalSeconds,
+  defaultMeasurementTablePath,
+  runDeploymentMeasure,
+} from "./measure.ts";
 import { deploymentValuePlans, generateDeploymentSecrets } from "./secrets.ts";
 import { isDeploymentImageTag, requiredDeploymentKeys, validateDeploymentEnv } from "./validate.ts";
 import type { DeploymentProblem } from "./validate.ts";
 
 /**
- * The single-host deployment commands (slices 12.1 and 12.4, PRD stories 1,
- * 2 and 8).
+ * The single-host deployment commands (slices 12.1, 12.4 and 14.1, PRD
+ * stories 1, 2 and 8).
  *
  * `deploy:setup` renders deploy/.env from the committed template, generating
  * every secret in the register; `deploy:check` validates the file without
@@ -73,6 +81,7 @@ interface DeployOptions {
   readonly origin: string | undefined;
   readonly webOrigin: string | undefined;
   readonly tag: string | undefined;
+  readonly computerImage: string | undefined;
   readonly proxyImage: string | undefined;
   readonly egressNetwork: string | undefined;
   readonly envFile: string | undefined;
@@ -80,6 +89,11 @@ interface DeployOptions {
   readonly compose: boolean;
   readonly volumes: boolean;
   readonly waitSeconds: string | undefined;
+  readonly measureBots: string | undefined;
+  readonly measureIdleSeconds: string | undefined;
+  readonly measureSampleIntervalSeconds: string | undefined;
+  readonly measureTablePath: string | undefined;
+  readonly measureRawPath: string | undefined;
   readonly positionals: readonly string[];
 }
 
@@ -93,6 +107,7 @@ export function usageText(): string {
     "  up       Setup if needed, validate, build, start, and wait for every healthcheck.",
     "  upgrade  Pull a release, preflight its health, migrate, then switch services.",
     "  rollback Redeploy the previous release without reversing database migrations.",
+    "  measure  Cold-boot the live stack, run the provider/backup workload, and write a floor table.",
     "  status   Show each service's state, health and published ports.",
     "  logs     Follow the stack's logs.",
     "  down     Stop the stack; pass --volumes to delete its data too.",
@@ -102,6 +117,7 @@ export function usageText(): string {
     "  --origin <url>        The public origin (setup and up; required when rendering).",
     "  --web-origin <url>    The origin notification links use (defaults to --origin).",
     "  --tag <tag>          Image tag for setup/upgrade, or an explicit rollback target.",
+    "  --computer-image <ref>  Machine image to store during setup (also enables Docker measurement).",
     "  --proxy-image <ref>   Enable the credential proxy with this sidecar image; needs",
     "  --egress-network <n>  ...this egress network. Both together enable the segment.",
     "  --env-path <path>     Env file to write or read (default: deploy/.env, relative to the repo).",
@@ -109,6 +125,11 @@ export function usageText(): string {
     "  --compose             Also run `docker compose config` (check).",
     "  --volumes             Delete volumes too, including Postgres data (down).",
     "  --wait-timeout <s>    Health wait budget for `up` (default: PORKBOT_DEPLOY_WAIT_SECONDS or 300).",
+    "  --bots <n>            Bot count per provider for `measure` (default: 1).",
+    "  --idle-seconds <s>    Idle phase duration for `measure` (default: 3600).",
+    "  --sample-interval-seconds <s>  Idle sample interval (default: 60).",
+    "  --table-path <path>   Floor table output (measure; defaults to the architecture table).",
+    "  --raw-path <path>     Raw JSON output (measure; defaults to the ignored artifact path).",
     "  --help                This text.",
   ].join("\n");
 }
@@ -127,6 +148,7 @@ function parseDeployArguments(
   let origin: string | undefined;
   let webOrigin: string | undefined;
   let tag: string | undefined;
+  let computerImage: string | undefined;
   let proxyImage: string | undefined;
   let egressNetwork: string | undefined;
   let envFile: string | undefined;
@@ -134,6 +156,11 @@ function parseDeployArguments(
   let compose = false;
   let volumes = false;
   let waitSeconds: string | undefined;
+  let measureBots: string | undefined;
+  let measureIdleSeconds: string | undefined;
+  let measureSampleIntervalSeconds: string | undefined;
+  let measureTablePath: string | undefined;
+  let measureRawPath: string | undefined;
 
   const takeValue = (index: number, flag: string): { value: string } | { problem: string } => {
     const value = argv[index + 1];
@@ -178,6 +205,7 @@ function parseDeployArguments(
           origin,
           webOrigin,
           tag,
+          computerImage,
           proxyImage,
           egressNetwork,
           envFile,
@@ -185,6 +213,11 @@ function parseDeployArguments(
           compose,
           volumes,
           waitSeconds,
+          measureBots,
+          measureIdleSeconds,
+          measureSampleIntervalSeconds,
+          measureTablePath,
+          measureRawPath,
           positionals,
         },
       };
@@ -198,10 +231,16 @@ function parseDeployArguments(
       "--origin",
       "--web-origin",
       "--tag",
+      "--computer-image",
       "--proxy-image",
       "--egress-network",
       "--env-path",
       "--wait-timeout",
+      "--bots",
+      "--idle-seconds",
+      "--sample-interval-seconds",
+      "--table-path",
+      "--raw-path",
     ];
 
     if (option !== undefined && valueFlags.includes(option)) {
@@ -223,6 +262,9 @@ function parseDeployArguments(
         case "--tag":
           tag = taken.value;
           break;
+        case "--computer-image":
+          computerImage = taken.value;
+          break;
         case "--proxy-image":
           proxyImage = taken.value;
           break;
@@ -234,6 +276,21 @@ function parseDeployArguments(
           break;
         case "--wait-timeout":
           waitSeconds = taken.value;
+          break;
+        case "--bots":
+          measureBots = taken.value;
+          break;
+        case "--idle-seconds":
+          measureIdleSeconds = taken.value;
+          break;
+        case "--sample-interval-seconds":
+          measureSampleIntervalSeconds = taken.value;
+          break;
+        case "--table-path":
+          measureTablePath = taken.value;
+          break;
+        case "--raw-path":
+          measureRawPath = taken.value;
           break;
         default:
           break;
@@ -265,6 +322,7 @@ function parseDeployArguments(
       origin,
       webOrigin,
       tag,
+      computerImage,
       proxyImage,
       egressNetwork,
       envFile,
@@ -272,6 +330,11 @@ function parseDeployArguments(
       compose,
       volumes,
       waitSeconds,
+      measureBots,
+      measureIdleSeconds,
+      measureSampleIntervalSeconds,
+      measureTablePath,
+      measureRawPath,
       positionals,
     },
   };
@@ -429,6 +492,7 @@ function runSetup(context: DeploymentContext, options: DeployOptions): number {
 
   const proxyImage = options.proxyImage?.trim() || prior("PORKBOT_COMPUTER_PROXY_IMAGE");
   const egressNetwork = options.egressNetwork?.trim() || prior("PORKBOT_COMPUTER_EGRESS_NETWORK");
+  const computerImage = options.computerImage?.trim() || prior("PORKBOT_COMPUTER_IMAGE");
 
   if ((proxyImage === "") !== (egressNetwork === "")) {
     context.err(
@@ -463,6 +527,10 @@ function runSetup(context: DeploymentContext, options: DeployOptions): number {
     ],
     ["PORKBOT_IMAGE_TAG", imageTag],
   ]);
+
+  if (computerImage !== "") {
+    setupValues.set("PORKBOT_COMPUTER_IMAGE", computerImage);
+  }
 
   if (proxyEnabled) {
     setupValues.set("PORKBOT_COMPUTER_PROXY_IMAGE", proxyImage);
@@ -1232,6 +1300,109 @@ function runUp(context: DeploymentContext, options: DeployOptions): number {
   return 0;
 }
 
+function measurementInteger(
+  context: DeploymentContext,
+  raw: string | undefined,
+  fallback: number,
+  minimum: number,
+  flag: string,
+): number | null {
+  if (raw === undefined) {
+    return fallback;
+  }
+
+  if (!/^\d+$/.test(raw)) {
+    context.err(`${flag} must be a whole number of at least ${String(minimum)}.`);
+
+    return null;
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isSafeInteger(value) || value < minimum) {
+    context.err(`${flag} must be a whole number of at least ${String(minimum)}.`);
+
+    return null;
+  }
+
+  return value;
+}
+
+function runMeasure(context: DeploymentContext, options: DeployOptions): number {
+  const envFile = resolveEnvFilePath(context, options);
+  const values = loadValidEnvFile(context, envFile);
+
+  if (values === null) {
+    return 1;
+  }
+
+  // The workload intentionally exercises both provider implementations. A
+  // deployment with only the offline emulator would produce a partial floor
+  // and make the table look more complete than the host's real configuration.
+  if ((values.get("PORKBOT_COMPUTER_IMAGE")?.trim() ?? "") === "") {
+    context.err(
+      "deploy:measure needs PORKBOT_COMPUTER_IMAGE so it can exercise both the offline and Docker providers; configure the image and re-run deploy:check first.",
+    );
+
+    return 2;
+  }
+
+  const botCount = measurementInteger(
+    context,
+    options.measureBots,
+    defaultMeasurementBotCount,
+    1,
+    "--bots",
+  );
+  const idleSeconds = measurementInteger(
+    context,
+    options.measureIdleSeconds,
+    defaultMeasurementIdleSeconds,
+    0,
+    "--idle-seconds",
+  );
+  const sampleIntervalSeconds = measurementInteger(
+    context,
+    options.measureSampleIntervalSeconds,
+    defaultMeasurementSampleIntervalSeconds,
+    1,
+    "--sample-interval-seconds",
+  );
+
+  if (botCount === null || idleSeconds === null || sampleIntervalSeconds === null) {
+    return 2;
+  }
+
+  const socketProblem = dockerSocketProblem(context, values);
+
+  if (socketProblem !== undefined) {
+    context.err(socketProblem);
+
+    return 1;
+  }
+
+  return runDeploymentMeasure(
+    {
+      repoRoot: context.repoRoot,
+      composeFile: composeFilePath(context),
+      projectName: projectName(context),
+      envFile,
+      env: context.env,
+      out: context.out,
+      err: context.err,
+      spawn: context.spawn,
+    },
+    {
+      botCount,
+      waitSeconds: waitSeconds(context, options),
+      idleSeconds,
+      sampleIntervalSeconds,
+      tablePath: options.measureTablePath ?? defaultMeasurementTablePath,
+      rawPath: options.measureRawPath ?? defaultMeasurementRawPath,
+    },
+  );
+}
+
 function runManagement(
   context: DeploymentContext,
   args: readonly string[],
@@ -1321,6 +1492,8 @@ export function runDeploy(argv: readonly string[], context: DeploymentContext): 
       return runUpgrade(context, options);
     case "rollback":
       return runRollback(context, options);
+    case "measure":
+      return runMeasure(context, options);
     case "status":
       return runManagement(context, [
         "ps",

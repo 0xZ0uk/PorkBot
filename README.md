@@ -13,9 +13,9 @@ product-facing ships until those are in place.
 
 - Node 24 (`.nvmrc`, `engines.node`, `devEngines.runtime`)
 - pnpm 10 (`packageManager`, `engines.pnpm`, `devEngines.packageManager`)
-- A self-hosted deployment: 4 vCPU / 8 GB for the stack, plus roughly 2 GB and
-  50 GB+ of disk per bot, with 50 GB+ more for machine images; the arithmetic is
-  in [`docs/architecture/operations.md`](docs/architecture/operations.md#single-host-deployment).
+- A self-hosted deployment sized from the [measured floor table](docs/architecture/operations-floor.md),
+  with the Compose ceilings and per-bot limits kept as the separate deployment
+  invariant in [`docs/architecture/operations.md`](docs/architecture/operations.md#single-host-deployment).
 
 Corepack is the easiest way to get the pinned pnpm:
 
@@ -50,6 +50,7 @@ pnpm stack:down       # stop the stack; remove containers, network and volumes
 pnpm deploy:setup     # render deploy/.env from the template, generating every secret
 pnpm deploy:check     # validate deploy/.env without touching Docker
 pnpm deploy:up        # setup if needed, validate, build, start and wait for the stack
+pnpm deploy:measure   # cold-boot the live stack, run the workload, write the floor table
 pnpm deploy:upgrade --tag <git-sha>  # pull, preflight, migrate and switch to a release
 pnpm deploy:rollback  # redeploy the last release against the current schema
 pnpm deploy:status    # show the deployment's services, states and ports
@@ -80,21 +81,22 @@ build the workspace dependencies they need first, so a clean checkout only needs
 
 The docs, checked for staleness by the `docs` CI tier:
 
-| Document                                                   | What it is for                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`docs/self-host.md`](docs/self-host.md)                   | Install and run a single-host deployment, first sign-in to first run    |
-| [`docs/environment.md`](docs/environment.md)               | Every environment variable, with its default and whether it is required |
-| [`docs/runbook.md`](docs/runbook.md)                       | Dead disk, stuck run, rotated key, failed upgrade, restore              |
-| [`docs/backups.md`](docs/backups.md)                       | The backup process, the envelope and the recovery path                  |
-| [`docs/computers.md`](docs/computers.md)                   | Choosing and configuring a computer provider, sizing and snapshots      |
-| [`docs/security.md`](docs/security.md)                     | The trust boundary and the non-goals                                    |
-| [`docs/reverse-proxy.md`](docs/reverse-proxy.md)           | The one-origin contract and the streaming runbook                       |
-| [`docs/credential-proxy.md`](docs/credential-proxy.md)     | Why credentials never enter a sandbox                                   |
-| [`docs/bot-secrets.md`](docs/bot-secrets.md)               | The bot-secret flow and its trust posture                               |
-| [`docs/desktop.md`](docs/desktop.md)                       | The desktop shell: hardening, tray, signed updates                      |
-| [`docs/release.md`](docs/release.md)                       | Building, signing and publishing desktop artifacts                      |
-| [`docs/architecture/index.md`](docs/architecture/index.md) | Why the product is built this way: the design record, in reading order  |
-| [`docs/status.md`](docs/status.md)                         | What ships today and what is deferred                                   |
+| Document                                                                         | What it is for                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [`docs/self-host.md`](docs/self-host.md)                                         | Install and run a single-host deployment, first sign-in to first run    |
+| [`docs/environment.md`](docs/environment.md)                                     | Every environment variable, with its default and whether it is required |
+| [`docs/runbook.md`](docs/runbook.md)                                             | Dead disk, stuck run, rotated key, failed upgrade, restore              |
+| [`docs/backups.md`](docs/backups.md)                                             | The backup process, the envelope and the recovery path                  |
+| [`docs/computers.md`](docs/computers.md)                                         | Choosing and configuring a computer provider, sizing and snapshots      |
+| [`docs/architecture/operations-floor.md`](docs/architecture/operations-floor.md) | The measured deployment floor and workload record                       |
+| [`docs/security.md`](docs/security.md)                                           | The trust boundary and the non-goals                                    |
+| [`docs/reverse-proxy.md`](docs/reverse-proxy.md)                                 | The one-origin contract and the streaming runbook                       |
+| [`docs/credential-proxy.md`](docs/credential-proxy.md)                           | Why credentials never enter a sandbox                                   |
+| [`docs/bot-secrets.md`](docs/bot-secrets.md)                                     | The bot-secret flow and its trust posture                               |
+| [`docs/desktop.md`](docs/desktop.md)                                             | The desktop shell: hardening, tray, signed updates                      |
+| [`docs/release.md`](docs/release.md)                                             | Building, signing and publishing desktop artifacts                      |
+| [`docs/architecture/index.md`](docs/architecture/index.md)                       | Why the product is built this way: the design record, in reading order  |
+| [`docs/status.md`](docs/status.md)                                               | What ships today and what is deferred                                   |
 
 ## Layout
 

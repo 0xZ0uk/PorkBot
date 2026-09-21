@@ -65,14 +65,15 @@ proxy runbook uses.
 
 ### Release identity
 
-| Variable                | Required | Default                | Notes                                                                                                      |
-| ----------------------- | -------- | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `PORKBOT_IMAGE_TAG`     | required | the checkout's git SHA | Tags every built image; never `latest`. `--tag <git-sha>` overrides it.                                    |
-| `PORKBOT_BIND_ADDRESS`  | optional | `127.0.0.1`            | Where the proxy binds 80 and 443. A host reachable from the internet sets `0.0.0.0` or its public address. |
-| `PORKBOT_WEB_PORT`      | optional | `3000`                 | Loopback port for the web host.                                                                            |
-| `PORKBOT_API_PORT`      | optional | `3001`                 | Loopback port for the API.                                                                                 |
-| `LOG_LEVEL`             | optional | `info`                 | `debug`, `info`, `warn` or `error`; anything else refuses to boot.                                         |
-| `PORKBOT_DOCKER_SOCKET` | optional | `/var/run/docker.sock` | The daemon socket the supervisor mounts. Rootless Docker or a non-standard daemon names its own path.      |
+| Variable                    | Required | Default                | Notes                                                                                                                                                     |
+| --------------------------- | -------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORKBOT_IMAGE_TAG`         | required | the checkout's git SHA | Tags every built image; never `latest`. `--tag <git-sha>` overrides it.                                                                                   |
+| `PORKBOT_BIND_ADDRESS`      | optional | `127.0.0.1`            | Where the proxy binds 80 and 443. A host reachable from the internet sets `0.0.0.0` or its public address.                                                |
+| `PORKBOT_WEB_PORT`          | optional | `3000`                 | Loopback port for the web host.                                                                                                                           |
+| `PORKBOT_API_PORT`          | optional | `3001`                 | Loopback port for the API.                                                                                                                                |
+| `LOG_LEVEL`                 | optional | `info`                 | `debug`, `info`, `warn` or `error`; anything else refuses to boot.                                                                                        |
+| `PORKBOT_DOCKER_SOCKET`     | optional | `/var/run/docker.sock` | The daemon socket the supervisor mounts. Rootless Docker or a non-standard daemon names its own path.                                                     |
+| `PORKBOT_DOCKER_SOCKET_GID` | optional | `0`                    | Numeric group id for the mounted Docker socket; set it when the socket is not root-group-owned so the node supervisor can use it without running as root. |
 
 ### Database
 
@@ -219,6 +220,13 @@ them by hand only when running a process outside the stack.
 | `TESTKIT_HARNESS_STATE`              | optional | `.testkit/harness.json`     | The state file suites read to clone the shared migrated template.                                                                |
 | `TESTKIT_POSTGRES_IMAGE`             | optional | the pinned production major | Overrides the harness Postgres image; it must be the production major.                                                           |
 | `PORKBOT_DESKTOP_UPDATE_PRIVATE_KEY` | optional | —                           | Secret. The Ed25519 private key a desktop release signs with; a GitHub Actions secret, read by the release CLI. Never committed. |
+
+`pnpm deploy:measure` uses the deployment file above and requires
+`PORKBOT_COMPUTER_IMAGE` so it can exercise both the offline and Docker
+providers. Its `--bots`, `--idle-seconds`, `--sample-interval-seconds`,
+`--table-path` and `--raw-path` flags control the workload and output paths;
+the default Markdown output is the [measured floor table](architecture/operations-floor.md)
+and the default raw output is an ignored CI artifact.
 
 ## The nightly canary's workflow
 

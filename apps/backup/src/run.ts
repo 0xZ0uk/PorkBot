@@ -54,6 +54,8 @@ export interface BackupRunDependencies {
   readonly retentionDays: number;
   /** Days between restore drills. */
   readonly drillIntervalDays: number;
+  /** Run the restore drill even when the normal interval has not elapsed. */
+  readonly forceDrill?: boolean | undefined;
   readonly now: () => Date;
   /** The canary read the drill performs; defaults to the store. */
   readonly readCanary?: CanaryReader | undefined;
@@ -136,12 +138,14 @@ async function drillIfDue(
   previous: BackupStatus,
 ): Promise<BackupRunRecord | undefined> {
   const lastDrillAt = previous.lastDrill?.drillFinishedAt ?? null;
-  const due = isDrillDue({
-    now: dependencies.now(),
-    lastDrillAt,
-    lastBackupAt: settled.finishedAt,
-    intervalDays: dependencies.drillIntervalDays,
-  });
+  const due =
+    dependencies.forceDrill === true ||
+    isDrillDue({
+      now: dependencies.now(),
+      lastDrillAt,
+      lastBackupAt: settled.finishedAt,
+      intervalDays: dependencies.drillIntervalDays,
+    });
 
   if (!due) {
     return undefined;
