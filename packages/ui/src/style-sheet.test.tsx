@@ -16,6 +16,7 @@ import { Menu } from "./menu.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
 import { Separator } from "./separator.tsx";
 import { Skeleton } from "./skeleton.tsx";
+import { SegmentedControl } from "./segmented-control.tsx";
 import { registerStyleSheet } from "./style-sheet.ts";
 import { Tabs } from "./tabs.tsx";
 import { ToastProvider, useToast } from "./toast.tsx";
@@ -45,6 +46,7 @@ function Pusher() {
 
 function Gallery() {
   const [tab, setTab] = useState("screen");
+  const [scope, setScope] = useState("active");
   const [open, setOpen] = useState(false);
 
   return (
@@ -91,6 +93,15 @@ function Gallery() {
         items={[
           { id: "screen", label: "Screen", panel: <p>Screen</p> },
           { id: "files", label: "Files", panel: <p>Files</p> },
+        ]}
+      />
+      <SegmentedControl
+        label="Documents"
+        value={scope}
+        onChange={setScope}
+        options={[
+          { value: "active", label: "Current" },
+          { value: "deleted", label: "Removed" },
         ]}
       />
       <Menu
@@ -208,6 +219,8 @@ describe("the register stylesheet", () => {
       "pb-tab-list",
       "pb-tab",
       "pb-tab-panel",
+      "pb-segmented",
+      "pb-segmented__option",
       "pb-menu",
       "pb-menu__popup",
       "pb-menu__item",

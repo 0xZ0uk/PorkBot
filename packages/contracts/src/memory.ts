@@ -47,7 +47,9 @@ export const memoryWriteOriginSchema = z.enum(MEMORY_WRITE_ORIGINS);
  * A document as the operator's list reads it. `deletedAt` is null for a live
  * document and the tombstone instant for one under the `deleted` scope, so one
  * shape serves both scopes and the client tells them apart without a second
- * endpoint.
+ * endpoint. The `lastChanged*` fields are the revision the document's
+ * `revision` points at — the same who, when and origin the history holds — so
+ * the list can name the last change without reading every document's history.
  */
 export const memoryDocumentSchema = z.object({
   documentId: z.string().min(1),
@@ -57,6 +59,9 @@ export const memoryDocumentSchema = z.object({
   /** The live revision number; for a tombstone, the revision that removed it. */
   revision: z.number().int().min(1),
   deletedAt: z.iso.datetime().nullable(),
+  lastChangedOrigin: memoryWriteOriginSchema,
+  lastChangedBy: z.string().min(1),
+  lastChangedAt: z.iso.datetime(),
 });
 
 export type MemoryDocumentView = z.infer<typeof memoryDocumentSchema>;

@@ -166,7 +166,15 @@ export async function startScriptedMemoryApi(
           deleted: false,
         });
 
-        documents[index] = { ...current, title, content, revision: record.revision };
+        documents[index] = {
+          ...current,
+          title,
+          content,
+          revision: record.revision,
+          lastChangedOrigin: record.origin,
+          lastChangedBy: record.author,
+          lastChangedAt: record.createdAt,
+        };
 
         return { ok: true, action: "update", revision: record };
       }
@@ -192,6 +200,9 @@ export async function startScriptedMemoryApi(
           ...current,
           revision: record.revision,
           deletedAt: record.createdAt,
+          lastChangedOrigin: record.origin,
+          lastChangedBy: record.author,
+          lastChangedAt: record.createdAt,
         };
 
         return { ok: true, action: "delete", revision: record };
@@ -235,6 +246,9 @@ export async function startScriptedMemoryApi(
           content: target.content,
           revision: record.revision,
           deletedAt: null,
+          lastChangedOrigin: record.origin,
+          lastChangedBy: record.author,
+          lastChangedAt: record.createdAt,
         };
 
         return { ok: true, action: "restore", revision: record };

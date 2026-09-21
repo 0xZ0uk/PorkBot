@@ -85,8 +85,19 @@ function revisionRow(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
+/** A list row: the record shape the joined list projection returns. */
+function documentListRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    ...documentRecordRow({ deletedAt: null }),
+    lastChangedOrigin: "deliberate",
+    lastChangedBy: "user-1",
+    lastChangedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 const isDocumentRead = (text: string): boolean =>
-  text.startsWith('select document_id as "documentId"') && text.includes("from memory_document");
+  /^select (?:d\.)?document_id as "documentId"/.test(text) && text.includes("from memory_document");
 const isCount = (text: string): boolean => text.startsWith("select count(*)::int");
 const isRevisionRead = (text: string): boolean => text.includes("from memory_revision");
 const isCreate = (text: string): boolean => text.startsWith("with inserted as");
@@ -568,15 +579,24 @@ describe("the scoped reads", () => {
     await expect(store.find("bot-1", "doc-1")).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("lists live documents oldest first, scoped to the bot", async () => {
+  it("lists live documents oldest first, scoped to the bot, with the last change", async () => {
     const database = fakeDatabase(({ text }) =>
-      isDocumentRead(text) && !isRevisionRead(text) ? [documentRow()] : [],
+      isDocumentRead(text) && !isRevisionRead(text) ? [documentListRow()] : [],
     );
     const store = createMemoryStore(worker, database);
 
-    expect(await store.list("bot-1")).toEqual([documentRow()]);
-    expect(database.calls[0]?.text).toContain("deleted_at is null");
-    expect(database.calls[0]?.text).toContain("order by created_at asc, id asc");
+    expect(await store.list("bot-1")).toEqual([
+      {
+        ...documentRow(),
+        deletedAt: null,
+        lastChangedOrigin: "deliberate",
+        lastChangedBy: "user-1",
+        lastChangedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    expect(database.calls[0]?.text).toContain("d.deleted_at is null");
+    expect(database.calls[0]?.text).toContain("r.revision = d.revision");
+    expect(database.calls[0]?.text).toContain("order by d.created_at asc, d.id asc");
     expect(database.calls[0]?.values).toEqual(["space-1", "bot-1"]);
   });
 
@@ -597,17 +617,28 @@ describe("the scoped reads", () => {
     expect(database.calls[0]?.values).toEqual(["space-1", "bot-1", "doc-1"]);
   });
 
-  it("lists deleted documents newest first, with the tombstone instant", async () => {
+  it("lists deleted documents newest first, with the tombstone instant and its hand", async () => {
     const database = fakeDatabase(({ text }) =>
-      isDocumentRead(text) && !isRevisionRead(text) ? [documentRecordRow()] : [],
+      isDocumentRead(text) && !isRevisionRead(text)
+        ? [documentListRow({ deletedAt: new Date("2026-01-02T00:00:00.000Z") })]
+        : [],
     );
     const store = createMemoryStore(operator, database);
 
     const deleted = await store.listDeleted("bot-1");
 
-    expect(deleted).toEqual([{ ...documentRow(), deletedAt: "2026-01-02T00:00:00.000Z" }]);
-    expect(database.calls[0]?.text).toContain("deleted_at is not null");
-    expect(database.calls[0]?.text).toContain("order by deleted_at desc, id desc");
+    expect(deleted).toEqual([
+      {
+        ...documentRow(),
+        deletedAt: "2026-01-02T00:00:00.000Z",
+        lastChangedOrigin: "deliberate",
+        lastChangedBy: "user-1",
+        lastChangedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+    expect(database.calls[0]?.text).toContain("d.deleted_at is not null");
+    expect(database.calls[0]?.text).toContain("r.revision = d.revision");
+    expect(database.calls[0]?.text).toContain("order by d.deleted_at desc, d.id desc");
     expect(database.calls[0]?.values).toEqual(["space-1", "bot-1"]);
   });
 });

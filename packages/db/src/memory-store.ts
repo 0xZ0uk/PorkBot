@@ -123,6 +123,18 @@ const documentColumns =
   'document_id as "documentId", kind::text as "kind", title, content, revision';
 const documentRecordColumns = `${documentColumns}, deleted_at as "deletedAt"`;
 const revisionColumns = `${documentColumns}, origin::text as "origin", author, reason, deleted, created_at as "createdAt"`;
+/**
+ * The list projection joins each document to the revision its `revision`
+ * column points at, so the row the operator's list reads carries the last
+ * change's who and when without a second query per document. The join is the
+ * revision unique index `(bot_id, document_id, revision)`, and a document
+ * always has that revision: the store creates the row and revision 1 in one
+ * statement and every change advances both together.
+ */
+const documentListColumns =
+  'd.document_id as "documentId", d.kind::text as "kind", d.title, d.content, d.revision, ' +
+  'd.deleted_at as "deletedAt", r.origin::text as "lastChangedOrigin", r.author as "lastChangedBy", ' +
+  'r.created_at as "lastChangedAt"';
 
 interface DocumentRow {
   readonly documentId: string;
@@ -135,6 +147,12 @@ interface DocumentRow {
 interface DocumentRecordRow extends DocumentRow {
   /** NULL while the document is live; a tombstone instant once it is not. */
   readonly deletedAt: Date | null;
+}
+
+interface DocumentListRow extends DocumentRecordRow {
+  readonly lastChangedOrigin: string;
+  readonly lastChangedBy: string;
+  readonly lastChangedAt: Date;
 }
 
 interface RevisionRow extends DocumentRow {
@@ -169,10 +187,13 @@ function toRevision(row: RevisionRow): MemoryRevision {
   };
 }
 
-function toDocumentRecord(row: DocumentRecordRow): MemoryDocumentRecord {
+function toDocumentRecord(row: DocumentListRow): MemoryDocumentRecord {
   return {
     ...toDocument(row),
     deletedAt: row.deletedAt === null ? null : row.deletedAt.toISOString(),
+    lastChangedOrigin: row.lastChangedOrigin as MemoryWriteOrigin,
+    lastChangedBy: row.lastChangedBy,
+    lastChangedAt: row.lastChangedAt.toISOString(),
   };
 }
 
@@ -223,31 +244,36 @@ async function listDocuments(
   database: Queryable,
   spaceId: string,
   botId: string,
-): Promise<readonly MemoryDocument[]> {
-  const { rows } = await database.query<DocumentRow>(
-    `select ${documentColumns} from memory_document ` +
-      "where space_id = $1 and bot_id = $2 and deleted_at is null " +
-      "order by created_at asc, id asc",
+): Promise<readonly MemoryDocumentRecord[]> {
+  const { rows } = await database.query<DocumentListRow>(
+    `select ${documentListColumns} from memory_document d ` +
+      "join memory_revision r on r.bot_id = d.bot_id and r.document_id = d.document_id " +
+      "and r.revision = d.revision " +
+      "where d.space_id = $1 and d.bot_id = $2 and d.deleted_at is null " +
+      "order by d.created_at asc, d.id asc",
     [spaceId, botId],
   );
 
-  return rows.map(toDocument);
+  return rows.map(toDocumentRecord);
 }
 
 /**
  * Tombstoned documents, newest deletion first. The row keeps the last state
  * the deletion recorded, so the operator reads what was removed, and its
- * revision is the tombstone revision a restore names.
+ * revision is the tombstone revision a restore names — the joined revision
+ * then names who removed it and when.
  */
 async function listDeletedDocuments(
   database: Queryable,
   spaceId: string,
   botId: string,
 ): Promise<readonly MemoryDocumentRecord[]> {
-  const { rows } = await database.query<DocumentRecordRow>(
-    `select ${documentRecordColumns} from memory_document ` +
-      "where space_id = $1 and bot_id = $2 and deleted_at is not null " +
-      "order by deleted_at desc, id desc",
+  const { rows } = await database.query<DocumentListRow>(
+    `select ${documentListColumns} from memory_document d ` +
+      "join memory_revision r on r.bot_id = d.bot_id and r.document_id = d.document_id " +
+      "and r.revision = d.revision " +
+      "where d.space_id = $1 and d.bot_id = $2 and d.deleted_at is not null " +
+      "order by d.deleted_at desc, d.id desc",
     [spaceId, botId],
   );
 

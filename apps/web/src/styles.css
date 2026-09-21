@@ -1676,10 +1676,10 @@
 }
 
 /*
- * The memory screen (slice 8.3): documents as cards, the history as a nested
- * timeline. Colours stay in the theme's custom properties like every other
- * surface, and long content is folded by the screen's disclosure rather than
- * by a line-clamp here.
+ * The memory screen (slice 13.12): documents as cards, the history as a
+ * timeline inside the card. Colours stay in the theme's custom properties like
+ * every other surface, and long content is folded by the screen's disclosure
+ * rather than by a line-clamp here.
  */
 
 .memory-header {
@@ -1695,9 +1695,8 @@
   font-size: 1.25rem;
 }
 
-.memory-scopes {
-  display: flex;
-  gap: var(--pb-space-sm);
+.memory-header p {
+  margin: var(--pb-space-2xs) 0 0;
 }
 
 .memory-list {
@@ -1710,17 +1709,16 @@
 }
 
 .memory-document {
-  display: flex;
-  flex-direction: column;
   gap: var(--pb-space-sm);
-  padding: var(--pb-space-md);
-  background: var(--pb-color-surface);
-  border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-lg);
 }
 
-.memory-document.removed {
+.memory-document--removed {
   border-style: dashed;
+}
+
+.memory-document--removed .memory-content,
+.memory-document--removed .memory-meta {
+  color: var(--pb-color-muted);
 }
 
 .memory-document-header {
@@ -1732,24 +1730,23 @@
 
 .memory-document-header h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--pb-type-heading-size);
+  line-height: var(--pb-type-heading-line-height);
   overflow-wrap: anywhere;
-}
-
-.memory-kind {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--pb-color-muted);
 }
 
 .memory-revision {
   margin-left: auto;
-  font-size: 0.75rem;
+  font-size: var(--pb-type-meta-size);
+}
+
+.memory-meta {
+  margin: 0;
+  font-size: var(--pb-type-meta-size);
 }
 
 .memory-content,
-.revision-content {
+.memory-timeline-content {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1771,6 +1768,11 @@
   flex-wrap: wrap;
 }
 
+/* An action inside a column reads as a button, not a full-width bar. */
+.memory-inline-action {
+  align-self: flex-start;
+}
+
 .memory-form {
   display: flex;
   flex-direction: column;
@@ -1781,97 +1783,240 @@
   border-radius: var(--pb-radius-md);
 }
 
-.memory-form .muted {
-  font-size: 0.875rem;
+.memory-consequence {
+  margin: 0;
+  font-size: var(--pb-type-body-size);
+  line-height: var(--pb-type-body-line-height);
+  overflow-wrap: anywhere;
 }
 
-.revision-list {
+/*
+ * The timeline: one vertical rule with a marker per revision, oldest first.
+ * The newest marker is filled and a removal's marker is destructive, so the
+ * current state and the tombstone are visible in the history itself.
+ */
+
+.memory-timeline {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--pb-space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--pb-space-sm);
+  gap: var(--pb-space-lg);
+  position: relative;
 }
 
-.revision {
+.memory-timeline::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--pb-space-sm) - 0.5px);
+  top: var(--pb-space-xs);
+  bottom: var(--pb-space-xs);
+  width: 1px;
+  background: var(--pb-color-border);
+}
+
+.memory-timeline-entry {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--pb-space-xs);
-  padding: var(--pb-space-sm);
-  background: var(--pb-color-background);
-  border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-md);
 }
 
-.revision-deleted {
-  border-color: var(--pb-color-destructive);
+.memory-timeline-marker {
+  position: absolute;
+  left: calc(-1 * var(--pb-space-lg) + var(--pb-space-sm) - 0.25rem);
+  top: var(--pb-space-xs);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--pb-radius-pill);
+  background: var(--pb-color-border);
 }
 
-.revision-header {
+.memory-timeline-entry[data-latest="true"] .memory-timeline-marker {
+  background: var(--pb-color-foreground);
+}
+
+.memory-timeline-entry[data-deleted="true"] .memory-timeline-marker {
+  background: var(--pb-color-destructive);
+}
+
+.memory-timeline-header {
   display: flex;
   align-items: baseline;
   gap: var(--pb-space-sm);
   flex-wrap: wrap;
 }
 
-.revision-header .memory-revision {
+.memory-timeline-header .memory-revision {
   margin-left: 0;
 }
 
-.revision-removed {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--pb-color-destructive);
-}
-
-.revision-reason {
+.memory-timeline-reason {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--pb-type-body-size);
   overflow-wrap: anywhere;
 }
 
 /*
- * The usage screen (slice 8.8): one totals block per period, in the memory
- * screen's card vocabulary rather than a table, because the periods are a
- * short list and not a data grid.
+ * The usage screen (slice 13.12): a report, not a definition list. The totals
+ * are stat tiles and the spend is bars — length is tokens against the busiest
+ * day or teammate — drawn in the monochrome surfaces' own colours, because the
+ * accent belongs to "waiting for you" and the chart is information, not state.
  */
 
-.usage-list {
+.usage-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--pb-space-md);
+}
+
+.usage-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+}
+
+.usage-section-title {
+  margin: 0;
+  font-size: var(--pb-type-heading-size);
+  line-height: var(--pb-type-heading-line-height);
+}
+
+.usage-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pb-space-md);
+}
+
+.usage-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-2xs);
+  min-width: 8rem;
+  padding: var(--pb-space-md);
+  background: var(--pb-color-surface);
+  border: 1px solid var(--pb-color-border);
+  border-radius: var(--pb-radius-xl);
+}
+
+.usage-stat-label {
+  color: var(--pb-color-muted);
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  font-weight: var(--pb-type-meta-weight);
+}
+
+.usage-stat-value {
+  font-size: var(--pb-type-title-size);
+  line-height: var(--pb-type-title-line-height);
+  font-weight: var(--pb-type-title-weight);
+}
+
+.usage-partial {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--pb-type-meta-size);
+}
+
+.usage-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+  margin: 0;
+}
+
+.usage-bars {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--pb-space-md);
+  gap: var(--pb-space-xs);
 }
 
-.usage-period {
-  padding: var(--pb-space-md);
-  background: var(--pb-color-surface);
-  border: 1px solid var(--pb-color-border);
-  border-radius: var(--pb-radius-lg);
-}
-
-.usage-totals h3 {
-  margin: 0 0 var(--pb-space-sm);
-  font-size: 1rem;
-}
-
-.usage-totals dl {
+.usage-bar-row {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--pb-space-xs) var(--pb-space-sm);
-  margin: 0;
+  grid-template-columns: 8rem 1fr max-content;
+  align-items: center;
+  gap: var(--pb-space-sm);
 }
 
-.usage-totals dt {
-  color: var(--pb-color-muted);
+.usage-bar-day {
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.usage-totals dd {
+.usage-bar-track {
+  display: flex;
+  align-items: stretch;
+  height: 0.75rem;
+  min-width: 0;
+  background: var(--pb-color-raised);
+  border-radius: var(--pb-radius-pill);
+  overflow: hidden;
+}
+
+.usage-bar-segment--input {
+  background: var(--pb-color-foreground);
+}
+
+.usage-bar-segment--output {
+  background: color-mix(in srgb, var(--pb-color-foreground) 45%, var(--pb-color-raised));
+}
+
+.usage-bar-total {
+  font-size: var(--pb-type-meta-size);
+  line-height: var(--pb-type-meta-line-height);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-xs);
   margin: 0;
+  font-size: var(--pb-type-meta-size);
+}
+
+.usage-legend .usage-swatch:not(:first-child) {
+  margin-left: var(--pb-space-sm);
+}
+
+.usage-swatch {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--pb-radius-sm);
+}
+
+.usage-swatch--input {
+  background: var(--pb-color-foreground);
+}
+
+.usage-swatch--output {
+  background: color-mix(in srgb, var(--pb-color-foreground) 45%, var(--pb-color-raised));
+}
+
+.usage-bot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pb-space-sm);
+}
+
+.usage-bot-header {
+  display: flex;
+  align-items: center;
+  gap: var(--pb-space-sm);
+}
+
+@media (max-width: 40rem) {
+  .usage-bar-row {
+    grid-template-columns: 5rem 1fr max-content;
+  }
 }
 
 /*
@@ -2467,10 +2612,6 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-}
-
-.settings-usage-bot {
-  margin-top: var(--pb-space-md);
 }
 
 /*

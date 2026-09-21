@@ -385,6 +385,9 @@ export function fakeMemoryDocument(
     content: "The operator prefers keyboard-driven editing.",
     revision: 1,
     deletedAt: null,
+    lastChangedOrigin: "deliberate",
+    lastChangedBy: "user-1",
+    lastChangedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -480,7 +483,15 @@ export function scriptedMemoryTransport(
         createdAt: at,
       });
 
-      documents[index] = { ...current, title, content, revision: revision.revision };
+      documents[index] = {
+        ...current,
+        title,
+        content,
+        revision: revision.revision,
+        lastChangedOrigin: revision.origin,
+        lastChangedBy: revision.author,
+        lastChangedAt: revision.createdAt,
+      };
       revisionsFor(documentId).push(revision);
 
       return { ok: true, action: "update", revision };
@@ -506,7 +517,14 @@ export function scriptedMemoryTransport(
         createdAt: at,
       });
 
-      documents[index] = { ...current, revision: revision.revision, deletedAt: at };
+      documents[index] = {
+        ...current,
+        revision: revision.revision,
+        deletedAt: at,
+        lastChangedOrigin: revision.origin,
+        lastChangedBy: revision.author,
+        lastChangedAt: revision.createdAt,
+      };
       revisionsFor(documentId).push(revision);
 
       return { ok: true, action: "delete", revision };
@@ -550,6 +568,9 @@ export function scriptedMemoryTransport(
         content: target.content,
         revision: revision.revision,
         deletedAt: null,
+        lastChangedOrigin: revision.origin,
+        lastChangedBy: revision.author,
+        lastChangedAt: revision.createdAt,
       };
       revisionsFor(documentId).push(revision);
 

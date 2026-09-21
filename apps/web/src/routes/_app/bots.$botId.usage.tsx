@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { UsageScreen } from "../../screens/usage.tsx";
@@ -7,7 +7,7 @@ import { UsageSkeleton } from "../../screens/loading.tsx";
 /**
  * One bot's usage. The loader reads the contract's answer through the usage
  * transport, so a refusal shows this route's error component instead of a
- * half-rendered table, and the screen stays a function of the data.
+ * half-rendered report, and the screen stays a function of the data.
  */
 export const Route = createFileRoute("/_app/bots/$botId/usage")({
   pendingComponent: UsageSkeleton,
@@ -19,14 +19,7 @@ export const Route = createFileRoute("/_app/bots/$botId/usage")({
 function UsageRoute() {
   const usage = Route.useLoaderData();
 
-  return (
-    <>
-      <p className="muted">
-        <Link to="/">Back to bots</Link>
-      </p>
-      <UsageScreen usage={usage} />
-    </>
-  );
+  return <UsageScreen usage={usage} />;
 }
 
 /** A usage read that failed: one sentence and one retry. */

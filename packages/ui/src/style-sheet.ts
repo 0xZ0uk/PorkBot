@@ -81,6 +81,11 @@ export const registerStyleSheet = `
 .pb-tab[aria-selected="true"]{color:var(--pb-color-foreground);border-bottom-color:var(--pb-color-accent)}
 .pb-tab:focus-visible{outline:2px solid var(--pb-color-accent);outline-offset:-2px}
 .pb-tab-panel{min-height:0}
+.pb-segmented{display:inline-flex;align-items:center;gap:var(--pb-space-2xs);padding:var(--pb-space-2xs);background:var(--pb-color-raised);border:1px solid var(--pb-color-border);border-radius:var(--pb-radius-pill)}
+.pb-segmented__option{padding:var(--pb-space-2xs) var(--pb-space-md);background:transparent;border:0;border-radius:var(--pb-radius-pill);color:var(--pb-color-muted);font-family:inherit;font-size:var(--pb-type-meta-size);line-height:var(--pb-type-meta-line-height);font-weight:var(--pb-type-meta-weight);cursor:pointer;transition:background-color var(--pb-motion-fast) var(--pb-motion-standard),color var(--pb-motion-fast) var(--pb-motion-standard)}
+.pb-segmented__option:hover{color:var(--pb-color-foreground)}
+.pb-segmented__option[aria-checked="true"]{background:var(--pb-color-surface);color:var(--pb-color-foreground);font-weight:600;box-shadow:var(--pb-elevation-raised)}
+.pb-segmented__option:focus-visible{outline:2px solid var(--pb-color-accent);outline-offset:1px}
 .pb-menu{position:relative;display:inline-block}
 .pb-menu__popup{position:absolute;top:calc(100% + var(--pb-space-xs));left:0;z-index:30;min-width:12rem;display:flex;flex-direction:column;gap:var(--pb-space-2xs);padding:var(--pb-space-xs);background:var(--pb-color-surface);border:1px solid var(--pb-color-border);border-radius:var(--pb-radius-xl);box-shadow:var(--pb-elevation-overlay)}
 .pb-menu__popup--end{left:auto;right:0}
@@ -115,7 +120,7 @@ export const registerStyleSheet = `
 .pb-skeleton{display:block;background:var(--pb-color-raised);border-radius:var(--pb-radius-md);animation:pb-pulse var(--pb-motion-ambient) ease-in-out infinite}
 .pb-skeleton-group{display:flex;flex-direction:column;gap:var(--pb-space-sm)}
 @media (prefers-reduced-motion:reduce){
-.pb-button,.pb-icon-button,.pb-card--interactive{transition-duration:var(--pb-motion-instant)}
+.pb-button,.pb-icon-button,.pb-card--interactive,.pb-segmented__option{transition-duration:var(--pb-motion-instant)}
 .pb-skeleton,.pb-state-chip--working .pb-state-chip__dot,.pb-button__spinner{animation:none}
 .pb-dialog,.pb-toast,.pb-sheet .pb-dialog__panel{animation:none}
 }

@@ -667,10 +667,30 @@ describe("the memory route", () => {
     expect(details?.querySelector("p.memory-content")?.textContent).toBe(long);
   });
 
+  it("names the last change's hand and instant on the card", async () => {
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [
+          fakeMemoryDocument({
+            lastChangedOrigin: "agent_proposed",
+            lastChangedBy: "bot-1",
+            lastChangedAt: "2026-01-02T00:00:00.000Z",
+          }),
+        ],
+        revisions: { "doc-1": [fakeMemoryRevision()] },
+      }),
+    );
+
+    const card = container.querySelector(".memory-document");
+
+    expect(card?.textContent).toContain("Last change by Bot");
+    expect(card?.querySelector("time")?.getAttribute("datetime")).toBe("2026-01-02T00:00:00.000Z");
+  });
+
   it("shows an empty state instead of a blank list", async () => {
     await mountMemory(scriptedMemoryTransport());
 
-    expect(container.textContent).toContain("Nothing remembered yet.");
+    expect(container.textContent).toContain("Nothing remembered yet");
     expect(container.querySelector(".memory-list")).toBeNull();
   });
 
@@ -767,9 +787,12 @@ describe("the memory route", () => {
       buttonByText("History").click();
     });
 
-    await until(() => container.querySelectorAll(".revision").length === 2, "the revision history");
+    await until(
+      () => container.querySelectorAll(".memory-timeline-entry").length === 2,
+      "the revision history",
+    );
 
-    const revisions = [...container.querySelectorAll(".revision")];
+    const revisions = [...container.querySelectorAll(".memory-timeline-entry")];
 
     expect(revisions[0]?.textContent).toContain("You");
     expect(revisions[1]?.textContent).toContain("Bot");
@@ -779,7 +802,7 @@ describe("the memory route", () => {
     );
   });
 
-  it("removes a document and restores it from the removed scope", async () => {
+  it("removes a document behind a confirmation that states the consequence", async () => {
     await mountMemory(
       scriptedMemoryTransport({
         documents: [fakeMemoryDocument()],
@@ -788,18 +811,29 @@ describe("the memory route", () => {
     );
 
     await act(async () => {
-      buttonByText("Delete").click();
+      buttonByText("Remove").click();
     });
 
-    const removeForm = container.querySelector("form.memory-form");
+    const form = container.querySelector("form.memory-form");
 
-    expect(removeForm).not.toBeNull();
-    setValue(removeForm?.querySelector("input") as HTMLInputElement, "no longer relevant");
-    await submit(removeForm as HTMLFormElement);
+    expect(form?.textContent).toContain("leaves Current. Its history and its id are kept");
+    setValue(form?.querySelector("input") as HTMLInputElement, "no longer relevant");
+    await submit(form as HTMLFormElement);
 
     await until(
-      () => container.textContent?.includes("Nothing remembered yet.") === true,
+      () => container.textContent?.includes("Nothing remembered yet") === true,
       "the removed document to leave the live list",
+    );
+  });
+
+  it("restores a tombstone from the removed scope behind a confirmation", async () => {
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [fakeMemoryDocument({ revision: 3, deletedAt: "2026-01-03T00:00:00.000Z" })],
+        revisions: {
+          "doc-1": [fakeMemoryRevision(), fakeMemoryRevision({ revision: 3, deleted: true })],
+        },
+      }),
     );
 
     await act(async () => {
@@ -807,16 +841,24 @@ describe("the memory route", () => {
     });
 
     await until(
-      () => container.textContent?.includes("Preferred editor") === true,
+      () => container.querySelector(".memory-document--removed") !== null,
       "the tombstone in the removed scope",
     );
+
+    expect(container.textContent).toContain("Removed");
 
     await act(async () => {
       buttonByText("Restore").click();
     });
 
+    const form = container.querySelector("form.memory-form");
+
+    expect(form?.textContent).toContain("returns");
+    expect(form?.textContent).toContain("to Current");
+    await submit(form as HTMLFormElement);
+
     await until(
-      () => container.textContent?.includes("Nothing removed.") === true,
+      () => container.textContent?.includes("Nothing removed") === true,
       "the restored document to leave the removed scope",
     );
 
@@ -829,7 +871,47 @@ describe("the memory route", () => {
       "the restored document in the live list",
     );
 
-    expect(container.textContent).toContain("v3");
+    expect(container.textContent).toContain("v4");
+  });
+
+  it("confirms a restore chosen from a revision in the timeline", async () => {
+    await mountMemory(
+      scriptedMemoryTransport({
+        documents: [fakeMemoryDocument({ revision: 2, title: "Second", content: "Second text." })],
+        revisions: {
+          "doc-1": [
+            fakeMemoryRevision(),
+            fakeMemoryRevision({ revision: 2, title: "Second", content: "Second text." }),
+          ],
+        },
+      }),
+    );
+
+    await act(async () => {
+      buttonByText("History").click();
+    });
+
+    await until(
+      () => container.querySelectorAll(".memory-timeline-entry").length === 2,
+      "the revision history",
+    );
+
+    const first = container.querySelectorAll(".memory-timeline-entry")[0];
+
+    await act(async () => {
+      const restore = [...(first?.querySelectorAll("button") ?? [])].find(
+        (button) => button.textContent === "Restore this revision",
+      );
+
+      restore?.click();
+    });
+
+    const form = first?.querySelector("form.memory-form");
+
+    expect(form?.textContent).toContain("Restoring revision 1 makes its text the newest revision");
+    await submit(form as HTMLFormElement);
+
+    await until(() => container.textContent?.includes("v3") === true, "the restored revision");
   });
 });
 
@@ -864,7 +946,7 @@ describe("the usage route", () => {
     await render(<RouterProvider router={router} />);
   }
 
-  it("renders the all-time total and each day's bucket", async () => {
+  it("renders the all-time totals as tiles and the spend as bars", async () => {
     await mountUsage(
       scriptedUsageTransport({
         usage: {
@@ -884,12 +966,19 @@ describe("the usage route", () => {
     );
 
     expect(container.textContent).toContain("Usage");
+    expect(container.textContent).toContain("Informational");
+    expect(container.textContent).toContain("Recorded and displayed only");
     expect(container.textContent).toContain("All time");
     expect(container.textContent).toContain("3500");
     expect(container.textContent).toContain("700");
     expect(container.textContent).toContain("2026-01-02");
-    expect(container.textContent).toContain("1200");
+    expect(container.textContent).toContain("1400");
     expect(container.textContent).toContain("1 of 5 not reported");
+
+    const segments = [...container.querySelectorAll(".usage-bar-segment")];
+
+    expect(segments).toHaveLength(2);
+    expect(segments[0]?.getAttribute("style")).toContain("width");
   });
 
   it("renders an unreported figure as such, never as a zero", async () => {
@@ -898,17 +987,26 @@ describe("the usage route", () => {
         usage: {
           botId: "bot-1",
           total: { inputTokens: null, outputTokens: null, reported: 0, unreported: 2 },
-          periods: [],
+          periods: [
+            {
+              startsAt: "2026-01-02T00:00:00.000Z",
+              inputTokens: null,
+              outputTokens: null,
+              reported: 0,
+              unreported: 2,
+            },
+          ],
         },
       }),
     );
 
-    const values = [...container.querySelectorAll(".usage-totals dd")].map(
+    const values = [...container.querySelectorAll(".usage-stat-value")].map(
       (value) => value.textContent,
     );
 
     expect(values).toEqual(["Not reported", "Not reported", "2"]);
-    expect(container.textContent).toContain("No usage in this period.");
+    expect(container.querySelector(".usage-bar-segment")).toBeNull();
+    expect(container.textContent).toContain("Not reported");
   });
 
   it("shows a bot with no calls as an empty state rather than zero rows", async () => {

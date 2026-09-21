@@ -39,6 +39,11 @@ export { Card, type CardProps, type CardVariant } from "./card.tsx";
 export { Separator, type SeparatorProps } from "./separator.tsx";
 export { ScrollArea, type ScrollAreaProps } from "./scroll-area.tsx";
 export { Tabs, type TabItem, type TabsProps } from "./tabs.tsx";
+export {
+  SegmentedControl,
+  type SegmentedControlOption,
+  type SegmentedControlProps,
+} from "./segmented-control.tsx";
 export { Menu, type MenuItem, type MenuProps } from "./menu.tsx";
 export { Dialog, Sheet, type DialogProps } from "./dialog.tsx";
 export { Tooltip, type TooltipProps } from "./tooltip.tsx";

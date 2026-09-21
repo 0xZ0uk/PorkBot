@@ -1,4 +1,10 @@
-import type { MemoryDocument, MemoryRevision, MemoryRuleError, MemoryWrite } from "@porkbot/core";
+import type {
+  MemoryDocument,
+  MemoryRevision,
+  MemoryRuleError,
+  MemoryWrite,
+  MemoryWriteOrigin,
+} from "@porkbot/core";
 
 /**
  * The durable half of memory (slice 8.1, PRD decision 21; stories 23 and 24).
@@ -47,12 +53,18 @@ export interface MemoryWriteInput {
 
 /**
  * A document as the operator's list reads it: the domain shape plus the
- * tombstone instant. `deletedAt` is null for a live document and an ISO
- * instant for one a deletion removed, so one shape serves both list scopes and
- * a client can tell them apart without a second endpoint.
+ * tombstone instant and the last change's who and when. `deletedAt` is null
+ * for a live document and an ISO instant for one a deletion removed, so one
+ * shape serves both list scopes and a client can tell them apart without a
+ * second endpoint; the last-change fields are the revision the document row
+ * points at, joined rather than inferred, so a card can name the hand that
+ * last touched it without reading the whole history.
  */
 export interface MemoryDocumentRecord extends MemoryDocument {
   readonly deletedAt: string | null;
+  readonly lastChangedOrigin: MemoryWriteOrigin;
+  readonly lastChangedBy: string;
+  readonly lastChangedAt: string;
 }
 
 /**
@@ -98,6 +110,13 @@ export interface MemoryReader {
 
 /** The operator's half: revision history and the writes an operator may make. */
 export interface MemoryDocuments extends MemoryReader {
+  /**
+   * Live documents for one bot, oldest first, each carrying the tombstone
+   * instant and the last change's who and when. The operator's list is the
+   * record shape rather than the bare document, because the screen names the
+   * last hand without loading every history.
+   */
+  list(botId: string): Promise<readonly MemoryDocumentRecord[]>;
   /**
    * Tombstoned documents, newest deletion first. The row keeps the last state
    * the deletion recorded, so the operator can read what was removed — and

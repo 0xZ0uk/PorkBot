@@ -209,7 +209,7 @@ describe("the memory screen over the real wire", () => {
     }
   });
 
-  it("removes a document and restores it from the removed scope", async () => {
+  it("removes a document behind a confirmation and restores it from the removed scope", async () => {
     const api = await startScriptedMemoryApi({
       botId,
       documents: [fakeMemoryDocument()],
@@ -224,17 +224,17 @@ describe("the memory screen over the real wire", () => {
       );
 
       await act(async () => {
-        buttonByText(view.container, "Delete").click();
+        buttonByText(view.container, "Remove").click();
       });
 
       const removeForm = view.container.querySelector("form.memory-form");
 
-      expect(removeForm).not.toBeNull();
+      expect(removeForm?.textContent).toContain("Its history and its id are kept");
       setValue(removeForm?.querySelector("input") as HTMLInputElement, "no longer relevant");
       await submit(removeForm as HTMLFormElement);
 
       await until(
-        () => view.container.textContent?.includes("Nothing remembered yet.") === true,
+        () => view.container.textContent?.includes("Nothing remembered yet") === true,
         "the removal",
       );
 
@@ -243,7 +243,7 @@ describe("the memory screen over the real wire", () => {
       });
 
       await until(
-        () => view.container.textContent?.includes("Preferred editor") === true,
+        () => view.container.querySelector(".memory-document--removed") !== null,
         "the tombstone in the removed scope",
       );
 
@@ -251,8 +251,13 @@ describe("the memory screen over the real wire", () => {
         buttonByText(view.container, "Restore").click();
       });
 
+      const restoreForm = view.container.querySelector("form.memory-form");
+
+      expect(restoreForm?.textContent).toContain("Restoring revision 2 returns");
+      await submit(restoreForm as HTMLFormElement);
+
       await until(
-        () => view.container.textContent?.includes("Nothing removed.") === true,
+        () => view.container.textContent?.includes("Nothing removed") === true,
         "the restore",
       );
 
