@@ -63,6 +63,19 @@ interface BrowserRun {
   readonly callId: string;
   continueAfterApproval(): Promise<void>;
   cancel(): Promise<void>;
+  /** Settle the run successfully, so the surface closes with its report card. */
+  complete(): Promise<void>;
+  /** Settle the run as failed, so the surface closes with the failure line. */
+  fail(): Promise<void>;
+}
+
+interface StartRunOptions {
+  /**
+   * Where the run parks. `approval` (the default) is the gate the existing
+   * flows drive; `working` leaves the run mid-call, so a test can capture the
+   * live strip and then settle it with `complete()` or `fail()`.
+   */
+  readonly stop?: "approval" | "working";
 }
 
 interface BrowserHarness {
@@ -81,7 +94,7 @@ interface BrowserHarness {
   bindActor(page: Page): Promise<UserRepositories>;
   attachComputer(botId: string): Promise<void>;
   seedMemory(botId: string): Promise<void>;
-  startRun(threadId: string): Promise<BrowserRun>;
+  startRun(threadId: string, options?: StartRunOptions): Promise<BrowserRun>;
   close(): Promise<void>;
 }
 
@@ -355,31 +368,12 @@ async function createHarness(): Promise<BrowserHarness> {
         throw new Error("the browser fixture could not seed memory");
       }
     },
-    async startRun(threadId) {
+    async startRun(threadId, options = {}) {
       const actor = harness.actor;
       const repositories = harness.repositories;
 
       if (actor === undefined || repositories === undefined) {
         throw new Error("bindActor must run before starting a run");
-      }
-
-      let run: RunRow | undefined;
-
-      for (let attempt = 0; attempt < 20 && run === undefined; attempt += 1) {
-        const { rows } = await queryable(database).query<RunRow>(
-          'select id, source_message_id as "sourceMessageId" from run where thread_id = $1 ' +
-            "order by created_at desc, id desc limit 1",
-          [threadId],
-        );
-        run = rows[0];
-
-        if (run === undefined) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 100));
-        }
-      }
-
-      if (run === undefined) {
-        throw new Error("the browser send did not create a run");
       }
 
       const system: SystemActor = {
@@ -391,22 +385,52 @@ async function createHarness(): Promise<BrowserHarness> {
       const sink = createRunEventSink(system, queryable(database));
       const approvals = createApprovalStore(system, queryable(database));
       const owner = `browser-worker-${randomUUID()}`;
-      const claimed = await systemRepositories.runs.claim(run.id, 0, owner);
+      let run: RunRow | undefined;
+      let claimed: Awaited<ReturnType<typeof systemRepositories.runs.claim>> | undefined;
 
-      if (claimed === undefined) {
-        throw new Error("the browser run was not claimable");
+      // The send that starts a run is asynchronous from the test's point of
+      // view, so the poll looks for a run it can actually claim rather than
+      // stopping at the thread's previous, already-settled row.
+      for (let attempt = 0; attempt < 20 && claimed === undefined; attempt += 1) {
+        const { rows } = await queryable(database).query<RunRow>(
+          'select id, source_message_id as "sourceMessageId" from run where thread_id = $1 ' +
+            "order by created_at desc, id desc limit 1",
+          [threadId],
+        );
+        const candidate = rows[0];
+
+        if (candidate !== undefined) {
+          const claim = await systemRepositories.runs.claim(candidate.id, 0, owner);
+
+          if (claim !== undefined) {
+            run = candidate;
+            claimed = claim;
+          }
+        }
+
+        if (claimed === undefined) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      if (run === undefined || claimed === undefined) {
+        throw new Error("the browser send did not create a claimable run");
       }
 
       const lease = { owner, fence: claimed.leaseFence };
       const callId = randomUUID();
       const assistantMessageId = randomUUID();
       const thread = await repositories.threads.findById(threadId);
-      let sequence = thread.nextEventSeq;
+      // The same allocation the worker's live run uses: the thread's counter is
+      // the next event's position, and the floor of 1 is the first event a
+      // thread ever has. Incrementing before the append would leave a gap, and
+      // a subscription's reducer holds a non-contiguous frame as pending.
+      let sequence = Math.max(1, thread.nextEventSeq);
 
       async function append(event: EventTemplate): Promise<void> {
-        sequence += 1;
         await sink.append({ ...event, seq: sequence } as RunEvent);
         await realtime.publish({ threadId, latestSeq: sequence });
+        sequence += 1;
       }
 
       await append({
@@ -443,28 +467,31 @@ async function createHarness(): Promise<BrowserHarness> {
         step: { kind: "working", tool: "shell" } satisfies RunStep,
       });
 
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1_000);
-      await approvals.open({
-        runId: run.id,
-        callId,
-        tool: "shell",
-        arguments: { command: "echo offline" },
-        expiresAt,
-      });
-      await append({
-        schemaVersion: 1,
-        threadId,
-        runId: run.id,
-        type: "approval.requested",
-        callId,
-        expiresAt: expiresAt.toISOString(),
-      });
-      await systemRepositories.runs.heartbeat(run.id, lease, {
-        progressed: true,
-        idleSeconds: 0,
-        step: { kind: "waiting", tool: "shell" } satisfies RunStep,
-      });
-      await systemRepositories.runs.update(run.id, lease, { status: "waiting_approval" });
+      if (options.stop !== "working") {
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1_000);
+
+        await approvals.open({
+          runId: run.id,
+          callId,
+          tool: "shell",
+          arguments: { command: "echo offline" },
+          expiresAt,
+        });
+        await append({
+          schemaVersion: 1,
+          threadId,
+          runId: run.id,
+          type: "approval.requested",
+          callId,
+          expiresAt: expiresAt.toISOString(),
+        });
+        await systemRepositories.runs.heartbeat(run.id, lease, {
+          progressed: true,
+          idleSeconds: 0,
+          step: { kind: "waiting", tool: "shell" } satisfies RunStep,
+        });
+        await systemRepositories.runs.update(run.id, lease, { status: "waiting_approval" });
+      }
 
       // A second gate on the same run, already past its deadline and settled
       // by the store, so the captures carry a timed-out card beside the
@@ -575,6 +602,68 @@ async function createHarness(): Promise<BrowserHarness> {
             completed: true,
             release: true,
             attempt: "cancelled",
+          });
+        },
+        async complete() {
+          await append({
+            schemaVersion: 1,
+            threadId,
+            runId: run.id,
+            type: "tool.completed",
+            callId,
+            result: { stdout: "offline", exitCode: 0 },
+            durationMs: 42,
+          });
+          await append({
+            schemaVersion: 1,
+            threadId,
+            runId: run.id,
+            type: "token.delta",
+            messageId: assistantMessageId,
+            delta: "offline assistant response",
+          });
+          await systemRepositories.runs.heartbeat(run.id, lease, {
+            progressed: true,
+            idleSeconds: 0,
+            step: { kind: "thinking", tool: null } satisfies RunStep,
+          });
+          await append({
+            schemaVersion: 1,
+            threadId,
+            runId: run.id,
+            type: "run.completed",
+            messageId: assistantMessageId,
+          });
+          await systemRepositories.runs.update(run.id, lease, {
+            status: "completed",
+            completed: true,
+            release: true,
+            attempt: "completed",
+          });
+        },
+        async fail() {
+          await append({
+            schemaVersion: 1,
+            threadId,
+            runId: run.id,
+            type: "tool.failed",
+            callId,
+            error: 'tool "shell" failed (timed_out): no answer before the deadline',
+            durationMs: 30_000,
+          });
+          await append({
+            schemaVersion: 1,
+            threadId,
+            runId: run.id,
+            type: "run.failed",
+            error: "the model connection dropped",
+            code: "provider",
+          });
+          await systemRepositories.runs.update(run.id, lease, {
+            status: "failed",
+            completed: true,
+            release: true,
+            attempt: "failed",
           });
         },
       };
@@ -787,14 +876,14 @@ async function captureApprovalState(
 }
 
 /**
- * The conversation's acceptance captures (slice 13.7): a run streaming, a
- * message with an attachment, and an upload failure on its row, each in both
- * modes. They land in `test-results/ui/` beside the shell's captures, which CI
- * uploads and the pull request links, and each state is exercised here rather
- * than only asserted, so the capture is of the real client against the real
- * API.
+ * The console's acceptance captures (slices 13.7 and 13.8): the conversation's
+ * streaming run, attachment and upload failure, and the run surface's live
+ * strip and report cards, each in both modes. They land in `test-results/ui/`
+ * beside the shell's captures, which CI uploads and the pull request links, and
+ * each state is exercised here rather than only asserted, so the capture is of
+ * the real client against the real API.
  */
-async function captureConversationState(page: Page, name: string): Promise<void> {
+async function captureConsoleState(page: Page, name: string): Promise<void> {
   const uiDir = path.resolve("test-results/ui");
 
   await mkdir(uiDir, { recursive: true });
@@ -827,6 +916,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
   const screenshotPath = path.resolve("test-results/ui/porkbot-browser.png");
   await mkdir(path.dirname(screenshotPath), { recursive: true });
+
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
 
@@ -991,7 +1081,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.locator(".approval-card[data-approval-state='approved']")).toHaveCount(1);
     await expect(page.locator(".approval-card[data-approval-state='timed_out']")).toHaveCount(1);
     await captureApprovalState(page, "approval-resolved");
-    await captureConversationState(page, "conversation-streaming");
+    await captureConsoleState(page, "conversation-streaming");
 
     await rpc(page, "runs/stop", { runId: run.runId });
     await run.cancel();
@@ -1011,7 +1101,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.getByLabel("Message", { exact: true }).fill("Here is the note");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.locator("a.message-attachment")).toBeVisible();
-    await captureConversationState(page, "conversation-attachment");
+    await captureConsoleState(page, "conversation-attachment");
 
     // An upload failure: the route refuses, and the row says so while the
     // draft stands.
@@ -1026,8 +1116,34 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
       .locator(".composer input[type='file']")
       .setInputFiles({ name: "lost.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
     await expect(page.locator(".composer-file-failed")).toBeVisible();
-    await captureConversationState(page, "conversation-upload-failed");
+    await captureConsoleState(page, "conversation-upload-failed");
     await page.unroute("**/threads/*/attachments**");
+    await page.getByRole("button", { name: "Remove lost.txt" }).click();
+
+    // The run surface (slice 13.8): the live strip while a run works, and the
+    // report card a settled run closes with. The queued run the attachment's
+    // send started is the one driven here, so the capture is of the real
+    // console against the real API rather than a staged transcript.
+    const completing = await current.startRun(threadId, { stop: "working" });
+
+    await expect(page.locator(".live-strip-step")).toHaveText("Running shell…");
+    await captureConsoleState(page, "run-surface-running");
+
+    await completing.complete();
+    await expect(page.locator(".run-card-title").last()).toHaveText("Run finished");
+    await captureConsoleState(page, "run-surface-completed");
+
+    // A failed run closes with its own card: the failure line where the ✓
+    // lines would be, in the run's own words.
+    await page.getByLabel("Message", { exact: true }).fill("Fail the offline task");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Fail the offline task", { exact: true })).toBeVisible();
+    const failing = await current.startRun(threadId, { stop: "working" });
+
+    await expect(page.locator(".live-strip-step")).toHaveText("Running shell…");
+    await failing.fail();
+    await expect(page.locator(".run-card-title").last()).toHaveText("Run failed");
+    await captureConsoleState(page, "run-surface-failed");
 
     await captureWorkspace(page, current.origin, botId, threadId);
 

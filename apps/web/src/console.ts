@@ -23,6 +23,8 @@ import type {
   ThreadSnapshot,
   ToolCallSnapshot,
 } from "@porkbot/core";
+import { runOutcome } from "./run-outcome.ts";
+import type { RunOutcomeLine } from "./run-outcome.ts";
 
 /**
  * The thread console: one thread's transcript, read live (story 18) and
@@ -67,7 +69,14 @@ import type {
  * re-reads the API's assessment on an interval and stops the moment the run
  * settles. The assessment itself is computed server-side from the persisted
  * row with the same function the notification path uses, so a reload renders
- * the same numbers as the last live tick.
+ * the same numbers as the last live tick. A read that fails twice in a row
+ * marks the assessment stale (slice 13.8): the strip says the signal stopped
+ * rather than presenting the last number as if it were current.
+ *
+ * A terminal run also folds into the transcript as its report card (slice
+ * 13.8, story 39): the run's outcome lines are derived from the same reduced
+ * tool calls the timeline renders, so the card is a second reading of the
+ * run's own events and not a second record of them.
  */
 
 /** The API surface the console needs, narrow enough to fake without a network. */
@@ -113,7 +122,20 @@ export interface TranscriptToolEntry {
   readonly call: ToolCallSnapshot;
 }
 
-export type TranscriptEntry = TranscriptMessageEntry | TranscriptToolEntry;
+/**
+ * A terminal run's report card, anchored where its tool entries are. The card
+ * carries the outcome lines the merge already derived, so the screen renders
+ * one reading of the run rather than deriving a second one.
+ */
+export interface TranscriptRunEntry {
+  readonly kind: "run";
+  readonly id: string;
+  readonly runId: string;
+  readonly run: RunSnapshot;
+  readonly outcome: readonly RunOutcomeLine[];
+}
+
+export type TranscriptEntry = TranscriptMessageEntry | TranscriptToolEntry | TranscriptRunEntry;
 
 export interface ThreadConsoleState {
   readonly threadId: string;
@@ -124,6 +146,11 @@ export interface ThreadConsoleState {
   readonly connection: ThreadSubscriptionState;
   /** The newest active run's liveness, or `null` when none is running. */
   readonly liveness: RunLiveness | null;
+  /**
+   * True while the liveness read is failing, so the strip says the signal is
+   * lost rather than showing the last assessment as if it were current.
+   */
+  readonly livenessStale: boolean;
   /** The newest active run, or `null` when nothing is running. */
   readonly activeRunId: string | null;
   /** True between a stop request and the run settling; the control is off. */
@@ -187,6 +214,14 @@ export interface ThreadConsole {
 const notAvailable = "This thread is not available.";
 const streamUnreadable = "The stream could not be read.";
 
+/**
+ * How many liveness reads in a row may fail before the strip calls the signal
+ * stale. One is a blip the next tick repairs and marking it would flicker;
+ * two is a full interval with no fresh assessment, which is the point where
+ * "Running shell…" would otherwise be a claim the client cannot still make.
+ */
+const livenessFailureThreshold = 2;
+
 function refusalFor(error: unknown): string {
   return error instanceof ORPCError && error.code === "NOT_FOUND" ? notAvailable : streamUnreadable;
 }
@@ -233,6 +268,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     refusal: null,
     connection: "connecting",
     liveness: null,
+    livenessStale: false,
     activeRunId: null,
     stopping: false,
     stopError: null,
@@ -250,6 +286,10 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
   // The run a stop request was made for, so the run settling — not the timer —
   // is what clears it.
   let stoppingRunId: string | null = null;
+  // Consecutive failed liveness reads. One failure is a blip the next tick
+  // repairs; two in a row mean the signal, not the run, is the thing that
+  // stopped, and the strip says so.
+  let livenessFailures = 0;
 
   function setState(next: Partial<ThreadConsoleState>): void {
     state = { ...state, ...next };
@@ -266,6 +306,11 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     }
 
     livenessRunId = null;
+    livenessFailures = 0;
+
+    if (state.livenessStale) {
+      setState({ livenessStale: false });
+    }
   }
 
   /**
@@ -336,6 +381,19 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
         if (state.liveness !== null) {
           setState({ liveness: null });
         }
+
+        return;
+      }
+
+      // The run is still live as far as the stream knows, but the signal that
+      // says so stopped arriving: after a blip's worth of failures the strip
+      // marks the last assessment stale instead of presenting it as current.
+      if (current === generation && runId === livenessRunId) {
+        livenessFailures += 1;
+
+        if (livenessFailures >= livenessFailureThreshold && !state.livenessStale) {
+          setState({ livenessStale: true });
+        }
       }
 
       return;
@@ -345,11 +403,13 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       return;
     }
 
+    livenessFailures = 0;
+
     if (read.liveness === null && isTerminalStatus(read.status)) {
       stopLiveness();
     }
 
-    setState({ liveness: read.liveness });
+    setState({ liveness: read.liveness, livenessStale: false });
   }
 
   /**
@@ -364,6 +424,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       status: "refused",
       refusal,
       liveness: null,
+      livenessStale: false,
       activeRunId: null,
       stopping: false,
       stopError: null,
@@ -428,7 +489,10 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
 
         snapshot = reduced.snapshot;
         options.onRunEvent?.(event);
-        setState({ entries: mergeTranscript(transcript, snapshot) });
+        // The merge reads the same message list the fetch path does: a send
+        // this console persisted after the transcript load is still the
+        // operator's turn, and the run's first frame must not drop it.
+        setState({ entries: mergeTranscript(allMessages(), snapshot) });
         syncLiveness();
       }
     } catch (error) {
@@ -458,6 +522,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       connection: "connecting",
       entries: [],
       liveness: null,
+      livenessStale: false,
       activeRunId: null,
       stopping: false,
       stopError: null,
@@ -569,6 +634,10 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
  * run order, so a tool call that arrives before any text is still visible.
  * The anchor is computed fresh on every fold, so a frame that fills in a
  * missing message moves nothing that was already read.
+ *
+ * A terminal run's report card takes the same anchor, after its tool entries:
+ * the steps read first, the outcome closes them, and the run's prose summary
+ * follows, so the card is a recap and not a second timeline.
  */
 export function mergeTranscript(
   messages: readonly Message[],
@@ -652,7 +721,11 @@ export function mergeTranscript(
   const trailing: RunSnapshot[] = [];
 
   for (const run of snapshot.runs) {
-    if (run.toolCalls.length === 0) {
+    // A run is anchored when it has something to show: its calls, or — once it
+    // has settled — a card. A run that died before its first call still closes
+    // with its one failure line, and a completed run with no calls and no
+    // failure has nothing a card could say.
+    if (run.toolCalls.length === 0 && runCard(run) === null) {
       continue;
     }
 
@@ -674,7 +747,7 @@ export function mergeTranscript(
   }
 
   const entries: TranscriptEntry[] = [];
-  const pushTools = (run: RunSnapshot): void => {
+  const pushRun = (run: RunSnapshot): void => {
     for (const call of run.toolCalls) {
       entries.push({
         kind: "tool",
@@ -683,23 +756,49 @@ export function mergeTranscript(
         call,
       });
     }
+
+    const card = runCard(run);
+
+    if (card !== null) {
+      entries.push(card);
+    }
   };
 
   rendered.forEach((entry, index) => {
     for (const run of before.get(index) ?? []) {
-      pushTools(run);
+      pushRun(run);
     }
 
     entries.push(entry);
 
     for (const run of after.get(index) ?? []) {
-      pushTools(run);
+      pushRun(run);
     }
   });
 
   for (const run of trailing) {
-    pushTools(run);
+    pushRun(run);
   }
 
   return entries;
+}
+
+/**
+ * A terminal run's card, or `null` when the run has nothing to report. The
+ * card is the same anchor as the run's tool entries, so it closes the run's
+ * steps and sits above the prose the run wrote — the outcome before the
+ * summary, which is the reading order the design record asks for.
+ */
+function runCard(run: RunSnapshot): TranscriptRunEntry | null {
+  if (!isTerminalStatus(run.status)) {
+    return null;
+  }
+
+  const outcome = runOutcome(run);
+
+  if (outcome.length === 0) {
+    return null;
+  }
+
+  return { kind: "run", id: `run:${run.runId}`, runId: run.runId, run, outcome };
 }

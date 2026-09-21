@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { Approval } from "@porkbot/contracts";
-import type { ToolCallSnapshot } from "@porkbot/core";
+import type { RunSnapshot, ToolCallSnapshot } from "@porkbot/core";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
@@ -8,6 +8,7 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBot } from "../../test/fakes.ts";
 import type { ThreadConsoleState, TranscriptMessageEntry } from "../console.ts";
+import type { RunOutcomeLine } from "../run-outcome.ts";
 import { ThreadConsoleScreen, groupTranscriptSessions, sessionLabel } from "./thread-console.tsx";
 
 /**
@@ -51,6 +52,7 @@ const base: ThreadConsoleState = {
   refusal: null,
   connection: "live",
   liveness: null,
+  livenessStale: false,
   activeRunId: null,
   stopping: false,
   stopError: null,
@@ -303,6 +305,8 @@ describe("the tool-call timeline", () => {
 
     expect(item).not.toBeNull();
     expect(item?.querySelector(".tool-call-name")?.textContent).toBe("shell");
+    // The collapsed line carries the one-line target, not the run's internal id.
+    expect(item?.querySelector(".tool-call-target")?.textContent).toBe("ls");
     expect(item?.querySelector(".tool-call-status")?.textContent).toBe("Completed");
     expect(item?.querySelector(".tool-call-duration")?.textContent).toBe("120 ms");
     expect(item?.className).not.toContain("tool-call-failed");
@@ -346,6 +350,9 @@ describe("the tool-call timeline", () => {
 
     const link = container.querySelector("a.tool-call-artifact");
 
+    // The artifact is reachable from the collapsed line itself, so the audit
+    // is one click from the row and not only from the expanded body.
+    expect(container.querySelector("summary .tool-call-artifact")).not.toBeNull();
     expect(link?.getAttribute("href")).toBe(
       "/bots/bot-1/threads/thread-1/tool-results/run-1/call-1",
     );
@@ -566,11 +573,116 @@ describe("the tool-call timeline", () => {
   });
 });
 
-describe("the console's liveness line", () => {
+describe("the run's report card", () => {
+  function runCardState(run: RunSnapshot, outcome: readonly RunOutcomeLine[]): ThreadConsoleState {
+    return {
+      ...base,
+      entries: [
+        {
+          kind: "message",
+          id: "message-0",
+          role: "user",
+          text: "audit it",
+          createdAt: "2026-01-01T09:00:00.000Z",
+          attachments: [],
+          streaming: false,
+        },
+        { kind: "run", id: `run:${run.runId}`, runId: run.runId, run, outcome },
+        {
+          kind: "message",
+          id: "message-1",
+          role: "assistant",
+          text: "Done",
+          createdAt: "2026-01-01T09:01:00.000Z",
+          attachments: [],
+          streaming: false,
+        },
+      ],
+    };
+  }
+
+  const completedRun: RunSnapshot = {
+    runId: "run-1",
+    status: "completed",
+    toolCalls: [
+      {
+        callId: "call-1",
+        tool: "shell",
+        arguments: { command: "ls" },
+        status: "completed",
+        durationMs: 120,
+      },
+      {
+        callId: "call-2",
+        tool: "file_write",
+        arguments: { path: "report.md" },
+        status: "completed",
+        durationMs: 2_380,
+      },
+    ],
+  };
+
+  it("renders the outcome as ✓ and → lines above the run's summary", async () => {
+    await render(
+      <ThreadConsoleScreen
+        botId="bot-1"
+        state={runCardState(completedRun, [
+          { kind: "done", text: "shell — ls" },
+          { kind: "done", text: "file_write — report.md" },
+          { kind: "follow_up", text: "Handed off summary.md" },
+        ])}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const card = container.querySelector(".run-card");
+
+    expect(card?.querySelector(".run-card-title")?.textContent).toBe("Run finished");
+    expect(card?.querySelector(".run-card-note")?.textContent).toBe("2 steps · 2s");
+    expect(
+      [...(card?.querySelectorAll(".run-card-line") ?? [])].map((line) => line.textContent),
+    ).toEqual(["✓shell — ls", "✓file_write — report.md", "→Handed off summary.md"]);
+
+    // The card closes the steps and sits above the prose the run wrote.
+    expect(
+      [...container.querySelectorAll(".transcript > li")].map((item) => item.className),
+    ).toEqual(["message message-user", "run-card", "message message-bot"]);
+  });
+
+  it("closes a failed run with its one failure line", async () => {
+    await render(
+      <ThreadConsoleScreen
+        botId="bot-1"
+        state={runCardState(
+          {
+            runId: "run-2",
+            status: "failed",
+            toolCalls: [],
+            failure: { message: "the model connection dropped", code: "provider" },
+          },
+          [{ kind: "follow_up", text: "the model connection dropped" }],
+        )}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const card = container.querySelector(".run-card");
+
+    expect(card?.querySelector(".run-card-title")?.textContent).toBe("Run failed");
+    expect(card?.querySelector(".run-card-icon-failed")).not.toBeNull();
+    expect(card?.querySelector(".run-card-note")).toBeNull();
+    expect(card?.querySelector(".run-card-line")?.textContent).toBe(
+      "→the model connection dropped",
+    );
+  });
+});
+
+describe("the console's live strip", () => {
   it("names the step, the tool and the heartbeat lag while the run works", async () => {
     await render(
       <ThreadConsoleScreen
         botId="bot-1"
+        bot={fakeBot("bot-1", "Ada")}
         state={{
           ...base,
           liveness: {
@@ -584,8 +696,32 @@ describe("the console's liveness line", () => {
       />,
     );
 
-    expect(container.querySelector("[data-liveness='working']")?.textContent).toBe(
-      "Running shell… · heartbeat 3s ago",
+    const strip = container.querySelector("[data-liveness='working']");
+
+    expect(strip?.querySelector(".live-strip-step")?.textContent).toBe("Running shell…");
+    expect(strip?.querySelector(".live-strip-beat")?.textContent).toBe("heartbeat 3s ago");
+    expect(strip?.getAttribute("role")).toBe("status");
+  });
+
+  it("names waiting for approval as the step the run is parked on", async () => {
+    await render(
+      <ThreadConsoleScreen
+        botId="bot-1"
+        state={{
+          ...base,
+          liveness: {
+            state: "waiting",
+            tool: "gmail.send",
+            heartbeatLagMs: 4_000,
+            sinceProgressMs: 12_000,
+          },
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("[data-liveness='waiting'] .live-strip-step")?.textContent).toBe(
+      "Waiting for approval: gmail.send…",
     );
   });
 
@@ -606,10 +742,39 @@ describe("the console's liveness line", () => {
       />,
     );
 
-    const line = container.querySelector("[data-liveness='stuck']");
+    const strip = container.querySelector("[data-liveness='stuck']");
 
-    expect(line?.textContent).toBe("Stuck — no progress for 3m 5s · heartbeat 1m 2s ago");
-    expect(line?.className).toContain("console-liveness-stuck");
+    expect(strip?.querySelector(".live-strip-step")?.textContent).toBe(
+      "Stuck — no progress for 3m 5s",
+    );
+    expect(strip?.className).toContain("live-strip-stuck");
+  });
+
+  it("goes visibly stale when the liveness signal does", async () => {
+    await render(
+      <ThreadConsoleScreen
+        botId="bot-1"
+        state={{
+          ...base,
+          liveness: {
+            state: "working",
+            tool: "shell",
+            heartbeatLagMs: 3_000,
+            sinceProgressMs: 10_000,
+          },
+          livenessStale: true,
+        }}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const strip = container.querySelector("[data-liveness='stale']");
+
+    // The step it last saw is still named; the beat is what says the number is
+    // no longer current, so a frozen "heartbeat 3s ago" cannot read as live.
+    expect(strip?.querySelector(".live-strip-step")?.textContent).toBe("Running shell…");
+    expect(strip?.querySelector(".live-strip-beat")?.textContent).toBe("signal lost");
+    expect(strip?.className).toContain("live-strip-stale");
   });
 
   it("shows no liveness chrome when no run is active", async () => {
