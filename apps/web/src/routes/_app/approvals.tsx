@@ -1,8 +1,10 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { ApprovalsScreen } from "../../screens/approvals.tsx";
+import { ApprovalsSkeleton } from "../../screens/loading.tsx";
 
 export const Route = createFileRoute("/_app/approvals")({
+  pendingComponent: ApprovalsSkeleton,
   loader: async ({ context }) => {
     if (context.approvals === undefined) {
       throw new Error("the approval transport is not configured");

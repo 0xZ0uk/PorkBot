@@ -4,6 +4,7 @@ import { Button } from "@porkbot/ui";
 import { useCallback, useRef, useState } from "react";
 import type { Routine } from "@porkbot/contracts";
 import { RoutinesScreen } from "../../screens/routines.tsx";
+import { RoutinesSkeleton } from "../../screens/loading.tsx";
 import type {
   RoutinePreviewState,
   RoutineScheduleInput,
@@ -20,6 +21,7 @@ import { routineScheduleErrorMessage } from "../../routines.ts";
  * keeps the next-fire cursor and the occurrence history server-authored.
  */
 export const Route = createFileRoute("/_app/bots/$botId/routines")({
+  pendingComponent: RoutinesSkeleton,
   loader: async ({ context, params }) => {
     if (context.routines === undefined) {
       throw new Error("the routines transport is not configured");

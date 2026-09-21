@@ -2,6 +2,7 @@ import { Button, Field, Input } from "@porkbot/ui";
 import type { NotificationKind } from "@porkbot/core";
 import { notificationLabel } from "../notifications.ts";
 import type { NotificationsState } from "../notifications.ts";
+import { NotificationsSkeleton } from "./loading.tsx";
 
 /**
  * The notification switches (slice 11.5, story 35): one row per event kind,
@@ -32,8 +33,12 @@ export function NotificationsScreen({ state, onToggle, onReload }: Notifications
     );
   }
 
+  if (state.status === "loading") {
+    return <NotificationsSkeleton />;
+  }
+
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       <h2>Notifications</h2>
       <p className="muted">Nothing interrupts you until you turn it on.</p>
 

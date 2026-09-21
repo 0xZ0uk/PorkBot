@@ -72,6 +72,40 @@ describe("Toast", () => {
     await unmount();
   });
 
+  it("renders destructive run actions as links and urgent announcements", async () => {
+    function LinkPusher() {
+      const toast = useToast();
+
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            toast.push({
+              title: "Run failed",
+              tone: "destructive",
+              action: { label: "Open run", href: "/threads/thread-1?run=run-1" },
+            });
+          }}
+        >
+          Push link
+        </button>
+      );
+    }
+
+    const { container, unmount } = await renderDom(
+      <ToastProvider>
+        <LinkPusher />
+      </ToastProvider>,
+    );
+    await click(container.querySelector("button") as Element);
+
+    const toast = container.querySelector(".pb-toast--destructive");
+    expect(toast?.getAttribute("role")).toBe("alert");
+    expect(toast?.querySelector("a")?.textContent).toBe("Open run");
+    expect(toast?.querySelector("a")?.getAttribute("href")).toBe("/threads/thread-1?run=run-1");
+    await unmount();
+  });
+
   it("refuses to be used outside its provider", async () => {
     await expect(renderDom(<Pusher onAction={() => {}} />)).rejects.toThrow(
       "useToast must be used below a ToastProvider.",

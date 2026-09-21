@@ -1,6 +1,7 @@
 import { createFileRoute, getRouteApi, useNavigate, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { HomeScreen } from "../../screens/home.tsx";
+import { RosterSkeleton } from "../../screens/loading.tsx";
 
 /**
  * The roster's home route (slice 13.6). The roster itself is read by the shell
@@ -13,6 +14,7 @@ import { HomeScreen } from "../../screens/home.tsx";
 const appRoute = getRouteApi("/_app");
 
 export const Route = createFileRoute("/_app/")({
+  pendingComponent: RosterSkeleton,
   component: HomeRoute,
 });
 

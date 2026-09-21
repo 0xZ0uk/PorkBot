@@ -111,6 +111,8 @@ export interface TranscriptMessageEntry {
   readonly attachments: readonly FileMessageBlock[];
   /** True while the run is still appending tokens to this message. */
   readonly streaming: boolean;
+  /** Local send state; omitted once the server has confirmed the message. */
+  readonly delivery?: "sending" | "failed";
 }
 
 /** One tool call of a run, rendered in place in the transcript. */
@@ -157,6 +159,8 @@ export interface ThreadConsoleState {
   readonly stopping: boolean;
   /** The sentence a failed stop request produced, or `null`. */
   readonly stopError: string | null;
+  /** Terminal runs, including runs with no report-card lines. */
+  readonly terminalRuns?: readonly RunSnapshot[];
 }
 
 export interface ThreadConsoleOptions {
@@ -197,6 +201,12 @@ export interface ThreadConsole {
    * no-op.
    */
   noteSent(message: Message): void;
+  /** Puts a local send in the transcript before its request settles. */
+  noteOptimistic(message: Message, optimisticId: string): void;
+  /** Replaces the local send with the server-authored row. */
+  settleSent(optimisticId: string, message: Message): void;
+  /** Keeps a failed local send in place so the transcript does not jump. */
+  failSent(optimisticId: string): void;
   /**
    * Asks the newest active run to stop. The request is a mark, not a
    * transition: the console stays `stopping` until the run's own frames settle
@@ -251,6 +261,10 @@ function newestActiveRun(snapshot: ThreadSnapshot): string | null {
   return null;
 }
 
+function terminalRuns(snapshot: ThreadSnapshot): readonly RunSnapshot[] {
+  return snapshot.runs.filter((run) => isTerminalStatus(run.status));
+}
+
 export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsole {
   const { transport, threadId } = options;
   const livenessIntervalMs = options.livenessIntervalMs ?? 5_000;
@@ -261,6 +275,8 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
   // have started before, so they merge beside it until a reload reads them
   // back as transcript.
   let sentMessages: readonly Message[] = [];
+  let pendingMessageIds = new Set<string>();
+  let failedMessageIds = new Set<string>();
   let state: ThreadConsoleState = {
     threadId,
     status: "loading",
@@ -272,6 +288,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     activeRunId: null,
     stopping: false,
     stopError: null,
+    terminalRuns: [],
   };
   // Bumped by stop/retry, so a slow fetch or frame from an earlier run never
   // writes into the state of a later one.
@@ -452,7 +469,11 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     }
 
     transcript = fetched;
-    setState({ status: "ready", entries: mergeTranscript(allMessages(), snapshot) });
+    setState({
+      status: "ready",
+      entries: mergeTranscript(allMessages(), snapshot, pendingMessageIds, failedMessageIds),
+      terminalRuns: terminalRuns(snapshot),
+    });
     syncLiveness();
 
     try {
@@ -492,7 +513,10 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
         // The merge reads the same message list the fetch path does: a send
         // this console persisted after the transcript load is still the
         // operator's turn, and the run's first frame must not drop it.
-        setState({ entries: mergeTranscript(allMessages(), snapshot) });
+        setState({
+          entries: mergeTranscript(allMessages(), snapshot, pendingMessageIds, failedMessageIds),
+          terminalRuns: terminalRuns(snapshot),
+        });
         syncLiveness();
       }
     } catch (error) {
@@ -514,6 +538,8 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
     snapshot = createThreadSnapshot(threadId);
     transcript = [];
     sentMessages = [];
+    pendingMessageIds = new Set();
+    failedMessageIds = new Set();
     stopLiveness();
 
     setState({
@@ -526,6 +552,7 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       activeRunId: null,
       stopping: false,
       stopError: null,
+      terminalRuns: [],
     });
     void run(generation, controller);
   }
@@ -583,7 +610,57 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
       }
 
       sentMessages = [...sentMessages, message];
-      setState({ entries: mergeTranscript(allMessages(), snapshot) });
+      setState({
+        entries: mergeTranscript(allMessages(), snapshot, pendingMessageIds, failedMessageIds),
+      });
+    },
+
+    noteOptimistic: (message, optimisticId) => {
+      if (
+        sentMessages.some((sent) => sent.id === message.id) ||
+        transcript.some((persisted) => persisted.id === message.id)
+      ) {
+        return;
+      }
+
+      sentMessages = [...sentMessages, message];
+      pendingMessageIds.add(optimisticId);
+      failedMessageIds.delete(optimisticId);
+      setState({
+        entries: mergeTranscript(allMessages(), snapshot, pendingMessageIds, failedMessageIds),
+      });
+    },
+
+    settleSent: (optimisticId, message) => {
+      const optimisticIndex = sentMessages.findIndex((sent) => sent.id === optimisticId);
+      pendingMessageIds.delete(optimisticId);
+      failedMessageIds.delete(optimisticId);
+
+      if (transcript.some((persisted) => persisted.id === message.id)) {
+        sentMessages = sentMessages.filter((sent) => sent.id !== optimisticId);
+      } else if (optimisticIndex >= 0) {
+        sentMessages = sentMessages.map((sent, index) =>
+          index === optimisticIndex ? message : sent,
+        );
+      } else if (!sentMessages.some((sent) => sent.id === message.id)) {
+        sentMessages = [...sentMessages, message];
+      }
+
+      setState({
+        entries: mergeTranscript(allMessages(), snapshot, pendingMessageIds, failedMessageIds),
+      });
+    },
+
+    failSent: (optimisticId) => {
+      if (!sentMessages.some((sent) => sent.id === optimisticId)) {
+        return;
+      }
+
+      pendingMessageIds.delete(optimisticId);
+      failedMessageIds.add(optimisticId);
+      setState({
+        entries: mergeTranscript(allMessages(), snapshot, pendingMessageIds, failedMessageIds),
+      });
     },
 
     stopRun: () => {
@@ -642,6 +719,8 @@ export function createThreadConsole(options: ThreadConsoleOptions): ThreadConsol
 export function mergeTranscript(
   messages: readonly Message[],
   snapshot: ThreadSnapshot,
+  pendingMessageIds: ReadonlySet<string> = new Set(),
+  failedMessageIds: ReadonlySet<string> = new Set(),
 ): TranscriptEntry[] {
   // A message's identity is `(runId, id)`: a run's assistant messages are
   // numbered by the provider session that produced them, so the same id in two
@@ -673,6 +752,11 @@ export function mergeTranscript(
         createdAt: message.createdAt,
         attachments: messageFiles(message.blocks) ?? [],
         streaming: live !== undefined && !live.complete,
+        ...(pendingMessageIds.has(message.id)
+          ? { delivery: "sending" as const }
+          : failedMessageIds.has(message.id)
+            ? { delivery: "failed" as const }
+            : {}),
       },
       message.runId,
     );
@@ -694,6 +778,11 @@ export function mergeTranscript(
         createdAt: null,
         attachments: [],
         streaming: !message.complete,
+        ...(pendingMessageIds.has(message.id)
+          ? { delivery: "sending" as const }
+          : failedMessageIds.has(message.id)
+            ? { delivery: "failed" as const }
+            : {}),
       },
       message.runId,
     );

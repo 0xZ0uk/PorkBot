@@ -3,6 +3,7 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { useState } from "react";
 import { BotOverviewScreen } from "../../screens/bot-overview.tsx";
+import { BotOverviewSkeleton } from "../../screens/loading.tsx";
 
 /**
  * A bot's own screen, under its id: what the rail's rows open. The loader
@@ -11,6 +12,7 @@ import { BotOverviewScreen } from "../../screens/bot-overview.tsx";
  * component answers it.
  */
 export const Route = createFileRoute("/_app/bots/$botId/")({
+  pendingComponent: BotOverviewSkeleton,
   loader: async ({ context, params }) => {
     const [bot, threads] = await Promise.all([
       context.bots.getBot(params.botId),
