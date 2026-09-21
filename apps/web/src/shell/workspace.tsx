@@ -3,6 +3,7 @@ import type { Approval } from "@porkbot/contracts";
 import { BotAvatar, IconButton, Sheet, StateChip } from "@porkbot/ui";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { findRosterBot } from "../roster.ts";
 import type { Roster, RosterEntry } from "../roster.ts";
 import { stateFromPending } from "./bot-state.ts";
 import { ShellHeaderProvider } from "./header-state.tsx";
@@ -80,9 +81,7 @@ export function Workspace({
     return counts;
   }, [pendingApprovals]);
 
-  const selectedEntry =
-    [...roster.active, ...roster.archived].find((entry) => entry.bot.id === selectedBotId) ?? null;
-  const selected = selectedEntry?.bot ?? null;
+  const selected = findRosterBot(roster, selectedBotId);
   const pendingForBot = selected === null ? 0 : (pendingByBot.get(selected.id) ?? 0);
   const state = stateFromPending(pendingForBot) ?? reported?.state ?? null;
   const inspectorVisible = narrow ? inspectorSheetOpen : inspectorOpen;
