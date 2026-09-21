@@ -125,4 +125,27 @@ describe("Dialog", () => {
     expect(backdrop?.className).toContain("pb-sheet");
     await unmount();
   });
+
+  it("portals into a container of its own and removes it on unmount", async () => {
+    const { unmount } = await renderDom(
+      <Dialog open onClose={() => {}} title="Stop the machine?">
+        <p>Body</p>
+      </Dialog>,
+    );
+    const backdrop = document.querySelector(".pb-dialog");
+    const container = backdrop?.parentElement;
+
+    // The portal container is a child of the body, not the body itself: React
+    // keeps its listeners on the container, so removing it removes them.
+    expect(container).not.toBeNull();
+    expect(container).not.toBe(document.body);
+    expect(container?.parentElement).toBe(document.body);
+
+    if (container === null || container === undefined) {
+      throw new Error("the dialog did not render a portal container");
+    }
+
+    await unmount();
+    expect(document.body.contains(container)).toBe(false);
+  });
 });

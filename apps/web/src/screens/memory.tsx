@@ -2,6 +2,7 @@ import { Badge, Button, Card, Field, Input, SegmentedControl, Textarea } from "@
 import { useState } from "react";
 import type { MemoryDocumentView, MemoryRevisionView } from "@porkbot/contracts";
 import type { MemoryNotice, MemoryScope, MemoryState } from "../memory.ts";
+import { MemorySkeleton } from "./loading.tsx";
 
 /**
  * The memory screen (slice 13.12, stories 23 and 24; design record, Records):
@@ -86,8 +87,12 @@ export function MemoryScreen({
     );
   }
 
+  if (state.status === "loading") {
+    return <MemorySkeleton />;
+  }
+
   return (
-    <section className="console memory-screen" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <div>
           <h2>Memory</h2>

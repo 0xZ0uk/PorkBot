@@ -25,12 +25,15 @@ import type { ScriptedComputerApi } from "./scripted-computer-api.ts";
  * reading and writing a real HTTP server on loopback.
  *
  * The acceptance criteria this proves over the wire: a bot's provider is a
- * stored setting that survives a reload; an unavailable provider is shown as
- * unavailable rather than selected; the snapshot path — capture, switch,
+ * stored setting that survives a reload, chosen from a sheet that says what
+ * each kind is and why one is unavailable; the snapshot path — capture, switch,
  * restore — moves the bot's files across a provider change; the terminal runs
  * commands through the supervisor's exec seam and the file view reads real
- * state through it; and the lifecycle controls and their results survive a
+ * state through it; and the lifecycle control's state and its results survive a
  * reload.
+ *
+ * The register's sheet and dialogs portal into `document.body`, so the queries
+ * read the body rather than the mount div.
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,26 +115,34 @@ async function mountComputer(api: ScriptedComputerApi): Promise<MountedComputer>
   };
 }
 
-function buttonByText(container: HTMLElement, text: string): HTMLButtonElement {
-  const found = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-    (button) => button.textContent === text,
-  );
+/** Every button on the page: the mount div and the register's portals alike. */
+function buttons(): HTMLButtonElement[] {
+  return [...document.body.querySelectorAll<HTMLButtonElement>("button")];
+}
+
+function buttonByText(text: string): HTMLButtonElement {
+  const found = buttons().find((button) => button.textContent === text);
 
   if (found === undefined) {
     throw new Error(`no button labelled "${text}"`);
   }
 
-  return found as HTMLButtonElement;
+  return found;
 }
 
-async function click(container: HTMLElement, text: string): Promise<void> {
+async function click(text: string): Promise<void> {
   await act(async () => {
-    buttonByText(container, text).click();
+    buttonByText(text).click();
   });
 }
 
-function radioFor(container: HTMLElement, text: string): HTMLInputElement {
-  const radio = radioOrUndefined(container, text);
+/** The machine's state word, as the screen surface renders it. */
+function machineWord(): string | undefined {
+  return document.body.querySelector(".computer-view-state")?.textContent ?? undefined;
+}
+
+function radioFor(text: string): HTMLInputElement {
+  const radio = radioOrUndefined(text);
 
   if (radio === undefined) {
     throw new Error(`no radio for "${text}"`);
@@ -140,13 +151,26 @@ function radioFor(container: HTMLElement, text: string): HTMLInputElement {
   return radio;
 }
 
-/** The radio as soon as the list rendered, `undefined` while it still has not. */
-function radioOrUndefined(container: HTMLElement, text: string): HTMLInputElement | undefined {
-  const row = [...container.querySelectorAll(".provider-option")].find((option) =>
+/** The radio as soon as the sheet rendered, `undefined` while it still has not. */
+function radioOrUndefined(text: string): HTMLInputElement | undefined {
+  const row = [...document.body.querySelectorAll(".provider-option")].find((option) =>
     option.textContent?.includes(text),
   );
 
   return row?.querySelector<HTMLInputElement>('input[type="radio"]') ?? undefined;
+}
+
+async function chooseProvider(text: string): Promise<void> {
+  await until(
+    () => buttons().some((button) => button.textContent === "Change"),
+    "the provider row",
+  );
+  await click("Change");
+  await until(() => radioOrUndefined(text) !== undefined, `the ${text} radio`);
+
+  await act(async () => {
+    radioFor(text).click();
+  });
 }
 
 const providers = {
@@ -168,22 +192,28 @@ describe("the computer screen over the real wire", () => {
 
     try {
       await until(
-        () => before.container.textContent?.includes("Local Docker") === true,
-        "the provider list",
+        () => before.container.textContent?.includes("Offline emulator") === true,
+        "the provider row",
       );
 
-      // The unavailable kind is shown as unavailable, and its radio is out of
-      // reach, rather than a selection that would fail at the bot's first run.
-      expect(before.container.textContent).toContain("Unavailable · Credentials refused");
-      expect(radioFor(before.container, "Daytona cloud").disabled).toBe(true);
+      // The sheet says what each kind is and why the unavailable one cannot
+      // serve a machine; its radio is out of reach rather than a selection
+      // that would fail at the bot's first run.
+      await click("Change");
+      await until(() => radioOrUndefined("Daytona cloud") !== undefined, "the provider list");
+      expect(document.body.textContent).toContain("Unavailable · Credentials refused");
+      expect(radioFor("Daytona cloud").disabled).toBe(true);
 
       await act(async () => {
-        radioFor(before.container, "Local Docker").click();
+        radioFor("Local Docker").click();
       });
 
-      expect(before.container.textContent).toContain("does not move this bot's home");
+      // Choosing closes the sheet and arms the confirmation, so the write is
+      // still two deliberate steps.
+      expect(document.body.querySelector(".provider-list")).toBeNull();
+      expect(document.body.textContent).toContain("does not move this bot's home");
 
-      await click(before.container, "Switch to Local Docker");
+      await click("Switch to Local Docker");
 
       await until(
         () => before.container.textContent?.includes("This bot now runs on Local Docker.") === true,
@@ -201,9 +231,13 @@ describe("the computer screen over the real wire", () => {
 
     try {
       await until(
-        () => radioOrUndefined(after.container, "Local Docker")?.checked === true,
+        () => after.container.textContent?.includes("Local Docker") === true,
         "the stored selection after reload",
       );
+      await click("Change");
+      await until(() => radioOrUndefined("Local Docker") !== undefined, "the provider list");
+
+      expect(radioFor("Local Docker").checked).toBe(true);
     } finally {
       await after.unmount();
       await api.close();
@@ -218,15 +252,8 @@ describe("the computer screen over the real wire", () => {
     const mounted = await mountComputer(api);
 
     try {
-      await until(
-        () => radioOrUndefined(mounted.container, "Local Docker") !== undefined,
-        "the provider list",
-      );
-
-      await act(async () => {
-        radioFor(mounted.container, "Local Docker").click();
-      });
-      await click(mounted.container, "Take a snapshot");
+      await chooseProvider("Local Docker");
+      await click("Take a snapshot");
 
       await until(
         () => mounted.container.textContent?.includes("2.0 KB") === true,
@@ -235,7 +262,7 @@ describe("the computer screen over the real wire", () => {
       expect(api.snapshots).toHaveLength(1);
       expect(api.calls).toContain("computers/snapshot");
 
-      await click(mounted.container, "Switch to Local Docker");
+      await click("Switch to Local Docker");
 
       await until(
         () =>
@@ -243,8 +270,8 @@ describe("the computer screen over the real wire", () => {
         "the switch outcome",
       );
 
-      await click(mounted.container, "Restore");
-      await click(mounted.container, "Restore");
+      await click("Restore");
+      await click("Restore");
 
       await until(
         () =>
@@ -284,8 +311,10 @@ describe("the terminal and file views over the real wire", () => {
       );
       expect(api.calls).toContain("computers/files");
 
-      const input = mounted.container.querySelector<HTMLInputElement>(".terminal-form input");
-      const form = mounted.container.querySelector<HTMLFormElement>(".terminal-form");
+      await click("Terminal");
+
+      const input = document.body.querySelector<HTMLInputElement>(".terminal-form input");
+      const form = document.body.querySelector<HTMLFormElement>(".terminal-form");
 
       if (input === null || form === null) {
         throw new Error("the terminal form did not render");
@@ -304,7 +333,8 @@ describe("the terminal and file views over the real wire", () => {
       );
       expect(api.calls).toContain("computers/terminal");
 
-      await click(mounted.container, "notes.md");
+      await click("Files");
+      await click("notes.md");
 
       await until(
         () => mounted.container.textContent?.includes("# Notes") === true,
@@ -312,7 +342,7 @@ describe("the terminal and file views over the real wire", () => {
       );
       expect(api.calls).toContain("computers/file");
 
-      await click(mounted.container, "projects/");
+      await click("projects/");
 
       await until(
         () => mounted.container.textContent?.includes("readme.md") === true,
@@ -332,17 +362,12 @@ describe("the terminal and file views over the real wire", () => {
     const before = await mountComputer(api);
 
     try {
-      await until(
-        () => before.container.textContent?.includes("The machine is running.") === true,
-        "the running machine",
-      );
+      await until(() => machineWord() === "Running", "the running machine");
 
-      await click(before.container, "Stop");
+      await click("Running");
+      await click("Stop — park it, keeping the home");
 
-      await until(
-        () => before.container.textContent?.includes("The machine is stopped.") === true,
-        "the stop",
-      );
+      await until(() => machineWord() === "Stopped", "the stop");
       expect(api.computer).toMatchObject({ assigned: true, state: "stopped" });
       // A stopped machine has no terminal to point at.
       expect(before.container.querySelector(".terminal")).toBeNull();
@@ -354,17 +379,12 @@ describe("the terminal and file views over the real wire", () => {
     const after = await mountComputer(api);
 
     try {
-      await until(
-        () => after.container.textContent?.includes("The machine is stopped.") === true,
-        "the stopped machine after reload",
-      );
+      await until(() => machineWord() === "Stopped", "the stopped machine after reload");
 
-      await click(after.container, "Start");
+      await click("Stopped");
+      await click("Start — bring the machine up");
 
-      await until(
-        () => after.container.textContent?.includes("The machine is running.") === true,
-        "the restart",
-      );
+      await until(() => machineWord() === "Running", "the restart");
       expect(api.computer).toMatchObject({ assigned: true, state: "running" });
     } finally {
       await after.unmount();

@@ -210,8 +210,9 @@ export const themeStyleSheet =
 export const themeStorageKey = "porkbot.theme";
 
 /**
- * The pre-paint script the shell runs before the bundle: a stored choice sets
- * `data-theme`, and anything else leaves the system preference in charge. It is
+ * The pre-paint script the shell runs before the bundle: a stored `light` or
+ * `dark` sets `data-theme`, and anything else — no key, a stored `system`
+ * choice, an unknown value — leaves the system preference in charge. It is
  * inlined beside the stylesheet, so there is no flash of the wrong mode.
  */
 export const themeBootstrapScript =

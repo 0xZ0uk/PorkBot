@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { UsageScreen } from "../../screens/usage.tsx";
+import { UsageSkeleton } from "../../screens/loading.tsx";
 
 /**
  * One bot's usage. The loader reads the contract's answer through the usage
@@ -9,6 +10,7 @@ import { UsageScreen } from "../../screens/usage.tsx";
  * half-rendered report, and the screen stays a function of the data.
  */
 export const Route = createFileRoute("/_app/bots/$botId/usage")({
+  pendingComponent: UsageSkeleton,
   loader: ({ context, params }) => context.usage.forBot(params.botId),
   component: UsageRoute,
   errorComponent: UsageUnavailable,

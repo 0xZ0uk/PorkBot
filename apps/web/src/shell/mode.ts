@@ -1,18 +1,46 @@
 import { themeStorageKey } from "@porkbot/tokens";
 
 /**
- * The shell's mode control (design record, Mode policy). This is the interim
- * two-way toggle the rail footer carries: it writes the same key the pre-paint
- * bootstrap reads, so the choice survives a reload with no flash. Slice 13.13
- * replaces it with the explicit System, Light, Dark control.
+ * The shell's mode control (design record, Mode policy; slice 13.13). The
+ * choice is explicit — System, Light or Dark — and it lives in the rail footer
+ * and in the settings surface, both writing the same stored key the pre-paint
+ * bootstrap reads. System is a real choice, not an absent one: it clears
+ * `data-theme` so the stylesheet's media query decides, and the bootstrap
+ * leaves it to the same media query on the next first paint.
  */
 
-export type Mode = "light" | "dark";
+/** What the operator chose; `system` means the OS preference decides. */
+export type Mode = "system" | "light" | "dark";
+
+/** What the document paints once the choice is resolved. */
+export type ResolvedMode = "light" | "dark";
 
 type Writable = Pick<Storage, "setItem">;
 
 interface ThemeRoot {
   readonly dataset: { theme?: string | undefined };
+}
+
+/** The three choices, in the order the controls render them. */
+export const modes: readonly Mode[] = ["system", "light", "dark"];
+
+export function modeLabel(mode: Mode): string {
+  switch (mode) {
+    case "system":
+      return "System";
+    case "light":
+      return "Light";
+    case "dark":
+      return "Dark";
+  }
+}
+
+export function resolveMode(mode: Mode, systemPrefersDark: boolean): ResolvedMode {
+  if (mode === "system") {
+    return systemPrefersDark ? "dark" : "light";
+  }
+
+  return mode;
 }
 
 function prefersDark(): boolean {
@@ -24,34 +52,45 @@ function prefersDark(): boolean {
 }
 
 /**
- * The mode in force: an explicit `data-theme` wins, otherwise the system
- * preference, matching what `themeStyleSheet` already painted.
+ * The stored choice: an explicit `data-theme` is the choice it paints, and its
+ * absence means System. Anything else in the attribute is not a choice this
+ * module wrote, so it is read as System rather than guessed at.
  */
-export function readMode(root: ThemeRoot, systemPrefersDark: boolean): Mode {
+export function readChoice(root: ThemeRoot): Mode {
   const declared = root.dataset.theme;
 
-  if (declared === "light" || declared === "dark") {
-    return declared;
-  }
-
-  return systemPrefersDark ? "dark" : "light";
+  return declared === "light" || declared === "dark" ? declared : "system";
 }
 
-/** The mode the document is showing now, or the light default with no document. */
-export function currentMode(): Mode {
+/** The choice the document is showing now, or System with no document. */
+export function currentChoice(): Mode {
   const root = (globalThis as { document?: { documentElement: ThemeRoot } }).document
     ?.documentElement;
 
-  return root === undefined ? "light" : readMode(root, prefersDark());
+  return root === undefined ? "system" : readChoice(root);
 }
 
-export function toggled(mode: Mode): Mode {
-  return mode === "dark" ? "light" : "dark";
+/** The mode in force: the choice resolved against the system preference. */
+export function readMode(root: ThemeRoot, systemPrefersDark: boolean): ResolvedMode {
+  return resolveMode(readChoice(root), systemPrefersDark);
 }
 
-/** Applies the choice to the document and stores it for the next first paint. */
+/** The mode the document is showing now, or the light default with no document. */
+export function currentMode(): ResolvedMode {
+  return resolveMode(currentChoice(), prefersDark());
+}
+
+/**
+ * Applies the choice to the document and stores it for the next first paint.
+ * Choosing System removes `data-theme` so the media query wins again; the key
+ * is still written, so the choice survives a reload as the choice it was.
+ */
 export function applyMode(root: ThemeRoot, storage: Writable | undefined, mode: Mode): void {
-  root.dataset.theme = mode;
+  if (mode === "system") {
+    delete root.dataset.theme;
+  } else {
+    root.dataset.theme = mode;
+  }
 
   try {
     storage?.setItem(themeStorageKey, mode);

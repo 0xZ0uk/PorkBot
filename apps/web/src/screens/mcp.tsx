@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { McpServerDetail, McpServerSummary } from "@porkbot/contracts";
 import { liveGrants, removeWarning, revokeWarning, serverStatusLabel } from "../mcp.ts";
 import type { McpInstallInput, McpState } from "../mcp.ts";
+import { McpSkeleton } from "./loading.tsx";
 
 /**
  * The MCP servers surface (slice 11.5; slice 9.5's contract): install a server
@@ -46,6 +47,10 @@ export function McpScreen(props: McpScreenProps) {
     );
   }
 
+  if (state.status === "loading" && state.selected === null) {
+    return <McpSkeleton />;
+  }
+
   return state.selected === null ? (
     <McpList {...props} />
   ) : (
@@ -57,7 +62,7 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
   const [installing, setInstalling] = useState(false);
 
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <h2>MCP servers</h2>
         <div className="memory-actions">

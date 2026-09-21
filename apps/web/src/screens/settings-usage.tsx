@@ -2,6 +2,7 @@ import { Badge, BotAvatar, Button, Field, Select } from "@porkbot/ui";
 import { UsageReport } from "./usage.tsx";
 import { usageWindows } from "../settings-usage.ts";
 import type { BotUsage, SettingsUsageState, UsageWindow } from "../settings-usage.ts";
+import { UsageSkeleton } from "./loading.tsx";
 
 /**
  * Usage settings (slice 13.12, story 34; design record, Records): every active
@@ -42,8 +43,12 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
     );
   }
 
+  if (state.status === "loading") {
+    return <UsageSkeleton />;
+  }
+
   return (
-    <section className="console usage-screen" aria-busy={state.status === "loading"}>
+    <section className="console">
       <header className="memory-header">
         <div>
           <h2>Usage</h2>
@@ -69,9 +74,7 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
         </div>
       </header>
 
-      {state.status === "loading" ? (
-        <p className="muted">Loading usage…</p>
-      ) : state.reports.length === 0 ? (
+      {state.reports.length === 0 ? (
         <p className="muted">No bots yet.</p>
       ) : (
         <>

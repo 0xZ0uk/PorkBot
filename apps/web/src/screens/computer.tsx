@@ -1,4 +1,4 @@
-import { BotAvatar, Button, Field, Input } from "@porkbot/ui";
+import { Button, Dialog, Field, Input, Menu, Sheet, Tabs } from "@porkbot/ui";
 import { useState } from "react";
 import type {
   ComputerFileEntryView,
@@ -8,38 +8,46 @@ import type {
 import {
   availabilityOf,
   canBrowse,
-  computerSentence,
+  effectiveKind,
   followsDefault,
+  lifecycleActionLabel,
+  lifecyclePending,
   lifecyclePendingLabel,
+  machineState,
+  machineStateNote,
+  machineStateWord,
+  providerDescription,
   providerName,
+  recoverWarning,
   resetWarning,
   selectedProvider,
   selectionUnconfigured,
   switchWarning,
 } from "../computer.ts";
 import type { ComputerLifecycleAction, ComputerState, ProviderChoice } from "../computer.ts";
+import { ComputerSkeleton } from "./loading.tsx";
 
 /**
- * One bot's computer (slices 9.4 and 11.4, PRD stories 27, 30 and 31): what
- * the operator sees of a machine and what they can do to it.
+ * One bot's computer (slices 9.4, 11.4 and 13.10; PRD stories 27, 30 and 31):
+ * the machine as a surface, not a form.
  *
- * The read is the contract's own: the machine's state, the deployment's
- * providers with their readiness answers, the snapshots in this space. The
- * lifecycle controls are the supervisor's four verbs — Start, Stop, Reset,
- * Recover — and Reset arms a confirmation because it destroys the machine and
- * its home while keeping the snapshots that can bring files back. The
- * terminal and the file view are v1.0's visibility into what the machine is
- * doing: the terminal runs one command at a time through the same supervisor
- * exec seam the model's shell tool uses, and the file view lists the bot's
- * home and reads one file from it. Both are disabled while the machine is not
- * running, so a stopped computer answers with its state rather than with a
- * supervisor refusal.
+ * The screen is the primary tab: a window frame with the machine's state
+ * inside it. A provider that offers frames gets a live body here and a
+ * take-control control in the chrome; no provider does in v1.0 (issue #178
+ * reserves the stream for v1.1), so the body states that plainly and points at
+ * the tabs that do show the machine. The terminal and the file view are the
+ * other two tabs — each one command or one directory, through the same
+ * supervisor seams the model's tools use — and both read the machine's state
+ * rather than a supervisor refusal when it is not running.
  *
- * Screen watch and takeover do not ship in v1.0 (PRD story 28, issue #178),
- * and this screen deliberately has no section for them: the reserved seam is
- * `ComputerProvider.frames()`/`input()` and the supervisor's capability-gated
- * `/frames` and `/input` paths, both documented at their declarations. When
- * the stream lands, its surface is a section here beside the terminal.
+ * Lifecycle is one control: its trigger is the state word (Running, Stopped,
+ * Gone, No machine), and its menu states what each verb does before it is
+ * chosen. Start and Stop act on selection; Reset and Recover open a
+ * confirmation that names what the write can destroy, because both can leave a
+ * machine that does not exist. The provider choice is a sheet: what each kind
+ * is, whether it is available and why not, and a selection still confirms
+ * before it is stored. Snapshots keep their list and their per-row restore
+ * confirmation.
  */
 
 export interface ComputerScreenProps {
@@ -71,6 +79,10 @@ export function ComputerScreen({
   onOpenFile,
   onOpenParent,
 }: ComputerScreenProps) {
+  const [tab, setTab] = useState("screen");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [confirming, setConfirming] = useState<ComputerLifecycleAction | null>(null);
+
   if (state.status === "refused") {
     return (
       <section className="console">
@@ -83,23 +95,32 @@ export function ComputerScreen({
   }
 
   if (state.bot === null || state.providers === null) {
-    return <section className="console" aria-busy="true" />;
+    return <ComputerSkeleton />;
   }
 
   const busy = state.pending !== null;
-  const current = selectedProvider(state);
-  const browse = canBrowse(state);
+  const running = canBrowse(state);
+  const switchOpen = state.candidate !== null;
 
   return (
-    <section className="console" aria-busy={state.status === "loading"}>
-      <header className="memory-header">
-        <div className="bot-identity">
-          <BotAvatar id={state.bot.id} name={state.bot.name} color={state.bot.color} size={32} />
-          <h2>{state.bot.name}</h2>
-        </div>
-      </header>
+    <section className="console computer" aria-busy={state.status === "loading"}>
+      <div className="computer-bar">
+        <MachineControl
+          state={state}
+          onLifecycle={onLifecycle}
+          onConfirm={(action) => {
+            setConfirming(action);
+          }}
+        />
+        <ProviderBar
+          state={state}
+          onOpen={() => {
+            setSheetOpen(true);
+          }}
+        />
+      </div>
 
-      {state.notice === null ? null : (
+      {state.notice === null || switchOpen ? null : (
         <p
           className={state.notice.kind === "error" ? "form-error" : "muted"}
           role={state.notice.kind === "error" ? "alert" : "status"}
@@ -108,163 +129,224 @@ export function ComputerScreen({
         </p>
       )}
 
-      <Machine state={state} onLifecycle={onLifecycle} />
+      <Tabs
+        label="Machine views"
+        active={tab}
+        onSelect={setTab}
+        items={[
+          { id: "screen", label: "Screen", panel: <ScreenPanel state={state} /> },
+          {
+            id: "terminal",
+            label: "Terminal",
+            panel: running ? (
+              <Terminal state={state} onRun={onRun} />
+            ) : (
+              <p className="muted">{machineStateNote(state)}</p>
+            ),
+          },
+          {
+            id: "files",
+            label: "Files",
+            panel: running ? (
+              <Files
+                state={state}
+                onOpenDirectory={onOpenDirectory}
+                onOpenFile={onOpenFile}
+                onOpenParent={onOpenParent}
+              />
+            ) : (
+              <p className="muted">{machineStateNote(state)}</p>
+            ),
+          },
+        ]}
+      />
 
-      {browse ? (
-        <>
-          <Terminal state={state} onRun={onRun} />
-          <Files
-            state={state}
-            onOpenDirectory={onOpenDirectory}
-            onOpenFile={onOpenFile}
-            onOpenParent={onOpenParent}
-          />
-        </>
-      ) : (
-        <p className="muted">Start the machine to use its terminal and files.</p>
-      )}
+      <Snapshots state={state} pending={state.pending} onRestore={onRestore} />
 
-      <fieldset className="provider-choice">
-        <legend>Where this bot&apos;s computer runs</legend>
-
-        {selectionUnconfigured(state) ? (
-          <p className="form-error" role="alert">
-            {`This bot is set to "${String(state.bot.computerProvider)}", which this deployment does not configure. Choose a provider below.`}
-          </p>
-        ) : null}
-
-        <ul className="provider-list">
-          <ProviderOption
-            name="Deployment default"
-            detail={providerName(state.providers.defaultKind)}
-            provider={defaultProvider(state)}
-            checked={followsDefault(state)}
-            disabled={busy || defaultUnavailable(state)}
-            onChoose={() => {
-              onChoose({ kind: null });
-            }}
-          />
-
-          {state.providers.providers.map((provider) => (
-            <ProviderOption
-              key={provider.kind}
-              name={providerName(provider.kind)}
-              detail={provider.kind}
-              provider={provider}
-              checked={state.bot?.computerProvider === provider.kind}
-              disabled={busy || !provider.available}
-              onChoose={() => {
-                onChoose({ kind: provider.kind });
-              }}
-            />
-          ))}
-        </ul>
-      </fieldset>
-
-      {current === null || current.available ? null : (
-        <p className="muted">
-          {`The machine on ${providerName(current.kind)} may not start: ${availabilityOf(current).toLowerCase()}.`}
-        </p>
-      )}
+      <ProviderSheet
+        state={state}
+        open={sheetOpen}
+        onClose={() => {
+          setSheetOpen(false);
+        }}
+        onChoose={(choice) => {
+          setSheetOpen(false);
+          onChoose(choice);
+        }}
+      />
 
       {state.candidate === null ? null : (
         <SwitchConfirmation
           state={state}
-          pending={state.pending}
-          onConfirm={onConfirm}
           onCancel={onCancel}
+          onConfirm={onConfirm}
           onSnapshot={onSnapshot}
         />
       )}
 
-      <Snapshots state={state} pending={state.pending} onRestore={onRestore} />
+      <Dialog
+        open={confirming !== null}
+        title={confirming === "reset" ? "Reset the machine?" : "Recover the machine?"}
+        description={confirming === "reset" ? resetWarning(state) : recoverWarning(state)}
+        onClose={() => {
+          setConfirming(null);
+        }}
+        actions={
+          <>
+            <Button
+              variant={confirming === "reset" ? "destructive" : "primary"}
+              disabled={busy}
+              onClick={() => {
+                const action = confirming;
+                setConfirming(null);
+
+                if (action !== null) {
+                  void onLifecycle(action);
+                }
+              }}
+            >
+              {confirming === "reset" ? "Reset the machine" : "Recover the machine"}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setConfirming(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </>
+        }
+      />
     </section>
   );
 }
 
 /**
- * The machine's state and the supervisor's four lifecycle verbs. Reset is the
- * one destructive verb, so it arms a confirmation that says what is lost —
- * the machine and its home — and what is kept.
+ * The lifecycle control: the machine's state as its trigger's word, and the
+ * four verbs in a menu that states what each one does. Reset and Recover open
+ * a confirmation rather than acting on selection, because either can leave the
+ * bot with no machine at all.
  */
-function Machine({
+function MachineControl({
   state,
   onLifecycle,
+  onConfirm,
 }: {
   readonly state: ComputerState;
   readonly onLifecycle: (action: ComputerLifecycleAction) => Promise<void>;
+  readonly onConfirm: (action: ComputerLifecycleAction) => void;
 }) {
-  const [armingReset, setArmingReset] = useState(false);
   const busy = state.pending !== null;
-  const assigned = state.computer?.assigned === true;
-  const running = assigned && state.computer?.state === "running";
+  const running = canBrowse(state);
+  const assigned = machineState(state) !== "unassigned";
+  const pending = lifecyclePending(state.pending);
+  const label = pending === null ? machineStateWord(state) : lifecyclePendingLabel(pending);
 
   return (
-    <section className="machine">
-      <h3>Machine</h3>
-      <p className="muted">{computerSentence(state)}</p>
+    <span className="computer-state">
+      <span className="computer-state-dot" data-state={machineState(state)} aria-hidden="true" />
+      <Menu
+        label={label}
+        ariaLabel={`${label} — machine actions`}
+        items={[
+          {
+            id: "boot",
+            label: lifecycleActionLabel("boot"),
+            disabled: busy || !assigned || running,
+            onSelect: () => {
+              void onLifecycle("boot");
+            },
+          },
+          {
+            id: "stop",
+            label: lifecycleActionLabel("stop"),
+            disabled: busy || !running,
+            onSelect: () => {
+              void onLifecycle("stop");
+            },
+          },
+          {
+            id: "reset",
+            label: lifecycleActionLabel("reset"),
+            destructive: true,
+            disabled: busy || !assigned,
+            onSelect: () => {
+              onConfirm("reset");
+            },
+          },
+          {
+            id: "recover",
+            label: lifecycleActionLabel("recover"),
+            disabled: busy || !assigned,
+            onSelect: () => {
+              onConfirm("recover");
+            },
+          },
+        ]}
+      />
+    </span>
+  );
+}
 
-      <div className="bot-actions">
-        <Button
-          disabled={busy || !assigned || running}
-          onClick={() => {
-            void onLifecycle("boot");
-          }}
-        >
-          {state.pending === "boot" ? lifecyclePendingLabel("boot") : "Start"}
-        </Button>
-        <Button
-          disabled={busy || !running}
-          onClick={() => {
-            void onLifecycle("stop");
-          }}
-        >
-          {state.pending === "stop" ? lifecyclePendingLabel("stop") : "Stop"}
-        </Button>
-        <Button
-          disabled={busy || !assigned}
-          onClick={() => {
-            setArmingReset(true);
-          }}
-        >
-          Reset
-        </Button>
-        <Button
-          disabled={busy || !assigned}
-          onClick={() => {
-            void onLifecycle("recover");
-          }}
-        >
-          {state.pending === "recover" ? lifecyclePendingLabel("recover") : "Recover"}
-        </Button>
+/** Where the machine runs, and the sheet that changes it. */
+function ProviderBar({
+  state,
+  onOpen,
+}: {
+  readonly state: ComputerState;
+  readonly onOpen: () => void;
+}) {
+  const kind = effectiveKind(state);
+  const current = selectedProvider(state);
+  const unconfigured = selectionUnconfigured(state);
+
+  return (
+    <span className="computer-provider">
+      <span className="muted">Runs on</span>
+      <span className="computer-provider-name">
+        {kind === null ? "no provider" : providerName(kind)}
+      </span>
+      {unconfigured ? (
+        <span className="provider-unavailable">Not configured</span>
+      ) : current === null ? null : (
+        <span className={current.available ? "muted" : "provider-unavailable"}>
+          {availabilityOf(current)}
+        </span>
+      )}
+      <Button variant="ghost" onClick={onOpen}>
+        Change
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * The screen tab: the window chrome a live view would fill, and the machine's
+ * state where no frames exist. Take control lands in the chrome with the v1.1
+ * stream (issue #178); no provider offers frames in v1.0, so the surface
+ * renders no control that would answer `not_implemented`.
+ */
+function ScreenPanel({ state }: { readonly state: ComputerState }) {
+  const kind = effectiveKind(state);
+
+  return (
+    <div className="computer-frame">
+      <div className="computer-chrome">
+        <span className="computer-lights" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+        <span className="computer-address">
+          {kind === null ? "No machine" : providerName(kind)}
+        </span>
       </div>
-
-      {armingReset ? (
-        <div className="memory-form provider-confirm">
-          <p className="muted">{resetWarning(state)}</p>
-          <div className="memory-actions">
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => {
-                setArmingReset(false);
-                void onLifecycle("reset");
-              }}
-            >
-              {state.pending === "reset" ? lifecyclePendingLabel("reset") : "Reset the machine"}
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() => {
-                setArmingReset(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </section>
+      <div className="computer-view">
+        <p className="computer-view-state">{machineStateWord(state)}</p>
+        <p className="muted">{machineStateNote(state)}</p>
+      </div>
+    </div>
   );
 }
 
@@ -280,9 +362,7 @@ function Terminal({
   const pending = state.terminal.pending;
 
   return (
-    <section className="terminal">
-      <h3>Terminal</h3>
-
+    <div className="terminal">
       <form
         className="terminal-form"
         onSubmit={(event) => {
@@ -332,7 +412,7 @@ function Terminal({
           ))}
         </ol>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -352,9 +432,7 @@ function Files({
   const home = files.path === null || files.path === "";
 
   return (
-    <section className="files">
-      <h3>Files</h3>
-
+    <div className="files">
       <div className="file-path">
         <Button
           disabled={files.pending || home}
@@ -408,11 +486,84 @@ function Files({
           ) : null}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
-/** One radio row: the choice, what it names, and its readiness answer. */
+/**
+ * The provider sheet: what each configured kind is, whether it can serve a
+ * machine and why not when it cannot, and the deployment default as its own
+ * choice. Picking one closes the sheet and arms the switch confirmation, so
+ * the write still takes two deliberate steps.
+ */
+function ProviderSheet({
+  state,
+  open,
+  onClose,
+  onChoose,
+}: {
+  readonly state: ComputerState;
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly onChoose: (choice: ProviderChoice) => void;
+}) {
+  const providers = state.providers;
+
+  if (providers === null) {
+    return null;
+  }
+
+  const busy = state.pending !== null;
+
+  return (
+    <Sheet
+      open={open}
+      title="Where this bot's computer runs"
+      description="The choice is stored on the bot. Switching moves nothing by itself."
+      onClose={onClose}
+    >
+      {selectionUnconfigured(state) ? (
+        <p className="form-error" role="alert">
+          {`This bot is set to "${String(state.bot?.computerProvider)}", which this deployment does not configure. Choose a provider below.`}
+        </p>
+      ) : null}
+
+      <ul className="provider-list">
+        <ProviderOption
+          name="Deployment default"
+          detail={detailOf(providers.defaultKind)}
+          provider={defaultProvider(state)}
+          checked={followsDefault(state)}
+          disabled={busy || defaultUnavailable(state)}
+          onChoose={() => {
+            onChoose({ kind: null });
+          }}
+        />
+
+        {providers.providers.map((provider) => (
+          <ProviderOption
+            key={provider.kind}
+            name={providerName(provider.kind)}
+            detail={detailOf(provider.kind)}
+            provider={provider}
+            checked={state.bot?.computerProvider === provider.kind}
+            disabled={busy || !provider.available}
+            onChoose={() => {
+              onChoose({ kind: provider.kind });
+            }}
+          />
+        ))}
+      </ul>
+    </Sheet>
+  );
+}
+
+/** What a kind is, as the sheet's second line: its name and its one sentence. */
+function detailOf(kind: string): string {
+  return [providerName(kind), providerDescription(kind)].filter((part) => part !== "").join(" · ");
+}
+
+/** One radio row: the choice, what it is, and its readiness answer. */
 function ProviderOption({
   name,
   detail,
@@ -438,12 +589,20 @@ function ProviderOption({
           disabled={disabled}
           onChange={onChoose}
         />
-        <span className="provider-name">{name}</span>
-        <span className="provider-detail muted">{detail}</span>
+        <span className="provider-choice-body">
+          <span className="provider-name">{name}</span>
+          {detail === "" ? null : <span className="provider-detail muted">{detail}</span>}
+        </span>
+        <span
+          className={
+            provider.available
+              ? "provider-availability muted"
+              : "provider-availability provider-unavailable"
+          }
+        >
+          {availabilityOf(provider)}
+        </span>
       </label>
-      <span className={provider.available ? "muted" : "provider-unavailable"}>
-        {availabilityOf(provider)}
-      </span>
     </li>
   );
 }
@@ -468,19 +627,18 @@ function defaultUnavailable(state: ComputerState): boolean {
 /**
  * The switch confirmation: what does not move, the snapshot path, and the
  * write. The warning is the same computation the controller used to arm this
- * panel, so what is confirmed is exactly what was read.
+ * panel, so what is confirmed is exactly what was read, and the notice is
+ * rendered here while the dialog covers the screen so a refusal is visible.
  */
 function SwitchConfirmation({
   state,
-  pending,
-  onConfirm,
   onCancel,
+  onConfirm,
   onSnapshot,
 }: {
   readonly state: ComputerState;
-  readonly pending: ComputerState["pending"];
-  readonly onConfirm: () => Promise<void>;
   readonly onCancel: () => void;
+  readonly onConfirm: () => Promise<void>;
   readonly onSnapshot: () => Promise<void>;
 }) {
   const candidate = state.candidate;
@@ -489,35 +647,51 @@ function SwitchConfirmation({
     return null;
   }
 
+  const pending = state.pending;
   const target = candidate.kind === null ? "the deployment default" : providerName(candidate.kind);
   const canSnapshot =
     state.computer?.assigned === true && state.computer.state === "running" && pending === null;
 
   return (
-    <div className="memory-form provider-confirm">
-      <p className="muted">{switchWarning(state, candidate)}</p>
-      <div className="memory-actions">
-        <Button
-          disabled={pending !== null || !canSnapshot}
-          onClick={() => {
-            void onSnapshot();
-          }}
+    <Dialog
+      open
+      title={`Switch to ${target}?`}
+      description={switchWarning(state, candidate)}
+      onClose={onCancel}
+      actions={
+        <>
+          <Button
+            disabled={pending !== null || !canSnapshot}
+            onClick={() => {
+              void onSnapshot();
+            }}
+          >
+            {pending === "snapshot" ? "Capturing…" : "Take a snapshot"}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={pending !== null}
+            onClick={() => {
+              void onConfirm();
+            }}
+          >
+            {pending === "switch" ? "Switching…" : `Switch to ${target}`}
+          </Button>
+          <Button disabled={pending !== null} onClick={onCancel}>
+            Cancel
+          </Button>
+        </>
+      }
+    >
+      {state.notice === null ? null : (
+        <p
+          className={state.notice.kind === "error" ? "form-error" : "muted"}
+          role={state.notice.kind === "error" ? "alert" : "status"}
         >
-          {pending === "snapshot" ? "Capturing…" : "Take a snapshot"}
-        </Button>
-        <Button
-          disabled={pending !== null}
-          onClick={() => {
-            void onConfirm();
-          }}
-        >
-          {pending === "switch" ? "Switching…" : `Switch to ${target}`}
-        </Button>
-        <Button disabled={pending !== null} onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-    </div>
+          {state.notice.text}
+        </p>
+      )}
+    </Dialog>
   );
 }
 
@@ -536,12 +710,12 @@ function Snapshots({
   readonly onRestore: (snapshotId: string) => Promise<void>;
 }) {
   return (
-    <section className="connection-keys">
+    <section className="computer-snapshots">
       <h3>Snapshots</h3>
       {state.snapshots.length === 0 ? (
         <p className="muted">No snapshots yet.</p>
       ) : (
-        <ul className="connection-key-list">
+        <ul className="computer-snapshot-list">
           {state.snapshots.map((snapshot) => (
             <SnapshotRow
               key={snapshot.id}
@@ -568,11 +742,11 @@ function SnapshotRow({
   const [restoring, setRestoring] = useState(false);
 
   return (
-    <li className="connection-key">
+    <li className="computer-snapshot">
       <span>{formatMoment(snapshot.createdAt)}</span>{" "}
       <span className="muted">{formatBytes(snapshot.sizeBytes)}</span>
       {restoring ? (
-        <span className="connection-confirm">
+        <span className="computer-snapshot-confirm">
           <span className="muted">Restoring replaces this machine&apos;s home. </span>{" "}
           <Button
             disabled={pending !== null}

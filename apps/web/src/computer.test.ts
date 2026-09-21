@@ -5,8 +5,15 @@ import {
   switchWarning,
   switchOutcome,
   effectiveKind,
+  lifecycleActionLabel,
   lifecycleOutcome,
+  lifecyclePending,
+  machineState,
+  machineStateNote,
+  machineStateWord,
   MAX_TERMINAL_ENTRIES,
+  providerDescription,
+  recoverWarning,
   resetWarning,
   selectionUnconfigured,
   availabilityOf,
@@ -79,6 +86,58 @@ describe("the readiness read", () => {
     );
     expect(availabilityOf(fakeProvider({ available: false, failure: null }))).toBe("Unavailable");
     expect(availabilityOf(fakeProvider())).toBe("Available");
+  });
+});
+
+describe("the machine's state as the surface states it", () => {
+  const withMachine = (state: "running" | "stopped" | "gone") => ({
+    bot: { ...fakeBot("bot-1", "Ada"), computerId: "computer-1" },
+    computer: { assigned: true as const, state },
+  });
+
+  it("reads one word per machine state, and no machine when none is assigned", () => {
+    expect(machineStateWord({ bot: fakeBot("bot-1", "Ada"), computer: { assigned: false } })).toBe(
+      "No machine",
+    );
+    expect(machineStateWord(withMachine("running"))).toBe("Running");
+    expect(machineStateWord(withMachine("stopped"))).toBe("Stopped");
+    expect(machineStateWord(withMachine("gone"))).toBe("Gone");
+    expect(machineState(withMachine("gone"))).toBe("gone");
+  });
+
+  it("states plainly that no live view exists where frames do not, and what to use instead", () => {
+    expect(machineStateNote(withMachine("running"))).toContain("No live view");
+    expect(machineStateNote(withMachine("running"))).toContain("terminal and files tabs");
+    expect(machineStateNote(withMachine("stopped"))).toBe(
+      "Start the machine to use its terminal and files.",
+    );
+    expect(machineStateNote({ bot: fakeBot("bot-1", "Ada"), computer: { assigned: false } })).toBe(
+      "It is created the first time this bot runs.",
+    );
+  });
+
+  it("states what each lifecycle verb does before it is chosen", () => {
+    expect(lifecycleActionLabel("boot")).toBe("Start — bring the machine up");
+    expect(lifecycleActionLabel("stop")).toBe("Stop — park it, keeping the home");
+    expect(lifecycleActionLabel("reset")).toContain("destroy");
+    expect(lifecycleActionLabel("recover")).toContain("adopt");
+  });
+
+  it("recognises a lifecycle write in flight and ignores the other pending writes", () => {
+    expect(lifecyclePending("reset")).toBe("reset");
+    expect(lifecyclePending("switch")).toBeNull();
+    expect(lifecyclePending("snapshot")).toBeNull();
+    expect(lifecyclePending("restore")).toBeNull();
+    expect(lifecyclePending(null)).toBeNull();
+  });
+});
+
+describe("the provider sheet's descriptions", () => {
+  it("describes the three v1.0 kinds and leaves an unknown kind to its own name", () => {
+    expect(providerDescription("offline")).toContain("emulator");
+    expect(providerDescription("docker")).toContain("isolated network");
+    expect(providerDescription("daytona")).toContain("Daytona");
+    expect(providerDescription("future-kind")).toBe("");
   });
 });
 
@@ -316,6 +375,16 @@ describe("the reset warning", () => {
 
   it("says nothing is snapshotted when there is nothing to restore", () => {
     expect(resetWarning({ snapshots: [] })).toContain("nothing is snapshotted");
+  });
+});
+
+describe("the recover warning", () => {
+  it("names the empty home a re-provisioned machine starts with", () => {
+    expect(recoverWarning({ snapshots: [] })).toContain("empty home");
+  });
+
+  it("says snapshots are kept when there are any", () => {
+    expect(recoverWarning({ snapshots: [fakeSnapshot()] })).toContain("snapshots are kept");
   });
 });
 

@@ -1,7 +1,7 @@
 import { useRouterState } from "@tanstack/react-router";
 import type { Approval } from "@porkbot/contracts";
 import { BotAvatar, IconButton, Sheet, StateChip } from "@porkbot/ui";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { findRosterBot } from "../roster.ts";
 import type { Roster, RosterEntry } from "../roster.ts";
@@ -10,8 +10,9 @@ import { ShellHeaderProvider } from "./header-state.tsx";
 import type { ShellHeaderState } from "./header-state.tsx";
 import { defaultStorage, readInspectorOpen, writeInspectorOpen } from "./inspector-preference.ts";
 import { Inspector } from "./inspector.tsx";
-import { applyMode, currentMode, toggled } from "./mode.ts";
+import { applyMode, currentChoice } from "./mode.ts";
 import type { Mode } from "./mode.ts";
+import { ModeProvider } from "./mode-context.tsx";
 import { Rail } from "./rail.tsx";
 import { useMediaQuery } from "./use-media-query.ts";
 
@@ -69,7 +70,7 @@ export function Workspace({
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
   const [reported, setReported] = useState<ShellHeaderState | null>(null);
-  const [mode, setMode] = useState<Mode>(() => currentMode());
+  const [mode, setMode] = useState<Mode>(() => currentChoice());
 
   const pendingByBot = useMemo(() => {
     const counts = new Map<string, number>();
@@ -111,12 +112,11 @@ export function Workspace({
     writeInspectorOpen(defaultStorage(), next);
   }
 
-  function toggleMode(): void {
-    const next = toggled(mode);
-
+  const chooseMode = useCallback((next: Mode): void => {
     applyMode(document.documentElement, defaultStorage(), next);
     setMode(next);
-  }
+  }, []);
+  const modeValue = useMemo(() => ({ mode, setMode: chooseMode }), [mode, chooseMode]);
 
   const rail = (
     <Rail
@@ -125,7 +125,7 @@ export function Workspace({
       query={query}
       onQuery={setQuery}
       mode={mode}
-      onToggleMode={toggleMode}
+      onMode={chooseMode}
       onSignOut={onSignOut}
       rosterFailed={rosterFailed ?? false}
       onRetryRoster={onRetryRoster}
@@ -149,92 +149,99 @@ export function Workspace({
 
   return (
     <ShellHeaderProvider report={setReported}>
-      <div
-        className="shell"
-        data-inspector={inspectorOpen ? "open" : "closed"}
-        data-layout={narrow ? "narrow" : "wide"}
-      >
-        {narrow ? null : (
-          <aside className="shell-rail" aria-label="Workspace">
-            {rail}
-          </aside>
-        )}
+      <ModeProvider value={modeValue}>
+        <div
+          className="shell"
+          data-inspector={inspectorOpen ? "open" : "closed"}
+          data-layout={narrow ? "narrow" : "wide"}
+        >
+          {narrow ? null : (
+            <aside className="shell-rail" aria-label="Workspace">
+              {rail}
+            </aside>
+          )}
 
-        <main id="main" className="shell-content" tabIndex={-1}>
-          <header className="shell-header">
-            {narrow ? (
-              <IconButton
-                label="Switch bot"
-                icon="menu"
-                onClick={() => {
-                  setSwitcherOpen(true);
-                }}
-              />
-            ) : null}
-            {selected === null ? (
-              <span className="shell-header-title">PorkBot</span>
-            ) : (
-              <>
-                <BotAvatar id={selected.id} name={selected.name} color={selected.color} size={32} />
-                <span className="shell-header-body">
-                  <span className="shell-header-name">{selected.name}</span>
-                  <span className="shell-header-meta">
-                    {selected.title === "" ? "Bot" : selected.title}
-                  </span>
-                </span>
-                {state === null ? null : (
-                  <StateChip
-                    state={state}
-                    count={state === "waiting" && pendingForBot > 0 ? pendingForBot : undefined}
+          <main id="main" className="shell-content" tabIndex={-1}>
+            <header className="shell-header">
+              {narrow ? (
+                <IconButton
+                  label="Switch bot"
+                  icon="menu"
+                  onClick={() => {
+                    setSwitcherOpen(true);
+                  }}
+                />
+              ) : null}
+              {selected === null ? (
+                <span className="shell-header-title">PorkBot</span>
+              ) : (
+                <>
+                  <BotAvatar
+                    id={selected.id}
+                    name={selected.name}
+                    color={selected.color}
+                    size={32}
                   />
-                )}
-                {/* The wrapper is the flex item: the icon button renders inside
+                  <span className="shell-header-body">
+                    <span className="shell-header-name">{selected.name}</span>
+                    <span className="shell-header-meta">
+                      {selected.title === "" ? "Bot" : selected.title}
+                    </span>
+                  </span>
+                  {state === null ? null : (
+                    <StateChip
+                      state={state}
+                      count={state === "waiting" && pendingForBot > 0 ? pendingForBot : undefined}
+                    />
+                  )}
+                  {/* The wrapper is the flex item: the icon button renders inside
                     the tooltip's own span, which an auto margin on the button
                     cannot push to the header's end. */}
-                <span className="shell-header-toggle">
-                  <IconButton
-                    label={inspectorVisible ? "Hide bot context" : "Show bot context"}
-                    icon="panel-left"
-                    aria-expanded={inspectorVisible}
-                    onClick={toggleInspector}
-                  />
-                </span>
-              </>
-            )}
-          </header>
-          <div className="shell-pane">{children}</div>
-        </main>
+                  <span className="shell-header-toggle">
+                    <IconButton
+                      label={inspectorVisible ? "Hide bot context" : "Show bot context"}
+                      icon="panel-left"
+                      aria-expanded={inspectorVisible}
+                      onClick={toggleInspector}
+                    />
+                  </span>
+                </>
+              )}
+            </header>
+            <div className="shell-pane">{children}</div>
+          </main>
 
-        {narrow || selected === null || !inspectorOpen ? null : (
-          <aside className="shell-inspector" aria-label={`${selected.name} context`}>
-            {inspector}
-          </aside>
-        )}
+          {narrow || selected === null || !inspectorOpen ? null : (
+            <aside className="shell-inspector" aria-label={`${selected.name} context`}>
+              {inspector}
+            </aside>
+          )}
 
-        {narrow && switcherOpen ? (
-          <Sheet
-            open
-            title="Bots"
-            onClose={() => {
-              setSwitcherOpen(false);
-            }}
-          >
-            {rail}
-          </Sheet>
-        ) : null}
+          {narrow && switcherOpen ? (
+            <Sheet
+              open
+              title="Bots"
+              onClose={() => {
+                setSwitcherOpen(false);
+              }}
+            >
+              {rail}
+            </Sheet>
+          ) : null}
 
-        {narrow && inspectorSheetOpen && selected !== null ? (
-          <Sheet
-            open
-            title={selected.name}
-            onClose={() => {
-              setInspectorSheetOpen(false);
-            }}
-          >
-            {inspector}
-          </Sheet>
-        ) : null}
-      </div>
+          {narrow && inspectorSheetOpen && selected !== null ? (
+            <Sheet
+              open
+              title={selected.name}
+              onClose={() => {
+                setInspectorSheetOpen(false);
+              }}
+            >
+              {inspector}
+            </Sheet>
+          ) : null}
+        </div>
+      </ModeProvider>
     </ShellHeaderProvider>
   );
 }

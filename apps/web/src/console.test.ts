@@ -131,6 +131,69 @@ describe("the thread console", () => {
     console.stop();
   });
 
+  it("settles an optimistic send in place and keeps a failed send visible", async () => {
+    const events = createScriptedEvents();
+    const transcript = [
+      textMessage({ id: "message-0", threadId, seq: 0, role: "user", text: "before" }),
+    ];
+    const console = consoleFor(scriptedThreadTransport({ transcript, events: events.procedure }));
+
+    console.start();
+    await until(() => events.calls.length === 1, "the subscription");
+
+    const optimistic = textMessage({
+      id: "optimistic-nonce-1",
+      threadId,
+      seq: Number.MAX_SAFE_INTEGER,
+      role: "user",
+      text: "send this",
+    });
+    console.noteOptimistic(optimistic, optimistic.id);
+
+    expect(messagesOf(console.state()).map((entry) => entry.id)).toEqual([
+      "message-0",
+      "optimistic-nonce-1",
+    ]);
+    expect(lastMessage(console.state())).toMatchObject({
+      id: "optimistic-nonce-1",
+      delivery: "sending",
+    });
+
+    const persisted = textMessage({
+      id: "message-1",
+      threadId,
+      seq: 1,
+      role: "user",
+      text: "send this",
+      runId,
+    });
+    console.settleSent(optimistic.id, persisted);
+
+    expect(messagesOf(console.state()).map((entry) => entry.id)).toEqual([
+      "message-0",
+      "message-1",
+    ]);
+    expect(lastMessage(console.state())?.id).toBe("message-1");
+    expect(lastMessage(console.state())?.delivery).toBeUndefined();
+
+    const failed = textMessage({
+      id: "optimistic-nonce-2",
+      threadId,
+      seq: Number.MAX_SAFE_INTEGER,
+      role: "user",
+      text: "keep this",
+    });
+    console.noteOptimistic(failed, failed.id);
+    console.failSent(failed.id);
+
+    expect(lastMessage(console.state())).toMatchObject({
+      id: "optimistic-nonce-2",
+      delivery: "failed",
+    });
+
+    console.stop();
+  });
+
   it("resumes a dropped connection and folds the continuation without duplicating a token", async () => {
     const events = createScriptedEvents();
     const transport = scriptedThreadTransport({ events: events.procedure });

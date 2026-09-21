@@ -220,6 +220,15 @@ export function revokeWarning(impact: RevokeImpact, credentialName: string): str
   return `Revoking ${credentialName} leaves ${connectionClause(impact.connections, "without a key", "without keys")} and ${botClause(impact.bots, "has no model", "have no model")}.`;
 }
 
+/**
+ * The confirmation sentence for a key replaced in place (a rotate), shown
+ * before the write: the connection that named the key keeps working, but the
+ * value it sends is the new one from the next request on.
+ */
+export function replaceKeyWarning(credentialName: string): string {
+  return `A key named ${credentialName} is already stored. Storing now replaces it; connections that use it send the new key from their next request.`;
+}
+
 /** The outcome sentence for a credential revoke, shown after the write. */
 export function revokeOutcome(impact: RevokeImpact, credentialName: string): string {
   if (impact.connections.length === 0) {

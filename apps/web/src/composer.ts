@@ -2,6 +2,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_BYTES,
   contentTypeForFileName,
+  messageBlocksForSend,
 } from "@porkbot/core";
 import { ORPCError } from "@porkbot/contracts";
 import type { Message, ThreadsSendResult, UploadedAttachment } from "@porkbot/contracts";
@@ -120,8 +121,12 @@ export class AttachmentUploadError extends Error {
 export interface ComposerOptions {
   readonly transport: ComposerTransport;
   readonly threadId: string;
+  /** Called with the optimistic message before the request leaves the browser. */
+  readonly onOptimistic?: ((message: Message, optimisticId: string) => void) | undefined;
   /** Called with the persisted message after every successful send. */
-  readonly onSent?: ((message: Message) => void) | undefined;
+  readonly onSent?: ((message: Message, optimisticId: string) => void) | undefined;
+  /** Called when the optimistic message could not be persisted. */
+  readonly onSendFailed?: ((optimisticId: string) => void) | undefined;
   /** The nonce mint, injected in tests; defaults to a random UUID. */
   readonly newNonce?: (() => string) | undefined;
 }
@@ -233,6 +238,7 @@ export function createComposer(options: ComposerOptions): Composer {
   let error: string | null = null;
   let dragActive = false;
   let nonce: string | null = null;
+  let textChangedWhileSending = false;
   let nextKey = 0;
   // The published view, rebuilt on every publish: `useSyncExternalStore`
   // compares snapshots by identity, so the state object must be stable until
@@ -348,6 +354,10 @@ export function createComposer(options: ComposerOptions): Composer {
         return;
       }
 
+      if (sending) {
+        textChangedWhileSending = true;
+      }
+
       text = next;
       nonce = null;
       publish();
@@ -440,8 +450,36 @@ export function createComposer(options: ComposerOptions): Composer {
       const attachmentIds = files
         .map((file) => file.attachmentId)
         .filter((id): id is string => id !== null);
+      const optimisticId = `optimistic-${sendNonce}`;
+      const optimisticFiles = sentFiles
+        .filter(
+          (file): file is StagedFile & { readonly attachmentId: string } =>
+            file.attachmentId !== null,
+        )
+        .map((file) => ({
+          type: "file" as const,
+          attachmentId: file.attachmentId,
+          filename: file.filename,
+          contentType: file.contentType,
+          sizeBytes: file.sizeBytes,
+        }));
+      const optimistic: Message = {
+        id: optimisticId,
+        threadId,
+        seq: Number.MAX_SAFE_INTEGER,
+        role: "user",
+        blocks: [...messageBlocksForSend(sentText, optimisticFiles)],
+        runId: null,
+        createdAt: new Date().toISOString(),
+      };
       sending = true;
       error = null;
+      textChangedWhileSending = false;
+      // The transcript now owns the submitted turn. Clearing the input keeps
+      // the optimistic row from appearing twice while the request settles;
+      // failure restores this draft below unless the operator edited it.
+      text = "";
+      options.onOptimistic?.(optimistic, optimisticId);
       publish();
 
       const attempt = async (): Promise<ThreadsSendResult> => {
@@ -471,22 +509,27 @@ export function createComposer(options: ComposerOptions): Composer {
 
       void attempt()
         .then((result) => {
-          options.onSent?.(result.message);
+          options.onSent?.(result.message, optimisticId);
 
           // Clear only what this send carried: text typed and files staged
           // while the request was in flight are the next draft, not this one.
           const sentKeys = new Set(sentFiles.map((file) => file.key));
           files = files.filter((file) => !sentKeys.has(file.key));
-          if (text === sentText) {
-            text = "";
-          }
 
           sending = false;
+          textChangedWhileSending = false;
           nonce = null;
           publish();
         })
         .catch((failure: unknown) => {
+          options.onSendFailed?.(optimisticId);
+
+          if (!textChangedWhileSending && text === "") {
+            text = sentText;
+          }
+
           sending = false;
+          textChangedWhileSending = false;
           error = sendFailure(failure);
           publish();
         });

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Button } from "@porkbot/ui";
 import { ToolResultScreen } from "../../screens/tool-result.tsx";
+import { ToolResultSkeleton } from "../../screens/loading.tsx";
 
 /**
  * One truncated tool event's artifact. The route is the wiring: the artifact
@@ -18,6 +19,7 @@ import { ToolResultScreen } from "../../screens/tool-result.tsx";
 export const Route = createFileRoute(
   "/_app/bots/$botId/threads/$threadId_/tool-results/$runId/$callId",
 )({
+  pendingComponent: ToolResultSkeleton,
   loader: ({ context, params }) =>
     context.threads.toolResult({
       threadId: params.threadId,

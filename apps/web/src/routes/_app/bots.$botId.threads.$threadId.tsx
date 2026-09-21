@@ -1,4 +1,5 @@
 import { createFileRoute, getRouteApi, useRouter } from "@tanstack/react-router";
+import type { Message } from "@porkbot/contracts";
 import { findRosterBot } from "../../roster.ts";
 import { ComposerScreen } from "../../screens/composer.tsx";
 import { ThreadConsoleScreen } from "../../screens/thread-console.tsx";
@@ -6,6 +7,8 @@ import { stateFromLiveness } from "../../shell/bot-state.ts";
 import { useShellHeaderState } from "../../shell/header-state.tsx";
 import { useComposer } from "../../use-composer.ts";
 import { useThreadConsole } from "../../use-console.ts";
+import { useRunNotifications } from "../../use-run-notifications.ts";
+import { useCallback } from "react";
 
 /**
  * One thread's console. The route is only the wiring: the bot and thread ids
@@ -21,10 +24,10 @@ import { useThreadConsole } from "../../use-console.ts";
  * shell's roster read, so the console's attribution and the composer's
  * placeholder name the same bot the header does.
  *
- * The composer below the transcript shares the console through `noteSent`
- * (slice 11.3): a send's persisted message folds straight into the transcript
- * rather than waiting for a stream that does not carry run-starting messages,
- * and its attachments render from the same file blocks a reload would read.
+ * The composer below the transcript shares optimistic send callbacks with the
+ * console (slice 11.3): a local message appears immediately, settles in place
+ * when persistence returns, and keeps its position when the send fails. Its
+ * attachments render from the same file blocks a reload would read.
  * The composer's stop control (slice 13.7) asks the console to stop the active
  * run, and the console's failure sentence is the composer's alert.
  *
@@ -43,9 +46,24 @@ function ThreadConsoleRoute() {
   const { threads, approvals } = Route.useRouteContext();
   const { roster } = appRoute.useLoaderData();
   const router = useRouter();
-  const { state, retry, noteSent, stopRun } = useThreadConsole({ transport: threads, threadId });
-  const composer = useComposer(threads, threadId, noteSent);
+  const { state, retry, noteOptimistic, settleSent, failSent, stopRun } = useThreadConsole({
+    transport: threads,
+    threadId,
+  });
+  const settleSentForComposer = useCallback(
+    (message: Message, optimisticId: string) => {
+      settleSent(optimisticId, message);
+    },
+    [settleSent],
+  );
+  const composer = useComposer(threads, threadId, {
+    onOptimistic: noteOptimistic,
+    onSent: settleSentForComposer,
+    onSendFailed: failSent,
+  });
   const bot = findRosterBot(roster, botId);
+
+  useRunNotifications({ state, botId });
 
   useShellHeaderState(stateFromLiveness(state.liveness));
 
