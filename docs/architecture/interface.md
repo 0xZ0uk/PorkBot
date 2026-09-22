@@ -43,10 +43,13 @@ At 64rem and wider the workspace is three panes: a **rail** (16rem) carrying
 search and the roster, a **content pane** carrying the thread or the bot's
 computer, and an **inspector** (19rem) carrying the selected bot's context.
 The thread column is capped at 44rem inside the content pane; the computer
-surface is full-bleed. Below 64rem one pane is visible at a time and a
-switcher sheet replaces the rail. Slice 13.4 built this shell and its captures
-live under `docs/screenshots/shell-*.png`; the panes' contents arrive with the
-slices that own them.
+surface is full-bleed. Below the Sidebar's mobile breakpoint one pane is
+visible at a time and the component's own sheet replaces the rail. The rail
+and the inspector are two `Sidebar` components under two `SidebarProvider`s
+with independent storage keys, so collapsing one cannot collapse the other.
+Slice 13.4 built this shell and its captures live under
+`docs/screenshots/shell-*.png`; the panes' contents arrive with the slices
+that own them.
 
 | Decision                                                                                                         | Source                                                   | Reason                                                                                                                                                             |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -414,20 +417,22 @@ panel's head, in the rail footer at 64rem and in the switcher sheet below it.
 
 Slice 13.3 landed the primitives in `@porkbot/ui`; this record names them and
 the composites the shell builds from them, so a later slice knows what exists
-before it writes chrome. The register's stylesheet is
-`registerStyleSheet` in `@porkbot/ui` and the web shell inlines it beside the
-tokens' sheet, so the states below are CSS rules over `--pb-*` properties rather
-than per-screen styling; `packages/ui/src/style-sheet.test.tsx` fails on a
-colour literal and on a class the sheet does not draw. The icons are one set
-drawn in `@porkbot/ui` on a 24-unit grid with `currentColor`, so a glyph
-cannot carry a colour of its own and no screen pastes a platform emoji. The
-rule that a screen composes the register is checked rather than remembered:
-`packages/eslint-config/ui-register.js` names the markup each primitive owns and
-the lint rule fails a surface that writes it, with a fixture per entry and a
-test tying the register's component names to the package's exports. The
-register's specimen captures — the components and the overlays, each mode — live
+before it writes chrome. Each primitive draws its appearance from Tailwind
+classes composed with a cva variant table; the register's internals are the
+one place those classes live, and a surface composes the component and
+supplies layout classes only. Dialog, Sheet, Menu, Tooltip, Tabs and
+Separator sit on Base UI, which owns focus, dismissal and the ARIA
+relationships. The icons are Phosphor Icons behind the `<Icon name>` facade
+on a 24-unit grid with `currentColor`, so a glyph cannot carry a colour of
+its own and no screen pastes a platform emoji. The rule that a screen
+composes the register is checked rather than remembered:
+`@shadcn/lint`'s `no-restyle` and `no-unknown-classes` rules fail a surface
+that restyles a primitive or writes a class no build generates, with
+fixtures in `packages/eslint-config/fixtures/` and tests in
+`packages/eslint-config/test/ui-design-system.test.mjs`. The register's
+specimen captures — the components and the overlays, each mode — live
 under `docs/screenshots/register-light.png`, `register-dark.png` and the
-overlays pair beside them, taken at 1280 from the register's own stylesheet;
+overlays pair beside them, taken at 1280 from the register's own classes;
 the screens' chrome is now the register's markup rather than a copy of it.
 
 | Primitive                                                 | States to cover                                  | Used by                                               |
