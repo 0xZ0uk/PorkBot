@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { themeBootstrapScript, themeStorageKey, themeStyleSheet } from "./theme.ts";
+import { readFileSync } from "node:fs";
 
 /**
- * The shell's half of the theme: the tokens' mode-aware properties plus the
- * document rules. The palette and the mode policy are the tokens package's and
- * are measured there; this suite proves the shell wires them into the sheet and
- * the first paint.
+ * The shell's half of the theme: the token bootstrap and the Tailwind entry.
+ * The palette and the mode policy are the tokens package's and are measured
+ * there; this suite proves the shell wires them into the first paint and into
+ * `globals.css`, where the Tailwind theme reads them.
  */
+
+const globals = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
 
 describe("the shell theme", () => {
   it("carries every mode's properties and the explicit override", () => {
@@ -17,11 +20,38 @@ describe("the shell theme", () => {
     expect(themeStyleSheet).toContain("--pb-color-accent:");
   });
 
-  it("draws the document rules from the tokens", () => {
-    expect(themeStyleSheet).toContain("background:var(--pb-color-background)");
-    expect(themeStyleSheet).toContain("font-size:var(--pb-type-body-size)");
-    expect(themeStyleSheet).toContain("line-height:var(--pb-type-body-line-height)");
-    expect(themeStyleSheet).toContain("outline:2px solid var(--pb-color-accent)");
+  it("emits the shadcn semantic variables alongside the palette", () => {
+    for (const name of ["background", "foreground", "primary", "ring", "sidebar"]) {
+      expect(themeStyleSheet).toContain(`--${name}:`);
+    }
+    expect(themeStyleSheet).toContain("--sidebar-accent:");
+    expect(themeStyleSheet).toContain("--radius:");
+  });
+
+  it("maps those variables into the Tailwind theme rather than restating them", () => {
+    expect(globals).toContain('@import "tailwindcss";');
+    expect(globals).toContain("@theme inline {");
+    for (const name of [
+      "background",
+      "foreground",
+      "card",
+      "primary",
+      "muted-foreground",
+      "border",
+      "ring",
+      "sidebar",
+      "sidebar-accent",
+    ]) {
+      expect(globals).toContain(`--color-${name}: var(--${name});`);
+    }
+  });
+
+  it("draws the document rules from the tokens, in the base layer", () => {
+    expect(globals).toContain("@layer base {");
+    expect(globals).toContain("background: var(--background);");
+    expect(globals).toContain("font-family: var(--pb-font-sans);");
+    expect(globals).toContain("font-size: var(--pb-type-body-size);");
+    expect(globals).toContain("outline: 2px solid var(--ring);");
   });
 
   it("carries the register's component rules and their states", () => {
