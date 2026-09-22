@@ -113,7 +113,10 @@ describe("AGENTS.md rules", () => {
 
     for (const rule of rules) {
       for (const [, token = ""] of checkClause(rule).matchAll(/`([^`]+)`/g)) {
-        if (/^(?:[\w@-]+\/)?[\w-]+$/.test(token) && /no-restricted|consistent-type/.test(token)) {
+        if (
+        /^(?:[\w@-]+\/)?[\w-]+$/.test(token) &&
+        /no-restricted|consistent-type|shadcn\//.test(token)
+      ) {
           cited.add(token);
         }
       }
