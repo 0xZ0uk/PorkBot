@@ -484,11 +484,12 @@ change it without breaking what the boundaries and the CI gate protect.
   cgroup kill. Checked by: test
   (`packages/testkit/test/deployment.test.ts`).
 - **The backup image carries clients, not a server.** `pg_dump` and
-  `pg_restore` are copied from the pinned Postgres image into the same Node
-  runtime base every other service uses, and load-checked at build time;
-  building the backup stage on a Postgres image again is a review failure.
-  Checked by: test (`packages/testkit/test/image-sizes.test.ts`) and the
-  `dependencies` CI tier.
+  `pg_restore` are copied from the pinned Postgres image into a slim Node base
+  of the Postgres image's own Debian release (the server's clients cannot load
+  against an older glibc) and load-checked at build time; building the backup
+  stage on a Postgres image again is a review failure. Checked by: test
+  (`packages/testkit/test/image-sizes.test.ts`) and the `dependencies` CI
+  tier.
 - **The backup target and its key envelope are separate.** The sealed envelope
   defaults to its own directory and its own volume, never a path under the
   backup destination, so the ciphertext and the key that opens it do not share

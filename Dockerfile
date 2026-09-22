@@ -6,13 +6,17 @@
 # build, and every service image carries the app and its workspace dependencies
 # rather than the toolchain.
 #
-# Two bases, both pinned by digest in dependencies.json. The build stage runs
-# the toolchain on the glibc Node image: the install resolves the optional
-# native helpers (esbuild, varlock's) for glibc, and no runtime depends on
-# them, so the stage's own size is not the deployment's. Every runtime stage
-# runs on the musl Node image instead — the same Node version from .nvmrc,
-# which pnpm's devEngines check refuses to substitute — and that base swap is
-# the footprint change `image-budgets.json` holds the line on.
+# The base image carries the exact Node version from .nvmrc — pnpm's devEngines
+# check refuses anything else — and is pinned by digest, so the stack builds
+# from the image dependencies.json registers. It is the glibc flavor on
+# purpose. Issue #253's smaller-base trial (alpine) is stopped on a named
+# dependency rather than worked around: the Docker computer provider
+# classifies a killed command as `timed_out` from the `timeout` binary's exit
+# code 124, which is GNU coreutils behaviour (BusyBox `timeout` exits 143), so
+# a musl machine image turns every budget overrun into an ordinary result (see
+# the seam in packages/adapters/src/docker-computer.ts and its conformance
+# suite). The base swap returns only when that seam stops reading userland
+# exit codes.
 
 FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS build
 
@@ -41,7 +45,7 @@ RUN pnpm deploy --filter @porkbot/worker --prod --legacy /deploy/worker
 RUN pnpm deploy --filter @porkbot/supervisor --prod --legacy /deploy/supervisor
 RUN pnpm deploy --filter @porkbot/backup --prod --legacy /deploy/backup
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS api
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS api
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -59,7 +63,7 @@ CMD ["node", "dist/main.js"]
 # set their passwords from the environment (the command). The api and the worker
 # wait for it with `service_completed_successfully`, so an always-on process
 # never starts against an unmigrated database.
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS migrate
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS migrate
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -67,7 +71,7 @@ COPY --from=build /deploy/api ./
 USER node
 CMD ["node", "node_modules/@porkbot/db/dist/migrate-cli.js"]
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS worker
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS worker
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -87,18 +91,19 @@ COPY --from=build /repo/apps/web/dist/client /srv/client
 
 # Only the two client binaries `pg_dump` and `pg_restore` spawn need leave this
 # stage — not the Postgres server. They must be the server's own major (a
-# client older than its server refuses to dump it), so they are copied from the
-# pinned alpine Postgres image: the same major as the database, built for musl
-# like the Node base the backup stage runs on. The shared libraries below are
-# the binaries' load-time closure minus what the Node image already carries
-# (libssl, libcrypto and libz).
-FROM postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 AS pg-client
+# client older than its server refuses to dump it) and the server's own ABI:
+# the pinned Postgres image is Debian trixie, and a glibc runs forwards, not
+# backwards, so its clients cannot run on the bookworm base the other services
+# use. The backup image therefore sits on the slim Node build of the same
+# Debian release — one Node runtime, no server — and the shared libraries
+# below are the binaries' load-time closure minus what that image already
+# carries (libz, libzstd and liblz4).
+FROM postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280 AS pg-client
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS backup
+FROM node:24.21.0-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS backup
 
-COPY --from=pg-client /usr/local/bin/pg_dump /usr/local/bin/pg_restore /usr/local/bin/
-COPY --from=pg-client /usr/local/lib/libpq.so.5* /usr/local/lib/
-COPY --from=pg-client /usr/lib/libzstd.so* /usr/lib/liblz4.so* /usr/lib/libgssapi_krb5.so* /usr/lib/libkrb5.so* /usr/lib/libk5crypto.so* /usr/lib/libkrb5support.so* /usr/lib/libcom_err.so* /usr/lib/libldap.so* /usr/lib/liblber.so* /usr/lib/libsasl2.so* /usr/lib/libkeyutils.so* /usr/lib/
+COPY --from=pg-client /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore /usr/local/bin/
+COPY --from=pg-client /lib/x86_64-linux-gnu/libpq.so.5* /lib/x86_64-linux-gnu/libssl.so.3* /lib/x86_64-linux-gnu/libcrypto.so.3* /lib/x86_64-linux-gnu/libgssapi_krb5.so.2* /lib/x86_64-linux-gnu/libkrb5.so.3* /lib/x86_64-linux-gnu/libk5crypto.so.3* /lib/x86_64-linux-gnu/libkrb5support.so.0* /lib/x86_64-linux-gnu/libcom_err.so.2* /lib/x86_64-linux-gnu/libldap.so.2* /lib/x86_64-linux-gnu/liblber.so.2* /lib/x86_64-linux-gnu/libxxhash.so.0* /lib/x86_64-linux-gnu/libsasl2.so.2* /lib/x86_64-linux-gnu/libkeyutils.so.1* /lib/x86_64-linux-gnu/
 # The load check: a client whose shared libraries are not all present fails
 # the build here rather than on the first nightly backup.
 RUN pg_dump --version && pg_restore --version
@@ -114,7 +119,7 @@ RUN mkdir -p /var/lib/porkbot/backups /var/lib/porkbot/backup-envelope && chown 
 USER node
 CMD ["node", "dist/cli.js", "run", "--if-due"]
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS supervisor
+FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS supervisor
 
 ENV NODE_ENV=production
 WORKDIR /app
