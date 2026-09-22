@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { cn } from "./lib/utils.ts";
 import { useIsMobile } from "./hooks/use-mobile.ts";
@@ -78,10 +71,7 @@ export function SidebarProvider({
       if (controlledOpen === undefined) {
         setUncontrolledOpen(next);
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(
-            `porkbot.${storageKey}`,
-            next ? "expanded" : "collapsed",
-          );
+          window.localStorage.setItem(`porkbot.${storageKey}`, next ? "expanded" : "collapsed");
         }
       }
       onOpenChange?.(next);
@@ -184,44 +174,98 @@ export function Sidebar({
   );
 }
 
-export function SidebarHeader({ children, className }: Readonly<{ children?: ReactNode; className?: string }>) {
-  return <div data-sidebar="header" className={cn("flex flex-col gap-2 p-2", className)}>{children}</div>;
-}
-
-export function SidebarContent({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
+export function SidebarHeader({
+  children,
+  className,
+}: Readonly<{ children?: ReactNode; className?: string }>) {
   return (
-    <div data-sidebar="content" className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-auto", className)}>
+    <div data-sidebar="header" className={cn("flex flex-col gap-2 p-2", className)}>
       {children}
     </div>
   );
 }
 
-export function SidebarFooter({ children, className }: Readonly<{ children?: ReactNode; className?: string }>) {
-  return <div data-sidebar="footer" className={cn("flex flex-col gap-2 p-2", className)}>{children}</div>;
-}
-
-export function SidebarGroup({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
-  return <section data-sidebar="group" className={cn("flex flex-col gap-1 p-2", className)}>{children}</section>;
-}
-
-export function SidebarGroupLabel({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
+export function SidebarContent({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
   return (
-    <h3 data-sidebar="group-label" className={cn("px-2 text-xs font-medium text-muted-foreground uppercase", className)}>
+    <div
+      data-sidebar="content"
+      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-auto", className)}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function SidebarFooter({
+  children,
+  className,
+}: Readonly<{ children?: ReactNode; className?: string }>) {
+  return (
+    <div data-sidebar="footer" className={cn("flex flex-col gap-2 p-2", className)}>
+      {children}
+    </div>
+  );
+}
+
+export function SidebarGroup({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
+  return (
+    <section data-sidebar="group" className={cn("flex flex-col gap-1 p-2", className)}>
+      {children}
+    </section>
+  );
+}
+
+export function SidebarGroupLabel({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
+  return (
+    <h3
+      data-sidebar="group-label"
+      className={cn("px-2 text-xs font-medium text-muted-foreground uppercase", className)}
+    >
       {children}
     </h3>
   );
 }
 
-export function SidebarGroupContent({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
-  return <div data-sidebar="group-content" className={cn("flex flex-col gap-1", className)}>{children}</div>;
+export function SidebarGroupContent({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
+  return (
+    <div data-sidebar="group-content" className={cn("flex flex-col gap-1", className)}>
+      {children}
+    </div>
+  );
 }
 
-export function SidebarMenu({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
-  return <ul data-sidebar="menu" className={cn("flex flex-col gap-1", className)}>{children}</ul>;
+export function SidebarMenu({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
+  return (
+    <ul data-sidebar="menu" className={cn("flex flex-col gap-1", className)}>
+      {children}
+    </ul>
+  );
 }
 
-export function SidebarMenuItem({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
-  return <li data-sidebar="menu-item" className={cn("list-none", className)}>{children}</li>;
+export function SidebarMenuItem({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
+  return (
+    <li data-sidebar="menu-item" className={cn("list-none", className)}>
+      {children}
+    </li>
+  );
 }
 
 export type SidebarMenuButtonProps = {
@@ -231,7 +275,12 @@ export type SidebarMenuButtonProps = {
   readonly className?: string;
 };
 
-export function SidebarMenuButton({ children, onClick, isActive = false, className }: SidebarMenuButtonProps) {
+export function SidebarMenuButton({
+  children,
+  onClick,
+  isActive = false,
+  className,
+}: SidebarMenuButtonProps) {
   return (
     <button
       type="button"
@@ -268,7 +317,10 @@ export function SidebarRail({ className }: Readonly<{ className?: string }>) {
 }
 
 /** The main region beside the sidebar; a `SidebarTrigger` lives here. */
-export function SidebarInset({ children, className }: Readonly<{ children: ReactNode; className?: string }>) {
+export function SidebarInset({
+  children,
+  className,
+}: Readonly<{ children: ReactNode; className?: string }>) {
   return <main className={cn("flex min-w-0 flex-1 flex-col", className)}>{children}</main>;
 }
 
@@ -280,7 +332,10 @@ export function SidebarTrigger({ className }: Readonly<{ className?: string }>) 
       type="button"
       aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
       onClick={toggleSidebar}
-      className={cn("rounded-md p-1.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground", className)}
+      className={cn(
+        "rounded-md p-1.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        className,
+      )}
     >
       <Icon name="panel-left" />
     </button>

@@ -75,9 +75,12 @@ describe("Toast", () => {
     const card = [...surface().querySelectorAll("li")].find((item) =>
       item.textContent?.includes("Run finished"),
     );
-    const close = card === undefined ? undefined : [...card.querySelectorAll("button")].find(
-      (button) => /close/i.test(button.getAttribute("aria-label") ?? ""),
-    );
+    const close =
+      card === undefined
+        ? undefined
+        : [...card.querySelectorAll("button")].find((button) =>
+            /close/i.test(button.getAttribute("aria-label") ?? ""),
+          );
 
     if (close === undefined) {
       throw new Error("no labelled control to dismiss from");
