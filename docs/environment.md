@@ -184,6 +184,8 @@ them by hand only when running a process outside the stack.
 | `PORKBOT_COMPUTER_ARCHIVE_DIR`           | optional | `/var/lib/porkbot/computer-archives`   | Where home archives are staged between a machine and the snapshot store.                                       |
 | `PORKBOT_COMPUTER_PIDS`                  | optional | `512`                                  | The process-count ceiling per machine.                                                                         |
 | `PORKBOT_COMPUTER_TMPFS_MB`              | optional | `256`                                  | The tmpfs ceiling per machine.                                                                                 |
+| `PORKBOT_COMPUTER_LOG_MAX_SIZE`          | optional | `10m`                                  | The daemon's `json-file` `max-size` for a machine's container log.                                             |
+| `PORKBOT_COMPUTER_LOG_MAX_FILE`          | optional | `3`                                    | The daemon's `json-file` `max-file` for a machine's container log.                                             |
 | `PORKBOT_COMPUTER_PULL`                  | optional | `missing`                              | `missing`, `always` or `never`: when the Docker provider pulls the machine image.                              |
 | `PORKBOT_COMPUTER_DISK_QUOTA`            | optional | `none`                                 | `none` or `storage-opt`: enforce `PORKBOT_COMPUTER_DISK_MB` with the daemon's storage driver.                  |
 | `PORKBOT_LIMIT_AUTHENTICATED_PER_MINUTE` | optional | `300`                                  | Authenticated request budget per minute.                                                                       |

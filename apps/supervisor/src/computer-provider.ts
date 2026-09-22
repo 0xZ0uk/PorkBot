@@ -4,6 +4,7 @@ import {
   createDaytonaComputerProvider,
   createDockerComputerProvider,
   DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+  DEFAULT_COMPUTER_LOG_CONFIG,
   LocalStorageProvider,
 } from "@porkbot/adapters";
 import type {
@@ -342,6 +343,12 @@ export function createComputerProviderSelection(
       diskMb: integer(env, "PORKBOT_COMPUTER_DISK_MB", 10_240, 1),
       pids: integer(env, "PORKBOT_COMPUTER_PIDS", 512, 1),
       tmpfsMb: integer(env, "PORKBOT_COMPUTER_TMPFS_MB", 256, 1),
+      logConfig: {
+        maxSize:
+          setting(env, "PORKBOT_COMPUTER_LOG_MAX_SIZE") ?? DEFAULT_COMPUTER_LOG_CONFIG.maxSize,
+        maxFile:
+          setting(env, "PORKBOT_COMPUTER_LOG_MAX_FILE") ?? DEFAULT_COMPUTER_LOG_CONFIG.maxFile,
+      },
     };
     // Every setting is validated before the storage seam is built, so a
     // typo'd policy is reported as itself rather than as a missing root.

@@ -23,7 +23,7 @@ import {
 import { proxyGrantFileName, serializeProxyGrant } from "./credential-proxy.ts";
 import { writeTar } from "./computer-archive.ts";
 import { createDockerEngine } from "./docker-engine.ts";
-import type { DockerContainerInspect, DockerEngine } from "./docker-engine.ts";
+import type { DockerContainerInspect, DockerEngine, DockerLogConfig } from "./docker-engine.ts";
 import { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
 import { computerIdentityHash, createRuntimeComputerProvider } from "./computer-runtime.ts";
 import type {
@@ -98,7 +98,21 @@ export interface ComputerCeilings {
   readonly pids: number;
   /** The size of `/tmp`, in mebibytes. */
   readonly tmpfsMb: number;
+  /** The daemon's `json-file` rotation policy for the container's log. */
+  readonly logConfig: DockerLogConfig;
 }
+
+/**
+ * The log rotation policy the stack gives its own compose services
+ * (`deploy/compose.yaml`, the `x-app` anchor): ten mebibytes per file, three
+ * files, so a chatty machine costs at most about thirty mebibytes of the
+ * host's disk instead of growing without bound. Named so an operator can
+ * raise it deliberately rather than edit a create body.
+ */
+export const DEFAULT_COMPUTER_LOG_CONFIG: DockerLogConfig = {
+  maxSize: "10m",
+  maxFile: "3",
+};
 
 /**
  * One bot's share of the PRD's documented host floor: a host runs 4 vCPU and
@@ -115,6 +129,7 @@ export const DEFAULT_COMPUTER_CEILINGS: ComputerCeilings = {
   diskMb: 10_240,
   pids: 512,
   tmpfsMb: 256,
+  logConfig: DEFAULT_COMPUTER_LOG_CONFIG,
 };
 
 /** The home directory a computer starts in, unless configured otherwise. */
@@ -275,6 +290,20 @@ function assertCeilings(ceilings: ComputerCeilings): void {
       );
     }
   }
+
+  // Docker's `max-size` is a positive integer with an optional `b`, `k`, `m`,
+  // `g`, `t` or `p` suffix; `max-file` is a positive integer string.
+  if (!/^\d+[bkmgtp]?$/i.test(ceilings.logConfig.maxSize)) {
+    throw new RangeError(
+      `computer ceiling logConfig.maxSize must be a Docker max-size, received "${ceilings.logConfig.maxSize}"`,
+    );
+  }
+
+  if (!/^[1-9]\d*$/.test(ceilings.logConfig.maxFile)) {
+    throw new RangeError(
+      `computer ceiling logConfig.maxFile must be a positive integer string, received "${ceilings.logConfig.maxFile}"`,
+    );
+  }
 }
 
 /** Maps the daemon's container record onto the seam's two live states. */
@@ -313,12 +342,14 @@ function sleep(ms: number): Promise<void> {
  * The sidecar's own slice: small, because a proxy is a loop, not a workload.
  * Its writable layer holds the grant files — the only place they can live
  * while the daemon's archive API is the writer — and a grant is kilobytes, so
- * the whole layer stays far inside this bound.
+ * the whole layer stays far inside this bound. The log rotation policy is the
+ * machine's default: a sidecar is a container on the host's disk too.
  */
 const PROXY_SIDECAR_RESOURCES = {
   nanoCpus: 250_000_000,
   memoryBytes: 128 * 1024 * 1024,
   pidsLimit: 128,
+  logConfig: DEFAULT_COMPUTER_LOG_CONFIG,
 } as const;
 
 /** Builds the runtime over one daemon; `createDockerComputerProvider` owns the seam. */
@@ -607,6 +638,7 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
         tmpfsBytes: ceilings.tmpfsMb * 1024 * 1024,
         storageSize:
           options.diskQuota === "storage-opt" ? `${String(ceilings.diskMb)}M` : undefined,
+        logConfig: ceilings.logConfig,
       },
     };
   }

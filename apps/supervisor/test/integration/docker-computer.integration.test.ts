@@ -202,12 +202,69 @@ describe("the Docker provider against the real daemon", () => {
       expect(hostConfig["MemorySwap"]).toBe(256 * 1024 * 1024);
       expect(hostConfig["PidsLimit"]).toBe(32);
       expect(hostConfig["Init"]).toBe(true);
+      expect(hostConfig["LogConfig"]).toEqual({
+        Type: "json-file",
+        Config: { "max-size": "10m", "max-file": "3" },
+      });
       expect(hostConfig["NetworkMode"]).toBe(planComputerNetwork(computer).name);
       expect(hostConfig["Binds"]).toEqual(
         expect.arrayContaining([
           expect.stringMatching(/^porkbot-home-[0-9a-f]{16}:\/home\/agent$/),
         ]),
       );
+    } finally {
+      await daemonProvider.destroy(computer).catch(() => undefined);
+    }
+  });
+
+  it("stops a chatty machine's log file from growing past the rotation cap", async () => {
+    const logConfig = { maxSize: "1k", maxFile: "2" };
+    const daemonProvider = createDockerComputerProvider({
+      image: nodeImage,
+      ...endpoint(),
+      storage: new LocalStorageProvider({
+        root: await makeTemporaryDirectory("porkbot-docker-logcap-storage-"),
+      }),
+      scratchDirectory: await makeTemporaryDirectory("porkbot-docker-logcap-archives-"),
+      ceilings: { logConfig },
+    });
+    const computer = {
+      computerId: `dockersuite-logcap-${suffix}`,
+      botId: `dockersuite-bot-${suffix}`,
+    };
+    created.push(computer);
+
+    try {
+      await daemonProvider.ensure(computer);
+      const containerId = containerIdFor(computer);
+
+      expect(containerId).toBeDefined();
+      const hostConfig = inspectHostConfig(containerId ?? "");
+
+      expect(hostConfig["LogConfig"]).toEqual({
+        Type: "json-file",
+        Config: { "max-size": logConfig.maxSize, "max-file": logConfig.maxFile },
+      });
+
+      // Flood the container's stdout — the main process's fd, not exec's own
+      // output — with far more text than the cap allows, then let the daemon
+      // flush and rotate.
+      dockerOrThrow([
+        "exec",
+        containerId ?? "",
+        "sh",
+        "-c",
+        'for i in $(seq 1 500); do echo "chatty line $i padding padding padding padding padding padding padding padding padding padding"; done > /proc/1/fd/1',
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+      // `docker logs` reads whatever the daemon kept. Without the cap the
+      // full 50 kB of output would still be there; with it the oldest lines
+      // are rotated away and the total stays near max-size × max-file.
+      const logs = dockerOrThrow(["logs", containerId ?? ""]);
+
+      expect(logs).not.toContain("chatty line 1 ");
+      expect(logs.length).toBeLessThan(50_000);
     } finally {
       await daemonProvider.destroy(computer).catch(() => undefined);
     }
