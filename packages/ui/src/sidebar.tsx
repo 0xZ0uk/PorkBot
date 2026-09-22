@@ -157,9 +157,11 @@ export function Sidebar({
       className={cn(
         "flex h-svh shrink-0 flex-col border-border bg-sidebar text-sidebar-foreground",
         side === "left" ? "border-r" : "border-l",
-        collapsible === "icon" && state === "collapsed"
-          ? "w-(--sidebar-width-icon)"
-          : "w-(--sidebar-width)",
+        collapsible === "offcanvas" && state === "collapsed"
+          ? "w-0 overflow-hidden border-0"
+          : collapsible === "icon" && state === "collapsed"
+            ? "w-(--sidebar-width-icon)"
+            : "w-(--sidebar-width)",
         className,
       )}
       style={

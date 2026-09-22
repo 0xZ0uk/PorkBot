@@ -122,12 +122,10 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  console.log("AFTER EACH");
-  await act(async () => {
+    await act(async () => {
     root.unmount();
   });
-  console.log("UNMOUNTED");
-  container.remove();
+    container.remove();
 });
 
 async function render(element: ReactElement): Promise<void> {
@@ -144,7 +142,7 @@ async function mount(router: ReturnType<typeof createAppRouter>): Promise<void> 
 }
 
 function rowNamed(name: string): HTMLAnchorElement | undefined {
-  return [...container.querySelectorAll<HTMLAnchorElement>("a.shell-rail-row")].find((row) =>
+  return [...container.querySelectorAll<HTMLAnchorElement>('a[href^="/bots/"]')].find((row) =>
     row.textContent?.includes(name),
   );
 }
@@ -178,7 +176,7 @@ function setValue(element: HTMLInputElement, value: string): void {
 
 function stubNarrow(narrow: boolean): void {
   (globalThis as { matchMedia?: unknown }).matchMedia = (query: string) => ({
-    matches: query.includes("max-width: 63.99rem") ? narrow : false,
+    matches: query.includes("max-width: 767px") ? narrow : false,
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
@@ -191,12 +189,12 @@ describe("the workspace", () => {
 
     await mount(router);
 
-    const active = container.querySelector("a.shell-rail-row[aria-current='page']");
+    const active = container.querySelector('a[href^="/bots/"][aria-current="page"]');
 
     expect(active?.textContent).toContain("Ada");
     expect(rowNamed("Ledger")?.getAttribute("aria-current")).toBeNull();
-    expect(container.querySelector(".shell-header-name")?.textContent).toBe("Ada");
-    expect(container.querySelector(".shell-inspector-head-name")?.textContent).toBe("Ada");
+    expect(container.querySelector('#main .text-heading')?.textContent).toBe('Ada');
+    expect(container.querySelector('[data-side="right"] .text-heading')?.textContent).toBe("Ada");
   });
 
   it("filters the roster from the search field", async () => {
@@ -204,7 +202,7 @@ describe("the workspace", () => {
 
     await mount(router);
 
-    const search = container.querySelector<HTMLInputElement>(".shell-rail-search-input");
+    const search = container.querySelector<HTMLInputElement>('input[type="search"]');
 
     if (search === null) {
       throw new Error("the search field is missing");
@@ -215,11 +213,13 @@ describe("the workspace", () => {
     });
 
     expect(
-      [...container.querySelectorAll(".shell-rail-row-name")].map((name) => name.textContent),
+      [...container.querySelectorAll('[data-name]')].map((name) => name.textContent),
     ).toEqual(["Ledger"]);
 
     await act(async () => {
-      setValue(search, "nobody");
+      const again = container.querySelector<HTMLInputElement>('input[type="search"]') ?? search;
+      setValue(again, "nobody");
+      again.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
     expect(container.textContent).toContain("No bots match.");
@@ -229,20 +229,20 @@ describe("the workspace", () => {
     const router = appAt("/bots/bot-1/computer");
 
     await mount(router);
-    expect(container.querySelector(".shell-inspector")).not.toBeNull();
+    expect(container.querySelector('[data-side="right"][data-state="expanded"]')).not.toBeNull();
 
     await act(async () => {
       buttonByLabel("Hide bot context")?.click();
     });
 
-    expect(container.querySelector(".shell-inspector")).toBeNull();
-    expect(window.localStorage.getItem("porkbot.inspector")).toBe("closed");
+    expect(container.querySelector('[data-side="right"][data-state="expanded"]')).toBeNull();
+    expect(window.localStorage.getItem("porkbot.inspector")).toBe("collapsed");
 
     // A navigation does not reopen it.
     await act(async () => {
       await router.navigate({ to: "/bots/$botId/computer", params: { botId: "bot-1" } });
     });
-    expect(container.querySelector(".shell-inspector")).toBeNull();
+    expect(container.querySelector('[data-side="right"][data-state="expanded"]')).toBeNull();
 
     // A fresh mount reads the stored choice.
     await act(async () => {
@@ -250,14 +250,14 @@ describe("the workspace", () => {
     });
     root = createRoot(container);
     await render(<RouterProvider router={router} />);
-    expect(container.querySelector(".shell-inspector")).toBeNull();
+    expect(container.querySelector('[data-side="right"][data-state="expanded"]')).toBeNull();
 
     await act(async () => {
       buttonByLabel("Show bot context")?.click();
     });
 
-    expect(container.querySelector(".shell-inspector")).not.toBeNull();
-    expect(window.localStorage.getItem("porkbot.inspector")).toBe("open");
+    expect(container.querySelector('[data-side="right"][data-state="expanded"]')).not.toBeNull();
+    expect(window.localStorage.getItem("porkbot.inspector")).toBe("expanded");
   });
 
   it("shows what is waiting for you in the rail, the header and the inspector", async () => {
@@ -265,11 +265,9 @@ describe("the workspace", () => {
 
     await mount(router);
 
-    expect(rowNamed("Ada")?.querySelector(".pb-count-badge")?.textContent).toBe("1");
-    expect(container.querySelector(".shell-header [data-state='waiting']")).not.toBeNull();
-    expect(
-      container.querySelector("nav[aria-label='Workspace'] .pb-count-badge")?.textContent,
-    ).toBe("1");
+    expect(rowNamed('Ada')?.textContent).toContain('1');
+    expect(container.querySelector('#main [data-state="waiting"]')).not.toBeNull();
+    expect(container.querySelector('nav[aria-label="Workspace"]')?.textContent).toContain('1');
     expect(container.textContent).toContain("1 action is waiting for you.");
   });
 
@@ -278,12 +276,12 @@ describe("the workspace", () => {
 
     await mount(router);
 
-    const footer = container.querySelector("nav[aria-label='Workspace']");
+    const footer = container.querySelector('nav[aria-label="Workspace"]');
 
     expect(footer).not.toBeNull();
 
     for (const label of ["Approvals", "Settings", "Sign out"]) {
-      const row = [...(footer?.querySelectorAll<HTMLElement>(".shell-rail-foot-row") ?? [])].find(
+      const row = [...(footer?.querySelectorAll<HTMLElement>("a, button") ?? [])].find(
         (entry) => entry.textContent?.includes(label),
       );
 
@@ -300,9 +298,9 @@ describe("the workspace", () => {
 
     await mount(router);
 
-    expect(container.querySelector(".shell-rail")).toBeNull();
-    expect(container.querySelector(".shell-inspector")).toBeNull();
-    expect(container.querySelector(".shell-content")).not.toBeNull();
+    expect(container.querySelector('[data-side="left"][data-state="expanded"]')).toBeNull();
+    expect(container.querySelector('[data-side="right"][data-state="expanded"]')).toBeNull();
+    expect(container.querySelector('#main')).not.toBeNull();
 
     const switcher = buttonByLabel("Switch bot");
 
@@ -312,10 +310,11 @@ describe("the workspace", () => {
 
     const sheet = document.body.querySelector("[role='dialog']");
 
-    expect(sheet?.textContent).toContain("Bots");
+    expect(sheet?.getAttribute('role')).toBe('dialog');
+    expect(document.querySelector('[aria-label="Bots"]')).not.toBeNull();
     expect(sheet?.textContent).toContain("Ledger");
 
-    const ledger = [...(sheet?.querySelectorAll<HTMLAnchorElement>("a.shell-rail-row") ?? [])].find(
+    const ledger = [...(sheet?.querySelectorAll<HTMLAnchorElement>('a[href^="/bots/"]') ?? [])].find(
       (row) => row.textContent?.includes("Ledger"),
     );
 

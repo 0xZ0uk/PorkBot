@@ -52,7 +52,7 @@ export function RosterRow({
       <Link
         to="/bots/$botId"
         params={{ botId: bot.id }}
-        className="shell-rail-row"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent aria-[current=page]:bg-accent"
         onClick={onNavigate}
       >
         <BotAvatar
@@ -62,10 +62,10 @@ export function RosterRow({
           imageUrl={entry.avatarUrl}
           size={24}
         />
-        <span className="shell-rail-row-body">
-          <span className="shell-rail-row-name">{bot.name}</span>
-          <span className="shell-rail-row-role">{roleOf(bot)}</span>
-          <span className="shell-rail-row-activity">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-body font-medium text-foreground" data-name>{bot.name}</span>
+          <span className="truncate text-meta text-muted-foreground">{roleOf(bot)}</span>
+          <span className="truncate text-meta text-muted-foreground">
             <Activity entry={entry} />
           </span>
         </span>
