@@ -180,6 +180,55 @@ const typeProperties = Object.fromEntries(
   ]),
 ) as Readonly<Record<string, string>>;
 
+/**
+ * The shadcn semantic set, mapped from PorkBot's palette.
+ *
+ * The two vocabularies mean different things by "accent": shadcn's `primary` is
+ * the brand action colour (PorkBot's `accent`) and shadcn's `accent` is the
+ * hover surface (PorkBot's `raised`). The mapping lives here, once, so
+ * `globals.css`'s `@theme inline` block and the vendored shadcn components read
+ * the same values and a palette change is still one file.
+ */
+function shadcnProperties(mode: ThemeMode): string {
+  const theme = palette[mode];
+  const variables: ReadonlyArray<readonly [string, string]> = [
+    ["background", theme.background],
+    ["foreground", theme.foreground],
+    ["card", theme.surface],
+    ["card-foreground", theme.foreground],
+    ["popover", theme.surface],
+    ["popover-foreground", theme.foreground],
+    ["primary", theme.accent],
+    ["primary-foreground", theme.accentForeground],
+    ["secondary", theme.raised],
+    ["secondary-foreground", theme.foreground],
+    ["muted", theme.raised],
+    ["muted-foreground", theme.muted],
+    ["accent", theme.raised],
+    ["accent-foreground", theme.foreground],
+    ["destructive", theme.destructive],
+    ["destructive-foreground", theme.destructiveForeground],
+    ["border", theme.border],
+    ["input", theme.border],
+    ["ring", theme.accent],
+    ["chart-1", theme.identity1],
+    ["chart-2", theme.identity4],
+    ["chart-3", theme.identity7],
+    ["chart-4", theme.success],
+    ["chart-5", theme.warning],
+    ["sidebar", theme.raised],
+    ["sidebar-foreground", theme.foreground],
+    ["sidebar-primary", theme.accent],
+    ["sidebar-primary-foreground", theme.accentForeground],
+    ["sidebar-accent", theme.surface],
+    ["sidebar-accent-foreground", theme.foreground],
+    ["sidebar-border", theme.border],
+    ["sidebar-ring", theme.accent],
+    ["radius", radius.lg],
+  ];
+  return variables.map(([name, value]) => `--${name}:${value};`).join("");
+}
+
 /** One mode's custom properties: `color-scheme`, the palette and every scale. */
 function modeProperties(mode: ThemeMode): string {
   return (
@@ -190,7 +239,8 @@ function modeProperties(mode: ThemeMode): string {
     cssCustomProperties("font", font) +
     cssCustomProperties("type", typeProperties) +
     cssCustomProperties("elevation", elevation) +
-    cssCustomProperties("motion", motion)
+    cssCustomProperties("motion", motion) +
+    shadcnProperties(mode)
   );
 }
 
