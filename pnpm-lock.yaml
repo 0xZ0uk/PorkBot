@@ -111,9 +111,6 @@ importers:
       '@porkbot/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@porkbot/health':
-        specifier: workspace:*
-        version: link:../../packages/health
       '@porkbot/logging':
         specifier: workspace:*
         version: link:../../packages/logging

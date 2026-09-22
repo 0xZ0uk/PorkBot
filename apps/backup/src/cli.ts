@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { BACKUP_OBJECT_PREFIX, isBackupDue } from "@porkbot/core";
-import { createBackupLedger, createBackupStatusReader, openDatabase, queryable } from "@porkbot/db";
+import { createBackupStatusReader, openDatabase, queryable, withBackupRunLock } from "@porkbot/db";
 import type { CredentialKeyring } from "@porkbot/db";
 import { createLogger } from "@porkbot/logging";
 import { createBackupArchive } from "./archive.ts";
@@ -17,7 +17,7 @@ import { createPostgresTools } from "./postgres.ts";
 import { latestPostgresObject, performBackupRun } from "./run.ts";
 
 /**
- * The backup process's operator surface (slice 12.3).
+ * The backup job's operator surface (slice 12.3).
  *
  * Four commands, and each answers a question the acceptance criteria name:
  *
@@ -91,38 +91,39 @@ async function main(): Promise<number> {
       case "run": {
         const keys = loadBackupKeys(environment);
         const archive = createBackupArchive({ storage: paths.destination, keyring: keys.keyring });
-        const reader = createBackupStatusReader(database);
-        const ledger = createBackupLedger(database);
-        const previous = await reader.status();
+        return await withBackupRunLock(handle, async ({ ledger, reader }) => {
+          const previous = await reader.status();
 
-        if (values["if-due"] === true) {
-          if (!isBackupDue(new Date(), previous.lastRun?.startedAt ?? null, paths.schedule)) {
+          if (
+            values["if-due"] === true &&
+            !isBackupDue(new Date(), previous.lastRun?.startedAt ?? null, paths.schedule)
+          ) {
             process.stdout.write(`${JSON.stringify({ status: "skipped" })}\n`);
 
             return 0;
           }
-        }
 
-        const settled = await performBackupRun(
-          {
-            ledger,
-            archive,
-            homes: paths.homes,
-            postgres: createPostgresTools(),
-            connectionString: paths.connectionString,
-            logger,
-            retentionDays: paths.retentionDays,
-            drillIntervalDays: paths.drillIntervalDays,
-            forceDrill: values["force-drill"] === true,
-            now: () => new Date(),
-          },
-          previous,
-        );
+          const settled = await performBackupRun(
+            {
+              ledger,
+              archive,
+              homes: paths.homes,
+              postgres: createPostgresTools(),
+              connectionString: paths.connectionString,
+              logger,
+              retentionDays: paths.retentionDays,
+              drillIntervalDays: paths.drillIntervalDays,
+              forceDrill: values["force-drill"] === true,
+              now: () => new Date(),
+            },
+            previous,
+          );
 
-        await writeKeyEnvelope(paths.envelopePath, keys.keyring, keys.envelopePassphrase);
-        process.stdout.write(`${JSON.stringify(settled)}\n`);
+          await writeKeyEnvelope(paths.envelopePath, keys.keyring, keys.envelopePassphrase);
+          process.stdout.write(`${JSON.stringify(settled)}\n`);
 
-        return settled.status === "succeeded" ? 0 : 1;
+          return settled.status === "succeeded" ? 0 : 1;
+        });
       }
 
       case "status": {

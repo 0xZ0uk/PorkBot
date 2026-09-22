@@ -13,7 +13,7 @@ import { backupKeyringFromEnvironment } from "./cipher.ts";
 import { BackupError } from "./errors.ts";
 
 /**
- * The backup process's configuration (slice 12.3).
+ * The backup job's configuration (slice 12.3).
  *
  * Everything the process needs is read once here and validated before a run
  * starts: a missing keyring, a half-configured S3 target, a non-numeric
@@ -35,7 +35,6 @@ import { BackupError } from "./errors.ts";
  */
 
 export interface BackupPaths {
-  readonly port: number;
   readonly connectionString: string;
   readonly storageRoot: string;
   /** The local destination root; ignored when an S3 target is configured. */
@@ -46,7 +45,6 @@ export interface BackupPaths {
   readonly schedule: NightlyBackupSchedule;
   readonly retentionDays: number;
   readonly drillIntervalDays: number;
-  readonly tickMs: number;
   /** The backup destination: local directory or S3-compatible bucket. */
   readonly destination: StorageProvider;
   /** The primary storage the homes are read from. */
@@ -63,13 +61,12 @@ export interface BackupConfig extends BackupPaths, BackupKeys {}
 export const defaultBackupDirectory = "/var/lib/porkbot/backups";
 export const defaultEnvelopeDirectory = "/var/lib/porkbot/backup-envelope";
 export const envelopeFileName = "key-envelope.json";
-export const defaultTickMs = 60_000;
 
 function required(env: Readonly<Record<string, string | undefined>>, name: string): string {
   const value = env[name]?.trim();
 
   if (value === undefined || value === "") {
-    throw new BackupError("config_invalid", `${name} is not set; the backup process cannot run`);
+    throw new BackupError("config_invalid", `${name} is not set; the backup job cannot run`);
   }
 
   return value;
@@ -163,7 +160,6 @@ export function loadBackupPaths(
     optional(env, "PORKBOT_BACKUP_ENVELOPE_DIR") ?? defaultEnvelopeDirectory;
 
   return {
-    port: wholeNumber(env, "PORT", 3004, 1, 65_535),
     connectionString,
     storageRoot,
     backupDirectory,
@@ -187,7 +183,6 @@ export function loadBackupPaths(
     },
     retentionDays: wholeNumber(env, "PORKBOT_BACKUP_RETENTION_DAYS", 30, 1, 3650),
     drillIntervalDays: wholeNumber(env, "PORKBOT_BACKUP_DRILL_INTERVAL_DAYS", 30, 1, 3650),
-    tickMs: wholeNumber(env, "PORKBOT_BACKUP_TICK_MS", defaultTickMs, 1000, 24 * 60 * 60 * 1000),
     destination: s3Destination(env, logger) ?? new LocalStorageProvider({ root: backupDirectory }),
     homes: new LocalStorageProvider({ root: storageRoot }),
   };

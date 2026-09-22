@@ -45,8 +45,10 @@ export const deploymentEnvFileName = ".env";
 export const defaultProjectName = "porkbot";
 export const defaultWaitSeconds = "300";
 
-const applicationServices = ["api", "worker", "backup", "proxy", "supervisor"] as const;
-const releaseServices = ["migrate", ...applicationServices] as const;
+const applicationServices = ["api", "worker", "proxy", "supervisor"] as const;
+const releaseServices = ["migrate", "backup", ...applicationServices] as const;
+const backupServiceUnitName = "porkbot-backup.service";
+const backupTimerUnitName = "porkbot-backup.timer";
 
 export interface SpawnOptions {
   readonly cwd?: string;
@@ -112,7 +114,9 @@ export function usageText(): string {
     "  upgrade  Pull a release, preflight its health, migrate, then switch services.",
     "  rollback Redeploy the previous release without reversing database migrations.",
     "  measure  Cold-boot the live stack, run the provider/backup workload, and write a floor table.",
-    "  status   Show each service's state, health and published ports.",
+    "  status   Show services, published ports and the backup timer's next firing.",
+    "  schedule Install or refresh the per-user backup timer.",
+    "  backup   Run a one-shot backup command: deploy backup status",
     "  logs     Follow the stack's logs.",
     "  down     Stop the stack; pass --volumes to delete its data too.",
     "  exec     Run a command in a running service: deploy exec postgres psql -U porkbot",
@@ -179,9 +183,9 @@ function parseDeployArguments(
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] ?? "";
 
-    if (command === "exec") {
-      // Everything after `exec` is the service and its command; -U and --help
-      // belong to the program being exec'd, not to this CLI.
+    if (command === "exec" || command === "backup") {
+      // Everything after `exec`/`backup` belongs to the nested command; -U,
+      // --if-due and --help must not be consumed by this parser.
       positionals.push(argument);
       continue;
     }
@@ -1343,10 +1347,14 @@ function runUp(context: DeploymentContext, options: DeployOptions): number {
   // including a cold build — against `--wait-timeout`, and a fresh host would
   // otherwise time out while the images were still being built.
   context.out("Building the application images.");
-  const build = context.spawn("docker", composeArguments(context, ["build"], { envFile }), {
-    cwd: context.repoRoot,
-    inherit: true,
-  });
+  const build = context.spawn(
+    "docker",
+    composeArguments(context, ["build", ...releaseServices], { envFile }),
+    {
+      cwd: context.repoRoot,
+      inherit: true,
+    },
+  );
 
   if ((build.status ?? 1) !== 0) {
     context.err("The images could not be built; see the build output above.");
@@ -1400,6 +1408,29 @@ function runUp(context: DeploymentContext, options: DeployOptions): number {
 
   if (!rememberActiveRelease(context, envFile, activeTag)) {
     return 1;
+  }
+
+  if (installBackupSchedule(context, envFile, values) !== 0) {
+    context.err(
+      "The stack is healthy, but its backup timer was not installed. Fix the systemd user service and run `pnpm deploy:schedule`.",
+    );
+
+    return 1;
+  }
+
+  context.out("Running the scheduled backup once if it is due.");
+  const backup = context.spawn(
+    "docker",
+    composeArguments(context, ["run", "--rm", "--no-deps", "backup"], { envFile }),
+    { cwd: context.repoRoot, inherit: true },
+  );
+
+  if ((backup.status ?? 1) !== 0) {
+    context.err(
+      "The stack is healthy and its timer is installed, but the startup backup failed. Fix the failure and run `pnpm deploy:backup -- run --if-due`.",
+    );
+
+    return backup.status ?? 1;
   }
 
   context.out("");
@@ -1561,6 +1592,16 @@ function runManagement(
 }
 
 function runDown(context: DeploymentContext, options: DeployOptions): number {
+  const disabled = context.spawn("systemctl", ["--user", "disable", "--now", backupTimerUnitName], {
+    cwd: context.repoRoot,
+  });
+
+  if ((disabled.status ?? 1) !== 0) {
+    context.err(
+      "The backup timer could not be disabled; check `systemctl --user status porkbot-backup.timer` after the stack stops.",
+    );
+  }
+
   if (options.volumes) {
     context.err(
       "Removing the stack AND its volumes: Postgres data, bot storage and computer archives " +
@@ -1571,10 +1612,184 @@ function runDown(context: DeploymentContext, options: DeployOptions): number {
   return runManagement(
     context,
     options.volumes
-      ? ["down", "--volumes", "--remove-orphans", "--timeout", "30"]
-      : ["down", "--remove-orphans", "--timeout", "30"],
+      ? ["--profile", "scheduled", "down", "--volumes", "--remove-orphans", "--timeout", "30"]
+      : ["--profile", "scheduled", "down", "--remove-orphans", "--timeout", "30"],
     { inherit: true },
   );
+}
+
+function systemdQuoted(value: string): string {
+  if (value.includes("\0") || value.includes("\n") || value.includes("\r")) {
+    throw new Error("a systemd unit path cannot contain a NUL or newline");
+  }
+
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+export function renderBackupServiceUnit(
+  repoRoot: string,
+  envFile: string,
+  project = defaultProjectName,
+): string {
+  return [
+    "[Unit]",
+    "Description=PorkBot encrypted backup and restore drill",
+    "After=docker.service",
+    "",
+    "[Service]",
+    "Type=oneshot",
+    `WorkingDirectory=${systemdQuoted(repoRoot)}`,
+    `Environment=${systemdQuoted(`PORKBOT_DEPLOY_PROJECT=${project}`)}`,
+    `ExecStart=/usr/bin/env pnpm exec node packages/testkit/src/deployment/cli.ts --env-path ${systemdQuoted(envFile)} backup run --if-due`,
+    "",
+  ].join("\n");
+}
+
+export function renderBackupTimerUnit(hourUtc: number, minuteUtc: number): string {
+  const time = `${String(hourUtc).padStart(2, "0")}:${String(minuteUtc).padStart(2, "0")}:00`;
+
+  return [
+    "[Unit]",
+    "Description=Run the PorkBot backup on its nightly UTC schedule",
+    "",
+    "[Timer]",
+    `OnCalendar=*-*-* ${time} UTC`,
+    "Persistent=true",
+    "AccuracySec=1min",
+    `Unit=${backupServiceUnitName}`,
+    "",
+    "[Install]",
+    "WantedBy=timers.target",
+    "",
+  ].join("\n");
+}
+
+function schedulePaths(context: DeploymentContext): {
+  readonly service: string;
+  readonly timer: string;
+} {
+  const directory = path.join(context.repoRoot, deploymentDirectoryName);
+
+  return {
+    service: path.join(directory, `.${backupServiceUnitName}`),
+    timer: path.join(directory, `.${backupTimerUnitName}`),
+  };
+}
+
+function installBackupSchedule(
+  context: DeploymentContext,
+  envFile: string,
+  values: ReadonlyMap<string, string>,
+): number {
+  const hourUtc = Number(values.get("PORKBOT_BACKUP_SCHEDULE_HOUR_UTC") ?? "3");
+  const minuteUtc = Number(values.get("PORKBOT_BACKUP_SCHEDULE_MINUTE_UTC") ?? "0");
+  const units = schedulePaths(context);
+
+  writeFileSync(
+    units.service,
+    renderBackupServiceUnit(context.repoRoot, envFile, projectName(context)),
+    { mode: 0o600 },
+  );
+  writeFileSync(units.timer, renderBackupTimerUnit(hourUtc, minuteUtc), { mode: 0o600 });
+
+  const linger = context.spawn("loginctl", ["enable-linger"], { cwd: context.repoRoot });
+
+  if ((linger.status ?? 1) !== 0) {
+    context.err(
+      "Could not enable user lingering; the backup timer would stop after logout. Run `loginctl enable-linger`, then retry.",
+    );
+
+    return linger.status ?? 1;
+  }
+
+  const commands: readonly (readonly string[])[] = [
+    ["--user", "link", "--force", units.service, units.timer],
+    ["--user", "daemon-reload"],
+    ["--user", "enable", "--now", backupTimerUnitName],
+  ];
+
+  for (const args of commands) {
+    const result = context.spawn("systemctl", args, { cwd: context.repoRoot });
+
+    if ((result.status ?? 1) !== 0) {
+      if (result.stderr.trim() !== "") {
+        context.err(result.stderr.trimEnd());
+      }
+
+      return result.status ?? 1;
+    }
+  }
+
+  context.out(
+    `Backup timer installed for ${String(hourUtc).padStart(2, "0")}:${String(minuteUtc).padStart(2, "0")} UTC; missed calendar runs are caught up once.`,
+  );
+
+  return 0;
+}
+
+function runSchedule(context: DeploymentContext, options: DeployOptions): number {
+  const envFile = resolveEnvFilePath(context, options);
+  const values = loadValidEnvFile(context, envFile);
+
+  return values === null ? 1 : installBackupSchedule(context, envFile, values);
+}
+
+function runBackup(context: DeploymentContext, options: DeployOptions): number {
+  if (options.positionals.length === 0) {
+    context.err("backup needs a command: `pnpm deploy:backup -- status`.");
+
+    return 2;
+  }
+
+  const envFile = resolveEnvFilePath(context, options);
+
+  if (loadValidEnvFile(context, envFile) === null || ensureDocker(context) !== 0) {
+    return 1;
+  }
+
+  const result = context.spawn(
+    "docker",
+    composeArguments(
+      context,
+      ["run", "--rm", "--no-deps", "backup", "node", "dist/cli.js", ...options.positionals],
+      { envFile },
+    ),
+    { cwd: context.repoRoot, inherit: true },
+  );
+
+  return result.status ?? 1;
+}
+
+function runStatus(context: DeploymentContext): number {
+  const composeStatus = runManagement(context, [
+    "ps",
+    "--all",
+    "--format",
+    "table {{.Service}}\t{{.Status}}\t{{.Ports}}",
+  ]);
+  const timer = context.spawn(
+    "systemctl",
+    [
+      "--user",
+      "show",
+      backupTimerUnitName,
+      "--property=LoadState,ActiveState,UnitFileState,NextElapseUSecRealtime",
+      "--no-pager",
+    ],
+    { cwd: context.repoRoot },
+  );
+
+  if (timer.stdout.trim() !== "") {
+    context.out(`\nBackup timer:\n${timer.stdout.trimEnd()}`);
+  }
+
+  if ((timer.status ?? 1) !== 0) {
+    context.err(
+      "The backup timer is not available. Run `pnpm deploy:schedule` after fixing the systemd user service.",
+    );
+  }
+
+  return composeStatus !== 0 ? composeStatus : (timer.status ?? 1);
 }
 
 function runExec(context: DeploymentContext, options: DeployOptions): number {
@@ -1624,12 +1839,11 @@ export function runDeploy(argv: readonly string[], context: DeploymentContext): 
     case "measure":
       return runMeasure(context, options);
     case "status":
-      return runManagement(context, [
-        "ps",
-        "--all",
-        "--format",
-        "table {{.Service}}\t{{.Status}}\t{{.Ports}}",
-      ]);
+      return runStatus(context);
+    case "schedule":
+      return runSchedule(context, options);
+    case "backup":
+      return runBackup(context, options);
     case "logs":
       return runManagement(context, ["logs", "--follow", "--tail", "100", "--no-color"], {
         inherit: true,

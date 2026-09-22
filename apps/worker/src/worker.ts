@@ -45,7 +45,7 @@ export const routineSchedule: CronItem = {
 };
 
 /**
- * The backup watchdog's schedule: every five minutes. The backup process runs
+ * The backup watchdog's schedule: every five minutes. The host backup timer runs
  * once a night, so a gap is measured in hours; five minutes bounds how long a
  * failed or stalled run goes unannounced without a check a minute for a fact
  * that changes a handful of times a week. It is a `CronItem` for the same

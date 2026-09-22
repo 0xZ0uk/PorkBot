@@ -1,8 +1,7 @@
-# The local stack: Postgres, api, worker, backup, proxy and supervisor on
-# one network, every service with a healthcheck, plus a one-shot `migrate` that
-# applies the schema and the two service roles before the always-on processes
-# start. The proxy carries the built SPA in its own image, exactly as the
-# deployment's does.
+# The local stack: Postgres, api, worker, proxy and supervisor on one
+# network, every resident service with a healthcheck, plus one-shot `migrate`
+# and `backup` jobs. The proxy carries the built SPA in its own image, exactly
+# as the deployment's does.
 # `pnpm stack:up` builds these images and blocks until each healthcheck passes;
 # `pnpm stack:down` removes the containers, the network and the Postgres volume.
 #
@@ -134,13 +133,14 @@ services:
         condition: service_healthy
 
   backup:
-    <<: *app
+    profiles: [scheduled]
     build:
       context: .
       target: backup
     image: porkbot/backup:local
+    restart: "no"
+    command: ["node", "dist/cli.js", "run", "--if-due"]
     environment:
-      PORT: "3004"
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # The database owner's connection, not a service role: pg_dump reads the
       # whole schema, and the drill creates and drops a scratch database. No

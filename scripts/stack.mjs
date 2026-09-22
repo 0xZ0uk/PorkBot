@@ -126,6 +126,16 @@ function up() {
     process.exit(exitCodeOf(result));
   }
 
+  process.stdout.write("Running the scheduled backup once if it is due.\n");
+  const backup = compose(["run", "--rm", "--no-deps", "--build", "backup"]);
+
+  if (exitCodeOf(backup) !== 0) {
+    process.stderr.write(
+      "\nThe stack is healthy, but its startup backup failed. Fix the failure and run `pnpm stack:up` again.\n",
+    );
+    process.exit(exitCodeOf(backup));
+  }
+
   compose(["ps", "--format", "table {{.Service}}\t{{.Status}}\t{{.Ports}}"]);
   process.stdout.write(
     [
@@ -143,7 +153,19 @@ function up() {
 
 function down() {
   preflight();
-  process.exit(exitCodeOf(compose(["down", "--volumes", "--remove-orphans", "--timeout", "30"])));
+  process.exit(
+    exitCodeOf(
+      compose([
+        "--profile",
+        "scheduled",
+        "down",
+        "--volumes",
+        "--remove-orphans",
+        "--timeout",
+        "30",
+      ]),
+    ),
+  );
 }
 
 function logs() {

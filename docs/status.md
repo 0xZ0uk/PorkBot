@@ -93,7 +93,7 @@ in the prerendered HTML, an unknown route is rewritten to the shell and a
 missing asset stays a 404.
 
 Under it, M0 is in place: one command, `pnpm stack:up`, starts the whole local
-stack — Postgres 18, the migrate one-shot, api, worker, backup, web, the
+stack — Postgres 18, the migrate and backup one-shots, api, worker, web, the
 reverse proxy and supervisor — and waits for every healthcheck, and the same
 command is what CI's integration tier runs; the testkit harness attaches to the
 stack's Postgres for the suite clones, so integration tests run against the

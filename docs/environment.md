@@ -45,17 +45,16 @@ boundary](security.md) for where each one lives.
 
 ## Service ports
 
-Each process answers on its own `PORT`; the deployment never publishes these
-directly. The proxy is the only public door and serves the built SPA itself
-from its own image, and `PORKBOT_API_PORT` only binds the API to loopback for
-an operator's own curl.
+Each resident process answers on its own `PORT`; the deployment never publishes
+these directly. The proxy is the only public door and serves the built SPA
+itself from its own image, and `PORKBOT_API_PORT` only binds the API to
+loopback for an operator's own curl.
 
 | Service      | `PORT` default | Published by the stack                        |
 | ------------ | -------------- | --------------------------------------------- |
 | `api`        | 3001           | loopback `${PORKBOT_API_PORT}` (default 3001) |
 | `worker`     | 3002           | not published                                 |
 | `supervisor` | 3003           | not published                                 |
-| `backup`     | 3004           | not published                                 |
 
 The health paths are `/healthz` (legacy liveness alias), `/livez` and
 `/readyz`; the API adds `/healthz/stream`, the streaming probe the reverse
@@ -178,7 +177,6 @@ them by hand only when running a process outside the stack.
 | `PORKBOT_WEB_ROOT`                       | optional | `dist/client` next to the host process | The directory a directly-run static host serves (`pnpm --filter @porkbot/web serve`); the deployment's proxy serves the same build from its image.                                                                                   |
 | `PORKBOT_BACKUP_DIR`                     | optional | `/var/lib/porkbot/backups`             | Where encrypted backup objects live when the target is local; ignored with S3 configured.                                                                                                                                            |
 | `PORKBOT_BACKUP_ENVELOPE_DIR`            | optional | `/var/lib/porkbot/backup-envelope`     | Where the sealed key envelope is written; deliberately not under the backup destination.                                                                                                                                             |
-| `PORKBOT_BACKUP_TICK_MS`                 | optional | `60000`                                | How often the backup scheduler looks for a due run.                                                                                                                                                                                  |
 | `PORKBOT_COMPUTER_SOCKET`                | optional | `/var/run/docker.sock`                 | The Docker daemon's socket for the Docker provider.                                                                                                                                                                                  |
 | `PORKBOT_COMPUTER_HOME`                  | optional | the provider's own (`/home/agent`)     | The machine user's home inside the image.                                                                                                                                                                                            |
 | `PORKBOT_COMPUTER_ARCHIVE_DIR`           | optional | `/var/lib/porkbot/computer-archives`   | Where home archives are staged between a machine and the snapshot store.                                                                                                                                                             |
@@ -280,7 +278,7 @@ source name.
 | `.env.schema`                   | Shared database, logging, storage, supervisor and provider-credential keyring values             |
 | `apps/api/.env.schema`          | `PORT`, auth, mail, the MCP callback and the limits                                              |
 | `apps/worker/.env.schema`       | `PORT`, the notification webhook, `PORKBOT_WEB_ORIGIN`                                           |
-| `apps/backup/.env.schema`       | `PORT`, the backup schedule, keyring, envelope and S3 target                                     |
+| `apps/backup/.env.schema`       | the backup schedule, keyring, envelope and S3 target                                             |
 | `apps/supervisor/.env.schema`   | `PORT`, the supervisor token, the computer settings                                              |
 | `apps/web/.env.schema`          | `PORT`, `PORKBOT_WEB_ROOT`                                                                       |
 | `apps/desktop/.env.schema`      | the update feed and pinned public key                                                            |

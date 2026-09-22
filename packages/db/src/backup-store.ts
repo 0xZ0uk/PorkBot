@@ -1,4 +1,5 @@
 import type { BackupAlertKind, BackupRunStatus } from "@porkbot/core";
+import type { DatabaseHandle } from "./database.ts";
 import type { Queryable } from "./queryable.ts";
 
 /**
@@ -132,6 +133,58 @@ export interface BackupStatusReader {
    * for the same episode is false, so one fact is announced once.
    */
   claimAlert(kind: BackupAlertKind, episode: string): Promise<boolean>;
+}
+
+/** A second invocation tried to enter the deployment-wide backup lane. */
+export class BackupRunOverlapError extends Error {
+  constructor() {
+    super("another backup run is already in progress");
+    this.name = "BackupRunOverlapError";
+  }
+}
+
+/**
+ * Owns the deployment-wide backup lane for one callback.
+ *
+ * A session advisory lock is a better fit than a permanent `running`-row
+ * uniqueness rule: it rejects a concurrent host timer or operator command,
+ * but Postgres releases it automatically if a container is killed. The
+ * callback receives repositories bound to the same checked-out connection so
+ * the lock cannot accidentally live on a different pool session.
+ */
+export async function withBackupRunLock<Value>(
+  handle: DatabaseHandle,
+  run: (access: {
+    readonly ledger: BackupLedger;
+    readonly reader: BackupStatusReader;
+  }) => Promise<Value>,
+): Promise<Value> {
+  const connection = await handle.database.$client.connect();
+  let acquired = false;
+
+  try {
+    const { rows } = await connection.query<{ readonly acquired: boolean }>(
+      "select pg_try_advisory_lock(hashtext('porkbot.backup.run')) as acquired",
+    );
+    acquired = rows[0]?.acquired === true;
+
+    if (!acquired) {
+      throw new BackupRunOverlapError();
+    }
+
+    return await run({
+      ledger: createBackupLedger(connection),
+      reader: createBackupStatusReader(connection),
+    });
+  } finally {
+    try {
+      if (acquired) {
+        await connection.query("select pg_advisory_unlock(hashtext('porkbot.backup.run'))");
+      }
+    } finally {
+      connection.release();
+    }
+  }
 }
 
 async function readRun(

@@ -1,10 +1,10 @@
 /**
- * The backup process's entry module.
+ * The backup job's entry module.
  *
  * `moduleInfo` names the process for the health probe and the log lines, the
  * same shape every app uses. The re-exports are the seams the unit and
- * integration suites build directly — the cipher, the archive, the run, the
- * scheduler and the configuration — so a test exercises the shipped code
+ * integration suites build directly — the cipher, the archive, the run and
+ * the configuration — so a test exercises the shipped code
  * rather than a parallel copy of it.
  */
 export const moduleInfo = {
@@ -25,7 +25,6 @@ export {
 export {
   defaultBackupDirectory,
   defaultEnvelopeDirectory,
-  defaultTickMs,
   envelopeFileName,
   loadBackupConfig,
   loadBackupKeys,
@@ -55,4 +54,3 @@ export {
   performBackupRun,
   type BackupRunDependencies,
 } from "./run.ts";
-export { createBackupScheduler, type BackupScheduler } from "./scheduler.ts";

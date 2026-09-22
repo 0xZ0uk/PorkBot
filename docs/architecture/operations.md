@@ -3,9 +3,10 @@
 ## Local stack
 
 `docker compose` (repository-root `compose.yaml`) brings up the whole product:
-Postgres 18, `api`, `worker`, `backup`, `proxy` and `supervisor`, each
-with a healthcheck; the proxy carries the built SPA in its own image, exactly
-as the deployment's does. One command starts it and waits:
+Postgres 18, `api`, `worker`, `proxy` and `supervisor` as healthchecked
+services, plus the `migrate` and `backup` one-shots. The proxy carries the
+built SPA in its own image, exactly as the deployment's does. One command
+starts it and waits:
 
 ```sh
 pnpm stack:up      # build, start, wait for every healthcheck
@@ -86,18 +87,19 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   of booting its own container, runs the integration suites against it, and
   removes the stack with `if: always()`. There is no CI-only compose file or
   boot script.
-- **One migrate, then the always-on processes.** The `migrate` one-shot applies
+- **One migrate, then resident services plus a scheduled job.** The `migrate` one-shot applies
   the committed journal, creates the two service roles and sets their passwords;
   `api` and `worker` wait on `service_completed_successfully` and then connect as
-  their own roles. The six processes are the point — the api serves the
-  contract's procedures, the worker runs the queue, the supervisor owns computer
-  lifecycle, the backup process owns the encrypted nightly backup and its
-  drill — and story 44 is one command that starts the real topology: a later
+  their own roles. The api serves the contract's procedures, the worker runs
+  the queue, and the supervisor owns computer lifecycle. The backup image is a
+  scheduled one-shot rather than resident capacity: the host timer starts it,
+  waits for it and retains its result in the ledger. Story 44 is one command
+  that starts the real topology: a later
   slice replaces a process's body, never its place in the stack.
 
-Each service image builds from the root `Dockerfile`; the shared build stage
+Each image builds from the root `Dockerfile`; the shared build stage
 installs and builds the workspace once and `pnpm deploy`s each app into its own
-runtime image. Every process answers `/livez` and `/readyz`: liveness means the
+runtime image. Every resident process answers `/livez` and `/readyz`: liveness means the
 process can answer, while readiness includes the dependency checks needed to
 receive work. `/healthz` remains as a legacy liveness alias, and
 `packages/health` is the shared implementation; `apps/api` keeps its own
@@ -197,35 +199,35 @@ active release running; a failed switch attempts to restore it.
   the cap look brutal. The stack's ceilings remain a separate invariant,
   checked below and against one bot's configured share:
 
-  | service            | CPU ceiling | memory ceiling |
-  | ------------------ | ----------- | -------------- |
-  | postgres           | 1.0         | 2 GB           |
-  | migrate (one-shot) | 0.1         | 512 MB         |
-  | api                | 0.7         | 1 GB           |
-  | worker             | 0.45        | 1 GB           |
-  | backup             | 0.25        | 256 MB         |
-  | proxy              | 0.1         | 128 MB         |
-  | supervisor         | 0.2         | 384 MB         |
+  | service               | CPU ceiling | memory ceiling |
+  | --------------------- | ----------- | -------------- |
+  | postgres              | 1.0         | 2 GB           |
+  | migrate (one-shot)    | 0.1         | 512 MB         |
+  | api                   | 0.7         | 1 GB           |
+  | worker                | 0.45        | 1 GB           |
+  | backup job (one-shot) | 0.25        | 256 MB         |
+  | proxy                 | 0.1         | 128 MB         |
+  | supervisor            | 0.2         | 384 MB         |
 
-  The test invariant still sums the ceilings: the declared stack is 2.8 vCPU
-  and about 5.25 GB, and the default one-bot share is
+  The test invariant still sums the ceilings: the declared stack is 2.6 vCPU
+  and about 5.0 GB plus the backup one-shot peak, and the default one-bot share is
   `PORKBOT_COMPUTER_CPUS` (1) plus `PORKBOT_COMPUTER_MEMORY_MB` (512). This is
   a capacity guard, not the measured floor. Raise the ceilings in
   `deploy/compose.yaml` only after raising the host; the per-bot settings live
   in the env file and are re-read at supervisor boot.
 
-  Per-bot disk is stated as three terms, because a single "disk per bot" number
-  would be a budget dressed as a floor. The write layer is bounded by
-  `PORKBOT_COMPUTER_DISK_MB` (default 10240 MB) only where the daemon's storage
-  driver answers a `size` quota — `btrfs`, or `overlay2` over xfs with
-  `pquota` — and `PORKBOT_COMPUTER_DISK_QUOTA=auto` detects it at boot and
-  reports the verdict, at boot and in `deploy:check`. The home volume is shared
-  with the write layer's budget but grows with what the agent writes, so it
-  scales with configured bots and their activity. Snapshot archives are bounded
-  per bot by `PORKBOT_COMPUTER_SNAPSHOT_KEEP` (default 10) and are the one term
-  that scales with active use. The machine image's read-only layers are paid
-  once per daemon, shared by every container, so N configured bots do not cost
-  N images.
+Per-bot disk is stated as three terms, because a single "disk per bot" number
+would be a budget dressed as a floor. The write layer is bounded by
+`PORKBOT_COMPUTER_DISK_MB` (default 10240 MB) only where the daemon's storage
+driver answers a `size` quota — `btrfs`, or `overlay2` over xfs with
+`pquota` — and `PORKBOT_COMPUTER_DISK_QUOTA=auto` detects it at boot and
+reports the verdict, at boot and in `deploy:check`. The home volume is shared
+with the write layer's budget but grows with what the agent writes, so it
+scales with configured bots and their activity. Snapshot archives are bounded
+per bot by `PORKBOT_COMPUTER_SNAPSHOT_KEEP` (default 10) and are the one term
+that scales with active use. The machine image's read-only layers are paid
+once per daemon, shared by every container, so N configured bots do not cost
+N images.
 
 - **Operating it.** `pnpm deploy:status` prints each service's state, health
   and published ports; `pnpm deploy:logs` follows the logs;
@@ -239,9 +241,8 @@ active release running; a failed switch attempts to restore it.
   public address) on a host reachable from the internet, and point DNS at the
   host before `deploy:up` so Caddy can obtain a certificate. Postgres is never
   published and the API answers on loopback only; `deploy:exec` is the
-  way in. `deploy:exec -- backup node dist/cli.js status` reports the backup
-  ledger and the envelope, and
-  `deploy:exec -- backup node dist/cli.js restore --latest --database <name>`
+  way in. `pnpm deploy:backup -- status` reports the backup ledger and the
+  envelope, and `pnpm deploy:backup -- restore --latest --database <name>`
   is the recovery path ([`docs/backups.md`](../backups.md)). `pnpm deploy:upgrade --tag <git-sha>`
   is the one-command release path; it records the prior tag in the adjacent
   ignored release state so `pnpm deploy:rollback` can redeploy it. Rollback is
@@ -253,15 +254,18 @@ active release running; a failed switch attempts to restore it.
 
 ## Backups and restore drills
 
-`apps/backup` (slice 12.3, PRD story 5) is the deployment's backup process: a
-sixth always-on service that holds the database owner's connection and nothing
-else. It runs under `pnpm stack:up` and `pnpm deploy:up`; it deliberately has
-no `pnpm dev` entry, because it refuses to boot without a keyring and a
-destination and a developer's `pnpm dev` should not inherit that requirement. Every night it writes a canary row, streams `pg_dump` output through the
+`apps/backup` (slice 12.3, PRD story 5) is a scheduled one-shot. `deploy:up`
+installs a persistent per-user systemd timer; at the configured UTC time it
+starts the Compose job and waits for exit, leaving no backup process resident.
+The job holds the database owner's connection only while it runs. It has no
+`pnpm dev` entry because a developer's resident processes should not inherit a
+backup keyring requirement. Every night it writes a canary row, streams `pg_dump` output through the
 AES-256-GCM archive into the storage seam, copies every `computer-snapshots/`
 archive the same way, prunes what the retention window has passed, and then
 restores the dump it just wrote into a scratch database and compares the canary
-it reads back. The schedule, the retention window and the drill interval live in
+it reads back. A session advisory lock refuses overlapping runs and is released
+if the one-shot dies. The
+schedule, the retention window and the drill interval live in
 `@porkbot/core`'s `backup-policy.ts` and are re-stated with the recovery path in
 [`docs/backups.md`](../backups.md).
 

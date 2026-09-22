@@ -16,7 +16,6 @@
     "@porkbot/adapters": "workspace:*",
     "@porkbot/core": "workspace:*",
     "@porkbot/db": "workspace:*",
-    "@porkbot/health": "workspace:*",
     "@porkbot/logging": "workspace:*"
   },
   "devDependencies": {

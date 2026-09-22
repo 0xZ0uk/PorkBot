@@ -2,7 +2,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { createSuiteDatabase, connectToSuite } from "@porkbot/testkit";
 import type { SuiteClient, SuiteDatabase } from "@porkbot/testkit";
 import { afterAll, describe, expect, it } from "vitest";
-import { createBackupLedger, createBackupStatusReader } from "../../src/backup-store.ts";
+import {
+  createBackupLedger,
+  createBackupStatusReader,
+  withBackupRunLock,
+} from "../../src/backup-store.ts";
+import { openDatabase } from "../../src/database.ts";
 import type { Queryable } from "../../src/queryable.ts";
 
 /**
@@ -103,6 +108,43 @@ describe("the backup ledger", () => {
     await ledger.settleRun(run.id, { status: "failed", errorCode: "dump_failed" });
 
     await expect(ledger.beginDrill(run.id)).rejects.toThrow(/nothing to drill/);
+  });
+
+  it("refuses an overlapping owner and releases the lane when its session ends", async () => {
+    if (suite === undefined) {
+      throw new Error("the suite database was not created");
+    }
+
+    const first = openDatabase(suite.connectionString);
+    const second = openDatabase(suite.connectionString);
+    let release: (() => void) | undefined;
+    let announceAcquired: (() => void) | undefined;
+    const acquired = new Promise<void>((resolve) => {
+      announceAcquired = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    try {
+      const owner = withBackupRunLock(first, async () => {
+        announceAcquired?.();
+        await hold;
+      });
+
+      await acquired;
+      await expect(withBackupRunLock(second, async () => "unexpected")).rejects.toThrow(
+        /already in progress/,
+      );
+
+      release?.();
+      await owner;
+      await expect(withBackupRunLock(second, async () => "next")).resolves.toBe("next");
+    } finally {
+      release?.();
+      await first.close();
+      await second.close();
+    }
   });
 
   it("refuses a settled row whose finish and status disagree", async () => {

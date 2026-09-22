@@ -13,7 +13,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { runDeploy } from "../src/deployment/commands.ts";
+import {
+  renderBackupServiceUnit,
+  renderBackupTimerUnit,
+  runDeploy,
+} from "../src/deployment/commands.ts";
 import type { DeploymentContext, SpawnOptions, SpawnResult } from "../src/deployment/commands.ts";
 import {
   composeServiceBlock,
@@ -119,7 +123,7 @@ describe("deployment register and template", () => {
     expect(composeServices(deployComposeText)).toEqual(composeServices(localComposeText));
   });
 
-  it("gives every service a healthcheck and a CPU and memory ceiling", () => {
+  it("gives resident services healthchecks and every service a CPU and memory ceiling", () => {
     // The always-on services merge the `x-app` anchor, which is where their
     // healthcheck lives; postgres declares its own. The check looks for both
     // shapes rather than pretending the anchor is inlined.
@@ -133,7 +137,7 @@ describe("deployment register and template", () => {
 
       expect(block, `${service} must have a block`).toBeDefined();
 
-      if (service === "migrate") {
+      if (service === "migrate" || service === "backup") {
         expect(block, "the one-shot needs no healthcheck").not.toContain("healthcheck:");
       } else if (service === "postgres") {
         expect(block, "postgres must have a healthcheck").toContain("healthcheck:");
@@ -144,6 +148,18 @@ describe("deployment register and template", () => {
       expect(block, `${service} must declare resource limits`).toContain("resources:");
       expect(block, `${service} must cap CPUs`).toMatch(/cpus:\s*"/);
       expect(block, `${service} must cap memory`).toMatch(/memory:\s*\S/);
+    }
+  });
+
+  it("runs backup as a non-resident one-shot", () => {
+    for (const composeText of [deployComposeText, localComposeText]) {
+      const block = composeServiceBlock(composeText, "backup") ?? "";
+
+      expect(block).toContain('restart: "no"');
+      expect(block).toContain("profiles: [scheduled]");
+      expect(block).toContain('command: ["node", "dist/cli.js", "run", "--if-due"]');
+      expect(block).not.toContain("<<: *app");
+      expect(block).not.toContain("healthcheck:");
     }
   });
 
@@ -969,7 +985,70 @@ describe("the deployment commands", () => {
       expect.arrayContaining(["--wait", "--wait-timeout", "300", "--env-file"]),
     );
     expect(up?.args).not.toContain("--build");
+    const startupBackupIndex = composeCalls.findIndex(
+      (call) => call.args.includes("run") && call.args.includes("backup"),
+    );
+    const startupBackup = composeCalls[startupBackupIndex];
+    expect(startupBackup?.args).toEqual(
+      expect.arrayContaining(["run", "--rm", "--no-deps", "backup"]),
+    );
+    expect(startupBackupIndex).toBeGreaterThan(upIndex);
     expect(calls.some((call) => call.args.includes("--file"))).toBe(true);
+    expect(
+      calls.some(
+        (call) => call.command === "systemctl" && call.args.includes("porkbot-backup.timer"),
+      ),
+    ).toBe(true);
+  });
+
+  it("renders and installs a persistent UTC backup timer", () => {
+    const { root, envFile } = workspace();
+
+    expect(runDeploy(["setup", "--origin", testOrigin], contextFor(root).context)).toBe(0);
+
+    const { context, calls, out } = contextFor(root);
+
+    expect(runDeploy(["schedule"], context)).toBe(0);
+    expect(readFileSync(path.join(root, "deploy", ".porkbot-backup.service"), "utf8")).toBe(
+      renderBackupServiceUnit(root, envFile),
+    );
+    expect(readFileSync(path.join(root, "deploy", ".porkbot-backup.timer"), "utf8")).toBe(
+      renderBackupTimerUnit(3, 0),
+    );
+    expect(renderBackupTimerUnit(3, 0)).toContain("Persistent=true");
+    expect(renderBackupTimerUnit(3, 0)).toContain("OnCalendar=*-*-* 03:00:00 UTC");
+    expect(renderBackupServiceUnit(root, envFile, "custom-project")).toContain(
+      'Environment="PORKBOT_DEPLOY_PROJECT=custom-project"',
+    );
+    expect(calls.filter((call) => call.command === "systemctl")).toHaveLength(3);
+    expect(out.join("\n")).toContain("03:00 UTC");
+  });
+
+  it("runs the operator backup surface in an ephemeral container", () => {
+    const { root } = workspace();
+
+    expect(runDeploy(["setup", "--origin", testOrigin], contextFor(root).context)).toBe(0);
+
+    const { context, calls } = contextFor(root);
+
+    expect(runDeploy(["backup", "status"], context)).toBe(0);
+
+    const run = calls.find(
+      (call) =>
+        call.command === "docker" && call.args.includes("run") && call.args.includes("backup"),
+    );
+
+    expect(run?.args).toEqual(
+      expect.arrayContaining([
+        "run",
+        "--rm",
+        "--no-deps",
+        "backup",
+        "node",
+        "dist/cli.js",
+        "status",
+      ]),
+    );
   });
 
   it("measure runs every workload phase and writes a table plus raw report", () => {
@@ -1056,11 +1135,11 @@ describe("the deployment commands", () => {
       .filter((index) => index >= 0);
 
     expect(pullIndex).toBeGreaterThanOrEqual(0);
-    expect(healthIndexes.length).toBe(10);
+    expect(healthIndexes.length).toBe(8);
     expect(pullIndex).toBeLessThan(healthIndexes[0] ?? Number.POSITIVE_INFINITY);
-    expect(healthIndexes[4] ?? -1).toBeLessThan(migrationIndex);
-    expect(migrationIndex).toBeLessThan(healthIndexes[5] ?? Number.POSITIVE_INFINITY);
-    expect(healthIndexes[9] ?? -1).toBeLessThan(switchIndex);
+    expect(healthIndexes[3] ?? -1).toBeLessThan(migrationIndex);
+    expect(migrationIndex).toBeLessThan(healthIndexes[4] ?? Number.POSITIVE_INFINITY);
+    expect(healthIndexes[7] ?? -1).toBeLessThan(switchIndex);
     expect(dockerCalls[pullIndex]?.options?.env?.["PORKBOT_IMAGE_TAG"]).toBe("nextsha012345");
     expect(dockerCalls[switchIndex]?.args).toEqual(expect.arrayContaining(["--no-deps", "api"]));
     expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_IMAGE_TAG")).toBe(
@@ -1165,7 +1244,9 @@ describe("the deployment commands", () => {
 
     expect(runDeploy(["down", "--volumes"], context)).toBe(0);
     expect(err.join("\n")).toMatch(/will be deleted/);
-    expect(calls.find((call) => call.args.includes("down"))?.args).toContain("--volumes");
+    expect(calls.find((call) => call.args.includes("down"))?.args).toEqual(
+      expect.arrayContaining(["--profile", "scheduled", "down", "--volumes"]),
+    );
   });
 
   it("rejects an unknown command with usage", () => {
