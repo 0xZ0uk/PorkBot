@@ -26,10 +26,13 @@ reads it, and `deployment.status` decides whether sign-in offers registration.
 Colour and type come from `@porkbot/tokens`, which holds PorkBot's own palette
 — monochrome surfaces, one warm accent, the state colours and a twelve-position
 identity ramp — in its light and dark modes. `themeStyleSheet` turns the palette
-and the scales into `--pb-*` custom properties, declares light on `:root` and
-dark behind `prefers-color-scheme`, and repeats both as `[data-theme]` rules so
-a stored choice wins over the system; `themeBootstrapScript` applies that choice
-before the bundle runs, and `apps/web`'s `theme.ts` appends the shell's document
+and the scales into `--pb-*` custom properties and the shadcn semantic set,
+declares light on `:root` and dark behind `prefers-color-scheme`, and repeats
+both as `[data-theme]` rules so a stored choice wins over the system;
+`themeBootstrapScript` applies that choice before the bundle runs. The web app
+builds its CSS through `@tailwindcss/vite` from a `globals.css` whose
+`@theme inline` block maps those variables into the Tailwind theme, so a
+surface writes `bg-background` and gets `var(--background)`. and `apps/web`'s `theme.ts` appends the shell's document
 rules. Inter and JetBrains Mono are self-hosted through the
 bundle, so the desktop's offline build needs no network for type. The surfaces
 and stylesheet name only those properties, and the lint rule in
