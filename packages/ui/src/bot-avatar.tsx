@@ -1,4 +1,5 @@
 import { colors } from "@porkbot/tokens";
+import { cn } from "./lib/utils.ts";
 import type { CSSProperties } from "react";
 
 /** The four avatar sizes the register ships (design record, Identity). */
@@ -27,6 +28,13 @@ export type BotAvatarProps = {
   readonly imageUrl?: string | null;
   readonly size?: BotAvatarSize;
   readonly className?: string;
+};
+
+const sizeClass: Readonly<Record<BotAvatarSize, string>> = {
+  20: "size-5",
+  24: "size-6",
+  32: "size-8",
+  40: "size-10",
 };
 
 const identityHues = [
@@ -77,12 +85,16 @@ export function botAvatarIdentity(id: string): BotAvatarIdentity {
  * identities for one operator's roster (design record, Identity).
  */
 export function BotAvatar({ id, name, color, imageUrl, size = 32, className }: BotAvatarProps) {
-  const classes = ["pb-avatar", `pb-avatar--${String(size)}`, className].filter(Boolean).join(" ");
+  const classes = cn(
+    "inline-flex flex-none items-center justify-center overflow-hidden rounded-full bg-accent",
+    sizeClass[size],
+    className,
+  );
 
   if (imageUrl !== undefined && imageUrl !== null && imageUrl.trim().length > 0) {
     return (
       <span className={classes} aria-hidden="true" title={name}>
-        <img className="pb-avatar__image" src={imageUrl} alt="" />
+        <img className="size-full object-cover" src={imageUrl} alt="" />
       </span>
     );
   }

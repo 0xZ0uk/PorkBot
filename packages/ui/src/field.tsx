@@ -1,4 +1,6 @@
 import type { ComponentPropsWithRef, ReactNode } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "./lib/utils.ts";
 
 export type FieldProps = {
   /** The visible label; the control is associated in `label` or `htmlFor`. */
@@ -13,6 +15,19 @@ export type FieldProps = {
   readonly children: ReactNode;
 };
 
+const controlVariants = cva(
+  "w-full rounded-lg border border-border bg-background px-2 py-2 font-sans text-body text-foreground disabled:cursor-not-allowed disabled:opacity-60 focus-visible:border-primary",
+  {
+    variants: {
+      invalid: {
+        true: "border-destructive",
+        false: "",
+      },
+    },
+    defaultVariants: { invalid: false },
+  },
+);
+
 /**
  * A labelled control. The label wraps the control, so association works with
  * or without an explicit id; hint and error are rendered below it and the
@@ -20,12 +35,12 @@ export type FieldProps = {
  */
 export function Field({ label, htmlFor, hint, error, className, children }: FieldProps) {
   return (
-    <label className={["pb-field", className].filter(Boolean).join(" ")} htmlFor={htmlFor}>
-      <span className="pb-field__label">{label}</span>
+    <label className={cn("flex flex-col gap-1", className)} htmlFor={htmlFor}>
+      <span className="text-meta text-muted-foreground">{label}</span>
       {children}
-      {hint === undefined ? null : <span className="pb-field__hint">{hint}</span>}
+      {hint === undefined ? null : <span className="text-meta text-muted-foreground">{hint}</span>}
       {error === undefined ? null : (
-        <span className="pb-field__error" role="alert">
+        <span className="text-meta text-destructive" role="alert">
           {error}
         </span>
       )}
@@ -42,7 +57,7 @@ export type InputProps = Omit<ComponentPropsWithRef<"input">, "className"> & {
 export function Input({ invalid = false, className, ...rest }: InputProps) {
   return (
     <input
-      className={["pb-input", className].filter(Boolean).join(" ")}
+      className={cn(controlVariants({ invalid }), className)}
       aria-invalid={invalid ? true : undefined}
       {...rest}
     />
@@ -57,7 +72,7 @@ export type TextareaProps = Omit<ComponentPropsWithRef<"textarea">, "className">
 export function Textarea({ invalid = false, className, ...rest }: TextareaProps) {
   return (
     <textarea
-      className={["pb-textarea", className].filter(Boolean).join(" ")}
+      className={cn(controlVariants({ invalid }), "resize-y", className)}
       aria-invalid={invalid ? true : undefined}
       {...rest}
     />
@@ -72,7 +87,7 @@ export type SelectProps = Omit<ComponentPropsWithRef<"select">, "className"> & {
 export function Select({ invalid = false, className, ...rest }: SelectProps) {
   return (
     <select
-      className={["pb-select", className].filter(Boolean).join(" ")}
+      className={cn(controlVariants({ invalid }), className)}
       aria-invalid={invalid ? true : undefined}
       {...rest}
     />

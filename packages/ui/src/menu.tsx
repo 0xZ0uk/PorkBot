@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Icon } from "./icon.tsx";
+import { Menu as BaseMenu } from "@base-ui/react/menu";
+import { Button } from "./button.tsx";
 import type { ButtonVariant } from "./button.tsx";
+import { Icon } from "./icon.tsx";
+import { cn } from "./lib/utils.ts";
 
 export type MenuItem = {
   readonly id: string;
@@ -41,176 +42,43 @@ export function Menu({
   align = "start",
   className,
 }: MenuProps) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const openAt = useRef<"first" | "last">("first");
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const first = openAt.current === "first";
-    focusIndex(enabledFrom(first ? 0 : items.length - 1, first ? 1 : -1));
-
-    function onPointerDown(event: MouseEvent): void {
-      const target = event.target as Node;
-
-      if (
-        menuRef.current?.contains(target) === true ||
-        triggerRef.current?.contains(target) === true
-      ) {
-        return;
-      }
-
-      setOpen(false);
-    }
-
-    function onDocumentKeyDown(event: globalThis.KeyboardEvent): void {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onDocumentKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onDocumentKeyDown);
-    };
-  }, [open, items.length]);
-
-  function close(refocus: boolean): void {
-    setOpen(false);
-
-    if (refocus) {
-      triggerRef.current?.focus();
-    }
-  }
-
-  /**
-   * The first enabled item at or after `start`, walking in `direction` and
-   * wrapping once. A disabled item cannot take focus, so an arrow that lands
-   * on one would appear to do nothing; the walk steps over them instead.
-   */
-  function enabledFrom(start: number, direction: 1 | -1): number | undefined {
-    for (let step = 0; step < items.length; step += 1) {
-      const index = (((start + direction * step) % items.length) + items.length) % items.length;
-      const node = itemRefs.current[index];
-
-      if (node !== null && node !== undefined && !node.disabled) {
-        return index;
-      }
-    }
-
-    return undefined;
-  }
-
-  function focusIndex(index: number | undefined): void {
-    if (index !== undefined) {
-      itemRefs.current[index]?.focus();
-    }
-  }
-
-  function indexOfFocused(): number {
-    return itemRefs.current.findIndex((node) => node === document.activeElement);
-  }
-
-  function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    const focused = indexOfFocused();
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      focusIndex(enabledFrom(focused + 1, 1));
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      focusIndex(enabledFrom(focused - 1, -1));
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      focusIndex(enabledFrom(0, 1));
-    } else if (event.key === "End") {
-      event.preventDefault();
-      focusIndex(enabledFrom(items.length - 1, -1));
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      close(true);
-    } else if (event.key === "Tab") {
-      close(false);
-    }
-  }
-
   return (
-    <span className={["pb-menu", className].filter(Boolean).join(" ")} ref={menuRef}>
-      <button
-        ref={triggerRef}
-        className={["pb-button", `pb-button--${variant}`].join(" ")}
-        type="button"
-        aria-label={ariaLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => {
-          openAt.current = "first";
-
-          if (open) {
-            close(false);
-          } else {
-            setOpen(true);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openAt.current = "first";
-            setOpen(true);
-          } else if (event.key === "ArrowUp") {
-            event.preventDefault();
-            openAt.current = "last";
-            setOpen(true);
-          }
-        }}
-      >
-        {label}
-        <Icon name="chevron-down" size={14} />
-      </button>
-      {open ? (
-        <div
-          className={["pb-menu__popup", align === "end" && "pb-menu__popup--end"]
-            .filter(Boolean)
-            .join(" ")}
-          role="menu"
-          aria-label={label}
-          onKeyDown={onMenuKeyDown}
-        >
-          {items.map((item, index) => (
-            <button
-              key={item.id}
-              ref={(node) => {
-                itemRefs.current[index] = node;
-              }}
-              className={[
-                "pb-menu__item",
-                item.destructive === true && "pb-menu__item--destructive",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              disabled={item.disabled}
-              onClick={() => {
-                close(true);
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </span>
+    <BaseMenu.Root>
+      <BaseMenu.Trigger
+        render={
+          <Button variant={variant} aria-label={ariaLabel} className={className}>
+            {label}
+            <Icon name="chevron-down" aria-hidden="true" />
+          </Button>
+        }
+      />
+      <BaseMenu.Portal>
+        <BaseMenu.Positioner sideOffset={4} align={align === "end" ? "end" : "start"}>
+          <BaseMenu.Popup
+            className={cn(
+              "z-30 flex min-w-48 flex-col gap-0.5 rounded-xl border border-border bg-card p-1 shadow-overlay",
+            )}
+          >
+            {items.map((item) => (
+              <BaseMenu.Item
+                key={item.id}
+                disabled={item.disabled === true}
+                data-destructive={item.destructive === true ? "true" : undefined}
+                onClick={() => {
+                  item.onSelect();
+                }}
+                className={cn(
+                  "flex w-full cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-1 text-left text-body text-foreground",
+                  item.destructive === true ? "text-destructive" : "",
+                  "hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60",
+                )}
+              >
+                {item.label}
+              </BaseMenu.Item>
+            ))}
+          </BaseMenu.Popup>
+        </BaseMenu.Positioner>
+      </BaseMenu.Portal>
+    </BaseMenu.Root>
   );
 }

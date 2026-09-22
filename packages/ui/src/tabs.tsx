@@ -1,5 +1,6 @@
-import { useId, useRef } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import { Tabs as BaseTabs } from "@base-ui/react/tabs";
+import type { ReactNode } from "react";
+import { cn } from "./lib/utils.ts";
 
 export type TabItem = {
   readonly id: string;
@@ -19,84 +20,37 @@ export type TabsProps = {
 /**
  * Tabs with the ARIA pattern's keyboard behaviour: arrows move focus and
  * selection, Home and End jump to the ends, and the inactive panels stay in
- * the document with `hidden` set so switching back costs nothing.
+ * the document so switching back costs nothing.
  */
 export function Tabs({ items, active, onSelect, label, className }: TabsProps) {
-  const baseId = useId();
-  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
-
-  function move(offset: number, absolute?: number): void {
-    const index = items.findIndex((item) => item.id === active);
-
-    if (index === -1) {
-      return;
-    }
-
-    const next = absolute ?? (index + offset + items.length) % items.length;
-    const item = items[next];
-
-    if (item !== undefined) {
-      tabRefs.current.get(item.id)?.focus();
-      onSelect(item.id);
-    }
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      move(1);
-    } else if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      move(-1);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      move(0, 0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      move(0, items.length - 1);
-    }
-  }
-
   return (
-    <div className={["pb-tabs", className].filter(Boolean).join(" ")}>
-      <div className="pb-tab-list" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+    <BaseTabs.Root
+      value={active}
+      onValueChange={(value) => {
+        onSelect(String(value));
+      }}
+      className={cn("flex flex-col gap-3", className)}
+    >
+      <BaseTabs.List
+        activateOnFocus
+        aria-label={label}
+        className="flex gap-1 border-b border-border"
+      >
         {items.map((item) => (
-          <button
+          <BaseTabs.Tab
             key={item.id}
-            ref={(node) => {
-              if (node === null) {
-                tabRefs.current.delete(item.id);
-              } else {
-                tabRefs.current.set(item.id, node);
-              }
-            }}
-            className="pb-tab"
-            type="button"
-            role="tab"
-            id={`${baseId}-tab-${item.id}`}
-            aria-selected={item.id === active}
-            aria-controls={`${baseId}-panel-${item.id}`}
-            tabIndex={item.id === active ? 0 : -1}
-            onClick={() => {
-              onSelect(item.id);
-            }}
+            value={item.id}
+            className="cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-2 py-1 text-body text-muted-foreground hover:bg-accent hover:text-foreground aria-selected:border-primary aria-selected:text-foreground"
           >
             {item.label}
-          </button>
+          </BaseTabs.Tab>
         ))}
-      </div>
+      </BaseTabs.List>
       {items.map((item) => (
-        <div
-          key={item.id}
-          className="pb-tab-panel"
-          id={`${baseId}-panel-${item.id}`}
-          role="tabpanel"
-          aria-labelledby={`${baseId}-tab-${item.id}`}
-          hidden={item.id !== active}
-        >
+        <BaseTabs.Panel key={item.id} value={item.id} keepMounted className="min-h-0">
           {item.panel}
-        </div>
+        </BaseTabs.Panel>
       ))}
-    </div>
+    </BaseTabs.Root>
   );
 }

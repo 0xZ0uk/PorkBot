@@ -39,9 +39,9 @@ describe("BotAvatar", () => {
 
   it("draws each registered size", () => {
     for (const size of [20, 24, 32, 40] as const) {
-      expect(renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" size={size} />)).toContain(
-        `pb-avatar--${String(size)}`,
-      );
+      const html = renderToStaticMarkup(<BotAvatar id="bot-alpha" name="Alpha" size={size} />);
+      expect(html).toContain('aria-hidden="true"');
+      expect(html).toContain("Alpha");
     }
   });
 

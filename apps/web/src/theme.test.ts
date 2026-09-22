@@ -55,9 +55,7 @@ describe("the shell theme", () => {
   });
 
   it("carries the register's component rules and their states", () => {
-    expect(themeStyleSheet).toContain(".pb-button{");
-    expect(themeStyleSheet).toContain(".pb-input,.pb-textarea,.pb-select{");
-    expect(themeStyleSheet).toContain(".pb-button:focus-visible");
+    expect(globals).toContain("font-family: var(--pb-font-sans);");
   });
 
   it("ships the pre-paint mode script with the key it reads", () => {

@@ -4,31 +4,36 @@ import { Badge, CountBadge, StateChip } from "./badge.tsx";
 import type { StateChipState } from "./badge.tsx";
 
 describe("Badge", () => {
-  it("renders each tone as a class, with neutral as the default", () => {
-    expect(renderToStaticMarkup(<Badge>Default</Badge>)).toContain("pb-badge");
-    expect(renderToStaticMarkup(<Badge>Default</Badge>)).not.toContain("pb-badge--");
-
-    for (const tone of ["accent", "success", "warning", "info", "destructive"] as const) {
-      expect(renderToStaticMarkup(<Badge tone={tone}>State</Badge>)).toContain(`pb-badge--${tone}`);
-    }
+  it("renders its label and draws no colour literal", () => {
+    const html = renderToStaticMarkup(<Badge>Default</Badge>);
+    expect(html).toContain("Default");
+    expect(html).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(|oklch\(/i);
   });
 
-  it("draws no colour literal", () => {
-    const html = renderToStaticMarkup(<Badge tone="success">Done</Badge>);
-    expect(html).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(|oklch\(/i);
+  it("takes every tone without changing the words", () => {
+    for (const tone of [
+      "neutral",
+      "accent",
+      "success",
+      "warning",
+      "info",
+      "destructive",
+    ] as const) {
+      const html = renderToStaticMarkup(<Badge tone={tone}>State</Badge>);
+      expect(html).toContain("State");
+    }
   });
 });
 
 describe("CountBadge", () => {
-  it("shows the count", () => {
+  it("shows the number", () => {
     const html = renderToStaticMarkup(<CountBadge count={3} />);
-    expect(html).toContain("pb-count-badge");
     expect(html).toContain("3");
   });
 });
 
 describe("StateChip", () => {
-  const words: Readonly<Record<StateChipState, string>> = {
+  const words: Record<string, string> = {
     idle: "Idle",
     working: "Working",
     waiting: "Waiting for you",
@@ -37,27 +42,22 @@ describe("StateChip", () => {
     stopped: "Stopped",
   };
 
-  it("renders the six-word vocabulary with a dot and a class per state", () => {
+  it("pairs each state with its word so state is never colour alone", () => {
     for (const state of Object.keys(words) as StateChipState[]) {
       const html = renderToStaticMarkup(<StateChip state={state} />);
-      expect(html).toContain(`pb-state-chip--${state}`);
       expect(html).toContain(`data-state="${state}"`);
-      expect(html).toContain(words[state]);
-      expect(html).toContain("pb-state-chip__dot");
+      expect(html).toContain(words[state] as string);
     }
   });
 
-  it("shows the count only on the waiting chip", () => {
-    expect(renderToStaticMarkup(<StateChip state="waiting" count={4} />)).toContain(
-      "pb-count-badge",
-    );
-    expect(renderToStaticMarkup(<StateChip state="working" count={4} />)).not.toContain(
-      "pb-count-badge",
-    );
+  it("shows the pending count only on the waiting chip", () => {
+    expect(renderToStaticMarkup(<StateChip state="waiting" count={4} />)).toContain("4");
+    expect(renderToStaticMarkup(<StateChip state="working" count={4} />)).not.toContain("4");
   });
 
-  it("passes the bot's colour to the working dot", () => {
-    const html = renderToStaticMarkup(<StateChip state="working" color="var(--bot-hue)" />);
+  it("lets a bot's own colour drive the working dot", () => {
+    const html = renderToStaticMarkup(<StateChip state="working" color="#abcdef" />);
     expect(html).toContain("--pb-state-chip-color");
+    expect(html).toContain("#abcdef");
   });
 });

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { cn } from "./lib/utils.ts";
 import type { KeyboardEvent } from "react";
 
 export type SegmentedControlOption = {
@@ -64,7 +65,10 @@ export function SegmentedControl({
 
   return (
     <div
-      className={["pb-segmented", className].filter(Boolean).join(" ")}
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-full border border-border bg-accent p-0.5",
+        className,
+      )}
       role="radiogroup"
       aria-label={label}
       onKeyDown={onKeyDown}
@@ -79,7 +83,12 @@ export function SegmentedControl({
               optionRefs.current.set(option.value, node);
             }
           }}
-          className="pb-segmented__option"
+          className={cn(
+            "cursor-pointer rounded-full border-0 px-3 py-0.5 text-meta transition-colors",
+            value === option.value
+              ? "bg-card font-semibold text-foreground shadow-raised"
+              : "bg-transparent text-muted-foreground hover:text-foreground",
+          )}
           type="button"
           role="radio"
           aria-checked={option.value === value}

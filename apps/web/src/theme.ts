@@ -1,11 +1,5 @@
-import { registerStyleSheet } from "@porkbot/ui";
-import {
-  themeBootstrapScript,
-  themeStyleSheet as tokensThemeStyleSheet,
-  themeStorageKey,
-} from "@porkbot/tokens";
+import { themeBootstrapScript, themeStyleSheet, themeStorageKey } from "@porkbot/tokens";
 import "./globals.css";
-
 /**
  * The shell's theme: the token bootstrap plus the Tailwind entry.
  *
@@ -15,11 +9,5 @@ import "./globals.css";
  * base layer carries the document rules. This module is the one import that
  * gives a surface both, so the built stylesheet and the inlined first paint
  * cannot drift apart.
- *
- * `registerStyleSheet` is the last pre-Tailwind string left in the chain: it
- * draws the `pb-*` classes the register's components still emit. It goes when
- * those components are rebuilt on Tailwind classes.
  */
-export const themeStyleSheet = `${tokensThemeStyleSheet}${registerStyleSheet}`;
-
-export { themeBootstrapScript, themeStorageKey };
+export { themeBootstrapScript, themeStyleSheet, themeStorageKey };

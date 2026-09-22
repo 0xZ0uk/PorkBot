@@ -228,7 +228,7 @@ export function SidebarGroupLabel({
   return (
     <h3
       data-sidebar="group-label"
-      className={cn("px-2 text-xs font-medium text-muted-foreground uppercase", className)}
+      className={cn("px-2 text-meta text-muted-foreground uppercase", className)}
     >
       {children}
     </h3>
@@ -287,7 +287,7 @@ export function SidebarMenuButton({
       aria-current={isActive ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-body",
         "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
         className,
@@ -333,7 +333,7 @@ export function SidebarTrigger({ className }: Readonly<{ className?: string }>) 
       aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
       onClick={toggleSidebar}
       className={cn(
-        "rounded-md p-1.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "rounded-lg p-1.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         className,
       )}
     >
