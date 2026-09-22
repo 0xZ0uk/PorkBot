@@ -16,6 +16,10 @@ product-facing ships until those are in place.
 - A self-hosted deployment sized from the [measured floor table](docs/architecture/operations-floor.md),
   with the Compose ceilings and per-bot limits kept as the separate deployment
   invariant in [`docs/architecture/operations.md`](docs/architecture/operations.md#single-host-deployment).
+  Per-bot disk is a write-layer budget enforced only where the daemon's storage
+  driver answers it, plus a bounded snapshot store; [the sizing
+  terms](docs/computers.md#configuring-docker) separate what scales with
+  configured bots from what scales with active ones.
 
 Corepack is the easiest way to get the pinned pnpm:
 
@@ -48,7 +52,7 @@ pnpm stack:logs       # follow the stack's logs
 pnpm stack:status     # show the stack's services, states and ports
 pnpm stack:down       # stop the stack; remove containers, network and volumes
 pnpm deploy:setup     # render deploy/.env from the template, generating every secret
-pnpm deploy:check     # validate deploy/.env without touching Docker
+pnpm deploy:check     # validate deploy/.env (reads the daemon's storage driver for the disk verdict)
 pnpm deploy:up        # setup if needed, validate, build, start and wait for the stack
 pnpm deploy:measure   # cold-boot the live stack, run the workload, write the floor table
 pnpm deploy:upgrade --tag <git-sha>  # pull, preflight, migrate and switch to a release

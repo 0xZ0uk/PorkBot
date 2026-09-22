@@ -2,8 +2,13 @@ import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { assertComputerNetworkPlan, planComputerNetwork } from "@porkbot/core";
-import type { ComputerNetworkPlan } from "@porkbot/core";
+import {
+  assertComputerNetworkPlan,
+  decideDiskQuota,
+  DEFAULT_DISK_QUOTA_MODE,
+  planComputerNetwork,
+} from "@porkbot/core";
+import type { ComputerNetworkPlan, DiskQuotaDecision, DiskQuotaMode } from "@porkbot/core";
 import type {
   ComputerExecRequest,
   ComputerExecResult,
@@ -13,6 +18,7 @@ import type {
   ComputerRef,
   ComputerState,
   CredentialProxyAdmin,
+  StorageObject,
   StorageProvider,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
@@ -20,6 +26,7 @@ import {
   createComputerSnapshotStore,
   DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
 } from "./computer-snapshot-store.ts";
+import type { ComputerSnapshotMaintenance } from "./computer-snapshot-store.ts";
 import { proxyGrantFileName, serializeProxyGrant } from "./credential-proxy.ts";
 import { writeTar } from "./computer-archive.ts";
 import { createDockerEngine } from "./docker-engine.ts";
@@ -118,10 +125,9 @@ export const DEFAULT_COMPUTER_LOG_CONFIG: DockerLogConfig = {
  * One bot's share of the PRD's documented host floor: a host runs 4 vCPU and
  * 8 GB with roughly 2 GB per bot, so the default bot gets half a host's CPU
  * and a quarter of its memory, and the deployment must size itself against the
- * floor rather than assume a bot is free. Disk is documented rather than
- * enforced by default because Docker enforces a write-layer quota only on a
- * storage driver that answers it (`overlay2` over xfs with `pquota`, or
- * `btrfs`); see `diskQuota`.
+ * floor rather than assume a bot is free. The disk figure is a write-layer
+ * budget, not a floor: see `diskQuota` for when the daemon actually enforces
+ * it and `disk-quota.ts` for the drivers that answer it.
  */
 export const DEFAULT_COMPUTER_CEILINGS: ComputerCeilings = {
   cpus: 1,
@@ -217,12 +223,15 @@ export interface DockerComputerProviderOptions {
   readonly ceilings?:
     Partial<ComputerCeilings> | ((computer: ComputerRef) => Partial<ComputerCeilings>) | undefined;
   /**
-   * `storage-opt` sends a write-layer quota with every create; the daemon
-   * refuses the create on a driver without quota support, which is the
-   * fail-closed answer. `none` (the default) leaves the disk ceiling to the
-   * host floor the README documents.
+   * When a create carries `HostConfig.StorageOpt.size`. `auto` (the shipped
+   * default) detects the daemon's storage driver and applies the budget only
+   * where it answers it, so the setting is enforced instead of a silent no-op;
+   * `storage-opt` applies it unconditionally, so a driver that cannot answer
+   * it refuses the create (fail-closed); `none` never applies it and the
+   * write layer belongs to the host's disk. `disk-quota.ts` owns which drivers
+   * answer it and `diskQuota()` reports the resolved decision.
    */
-  readonly diskQuota?: "storage-opt" | "none" | undefined;
+  readonly diskQuota?: DiskQuotaMode | undefined;
   /**
    * The storage seam every snapshot archive is written through (slice 7.5).
    * Required: a provider with nowhere durable to put an archive would answer
@@ -231,6 +240,14 @@ export interface DockerComputerProviderOptions {
   readonly storage: StorageProvider;
   /** Where an archive is staged while it is written or verified. */
   readonly scratchDirectory?: string | undefined;
+  /**
+   * How many captures one bot keeps (slice 14.4). The newest N archives under
+   * a bot's scope survive and older ones are pruned after each capture; the
+   * store, not the provider, owns the pass.
+   */
+  readonly snapshotRetention?: number | undefined;
+  /** Called with the archives a prune is about to delete, before it deletes. */
+  readonly onSnapshotPrune?: ((removed: readonly StorageObject[]) => void) | undefined;
   /** The most stdout or stderr one command may return, in bytes. */
   readonly maxOutputBytes?: number | undefined;
   /**
@@ -356,6 +373,7 @@ const PROXY_SIDECAR_RESOURCES = {
 function createDockerRuntime(options: DockerComputerProviderOptions): {
   readonly runtime: ComputerRuntime;
   readonly proxy: CredentialProxyAdmin | undefined;
+  readonly diskQuota: () => Promise<DiskQuotaDecision>;
 } {
   if (options.image.trim() === "") {
     throw new RangeError("the Docker computer provider needs an image");
@@ -395,6 +413,34 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
     // An empty object spread must not be able to produce `undefined` values.
     assertCeilings(merged);
     return merged;
+  }
+
+  // The daemon's storage driver is read once and the decision memoized: every
+  // create of this process resolves the same writer-level capability, and a
+  // boot-time report does not pay a second `/info` call. Reading it lazily
+  // keeps the offline default free of a daemon it never dials.
+  const diskQuotaMode = options.diskQuota ?? DEFAULT_DISK_QUOTA_MODE;
+  let quotaDecision: Promise<DiskQuotaDecision> | undefined;
+
+  function diskQuotaDecision(): Promise<DiskQuotaDecision> {
+    // `none` is answered without a daemon call: the mode never applies a quota,
+    // so the driver cannot change the answer and an offline probe is wasted.
+    if (diskQuotaMode === "none") {
+      return Promise.resolve(decideDiskQuota("none", { driver: "" }));
+    }
+
+    if (quotaDecision === undefined) {
+      // A failed probe is not cached: a daemon that was briefly unreachable
+      // must not leave every later create resolving a stale rejection.
+      quotaDecision = guarded(engine.storageInfo(), "daemon")
+        .then((info) => decideDiskQuota(diskQuotaMode, info))
+        .catch((error: unknown) => {
+          quotaDecision = undefined;
+          throw error;
+        });
+    }
+
+    return quotaDecision;
   }
 
   function planFor(computer: ComputerRef): ComputerNetworkPlan {
@@ -616,6 +662,7 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
   function createSpec(
     computer: ComputerRef,
     network: string,
+    quotaApplied: boolean,
   ): Parameters<DockerEngine["createContainer"]>[0] {
     const ceilings = ceilingsFor(computer);
 
@@ -636,16 +683,22 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
         memoryBytes: ceilings.memoryMb * 1024 * 1024,
         pidsLimit: ceilings.pids,
         tmpfsBytes: ceilings.tmpfsMb * 1024 * 1024,
-        storageSize:
-          options.diskQuota === "storage-opt" ? `${String(ceilings.diskMb)}M` : undefined,
+        storageSize: quotaApplied ? `${String(ceilings.diskMb)}M` : undefined,
         logConfig: ceilings.logConfig,
       },
     };
   }
 
   async function createFor(computer: ComputerRef, network: string): Promise<string> {
+    // The quota decision is resolved before the create so a driver that cannot
+    // answer the budget never receives a body that pretends it can.
+    const quota = await diskQuotaDecision();
+
     try {
-      return await engine.createContainer(createSpec(computer, network), requestTimeoutMs);
+      return await engine.createContainer(
+        createSpec(computer, network, quota.applied),
+        requestTimeoutMs,
+      );
     } catch (error) {
       // Two ensures can race on a cold boot. Instead of reading the daemon's
       // conflict status, this re-reads the name: a container that appeared is
@@ -983,23 +1036,40 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
           },
         };
 
-  return { runtime, proxy };
+  return { runtime, proxy, diskQuota: diskQuotaDecision };
+}
+
+/** The Docker provider's seam plus the capabilities the supervisor reports. */
+export interface DockerComputerProvider extends ComputerProvider, ComputerSnapshotMaintenance {
+  /**
+   * The resolved write-layer budget: the daemon's driver, whether a create
+   * carries the quota, and whether the daemon will enforce it. Always present
+   * for a Docker provider; the supervisor logs it at boot and `deploy:check`
+   * reports the same decision.
+   */
+  readonly diskQuota: () => Promise<DiskQuotaDecision>;
 }
 
 export function createDockerComputerProvider(
   options: DockerComputerProviderOptions,
-): ComputerProvider {
-  const { runtime, proxy } = createDockerRuntime(options);
+): DockerComputerProvider {
+  const { runtime, proxy, diskQuota } = createDockerRuntime(options);
+  const store = createComputerSnapshotStore({
+    storage: options.storage,
+    scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+    retention: options.snapshotRetention,
+    onPrune: options.onSnapshotPrune,
+  });
 
   return {
     ...createRuntimeComputerProvider({
       runtime,
-      snapshots: createComputerSnapshotStore({
-        storage: options.storage,
-        scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
-      }),
+      snapshots: store,
       bootTimeoutMs: options.bootTimeoutMs,
     }),
     ...(proxy === undefined ? {} : { proxy }),
+    diskQuota,
+    pruneSnapshots: () => store.prune(),
+    sweepStaging: (staleMs) => store.sweepStaging(staleMs),
   };
 }

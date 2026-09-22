@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isProviderFailure } from "@porkbot/adapter-kit";
@@ -217,5 +217,170 @@ describe.each(harnesses)("the snapshot store over $name", ({ create }) => {
         throw new Error("the archive producer must not run");
       }),
     ).rejects.toBeInstanceOf(RangeError);
+  });
+});
+
+/**
+ * Bounded retention (slice 14.4). The store keeps the newest captures per
+ * scope, reports every removal before it deletes, and never prunes in place of
+ * the capture it just took.
+ */
+
+/** In-memory storage with a monotonic clock, so ordering never depends on timing. */
+class ClockedStorage implements StorageProvider {
+  readonly #objects = new Map<
+    string,
+    { readonly key: string; readonly size: number; readonly lastModified: string }
+  >();
+  #clock = 0;
+
+  async put(request: { readonly key: string; readonly body: AsyncIterable<Uint8Array> }): Promise<{
+    readonly key: string;
+    readonly size: number;
+    readonly lastModified: string;
+  }> {
+    let size = 0;
+
+    for await (const chunk of request.body) {
+      size += chunk.byteLength;
+    }
+
+    this.#clock += 1_000;
+    const object = {
+      key: request.key,
+      size,
+      lastModified: new Date(this.#clock).toISOString(),
+    };
+    this.#objects.set(request.key, object);
+    return object;
+  }
+
+  async get(): Promise<undefined> {
+    return undefined;
+  }
+
+  async delete(key: string): Promise<boolean> {
+    return this.#objects.delete(key);
+  }
+
+  async list(
+    prefix: string,
+  ): Promise<readonly { key: string; size: number; lastModified: string }[]> {
+    return [...this.#objects.values()].filter((object) => object.key.startsWith(prefix));
+  }
+}
+
+describe("snapshot retention", () => {
+  async function writeCapture(
+    store: ReturnType<typeof createComputerSnapshotStore>,
+    computerRef: ComputerRef,
+  ): Promise<string> {
+    const snapshotId = randomUUID();
+
+    await store.write(computerRef, snapshotId, async (archive) => {
+      await writeFile(archive, `capture ${snapshotId}`);
+    });
+
+    return computerSnapshotKey(computerRef, snapshotId);
+  }
+
+  it("keeps the newest captures per bot and reports the removals before deleting", async () => {
+    const storage = new ClockedStorage();
+    const removedReports: string[][] = [];
+    const store = createComputerSnapshotStore({
+      storage,
+      scratchDirectory: await temporaryDirectory("porkbot-snapshot-archives-"),
+      retention: 2,
+      onPrune: (removed) => removedReports.push(removed.map((object) => object.key)),
+    });
+
+    const first = await writeCapture(store, computer);
+    const second = await writeCapture(store, computer);
+    const third = await writeCapture(store, computer);
+    const fourth = await writeCapture(store, computer);
+    const other = await writeCapture(store, otherComputer);
+
+    const kept = (await storage.list("computer-snapshots/")).map((object) => object.key);
+
+    expect(kept).toContain(third);
+    expect(kept).toContain(fourth);
+    expect(kept).not.toContain(first);
+    expect(kept).not.toContain(second);
+    // Another scope is never touched by one bot's prune.
+    expect(kept).toContain(other);
+    // The report is the plan, and no snapshot is reported more than once.
+    expect(removedReports).toEqual([[first], [second]]);
+  });
+
+  it("keeps every capture when retention is zero", async () => {
+    const storage = new ClockedStorage();
+    const store = createComputerSnapshotStore({
+      storage,
+      scratchDirectory: await temporaryDirectory("porkbot-snapshot-archives-"),
+      retention: 0,
+    });
+
+    const keys = [
+      await writeCapture(store, computer),
+      await writeCapture(store, computer),
+      await writeCapture(store, computer),
+    ];
+
+    await expect(store.prune()).resolves.toEqual([]);
+    expect((await storage.list("computer-snapshots/")).map((object) => object.key).sort()).toEqual(
+      [...keys].sort(),
+    );
+  });
+
+  it("bounds every scope on a boot prune, including captures taken before retention existed", async () => {
+    const storage = new ClockedStorage();
+    const store = createComputerSnapshotStore({
+      storage,
+      scratchDirectory: await temporaryDirectory("porkbot-snapshot-archives-"),
+      retention: 1,
+    });
+
+    // Seeded straight into storage, the shape a store written before retention
+    // shipped holds: three captures a scope and no prune ever having run.
+    for (const computerRef of [computer, otherComputer]) {
+      for (let index = 0; index < 3; index += 1) {
+        await storage.put({
+          key: computerSnapshotKey(computerRef, randomUUID()),
+          body: (async function* archive() {
+            yield Buffer.from(`capture ${String(index)}`);
+          })(),
+        });
+      }
+    }
+
+    const removed = await store.prune();
+
+    expect(removed).toHaveLength(4);
+    expect(await storage.list("computer-snapshots/")).toHaveLength(2);
+  });
+
+  it("sweeps a staging file a crashed capture left, and leaves a fresh one", async () => {
+    const scratch = await temporaryDirectory("porkbot-snapshot-archives-");
+    const stale = path.join(scratch, "left-behind.tar");
+    const fresh = path.join(scratch, "in-flight.tar");
+    const old = new Date(Date.now() - 48 * 60 * 60 * 1_000);
+
+    await writeFile(stale, "a crashed capture");
+    await writeFile(fresh, "a live capture");
+    await utimes(stale, old, old);
+
+    const reported: string[][] = [];
+    const store = createComputerSnapshotStore({
+      storage: new ClockedStorage(),
+      scratchDirectory: scratch,
+      onPrune: (removed) => reported.push(removed.map((object) => object.key)),
+    });
+
+    const removed = await store.sweepStaging(24 * 60 * 60 * 1_000);
+
+    expect(removed).toEqual(["left-behind.tar"]);
+    // The report names the absolute staging path it is about to remove.
+    expect(reported).toEqual([[stale]]);
+    await expect(readdir(scratch)).resolves.toEqual(["in-flight.tar"]);
   });
 });

@@ -49,6 +49,25 @@ ceilings and per-bot limits as the invariant; the per-bot settings are
 `PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB` and
 `PORKBOT_COMPUTER_DISK_MB`.
 
+Those settings are two different kinds of claim, so they are priced
+separately:
+
+- **Memory is a measured per-bot term.** `PORKBOT_COMPUTER_MEMORY_MB` (default
+  `2048`) sits beside the measured floor table, and a bot's container is capped
+  there.
+- **Disk is a budget, not a floor, and only where it can be kept.**
+  `PORKBOT_COMPUTER_DISK_MB` (default `10240`) bounds a machine's write layer
+  only when the daemon's storage driver answers a `size` quota — `btrfs`, or
+  `overlay2` over xfs with `pquota`. `PORKBOT_COMPUTER_DISK_QUOTA=auto` (the
+  default) detects the driver at supervisor boot and enforces the budget where
+  it answers, logging an explicit "not enforced, and why" where it does not;
+  `pnpm deploy:check` reports the same verdict before the stack starts. The
+  bot's home volume and its snapshots are separate terms: the volume grows with
+  what the agent writes, and snapshots are bounded by
+  `PORKBOT_COMPUTER_SNAPSHOT_KEEP` (default `10`) so the archive store cannot
+  grow without limit. What scales with a configured bot and what scales with an
+  active one is stated in [`docs/computers.md`](computers.md#configuring-docker).
+
 On the host you need:
 
 - **Docker Engine with Compose v2** — `docker version` and
@@ -95,7 +114,7 @@ stack refuses to start without it.
 Then validate, and bring the stack up:
 
 ```sh
-pnpm deploy:check    # validates the file without touching Docker
+pnpm deploy:check    # validates the file; reports the disk budget's enforcement
 pnpm deploy:up       # builds, starts and waits for every healthcheck
 ```
 
