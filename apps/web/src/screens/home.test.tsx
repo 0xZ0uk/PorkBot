@@ -148,7 +148,7 @@ async function mountHome(options: MountOptions = {}): Promise<ReturnType<typeof 
 }
 
 function rowNamed(name: string): HTMLElement | undefined {
-  return [...container.querySelectorAll<HTMLElement>(".roster-card")].find((row) =>
+  return [...container.querySelectorAll<HTMLElement>("[data-name]")].find((row) =>
     row.textContent?.includes(name),
   );
 }
@@ -218,13 +218,13 @@ describe("the roster's home screen", () => {
     const ada = rowNamed("Ada");
 
     expect(ada?.textContent).toContain("Bookkeeping");
-    expect(ada?.querySelector(".pb-avatar")).not.toBeNull();
-    expect(ada?.querySelector(".pb-state-chip")?.getAttribute("data-state")).toBe("idle");
+    expect(ada?.querySelector("[data-avatar]")).not.toBeNull();
+    expect(ada?.querySelector("[data-state]")?.getAttribute("data-state")).toBe("idle");
     expect(ada?.textContent).toContain("5m ago");
 
     const ledger = rowNamed("Ledger");
 
-    expect(ledger?.querySelector(".pb-state-chip")?.getAttribute("data-state")).toBe("waiting");
+    expect(ledger?.querySelector("[data-state]")?.getAttribute("data-state")).toBe("waiting");
     expect(ledger?.querySelector(".pb-count-badge")?.textContent).toBe("1");
     expect(ledger?.textContent).toContain("Waiting on web_fetch");
     expect(ledger?.textContent).toContain("2d ago");

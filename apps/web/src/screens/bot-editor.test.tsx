@@ -45,9 +45,9 @@ describe("bot editor", () => {
     const screen = props({ ...fakeBot("bot-1", "Ada"), color: "#123456" });
     await act(async () => root.render(<BotEditorScreen {...screen} />));
 
-    expect(container.querySelector(".pb-avatar svg")).not.toBeNull();
-    expect(container.querySelector(".pb-avatar")?.getAttribute("aria-hidden")).toBe("true");
-    expect(container.querySelector(".pb-avatar")?.getAttribute("style")).toContain(
+    expect(container.querySelector("[data-avatar] svg")).not.toBeNull();
+    expect(container.querySelector("[data-avatar]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelector("[data-avatar]")?.getAttribute("style")).toContain(
       "--pb-avatar-color: #123456",
     );
   });
@@ -57,7 +57,7 @@ describe("bot editor", () => {
     await act(async () => root.render(<BotEditorScreen {...screen} />));
 
     expect(container.querySelector(".pb-avatar img")?.getAttribute("alt")).toBe("");
-    expect(container.querySelector(".pb-avatar svg")).toBeNull();
+    expect(container.querySelector("[data-avatar] svg")).toBeNull();
     expect(container.textContent).toContain("Your uploaded avatar appears in the roster.");
   });
 

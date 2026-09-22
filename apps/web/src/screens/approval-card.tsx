@@ -154,7 +154,7 @@ export function ApprovalCard({
       <p className="m-0 wrap-anywhere text-meta text-muted-foreground">{description.consequence}</p>
 
       <p className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
-        <code className="font-mono text-code">{description.action}</code>
+        <code className="font-mono text-code" data-approval-tool>{description.action}</code>
         {description.target === null ? null : (
           <code className="m-0 wrap-anywhere font-mono text-code text-muted-foreground">{description.target}</code>
         )}

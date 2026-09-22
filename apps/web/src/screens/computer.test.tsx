@@ -139,7 +139,7 @@ describe("the screen surface", () => {
       />,
     );
 
-    expect(document.body.querySelector(".computer-view-state")?.textContent).toBe("Running");
+    expect(document.body.querySelector("[data-computer-view-state]")?.textContent).toBe("Running");
     expect(document.body.textContent).not.toContain("The machine is running.");
   });
 
@@ -156,7 +156,7 @@ describe("the screen surface", () => {
     );
 
     expect(document.body.textContent).toContain("No live view");
-    expect(document.body.querySelector(".computer-frame")).not.toBeNull();
+    expect(document.body.querySelector("[data-computer-frame]")).not.toBeNull();
     // No provider offers frames in v1.0, so the surface renders no control
     // that would answer the supervisor's `not_implemented`.
     expect(buttons().some((button) => button.textContent === "Take control")).toBe(false);
@@ -165,7 +165,7 @@ describe("the screen surface", () => {
   it("says there is no machine yet for a bot that has never run", async () => {
     await render(<ComputerScreen {...screenProps(state())} />);
 
-    expect(document.body.querySelector(".computer-view-state")?.textContent).toBe("No machine");
+    expect(document.body.querySelector("[data-computer-view-state]")?.textContent).toBe("No machine");
     expect(document.body.textContent).toContain("It is created the first time this bot runs.");
   });
 });
@@ -464,7 +464,7 @@ describe("the terminal", () => {
     expect(document.body.textContent).toContain("Exit code 1");
 
     const input = document.body.querySelector<HTMLInputElement>(".terminal-form input");
-    const form = document.body.querySelector<HTMLFormElement>(".terminal-form");
+    const form = document.body.querySelector<HTMLFormElement>("form");
     expect(input).not.toBeNull();
     expect(form).not.toBeNull();
 

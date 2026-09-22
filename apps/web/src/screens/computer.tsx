@@ -343,7 +343,7 @@ function ScreenPanel({ state }: { readonly state: ComputerState }) {
         </span>
       </div>
       <div className="flex min-h-40 flex-col items-center justify-center gap-1 p-6">
-        <p className="m-0 text-title">{machineStateWord(state)}</p>
+        <p className="m-0 text-title" data-computer-view-state>{machineStateWord(state)}</p>
         <p className="text-muted-foreground">{machineStateNote(state)}</p>
       </div>
     </div>

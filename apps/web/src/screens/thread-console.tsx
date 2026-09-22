@@ -198,7 +198,7 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
 
   return (
     <li className={classes}>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" data-tool-call>
         <div className={operator ? "flex items-center gap-1 text-meta text-muted-foreground sr-only" : "flex items-center gap-1 text-meta text-muted-foreground"}>
           {operator ? (
             <span className="font-medium text-foreground">You</span>
@@ -226,7 +226,7 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
             Not sent
           </span>
         ) : null}
-        <Card variant="raised" className="max-w-[44rem] rounded-xl border border-border bg-card p-3">
+        <Card variant="raised" className="max-w-[44rem] rounded-xl border border-border bg-card p-3" data-message-bubble>
           <p className="m-0 break-words whitespace-pre-wrap text-body">{entry.text}</p>
           {entry.attachments.length === 0 ? null : (
             <ul className="flex flex-wrap gap-2">

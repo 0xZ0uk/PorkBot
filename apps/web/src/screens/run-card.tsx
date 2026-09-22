@@ -27,7 +27,7 @@ export function RunCardEntry({ run, outcome }: RunCardEntryProps) {
   const note = runNote(run);
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3" data-run-card>
       <Card variant="raised" className="flex flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span
@@ -36,12 +36,12 @@ export function RunCardEntry({ run, outcome }: RunCardEntryProps) {
           >
             <Icon name={failed ? "alert" : "check"} size={15} />
           </span>
-          <p className="text-heading">{title}</p>
-          {note === null ? null : <span className="m-0 text-meta text-muted-foreground">{note}</span>}
+          <p className="text-heading" data-run-card-title>{title}</p>
+          {note === null ? null : <span className="m-0 text-meta text-muted-foreground" data-run-card-note>{note}</span>}
         </div>
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {outcome.map((line, index) => (
-            <li className="text-meta text-muted-foreground" key={`${line.kind}:${String(index)}`}>
+            <li className="text-meta text-muted-foreground" data-run-card-line key={`${line.kind}:${String(index)}`}>
               <span
                 className={
                   line.kind === "done"
