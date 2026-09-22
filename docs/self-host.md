@@ -43,11 +43,14 @@ and [the reverse proxy contract](reverse-proxy.md) is the contract it keeps.
 The supported shape is one Linux host with Docker Engine and the Compose v2
 plugin. Size a deployment from the committed [measured floor table](architecture/operations-floor.md),
 which separates idle usage from workload peaks and records the bot count and
-host shape it measured. The [single-host deployment
+host shape it measured. The floor's two terms scale differently: memory with
+the bots _active_ at once (a parked machine's memory is back with the host
+inside the park window) and disk with every _configured_ bot (a home volume
+survives a park). The [single-host deployment
 record](architecture/operations.md#single-host-deployment) keeps the Compose
 ceilings and per-bot limits as the invariant; the per-bot settings are
-`PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB` and
-`PORKBOT_COMPUTER_DISK_MB`.
+`PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB`,
+`PORKBOT_COMPUTER_SWAP_MB` and `PORKBOT_COMPUTER_DISK_MB`.
 
 On the host you need:
 

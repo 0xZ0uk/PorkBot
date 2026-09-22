@@ -372,17 +372,20 @@ services:
       PORKBOT_COMPUTER_ARCHIVE_DIR: /var/lib/porkbot/computer-archives
       # One bot's share of the host floor (`docs/architecture/computers.md` and
       # `docs/architecture/operations.md`): raise these only after raising the
-      # host.
+      # host. Memory scales with the bots active at once; swap is its own,
+      # smaller bound.
       PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
-      PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
+      PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-512}
+      PORKBOT_COMPUTER_SWAP_MB: ${PORKBOT_COMPUTER_SWAP_MB:-256}
       PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
       # The daemon's json-file log rotation for a machine's container: the
       # same policy the x-app anchor gives the stack's own services.
       PORKBOT_COMPUTER_LOG_MAX_SIZE: ${PORKBOT_COMPUTER_LOG_MAX_SIZE:-10m}
       PORKBOT_COMPUTER_LOG_MAX_FILE: ${PORKBOT_COMPUTER_LOG_MAX_FILE:-3}
       # A machine whose last command is older than this is parked; the home
-      # volume survives. Zero disables the idle sweep.
-      PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-900000}
+      # volume survives and its memory returns to the host. Zero disables the
+      # idle sweep.
+      PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-180000}
     volumes:
       # The only place the Docker socket is mounted in the stack. The
       # supervisor owns computer lifecycle; every other process reaches

@@ -8,6 +8,7 @@ import {
   computerConformance,
   CONFORMANCE_HOME,
   createDockerComputerProvider,
+  DEFAULT_COMPUTER_CEILINGS,
   LocalStorageProvider,
 } from "@porkbot/adapters";
 import type { ComputerConformanceHarness } from "@porkbot/adapters";
@@ -109,6 +110,8 @@ async function createHarness(): Promise<ComputerConformanceHarness> {
 
   created.push(computer, otherComputer);
 
+  const mib = 1024 * 1024;
+
   return {
     provider: await providerUnderTest(),
     computer,
@@ -116,6 +119,20 @@ async function createHarness(): Promise<ComputerConformanceHarness> {
     home: CONFORMANCE_HOME,
     timeoutMs: 1_000,
     slowCommand: "sleep 5",
+    // The daemon's own view of the ceiling the create body asked for, read
+    // back through `docker inspect`: Docker re-applies HostConfig on every
+    // start, so this is what the boot that returns a parked machine binds.
+    memoryCeiling: {
+      memoryBytes: DEFAULT_COMPUTER_CEILINGS.memoryMb * mib,
+      swapBytes: DEFAULT_COMPUTER_CEILINGS.swapMb * mib,
+      read: async (ref) => {
+        const hostConfig = inspectHostConfig(containerIdFor(ref) ?? "");
+        const memoryBytes = Number(hostConfig["Memory"]);
+        const memorySwapBytes = Number(hostConfig["MemorySwap"]);
+
+        return { memoryBytes, swapBytes: memorySwapBytes - memoryBytes };
+      },
+    },
   };
 }
 
@@ -199,7 +216,9 @@ describe("the Docker provider against the real daemon", () => {
 
       expect(hostConfig["NanoCpus"]).toBe(500_000_000);
       expect(hostConfig["Memory"]).toBe(256 * 1024 * 1024);
-      expect(hostConfig["MemorySwap"]).toBe(256 * 1024 * 1024);
+      // Docker's MemorySwap is memory plus swap: the swap portion stays the
+      // independent default when only the memory ceiling is overridden.
+      expect(hostConfig["MemorySwap"]).toBe((256 + 256) * 1024 * 1024);
       expect(hostConfig["PidsLimit"]).toBe(32);
       expect(hostConfig["Init"]).toBe(true);
       expect(hostConfig["LogConfig"]).toEqual({

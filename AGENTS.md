@@ -467,8 +467,9 @@ change it without breaking what the boundaries and the CI gate protect.
   tier.
 - **The stack's ceilings plus one bot fit the documented floor.** The
   per-service CPU and memory limits and the per-bot settings stay inside the
-  README's single-host floor (4 vCPU / 8 GB plus ~2 GB per bot); raising either
-  is a host change a reviewer can see. Checked by: test
+  README's single-host floor (4 vCPU / 8 GB, with the memory term scaling by
+  the bots active at once and the disk term by every configured bot); raising
+  either is a host change a reviewer can see. Checked by: test
   (`packages/testkit/test/deployment.test.ts`) and review.
 - **The backup target and its key envelope are separate.** The sealed envelope
   defaults to its own directory and its own volume, never a path under the

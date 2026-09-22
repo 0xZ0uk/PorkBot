@@ -50,9 +50,11 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   `PORKBOT_COMPUTER_ENDPOINT` / `PORKBOT_COMPUTER_TOKEN` (and optionally
   `PORKBOT_COMPUTER_TOOLBOX_URL`) are the cloud connection, and
   `PORKBOT_COMPUTER_CPUS` / `PORKBOT_COMPUTER_MEMORY_MB` /
+  `PORKBOT_COMPUTER_SWAP_MB` /
   `PORKBOT_COMPUTER_DISK_MB` are one bot's share of the host floor under "A
-  bot's computer". `PORKBOT_COMPUTER_IDLE_MS` (default fifteen minutes, zero
-  disables) parks a machine no run is using; the home volume survives.
+  bot's computer". `PORKBOT_COMPUTER_IDLE_MS` (default three minutes, zero
+  disables) parks a machine no run is using; the home volume survives and the
+  memory returns to the host.
 - **Credentials never enter a sandbox.** Model and provider keys stay
   server-side; a run's tools reach an upstream through a per-computer
   credential proxy that injects the credential on its own leg. The sandbox
@@ -180,7 +182,16 @@ active release running; a failed switch attempts to restore it.
   workload peaks instead of presenting a sum of possible ceilings as observed
   usage. Re-run `pnpm deploy:measure` after changing images, limits or host
   shape; it cold-boots the live stack without rebuilding and uploads the raw
-  samples from the run. The stack's ceilings remain a separate invariant,
+  samples from the run. The floor has two terms, and they scale differently:
+  the **memory** term with the bots _active_ at once — a parked machine's
+  memory is back with the host inside `PORKBOT_COMPUTER_IDLE_MS`, and the
+  measured table's `bot-docker` row records a shell-shaped sandbox in the tens
+  of megabytes against its `PORKBOT_COMPUTER_MEMORY_MB` share — and the
+  **disk** term with every _configured_ bot, because a home volume survives a
+  park and image layers stay on the host whether or not a machine runs
+  (`PORKBOT_COMPUTER_DISK_MB` per bot). Summing a per-bot share over every
+  configured bot and calling it the memory floor is the conflation that makes
+  the cap look brutal. The stack's ceilings remain a separate invariant,
   checked below and against one bot's configured share:
 
   | service            | CPU ceiling | memory ceiling |
@@ -196,7 +207,7 @@ active release running; a failed switch attempts to restore it.
 
   The test invariant still sums the ceilings: the declared stack is 3.0 vCPU
   and about 5.5 GB, and the default one-bot share is
-  `PORKBOT_COMPUTER_CPUS` (1) plus `PORKBOT_COMPUTER_MEMORY_MB` (2048). This is
+  `PORKBOT_COMPUTER_CPUS` (1) plus `PORKBOT_COMPUTER_MEMORY_MB` (512). This is
   a capacity guard, not the measured floor. Raise the ceilings in
   `deploy/compose.yaml` only after raising the host; the per-bot settings live
   in the env file and are re-read at supervisor boot.

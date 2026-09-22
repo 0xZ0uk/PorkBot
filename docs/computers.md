@@ -64,12 +64,21 @@ guide](self-host.md#choosing-what-to-turn-on)).
   bot's machine nor host services. The Docker socket is mounted into the
   supervisor only, and the provider speaks the Engine API — no CLI, no SDK.
 - **Sizing.** `PORKBOT_COMPUTER_CPUS` (default `1`),
-  `PORKBOT_COMPUTER_MEMORY_MB` (default `2048`) and
+  `PORKBOT_COMPUTER_MEMORY_MB` (default `512`),
+  `PORKBOT_COMPUTER_SWAP_MB` (default `256`) and
   `PORKBOT_COMPUTER_DISK_MB` (default `10240`) are one bot's share of the host
-  floor. Memory swap is pinned to the same ceiling; the process count is
-  `PORKBOT_COMPUTER_PIDS` (default `512`). A disk quota is enforced only with
-  `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt`, which requires a daemon storage
-  driver that answers it.
+  floor. The memory default is a shell-shaped sandbox's share — the measured
+  floor records one in the tens of megabytes — and `2048` is what a
+  browser-inside-the-sandbox run needs; raise it for the deployment in
+  `deploy/.env`, or for one bot through the provider's `ceilings` override.
+  Swap is its own bound and the default is smaller than the memory ceiling, so
+  a runaway bot pages a little and dies instead of filling the host's swap;
+  `0` disables swap. Raised thoughtlessly, the memory share multiplies by the
+  bots active at once and the swap bound decides how long a runaway can thrash
+  before it dies, so raise both only after raising the host. The process count
+  is `PORKBOT_COMPUTER_PIDS` (default `512`). A disk quota is enforced only
+  with `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt`, which requires a daemon
+  storage driver that answers it.
 - **Log cost.** A machine's container log is rotated by the daemon's
   `json-file` driver: `PORKBOT_COMPUTER_LOG_MAX_SIZE` (default `10m`) per
   file and `PORKBOT_COMPUTER_LOG_MAX_FILE` (default `3`) files, so a chatty
@@ -80,8 +89,10 @@ guide](self-host.md#choosing-what-to-turn-on)).
 - **Pull policy** is `PORKBOT_COMPUTER_PULL` (`missing`, `always` or `never`).
   Keep `missing` in production so a restart does not depend on the registry.
 - **Idle sweep.** A machine no run has used for `PORKBOT_COMPUTER_IDLE_MS`
-  (default fifteen minutes; `0` disables) is parked: the container stops and the
-  home volume stays. The next run boots it again.
+  (default three minutes; `0` disables) is parked: the container stops, the
+  home volume stays and the memory returns to the host. The next run boots it
+  again under the same ceiling. Raise the window only if a cold boot is more
+  expensive than the RAM a quiet bot holds meanwhile.
 - **Non-standard daemon.** `PORKBOT_DOCKER_SOCKET` names the socket the
   supervisor mounts; rootless Docker needs its own path. Set
   `PORKBOT_DOCKER_SOCKET_GID` to that socket's numeric group id when it is not

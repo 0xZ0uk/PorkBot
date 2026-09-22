@@ -369,6 +369,7 @@ export type {
   ComputerBrowserHarness,
   ComputerConformanceFactory,
   ComputerConformanceHarness,
+  ComputerConformanceMemoryCeiling,
 } from "./computer-conformance.ts";
 
 // The supervisor transport (slice 7.1, PRD decision 20). The supervisor process

@@ -41,7 +41,7 @@ import type {
  * does not stop the rest of the fleet from being adopted.
  *
  * Idle shutdown lives here too (slice 7.2). A computer is expensive while it
- * is running — the host floor in the README budgets about 2 GB per bot — and a
+ * is running — the host floor budgets the active bots' memory share — and a
  * bot that has not run a command for `idleTimeoutMs` is parked with the same
  * `stop` an operator would use, so the home volume survives and the next run's
  * `ensure` brings the machine back with its files. Only lifecycle traffic that

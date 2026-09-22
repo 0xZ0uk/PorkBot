@@ -81,8 +81,8 @@ export interface ComputerProviderValidation {
   readonly failure: ProviderFailureKind | null;
 }
 
-/** The default idle window: a quarter-hour of no commands parks the machine. */
-export const DEFAULT_IDLE_TIMEOUT_MS = 900_000;
+/** The default idle window: three minutes of no commands parks the machine. */
+export const DEFAULT_IDLE_TIMEOUT_MS = 180_000;
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -339,7 +339,8 @@ export function createComputerProviderSelection(
   if (dockerConfigured && image !== undefined) {
     const ceilings: Partial<ComputerCeilings> = {
       cpus: positiveNumber(env, "PORKBOT_COMPUTER_CPUS", 1),
-      memoryMb: integer(env, "PORKBOT_COMPUTER_MEMORY_MB", 2_048, 1),
+      memoryMb: integer(env, "PORKBOT_COMPUTER_MEMORY_MB", 512, 1),
+      swapMb: integer(env, "PORKBOT_COMPUTER_SWAP_MB", 256, 0),
       diskMb: integer(env, "PORKBOT_COMPUTER_DISK_MB", 10_240, 1),
       pids: integer(env, "PORKBOT_COMPUTER_PIDS", 512, 1),
       tmpfsMb: integer(env, "PORKBOT_COMPUTER_TMPFS_MB", 256, 1),
@@ -388,7 +389,7 @@ export function createComputerProviderSelection(
 
     const ceilings: Partial<DaytonaComputerCeilings> = {
       cpus: positiveNumber(env, "PORKBOT_COMPUTER_CPUS", 1),
-      memoryMb: integer(env, "PORKBOT_COMPUTER_MEMORY_MB", 2_048, 1),
+      memoryMb: integer(env, "PORKBOT_COMPUTER_MEMORY_MB", 512, 1),
       diskMb: integer(env, "PORKBOT_COMPUTER_DISK_MB", 10_240, 1),
     };
 

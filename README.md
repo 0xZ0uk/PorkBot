@@ -14,7 +14,9 @@ product-facing ships until those are in place.
 - Node 24 (`.nvmrc`, `engines.node`, `devEngines.runtime`)
 - pnpm 10 (`packageManager`, `engines.pnpm`, `devEngines.packageManager`)
 - A self-hosted deployment sized from the [measured floor table](docs/architecture/operations-floor.md),
-  with the Compose ceilings and per-bot limits kept as the separate deployment
+  whose memory term scales with the bots active at once and whose disk term
+  scales with every configured bot, with the Compose ceilings and per-bot
+  limits kept as the separate deployment
   invariant in [`docs/architecture/operations.md`](docs/architecture/operations.md#single-host-deployment).
 
 Corepack is the easiest way to get the pinned pnpm:

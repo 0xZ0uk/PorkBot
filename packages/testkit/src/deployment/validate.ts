@@ -515,6 +515,17 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
     }
   }
 
+  // Swap is a bound rather than a requirement: zero disables it.
+  const swapMb = valueOf("PORKBOT_COMPUTER_SWAP_MB");
+
+  if (swapMb !== "") {
+    const problem = integerProblem(swapMb, 0);
+
+    if (problem !== undefined) {
+      problems.push({ key: "PORKBOT_COMPUTER_SWAP_MB", message: problem });
+    }
+  }
+
   const idleMs = valueOf("PORKBOT_COMPUTER_IDLE_MS");
 
   if (idleMs !== "") {

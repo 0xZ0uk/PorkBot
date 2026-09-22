@@ -48,8 +48,8 @@ vocabulary's `timed_out`, and every daemon refusal is translated by
 `stop` parks the container, `destroy` removes it and keeps the home volume, so
 the supervisor's reset rebuilds a clean machine with the agent's files intact,
 and the idle sweep parks anything no run has used for `PORKBOT_COMPUTER_IDLE_MS`
-with the same guarantee. Ceilings are per bot: CPU, memory (swap pinned to the
-same ceiling), the process count, and a write-layer disk quota that only
+with the same guarantee. Ceilings are per bot: CPU, memory, an independent and
+smaller swap bound, the process count, and a write-layer disk quota that only
 applies with `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt` on a daemon whose
 storage driver answers it. The defaults are one bot's capacity share; the
 [measured deployment floor](operations-floor.md) records what the complete

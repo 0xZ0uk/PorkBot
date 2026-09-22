@@ -79,19 +79,26 @@ import type {
  * isolation check itself lives in the supervisor's lifecycle for every
  * provider; this runtime creates the plan it is given.
  *
- * Ceilings: CPU (fractional cores), memory (with swap pinned to the same
- * size), the process count and an optional write-layer disk quota come from
+ * Ceilings: CPU (fractional cores), memory, an independent and smaller swap
+ * bound, the process count and an optional write-layer disk quota come from
  * the provider's configuration, per bot. The defaults are one bot's share of
- * the PRD's host floor — 4 vCPU / 8 GB plus about 2 GB per bot — and the
- * README states the floor beside them.
+ * the host floor under "A single-host deployment" in
+ * `docs/architecture/operations.md`, and the README states the floor beside
+ * them.
  */
 
 /** The resource slice one computer runs inside; per-bot overridable. */
 export interface ComputerCeilings {
   /** Whole or fractional CPU cores, for example `1` or `0.5`. */
   readonly cpus: number;
-  /** Memory in mebibytes; swap is pinned to the same ceiling. */
+  /** Memory in mebibytes. */
   readonly memoryMb: number;
+  /**
+   * Swap in mebibytes, beyond `memoryMb`. Its own bound, and the default is
+   * smaller than the memory ceiling: a runaway bot pages a little and then
+   * dies, instead of filling the host's swap. `0` disables swap.
+   */
+  readonly swapMb: number;
   /** The write-layer quota in mebibytes; applied only with `diskQuota`. */
   readonly diskMb: number;
   /** The most processes (threads included) the container may create. */
@@ -115,17 +122,20 @@ export const DEFAULT_COMPUTER_LOG_CONFIG: DockerLogConfig = {
 };
 
 /**
- * One bot's share of the PRD's documented host floor: a host runs 4 vCPU and
- * 8 GB with roughly 2 GB per bot, so the default bot gets half a host's CPU
- * and a quarter of its memory, and the deployment must size itself against the
- * floor rather than assume a bot is free. Disk is documented rather than
- * enforced by default because Docker enforces a write-layer quota only on a
- * storage driver that answers it (`overlay2` over xfs with `pquota`, or
- * `btrfs`); see `diskQuota`.
+ * One bot's share of the documented host floor: a shell-shaped sandbox is
+ * measured in the tens of megabytes, so the default memory ceiling is a
+ * documented smaller share rather than the 2 GiB a browser-inside-the-sandbox
+ * run needs — raise `memoryMb` for that, per bot or per deployment. The swap
+ * bound is separate and smaller, so the memory ceiling times the bots active
+ * at once is the term that scales, and a runaway bot cannot take the host's
+ * swap with it. Disk is documented rather than enforced by default because
+ * Docker enforces a write-layer quota only on a storage driver that answers it
+ * (`overlay2` over xfs with `pquota`, or `btrfs`); see `diskQuota`.
  */
 export const DEFAULT_COMPUTER_CEILINGS: ComputerCeilings = {
   cpus: 1,
-  memoryMb: 2048,
+  memoryMb: 512,
+  swapMb: 256,
   diskMb: 10_240,
   pids: 512,
   tmpfsMb: 256,
@@ -277,6 +287,14 @@ function assertCeilings(ceilings: ComputerCeilings): void {
     ["tmpfsMb", ceilings.tmpfsMb],
   ];
 
+  // Swap is a bound rather than a requirement: zero disables it, and a
+  // positive value is the independent, smaller allowance.
+  if (!Number.isSafeInteger(ceilings.swapMb) || ceilings.swapMb < 0) {
+    throw new RangeError(
+      `computer ceiling swapMb must be a non-negative integer, received ${ceilings.swapMb}`,
+    );
+  }
+
   if (!Number.isFinite(ceilings.cpus) || ceilings.cpus <= 0) {
     throw new RangeError(
       `computer ceiling cpus must be a positive number, received ${ceilings.cpus}`,
@@ -348,6 +366,7 @@ function sleep(ms: number): Promise<void> {
 const PROXY_SIDECAR_RESOURCES = {
   nanoCpus: 250_000_000,
   memoryBytes: 128 * 1024 * 1024,
+  swapBytes: 0,
   pidsLimit: 128,
   logConfig: DEFAULT_COMPUTER_LOG_CONFIG,
 } as const;
@@ -634,6 +653,7 @@ function createDockerRuntime(options: DockerComputerProviderOptions): {
       resources: {
         nanoCpus: Math.round(ceilings.cpus * 1_000_000_000),
         memoryBytes: ceilings.memoryMb * 1024 * 1024,
+        swapBytes: ceilings.swapMb * 1024 * 1024,
         pidsLimit: ceilings.pids,
         tmpfsBytes: ceilings.tmpfsMb * 1024 * 1024,
         storageSize:
