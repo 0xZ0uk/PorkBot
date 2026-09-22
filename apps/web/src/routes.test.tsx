@@ -681,7 +681,7 @@ describe("the memory route", () => {
       }),
     );
 
-    const card = container.querySelector(".memory-document");
+    const card = container.querySelector("[data-name]");
 
     expect(card?.textContent).toContain("Last change by Bot");
     expect(card?.querySelector("time")?.getAttribute("datetime")).toBe("2026-01-02T00:00:00.000Z");
@@ -691,7 +691,7 @@ describe("the memory route", () => {
     await mountMemory(scriptedMemoryTransport());
 
     expect(container.textContent).toContain("Nothing remembered yet");
-    expect(container.querySelector(".memory-list")).toBeNull();
+    expect(container.querySelector("ul")).toBeNull();
   });
 
   it("shows a refusal and offers the retry that reads again", async () => {

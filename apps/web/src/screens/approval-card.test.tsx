@@ -133,14 +133,14 @@ describe("the approval card", () => {
   it("shows the action, the target, the consequence and the live deadline", async () => {
     await render(<ApprovalCard {...pending} now={now} />);
 
-    expect(container.querySelector(".approval-card-title")?.textContent).toContain(
+    expect(container.querySelector("[data-approval-title]")?.textContent).toContain(
       "Approval needed",
     );
-    expect(container.querySelector(".approval-card-consequence")?.textContent).toBe(
+    expect(container.querySelector("[data-approval-consequence]")?.textContent).toBe(
       "Fetch https://example.invalid/page. The request leaves this machine.",
     );
-    expect(container.querySelector(".approval-card-tool")?.textContent).toBe("web_fetch");
-    expect(container.querySelector(".approval-card-target")?.textContent).toBe(
+    expect(container.querySelector("[data-approval-tool]")?.textContent).toBe("web_fetch");
+    expect(container.querySelector("[data-approval-target]")?.textContent).toBe(
       "https://example.invalid/page",
     );
     expect(container.querySelector("time")?.textContent).toBe("9m 42s left");
@@ -169,8 +169,8 @@ describe("the approval card", () => {
     });
 
     expect(onDecide).toHaveBeenCalledWith("deny");
-    expect(container.querySelector(".approval-card-title")?.textContent).toContain("Denied");
-    expect(container.querySelector(".approval-card-decision")?.textContent).toBe(
+    expect(container.querySelector("[data-approval-title]")?.textContent).toContain("Denied");
+    expect(container.querySelector("[data-approval-decision]")?.textContent).toBe(
       "not this address",
     );
     expect(container.querySelectorAll("button")).toHaveLength(0);
@@ -209,8 +209,8 @@ describe("the approval card", () => {
     expect(
       container.querySelector("[data-approval-state]")?.getAttribute("data-approval-state"),
     ).toBe("timed_out");
-    expect(container.querySelector(".approval-card-title")?.textContent).toContain("Timed out");
-    expect(container.querySelector(".approval-card-decision")?.textContent).toBe(
+    expect(container.querySelector("[data-approval-title]")?.textContent).toContain("Timed out");
+    expect(container.querySelector("[data-approval-decision]")?.textContent).toBe(
       "The deadline passed, so the run was denied.",
     );
     expect(container.querySelectorAll("button")).toHaveLength(0);

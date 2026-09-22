@@ -139,7 +139,7 @@ describe("the thread console screen", () => {
   it("renders every turn with its role and its text", async () => {
     await render(<ThreadConsoleScreen botId="bot-1" state={base} onRetry={vi.fn()} />);
 
-    const items = [...container.querySelectorAll(".transcript > li")];
+    const items = [...container.querySelectorAll("[data-transcript-entry]")];
 
     expect(items).toHaveLength(2);
     expect(items.map((item) => item.textContent)).toEqual(["Youdo it", "BotHello"]);
@@ -180,8 +180,8 @@ describe("the thread console screen", () => {
 
     expect(operator).not.toBeNull();
     expect(bot).not.toBeNull();
-    expect(operator?.querySelector(".message-bubble")).not.toBeNull();
-    expect(bot?.querySelector(".message-bubble")).not.toBeNull();
+    expect(operator?.querySelector("[data-message-bubble]")).not.toBeNull();
+    expect(bot?.querySelector("[data-message-bubble]")).not.toBeNull();
     // The operator's word is present for a screen reader, not painted: the
     // alignment and the fill are what a reader sees.
     expect(operator?.querySelector(".message-attribution.sr-only")?.textContent).toBe("You");
@@ -202,7 +202,7 @@ describe("the thread console screen", () => {
     await render(<ThreadConsoleScreen botId="bot-1" state={withAttachment()} onRetry={vi.fn()} />);
 
     const card = container.querySelector(".attachment-card");
-    const open = card?.querySelector("a.message-attachment");
+    const open = card?.querySelector("a[data-attachment]");
 
     expect(card?.className).toContain("pb-card");
     expect(open?.getAttribute("href")).toBe("/files/attachment-1");
@@ -301,17 +301,17 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    const item = container.querySelector(".tool-call");
+    const item = container.querySelector("[data-tool-call]");
 
     expect(item).not.toBeNull();
-    expect(item?.querySelector(".tool-call-name")?.textContent).toBe("shell");
+    expect(item?.querySelector("[data-tool-call-name]")?.textContent).toBe("shell");
     // The collapsed line carries the one-line target, not the run's internal id.
     expect(item?.querySelector(".tool-call-target")?.textContent).toBe("ls");
-    expect(item?.querySelector(".tool-call-status")?.textContent).toBe("Completed");
-    expect(item?.querySelector(".tool-call-duration")?.textContent).toBe("120 ms");
+    expect(item?.querySelector("[data-tool-call-status]")?.textContent).toBe("Completed");
+    expect(item?.querySelector("[data-tool-call-duration]")?.textContent).toBe("120 ms");
     expect(item?.className).not.toContain("tool-call-failed");
 
-    const details = container.querySelector("details.tool-call-details") as HTMLDetailsElement;
+    const details = container.querySelector("details[data-tool-call-details]") as HTMLDetailsElement;
     expect(details.open).toBe(false);
 
     await act(async () => {
@@ -322,7 +322,7 @@ describe("the tool-call timeline", () => {
 
     expect(details.open).toBe(true);
 
-    const json = [...container.querySelectorAll(".tool-call-json")].map((node) => node.textContent);
+    const json = [...container.querySelectorAll("pre")].map((node) => node.textContent);
 
     // The arguments are the recorded value verbatim: the placeholder the
     // recorder stored is what a reader sees, never the secret behind it.
@@ -358,7 +358,7 @@ describe("the tool-call timeline", () => {
     );
     expect(link?.textContent).toBe("Full result (4.0 KiB)");
     expect(container.textContent).toContain("[truncated]");
-    expect(container.querySelector(".tool-call-duration")?.textContent).toBe("2.5 s");
+    expect(container.querySelector("[data-tool-call-duration]")?.textContent).toBe("2.5 s");
   });
 
   it("offers a produced file by name, rebuilding the link from the artifact id", async () => {
@@ -390,7 +390,7 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    const link = container.querySelector("a.tool-call-download");
+    const link = container.querySelector("a[data-tool-call-download]");
 
     expect(link?.getAttribute("href")).toBe("/files/01900000-0000-7000-8000-00000000a1f0");
     expect(link?.textContent).toBe("Download summary.md (2.0 KiB)");
@@ -418,7 +418,7 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    expect(container.querySelector("a.tool-call-download")).toBeNull();
+    expect(container.querySelector("a[data-tool-call-download]")).toBeNull();
   });
 
   it("marks a failure in the danger token and shows the typed reason", async () => {
@@ -438,11 +438,11 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    const item = container.querySelector(".tool-call");
+    const item = container.querySelector("[data-tool-call]");
 
     expect(item?.className).toContain("tool-call-failed");
-    expect(item?.querySelector(".tool-call-status")?.textContent).toBe("Failed");
-    expect(container.querySelector(".tool-call-error")?.textContent).toBe(
+    expect(item?.querySelector("[data-tool-call-status]")?.textContent).toBe("Failed");
+    expect(container.querySelector("[data-tool-call-error]")?.textContent).toBe(
       'tool "rm" failed (timed_out): no answer before the deadline',
     );
   });
@@ -460,7 +460,7 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    expect(container.querySelector(".tool-call-status")?.textContent).toBe("Waiting for approval");
+    expect(container.querySelector("[data-tool-call-status]")?.textContent).toBe("Waiting for approval");
   });
 
   it("renders the approval card with its consequence and live deadline", async () => {
@@ -482,7 +482,7 @@ describe("the tool-call timeline", () => {
         />,
       );
 
-      const card = container.querySelector(".approval-card");
+      const card = container.querySelector("[data-approval-state]");
 
       expect(card?.getAttribute("data-approval-state")).toBe("pending");
       expect(card?.textContent).toContain("Approval needed");
@@ -538,7 +538,7 @@ describe("the tool-call timeline", () => {
         callId: "call-1",
         vote: "approve",
       });
-      expect(container.querySelector(".approval-card")?.getAttribute("data-approval-state")).toBe(
+      expect(container.querySelector("[data-approval-state]")?.getAttribute("data-approval-state")).toBe(
         "approved",
       );
       expect(container.querySelectorAll(".approval-card button")).toHaveLength(0);
@@ -563,12 +563,12 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    const card = container.querySelector(".approval-card");
+    const card = container.querySelector("[data-approval-state]");
 
     expect(card?.getAttribute("data-approval-state")).toBe("timed_out");
     expect(card?.textContent).toContain("Timed out");
     expect(card?.textContent).toContain("The deadline passed, so the run was denied.");
-    expect(container.querySelector("details.tool-call-details")?.hasAttribute("open")).toBe(false);
+    expect(container.querySelector("details[data-tool-call-details]")?.hasAttribute("open")).toBe(false);
     expect(card?.querySelectorAll("button")).toHaveLength(0);
   });
 });
@@ -635,17 +635,17 @@ describe("the run's report card", () => {
       />,
     );
 
-    const card = container.querySelector(".run-card");
+    const card = container.querySelector("[data-run-card]");
 
-    expect(card?.querySelector(".run-card-title")?.textContent).toBe("Run finished");
-    expect(card?.querySelector(".run-card-note")?.textContent).toBe("2 steps · 2s");
+    expect(card?.querySelector("[data-run-card-title]")?.textContent).toBe("Run finished");
+    expect(card?.querySelector("[data-run-card-note]")?.textContent).toBe("2 steps · 2s");
     expect(
-      [...(card?.querySelectorAll(".run-card-line") ?? [])].map((line) => line.textContent),
+      [...(card?.querySelectorAll("[data-run-card-line]") ?? [])].map((line) => line.textContent),
     ).toEqual(["✓shell — ls", "✓file_write — report.md", "→Handed off summary.md"]);
 
     // The card closes the steps and sits above the prose the run wrote.
     expect(
-      [...container.querySelectorAll(".transcript > li")].map((item) => item.className),
+      [...container.querySelectorAll("[data-transcript-entry]")].map((item) => item.className),
     ).toEqual(["message message-user", "run-card", "message message-bot"]);
   });
 
@@ -666,12 +666,12 @@ describe("the run's report card", () => {
       />,
     );
 
-    const card = container.querySelector(".run-card");
+    const card = container.querySelector("[data-run-card]");
 
-    expect(card?.querySelector(".run-card-title")?.textContent).toBe("Run failed");
+    expect(card?.querySelector("[data-run-card-title]")?.textContent).toBe("Run failed");
     expect(card?.querySelector(".run-card-icon-failed")).not.toBeNull();
-    expect(card?.querySelector(".run-card-note")).toBeNull();
-    expect(card?.querySelector(".run-card-line")?.textContent).toBe(
+    expect(card?.querySelector("[data-run-card-note]")).toBeNull();
+    expect(card?.querySelector("[data-run-card-line]")?.textContent).toBe(
       "→the model connection dropped",
     );
   });
@@ -698,8 +698,8 @@ describe("the console's live strip", () => {
 
     const strip = container.querySelector("[data-liveness='working']");
 
-    expect(strip?.querySelector(".live-strip-step")?.textContent).toBe("Running shell…");
-    expect(strip?.querySelector(".live-strip-beat")?.textContent).toBe("heartbeat 3s ago");
+    expect(strip?.querySelector("[data-live-strip-step]")?.textContent).toBe("Running shell…");
+    expect(strip?.querySelector("[data-live-strip-beat]")?.textContent).toBe("heartbeat 3s ago");
     expect(strip?.getAttribute("role")).toBe("status");
   });
 
@@ -744,7 +744,7 @@ describe("the console's live strip", () => {
 
     const strip = container.querySelector("[data-liveness='stuck']");
 
-    expect(strip?.querySelector(".live-strip-step")?.textContent).toBe(
+    expect(strip?.querySelector("[data-live-strip-step]")?.textContent).toBe(
       "Stuck — no progress for 3m 5s",
     );
     expect(strip?.className).toContain("live-strip-stuck");
@@ -772,8 +772,8 @@ describe("the console's live strip", () => {
 
     // The step it last saw is still named; the beat is what says the number is
     // no longer current, so a frozen "heartbeat 3s ago" cannot read as live.
-    expect(strip?.querySelector(".live-strip-step")?.textContent).toBe("Running shell…");
-    expect(strip?.querySelector(".live-strip-beat")?.textContent).toBe("signal lost");
+    expect(strip?.querySelector("[data-live-strip-step]")?.textContent).toBe("Running shell…");
+    expect(strip?.querySelector("[data-live-strip-beat]")?.textContent).toBe("signal lost");
     expect(strip?.className).toContain("live-strip-stale");
   });
 

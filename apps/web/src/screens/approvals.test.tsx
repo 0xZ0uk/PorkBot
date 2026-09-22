@@ -72,7 +72,7 @@ async function render(element: ReactElement): Promise<void> {
 }
 
 function cards(): Element[] {
-  return [...container.querySelectorAll(".approval-card")];
+  return [...container.querySelectorAll("[data-approval-state]")];
 }
 
 describe("the approvals queue", () => {
@@ -91,7 +91,7 @@ describe("the approvals queue", () => {
     const waiting = container.querySelector("#approvals-waiting");
 
     expect(waiting?.textContent).toContain("Waiting for you");
-    expect(waiting?.nextElementSibling?.querySelector(".approval-card")?.textContent).toContain(
+    expect(waiting?.nextElementSibling?.querySelector("[data-approval-state]")?.textContent).toContain(
       "Approval needed",
     );
     expect(container.textContent).toContain(
@@ -169,8 +169,8 @@ describe("the approvals queue", () => {
     const card = cards()[0];
 
     expect(card?.getAttribute("data-approval-state")).toBe("pending");
-    expect(card?.querySelector(".approval-card-tool")?.textContent).toBe("web_fetch");
-    expect(card?.querySelector(".approval-card-target")?.textContent).toBe(
+    expect(card?.querySelector("[data-approval-tool]")?.textContent).toBe("web_fetch");
+    expect(card?.querySelector("[data-approval-target]")?.textContent).toBe(
       "https://example.invalid",
     );
     expect(card?.querySelector("time")?.textContent).toBe("9m 42s left");

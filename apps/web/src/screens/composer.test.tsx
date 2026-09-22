@@ -328,7 +328,7 @@ describe("the composer screen", () => {
       />,
     );
 
-    const rows = [...container.querySelectorAll(".composer-file")];
+    const rows = [...container.querySelectorAll("[data-composer-file]")];
 
     expect(rows).toHaveLength(4);
     expect(rows[0]?.textContent).toContain("notes.txt");
