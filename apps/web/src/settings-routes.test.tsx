@@ -214,7 +214,7 @@ describe("the settings surface", () => {
 
     await until(() => container.querySelector("#models") !== null, "the settings surface");
 
-    expect(container.querySelector(".settings-title")?.textContent).toBe("Settings");
+    expect(container.querySelector("h2")?.textContent).toBe("Settings");
     expect(container.querySelector("nav[aria-label='Settings sections']")).not.toBeNull();
   });
 
@@ -222,7 +222,7 @@ describe("the settings surface", () => {
     await mount("/settings");
     await until(() => container.querySelector("#account") !== null, "the six sections");
 
-    const links = [...container.querySelectorAll<HTMLAnchorElement>(".settings-nav a")];
+    const links = [...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')];
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "#models",
@@ -295,7 +295,7 @@ describe("the settings surface", () => {
     await mount("/settings");
     await until(() => container.querySelector("#account") !== null, "the six sections");
 
-    const secretsLink = [...container.querySelectorAll<HTMLAnchorElement>(".settings-nav a")].find(
+    const secretsLink = [...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(
       (link) => link.textContent === "Secrets",
     );
 
@@ -332,7 +332,7 @@ describe("the settings surface", () => {
     await mount("/settings");
     await until(() => container.querySelector("#account") !== null, "the six sections");
 
-    const secretsLink = [...container.querySelectorAll<HTMLAnchorElement>(".settings-nav a")].find(
+    const secretsLink = [...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(
       (link) => link.textContent === "Secrets",
     );
 
@@ -357,7 +357,7 @@ describe("the settings surface", () => {
       await mount("/settings");
       await until(() => container.querySelector("#account") !== null, "the six sections");
 
-      const pane = container.querySelector<HTMLElement>(".shell-pane");
+      const pane = container.querySelector<HTMLElement>("[data-shell-pane]");
 
       if (pane === null) {
         throw new Error("the content pane is missing");
@@ -372,7 +372,7 @@ describe("the settings surface", () => {
       });
 
       const accountLink = [
-        ...container.querySelectorAll<HTMLAnchorElement>(".settings-nav a"),
+        ...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a'),
       ].find((link) => link.textContent === "Account");
 
       expect(accountLink?.getAttribute("aria-current")).toBe("true");
@@ -389,9 +389,9 @@ describe("the settings surface", () => {
 describe("the settings mode control", () => {
   it("stores an explicit choice and paints it", async () => {
     await mount("/settings");
-    await until(() => container.querySelector(".settings-mode") !== null, "the mode control");
+    await until(() => container.querySelector("[data-settings-mode]") !== null, "the mode control");
 
-    const mode = container.querySelector<HTMLElement>(".settings-mode");
+    const mode = container.querySelector<HTMLElement>("[data-settings-mode]");
 
     await clickIn(mode as HTMLElement, "Light");
 
@@ -404,9 +404,9 @@ describe("the settings mode control", () => {
     document.documentElement.dataset["theme"] = "dark";
 
     await mount("/settings");
-    await until(() => container.querySelector(".settings-mode") !== null, "the mode control");
+    await until(() => container.querySelector("[data-settings-mode]") !== null, "the mode control");
 
-    const mode = container.querySelector<HTMLElement>(".settings-mode");
+    const mode = container.querySelector<HTMLElement>("[data-settings-mode]");
 
     await clickIn(mode as HTMLElement, "System");
 

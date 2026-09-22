@@ -281,7 +281,7 @@ describe("the console routes", () => {
 
     expect(container.textContent).toContain("Ada");
 
-    const row = [...container.querySelectorAll(".roster-card")].find((card) =>
+    const row = [...container.querySelectorAll("[data-name]")].find((card) =>
       card.textContent?.includes("Ada"),
     );
     const trigger = row?.querySelector("button[aria-haspopup='menu']");
@@ -394,15 +394,15 @@ describe("the console routes", () => {
     await render(<RouterProvider router={router} />);
     await until(() => events.calls.length === 1, "the subscription");
 
-    expect(container.querySelector(".shell-header [data-state]")).toBeNull();
+    expect(container.querySelector("#main [data-state]")).toBeNull();
 
     events.push(runStarted("thread-1", "run-1", 1));
 
     await until(
-      () => container.querySelector(".shell-header [data-state='working']") !== null,
+      () => container.querySelector("#main [data-state='working']") !== null,
       "the header's working chip",
     );
-    expect(container.querySelector(".shell-rail-row[aria-current='page']")?.textContent).toContain(
+    expect(container.querySelector('a[href^="/bots/"][aria-current="page"]')?.textContent).toContain(
       "Ada",
     );
   });
@@ -465,10 +465,10 @@ describe("the console routes", () => {
       await router.load();
     });
     await render(<RouterProvider router={router} />);
-    await until(() => container.querySelector(".composer") !== null, "the composer");
+    await until(() => container.querySelector("[data-composer]") !== null, "the composer");
 
     // Type the message the way a keyboard user does.
-    const field = container.querySelector(".composer textarea") as HTMLTextAreaElement;
+    const field = container.querySelector("[data-composer] textarea") as HTMLTextAreaElement;
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
 
     setter?.call(field, "look at this");
@@ -478,7 +478,7 @@ describe("the console routes", () => {
     });
 
     // Stage a file through the chooser; the send stays off while it uploads.
-    const chooser = container.querySelector(".composer input[type='file']") as HTMLInputElement;
+    const chooser = container.querySelector("[data-composer] input[type='file']") as HTMLInputElement;
 
     Object.defineProperty(chooser, "files", {
       value: [new File(["data"], "notes.txt", { type: "text/plain" })],
@@ -490,7 +490,7 @@ describe("the console routes", () => {
     });
 
     await until(
-      () => container.querySelector(".composer-file-ready") !== null,
+      () => container.querySelector("[data-composer-file]") !== null,
       "the upload to settle",
     );
     expect(container.textContent).toContain("notes.txt");
@@ -512,15 +512,15 @@ describe("the console routes", () => {
     // The sent message is in the transcript — not on the next mount — with
     // its file as a download chip.
     await until(
-      () => container.querySelector(".message-attachment") !== null,
+      () => container.querySelector("[data-attachment]") !== null,
       "the attachment chip",
     );
 
-    const chip = container.querySelector("a.message-attachment");
+    const chip = container.querySelector("a[data-attachment]");
 
     expect(chip?.getAttribute("href")).toBe("/files/attachment-1");
     expect(chip?.textContent).toContain("notes.txt");
-    expect(container.querySelector(".composer textarea")).toHaveProperty("value", "");
+    expect(container.querySelector("[data-composer] textarea")).toHaveProperty("value", "");
   });
 
   it("resolves a truncated call's artifact on its own route", async () => {
@@ -660,11 +660,11 @@ describe("the memory route", () => {
     expect(container.textContent).toContain("Fact");
     expect(container.textContent).toContain("v1");
 
-    const details = container.querySelector("details.memory-text-details");
+    const details = container.querySelector("details");
 
     expect(details).not.toBeNull();
     expect(details?.querySelector("summary")?.textContent?.length).toBeLessThan(long.length);
-    expect(details?.querySelector("p.memory-content")?.textContent).toBe(long);
+    expect(details?.querySelector("p")?.textContent).toBe(long);
   });
 
   it("names the last change's hand and instant on the card", async () => {
