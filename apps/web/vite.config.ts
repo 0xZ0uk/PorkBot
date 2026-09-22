@@ -10,8 +10,8 @@ import { defineConfig } from "vite";
  * client, so `vite build` emits `dist/client` — HTML, JS, CSS — with no SSR
  * server to run. The other half of the SPA contract is the rewrite any file
  * server applies (serve an existing file, otherwise `_shell.html`), which is
- * what `src/host.ts` does for the local stack and what the single TLS origin
- * does in a deployment.
+ * what `src/host.ts` does for the desktop and any directly-run host, and what
+ * the single TLS origin's file server does in a deployment.
  *
  * React's plugin must come after Start's, which is the order the generated
  * client entry expects.

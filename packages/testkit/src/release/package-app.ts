@@ -7,7 +7,7 @@
  * a staging directory (hoisted, because an Electron app bundle cannot carry
  * pnpm's symlink farm through an archive), the staging directory is trimmed to
  * `dist/`, `node_modules/` and `package.json`, the web client is copied from
- * the build the web image serves, and @electron/packager wraps it in the
+ * the build the deployment's proxy image serves, and @electron/packager wraps it in the
  * platform's runtime.
  * `extraResource` is what makes `resolveClientRoot` find `client/` beside the
  * app in a packaged run, which the smoke test then proves by starting the app.

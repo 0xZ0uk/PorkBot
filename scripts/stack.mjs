@@ -19,7 +19,6 @@ const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), ".."
 const composeFile = path.join(repoRoot, "compose.yaml");
 const project = process.env["PORKBOT_STACK_PROJECT"] ?? "porkbot";
 const waitSeconds = process.env["PORKBOT_STACK_WAIT_SECONDS"] ?? "300";
-const webPort = process.env["PORKBOT_WEB_PORT"] ?? "3000";
 const apiPort = process.env["PORKBOT_API_PORT"] ?? "3001";
 const proxyPort = process.env["PORKBOT_REVERSE_PROXY_PORT"] ?? "8080";
 const postgresPort = process.env["PORKBOT_POSTGRES_PORT"] ?? "5432";
@@ -39,7 +38,6 @@ function usage() {
     "  PORKBOT_STACK_PROJECT       Compose project name (default: porkbot).",
     "  PORKBOT_POSTGRES_PORT       Host port for Postgres (default: 5432).",
     "  PORKBOT_API_PORT            Host port for the api (default: 3001).",
-    "  PORKBOT_WEB_PORT            Host port for web (default: 3000).",
     "  PORKBOT_REVERSE_PROXY_PORT  Host port for the reverse proxy (default: 8080).",
     "  PORKBOT_API_DB_PASSWORD     The api role's password (default: a local placeholder).",
     "  PORKBOT_WORKER_DB_PASSWORD  The worker role's password (default: a local placeholder).",
@@ -134,7 +132,6 @@ function up() {
       "",
       "The stack is up and healthy:",
       `  proxy     http://localhost:${proxyPort} (the one origin: SPA, API, streams)`,
-      `  web       http://127.0.0.1:${webPort}`,
       `  api       http://127.0.0.1:${apiPort}/readyz`,
       `  postgres  127.0.0.1:${postgresPort}`,
       "",

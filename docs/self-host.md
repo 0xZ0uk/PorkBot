@@ -28,13 +28,14 @@ containers on the same machine.
 | `api`        | The RPC and file surface, the auth gate, the streams                | the proxy, loopback     |
 | `worker`     | The job queue, run execution, notifications                         | the stack network only  |
 | `backup`     | The nightly encrypted backup and its restore drill                  | the stack network only  |
-| `web`        | The static SPA host                                                 | the proxy, loopback     |
-| `proxy`      | Caddy: TLS, one origin for the SPA and the API                      | the public ports 80/443 |
+| `proxy`      | Caddy: TLS, one origin, and the built SPA itself                    | the public ports 80/443 |
 | `supervisor` | Computer lifecycle; the only holder of the Docker socket            | the stack network only  |
 
 `api` and `worker` never see the Docker socket or a provider credential: they
 reach computers through the supervisor's authenticated surface. The reverse
-proxy is the only service that publishes a port; the [single-host deployment
+proxy is the only service that publishes a port and the only process that
+serves the SPA — the built client ships inside its image, so an upgrade of the
+release moves the frontend with it; the [single-host deployment
 record](architecture/operations.md#single-host-deployment) is the design record
 and [the reverse proxy contract](reverse-proxy.md) is the contract it keeps.
 

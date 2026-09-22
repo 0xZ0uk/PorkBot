@@ -1,6 +1,8 @@
-import { createServer } from "node:http";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { IncomingHttpHeaders, IncomingMessage, Server } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { InProcessRealtimeFanout } from "@porkbot/adapters";
 import { sessionCookieAttributes, sessionCookieName } from "@porkbot/auth";
@@ -24,7 +26,10 @@ import type { ApiServices } from "../../src/app.ts";
  *
  * The proxy is the real image and the real config file; the API is the real
  * app over the real session/gate wiring, with the repositories faked at their
- * data seam, the same way the stream suite fakes them.
+ * data seam, the same way the stream suite fakes them. The SPA is a fixture
+ * directory mounted where the proxy image bakes the built client, so the
+ * deep-link fallback and the asset cache headers — the behaviours a file
+ * server can silently get wrong — are measured against the shipped config too.
  */
 
 const service = "@porkbot/api";
@@ -170,10 +175,7 @@ const apiServer: Server = createApiServer({
     }),
 });
 
-const webServer: Server = createServer((_request, response) => {
-  response.writeHead(200, { "content-type": "text/html" });
-  response.end("<!doctype html><title>porkbot</title>");
-});
+let webRoot = "";
 
 let proxy: RunningCaddyProxy | undefined;
 
@@ -202,13 +204,19 @@ async function listenOnBridge(server: Server, port: number): Promise<number> {
 }
 
 beforeAll(async () => {
+  // The artifact's shape: one shell and hashed assets under /assets, with no
+  // index.html and no server routes — exactly what `apps/web`'s build emits.
+  webRoot = await mkdtemp(path.join(tmpdir(), "porkbot-proxy-spa-"));
+  await mkdir(path.join(webRoot, "assets"));
+  await writeFile(path.join(webRoot, "_shell.html"), "<!doctype html><title>porkbot</title>");
+  await writeFile(path.join(webRoot, "assets", "index-abc123.js"), "export {};\n");
+
   const apiPort = await listenOnBridge(apiServer, 0);
-  const webPort = await listenOnBridge(webServer, 0);
 
   proxy = await startCaddyProxy({
     siteAddress: "https://localhost",
     apiUpstream: `http://host.docker.internal:${String(apiPort)}`,
-    webUpstream: `http://host.docker.internal:${String(webPort)}`,
+    webRoot,
   });
 }, 120_000);
 
@@ -220,15 +228,12 @@ beforeEach(() => {
 afterAll(async () => {
   await proxy?.stop();
 
-  await Promise.all(
-    [apiServer, webServer].map(
-      (server) =>
-        new Promise<void>((resolve, reject) => {
-          server.closeAllConnections();
-          server.close((error) => (error ? reject(error) : resolve()));
-        }),
-    ),
-  );
+  await new Promise<void>((resolve, reject) => {
+    apiServer.closeAllConnections();
+    apiServer.close((error) => (error ? reject(error) : resolve()));
+  });
+
+  await rm(webRoot, { recursive: true, force: true });
 });
 
 interface ProxyResponse {
@@ -432,11 +437,47 @@ describe("the reverse proxy at production settings", () => {
     expect(body.service).toBe(service);
   });
 
-  it("routes every API mount to the API, not the static host", async () => {
+  it("serves a deep-linked client route with the shell, and a missing asset as 404", async () => {
+    // The SPA rewrite, two halves of one rule: an extension-less path is a
+    // client route and gets the shell so the router can resolve it, while a
+    // missing file with an extension stays a 404 — answering the shell there
+    // would turn a broken bundle reference into a blank page with a 200.
+    for (const route of ["/sign-in", "/settings/models"]) {
+      const response = await requestThroughProxy(route);
+
+      expect(response.status, route).toBe(200);
+      expect(response.headers["content-type"], route).toContain("text/html");
+      expect(response.body, route).toContain("porkbot");
+    }
+
+    const missing = await requestThroughProxy("/assets/does-not-exist.js");
+
+    expect(missing.status).toBe(404);
+    expect(missing.body).not.toContain("<!doctype html>");
+  });
+
+  it("caches a hashed asset forever and the document never", async () => {
+    // Two policies, and the difference is the point: the document is the
+    // release and must never be pinned by a cache, while a hashed asset is
+    // content-addressed and safe to keep for a year.
+    const asset = await requestThroughProxy("/assets/index-abc123.js");
+
+    expect(asset.status).toBe(200);
+    expect(asset.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+
+    for (const route of ["/", "/sign-in"]) {
+      const document = await requestThroughProxy(route);
+
+      expect(document.status, route).toBe(200);
+      expect(document.headers["cache-control"], route).toBe("no-cache");
+    }
+  });
+
+  it("routes every API mount to the API, not the SPA's file server", async () => {
     // The webhook path matters most: providers call it directly, so it is not
     // one of the mounts the web dev server forwards, and a missing matcher
-    // would have handed it to the static host, where a provider would read
-    // the SPA shell as a 200. The upload and download paths are here so the
+    // would have handed it to the SPA, where a provider would read
+    // the shell as a 200. The upload and download paths are here so the
     // Caddy path patterns for them are exercised, not just asserted textually.
     const cases: readonly { readonly path: string; readonly method?: string }[] = [
       { path: "/webhooks/probe-source", method: "POST" },

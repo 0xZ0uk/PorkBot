@@ -5,8 +5,8 @@
  * `apps/web/dist/client` travels into `Contents/Resources/client` (or the Linux
  * and Windows equivalent). In development the checkout keeps the build where
  * `pnpm build` wrote it, next to the desktop package. The two shapes are one
- * function so a dev run and a packaged run load the same directory the web
- * image serves rather than a copy.
+ * function so a dev run and a packaged run load the same directory the
+ * deployment's proxy image serves rather than a copy.
  */
 
 import path from "node:path";

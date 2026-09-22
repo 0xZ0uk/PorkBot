@@ -22,7 +22,7 @@ import {
 } from "../src/deployment/compose.ts";
 import { parseEnvFile, renderDeploymentEnv } from "../src/deployment/env-file.ts";
 import { caddyImage } from "../src/harness/images.ts";
-import { caddyProbePort } from "../src/proxy/caddy.ts";
+import { caddyProbePort, spaRootPath } from "../src/proxy/caddy.ts";
 import { parseCgroupProbe } from "../src/deployment/measure.ts";
 import {
   deploymentValuePlans,
@@ -38,6 +38,7 @@ const templateText = readFileSync(path.join(deployDirectory, "porkbot.env.exampl
 const deployComposeText = readFileSync(path.join(deployDirectory, "compose.yaml"), "utf8");
 const localComposeText = readFileSync(path.join(repoRoot, "compose.yaml"), "utf8");
 const caddyfileText = readFileSync(path.join(deployDirectory, "Caddyfile"), "utf8");
+const dockerfileText = readFileSync(path.join(repoRoot, "Dockerfile"), "utf8");
 
 const testOrigin = "https://bots.example.com";
 
@@ -245,8 +246,30 @@ describe("the reverse proxy config", () => {
     }
 
     expect(apiRoute).toContain("reverse_proxy {$PORKBOT_API_UPSTREAM:api:3001}");
-    // The SPA is the fallback, not a mount of its own.
-    expect(caddyfileText).toContain("reverse_proxy {$PORKBOT_WEB_UPSTREAM:web:3000}");
+    // The SPA is the fallback, not a mount of its own — and it is a file
+    // server under the baked root, not a second process to proxy to.
+    expect(caddyfileText).toContain(`root * ${spaRootPath}`);
+    expect(caddyfileText).toContain("file_server");
+    expect(caddyfileText).not.toContain("PORKBOT_WEB_UPSTREAM");
+    expect(caddyfileText).not.toContain("web:3000");
+  });
+
+  it("keeps the deep-link fallback and a missing asset apart", () => {
+    // The rewrite `src/host.ts` implemented now lives in the shipped config:
+    // an extension-less path is a client route and gets the shell, and a
+    // missing file with an extension is answered 404 rather than with a blank
+    // page and a 200. The behaviours are exercised against the real image in
+    // apps/api's reverse-proxy integration suite.
+    expect(caddyfileText).toContain("not path_regexp");
+    expect(caddyfileText).toContain("rewrite /_shell.html");
+    expect(caddyfileText).toContain("respond 404");
+  });
+
+  it("caches a hashed asset forever and the document never", () => {
+    // The document is the release — a cached shell pins stale asset URLs —
+    // while a hashed asset is content-addressed and safe to keep forever.
+    expect(caddyfileText).toContain('header Cache-Control "public, max-age=31536000, immutable"');
+    expect(caddyfileText).toContain('header Cache-Control "no-cache"');
   });
 
   it("disables response buffering on the API route", () => {
@@ -277,11 +300,13 @@ describe("the reverse proxy config", () => {
   });
 
   it("leaves every request header, and so Last-Event-ID, to the API", () => {
-    // No header operation means Caddy passes them through untouched; a
-    // `header_up -Last-Event-ID` or a rewritten cookie would resume the wrong
-    // stream or drop the session, so any header rule has to be a deliberate,
-    // reviewed edit to this test.
-    expect(caddyfileText).not.toMatch(/^\s*header(?:_up|_down)?\s/m);
+    // No header operation on the API route means Caddy passes request headers
+    // through untouched; a `header_up -Last-Event-ID` or a rewritten cookie
+    // would resume the wrong stream or drop the session. The only header rules
+    // in the file are the SPA's response cache directives — any other one has
+    // to be a deliberate, reviewed edit to this test.
+    expect(apiRoute).not.toMatch(/^\s*header/m);
+    expect(caddyfileText).not.toMatch(/^\s*header(?:_up|_down)\s/m);
   });
 
   it("answers the container healthcheck on a loopback listener", () => {
@@ -294,15 +319,33 @@ describe("the reverse proxy config", () => {
     expect(probe).toContain("reverse_proxy {$PORKBOT_API_UPSTREAM:api:3001}");
   });
 
-  it("runs the proxy from the image the register and the harness share", () => {
+  it("ships the built SPA in a proxy image from the register's Caddy pin", () => {
+    // The proxy is now a built release image like the api: it carries the SPA
+    // the release ships, so an upgrade switches both. Its base is the same
+    // pinned Caddy the harness boots, and the baked root is the path the
+    // Caddyfile serves and the tests mount over.
+    expect(dockerfileText).toContain(`FROM ${caddyImage} AS proxy`);
+    expect(dockerfileText).toContain(`COPY --from=build /repo/apps/web/dist/client ${spaRootPath}`);
+    expect(caddyfileText).toContain(`root * ${spaRootPath}`);
+
     for (const composeText of [deployComposeText, localComposeText]) {
       const block = composeServiceBlock(composeText, "proxy") ?? "";
 
-      expect(block).toContain(`image: ${caddyImage}`);
+      expect(block).toContain("target: proxy");
+      expect(block).toMatch(/image: porkbot\/proxy:/);
     }
 
     expect(caddyImage).not.toContain(":latest");
     expect(caddyImage).toMatch(/@sha256:[a-f0-9]{64}$/);
+  });
+
+  it("keeps no web service: the SPA is the proxy's own files", () => {
+    for (const composeText of [deployComposeText, localComposeText]) {
+      expect(composeServices(composeText)).not.toContain("web");
+    }
+
+    expect(dockerfileText).not.toMatch(/^FROM\s+\S+\s+AS\s+web$/m);
+    expect(deployComposeText).not.toContain("PORKBOT_WEB_PORT");
   });
 
   it("publishes the public ports only on the proxy", () => {
@@ -312,7 +355,7 @@ describe("the reverse proxy config", () => {
     expect(proxy).toContain(":443:443");
     expect(proxy).toContain(`http://127.0.0.1:${String(caddyProbePort)}/healthz`);
 
-    for (const service of ["api", "web"]) {
+    for (const service of ["api"]) {
       const block = composeServiceBlock(deployComposeText, service) ?? "";
 
       expect(block, `${service} must not be published beyond loopback`).toMatch(

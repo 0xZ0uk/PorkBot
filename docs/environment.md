@@ -46,12 +46,12 @@ boundary](security.md) for where each one lives.
 ## Service ports
 
 Each process answers on its own `PORT`; the deployment never publishes these
-directly. The proxy is the only public door, and `PORKBOT_API_PORT` /
-`PORKBOT_WEB_PORT` only bind them to loopback for an operator's own curl.
+directly. The proxy is the only public door and serves the built SPA itself
+from its own image, and `PORKBOT_API_PORT` only binds the API to loopback for
+an operator's own curl.
 
 | Service      | `PORT` default | Published by the stack                        |
 | ------------ | -------------- | --------------------------------------------- |
-| `web`        | 3000           | loopback `${PORKBOT_WEB_PORT}` (default 3000) |
 | `api`        | 3001           | loopback `${PORKBOT_API_PORT}` (default 3001) |
 | `worker`     | 3002           | not published                                 |
 | `supervisor` | 3003           | not published                                 |
@@ -69,7 +69,6 @@ proxy runbook uses.
 | --------------------------- | -------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PORKBOT_IMAGE_TAG`         | required | the checkout's git SHA | Tags every built image; never `latest`. `--tag <git-sha>` overrides it.                                                                                   |
 | `PORKBOT_BIND_ADDRESS`      | optional | `127.0.0.1`            | Where the proxy binds 80 and 443. A host reachable from the internet sets `0.0.0.0` or its public address.                                                |
-| `PORKBOT_WEB_PORT`          | optional | `3000`                 | Loopback port for the web host.                                                                                                                           |
 | `PORKBOT_API_PORT`          | optional | `3001`                 | Loopback port for the API.                                                                                                                                |
 | `LOG_LEVEL`                 | optional | `info`                 | `debug`, `info`, `warn` or `error`; anything else refuses to boot.                                                                                        |
 | `PORKBOT_DOCKER_SOCKET`     | optional | `/var/run/docker.sock` | The daemon socket the supervisor mounts. Rootless Docker or a non-standard daemon names its own path.                                                     |
@@ -176,7 +175,7 @@ them by hand only when running a process outside the stack.
 | `DATABASE_URL`                           | required | —                                      | Secret. The connection string; the api, worker and migration runner refuse to start without it.                                                                                                                                      |
 | `PORKBOT_STORAGE_DIR`                    | optional | `/var/lib/porkbot/storage`             | The storage seam's root: avatars, attachments, computer snapshot archives.                                                                                                                                                           |
 | `PORKBOT_SUPERVISOR_URL`                 | optional | `http://supervisor:3003`               | The API's door to the supervisor. Both unset means computer procedures answer the typed `SERVICE_UNAVAILABLE`.                                                                                                                       |
-| `PORKBOT_WEB_ROOT`                       | optional | `dist/client` next to the host process | The directory the static host serves.                                                                                                                                                                                                |
+| `PORKBOT_WEB_ROOT`                       | optional | `dist/client` next to the host process | The directory a directly-run static host serves (`pnpm --filter @porkbot/web serve`); the deployment's proxy serves the same build from its image.                                                                                   |
 | `PORKBOT_BACKUP_DIR`                     | optional | `/var/lib/porkbot/backups`             | Where encrypted backup objects live when the target is local; ignored with S3 configured.                                                                                                                                            |
 | `PORKBOT_BACKUP_ENVELOPE_DIR`            | optional | `/var/lib/porkbot/backup-envelope`     | Where the sealed key envelope is written; deliberately not under the backup destination.                                                                                                                                             |
 | `PORKBOT_BACKUP_TICK_MS`                 | optional | `60000`                                | How often the backup scheduler looks for a due run.                                                                                                                                                                                  |

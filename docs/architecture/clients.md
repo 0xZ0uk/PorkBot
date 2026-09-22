@@ -38,9 +38,10 @@ and stylesheet name only those properties, and the lint rule in
 are labelled and keyboard-reachable: labels
 bind to inputs, the refusal is a `role="alert"` that takes focus, and a skip
 link leads to the focused `#main`. The e2e tier builds the artifact, serves it
-with the static host and asserts the shell's asset references exist, the
-bootstrapping state is in the prerendered HTML, and an unknown route is
-rewritten rather than 404ed (`static-build.e2e.test.ts`), mounts the thread
+through the shipped reverse proxy and asserts the shell's asset references
+exist, the bootstrapping state is in the prerendered HTML, and a deep-linked
+client route is rewritten to the shell rather than 404ed
+(`static-build.e2e.test.ts`), mounts the thread
 console over a real HTTP connection to a scripted oRPC/SSE server to prove the
 resume path (`thread-console.e2e.test.ts`), mounts the memory screen over a
 scripted memory API to prove a correction survives a reload

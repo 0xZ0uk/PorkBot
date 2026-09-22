@@ -45,7 +45,7 @@ export const deploymentEnvFileName = ".env";
 export const defaultProjectName = "porkbot";
 export const defaultWaitSeconds = "300";
 
-const applicationServices = ["api", "worker", "backup", "web", "supervisor"] as const;
+const applicationServices = ["api", "worker", "backup", "proxy", "supervisor"] as const;
 const releaseServices = ["migrate", ...applicationServices] as const;
 
 export interface SpawnOptions {
@@ -1410,7 +1410,6 @@ function runUp(context: DeploymentContext, options: DeployOptions): number {
   );
   context.out(state.stdout.trimEnd());
 
-  const webPort = values.get("PORKBOT_WEB_PORT")?.trim() ?? "3000";
   const apiPort = values.get("PORKBOT_API_PORT")?.trim() ?? "3001";
   const origin = values.get("PORKBOT_AUTH_ORIGIN")?.trim() ?? "";
 
@@ -1419,7 +1418,6 @@ function runUp(context: DeploymentContext, options: DeployOptions): number {
       "",
       "The stack is up and healthy.",
       `  origin  ${origin} (the reverse proxy; see deploy/Caddyfile)`,
-      `  web     http://127.0.0.1:${webPort} (loopback only, for local inspection)`,
       `  api     http://127.0.0.1:${apiPort}/healthz (loopback only)`,
       "",
       "The proxy is the public origin. If it answers without a certificate yet, check that DNS " +

@@ -239,7 +239,7 @@ jobs:
       - name: Expose the Docker socket group to the supervisor
         run: echo "PORKBOT_DOCKER_SOCKET_GID=$(stat -c '%g' /var/run/docker.sock)" >> "$GITHUB_ENV"
       # The same command a developer runs. It builds the app images, starts
-      # Postgres, api, worker, web and supervisor, and blocks on `--wait` until
+      # Postgres, api, worker, proxy and supervisor, and blocks on `--wait` until
       # every healthcheck passes, so a stack that starts here is the one
       # `docs/architecture/operations.md` documents. Every image it builds from
       # or runs is pinned by digest in dependencies.json, which the
@@ -268,13 +268,12 @@ jobs:
       # Exercise the production deployment commands against a second Compose
       # project while the local stack is still running. The deployment's
       # ingress is the reverse proxy on loopback :80, so the origin names no
-      # port; the web and API ports stay apart from the local stack's.
+      # port; the API port stays apart from the local stack's.
       - name: Exercise upgrade and rollback against deployment Compose
         timeout-minutes: 15
         env:
           PORKBOT_DEPLOY_PROJECT: porkbot-deployment-ci
           PORKBOT_API_PORT: "3101"
-          PORKBOT_WEB_PORT: "3100"
           PORKBOT_DEPLOY_WAIT_SECONDS: "180"
         run: |
           deploy_env="$RUNNER_TEMP/porkbot-deployment.env"
@@ -286,7 +285,7 @@ jobs:
             --tag "$base_tag" \
             --env-path "$deploy_env"
 
-          for service in api worker backup web supervisor migrate; do
+          for service in api worker backup proxy supervisor migrate; do
             docker image tag "porkbot/${service}:local" "porkbot/${service}:${base_tag}"
             docker image tag "porkbot/${service}:local" "porkbot/${service}:${upgrade_tag}"
           done

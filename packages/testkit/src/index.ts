@@ -114,6 +114,7 @@ export type { ConnectToSuiteOptions, SuiteClient } from "./harness/client.ts";
 export { caddyImage } from "./harness/images.ts";
 export {
   caddyProbePort,
+  spaRootPath,
   hostGatewayAddress,
   proxyConfigPath,
   startCaddyProxy,

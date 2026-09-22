@@ -1,9 +1,12 @@
-# PorkBot's reverse proxy (slice 12.2, PRD decision 32 and story 4).
+# PorkBot's reverse proxy (slice 12.2 and 14.7, PRD decision 32 and story 4).
 #
 # One origin serves the SPA, the API and the streaming subscriptions, so the
 # session cookie is same-site, the origin checks the auth layer applies are
 # about this origin, and CORS never enters the picture. Caddy terminates TLS
-# for the public origin; nothing else in the stack is published.
+# for the public origin; nothing else in the stack is published. The SPA is
+# not proxied to a second process: the built client ships inside the proxy
+# image (the Dockerfile's `proxy` stage, at the root below) and this file is
+# the file server that hands it out.
 #
 # This file is shipped rather than documented because streaming is what a
 # misconfigured proxy breaks silently: a response buffer between the API and
@@ -23,10 +26,10 @@
 # `Last-Event-ID` needs no directive: Caddy passes request headers through
 # untouched, and the API is the only thing that validates the cursor.
 #
-# The two upstream variables exist so the same file serves the deployment
-# (`api:3001`, `web:3000` over the compose network) and the local stack
-# (`http://localhost:8080` over loopback). The site variable is the public
-# origin from deploy/.env in production and a loopback origin locally.
+# The one upstream variable exists so the same file serves the deployment and
+# the local stack, which both point it at `api:3001` on their compose network.
+# The site variable is the public origin from deploy/.env in production and a
+# loopback origin locally.
 {
 	# Client-side caps. `read_header` and `read_body` bound a slow request
 	# before it reaches the API; `idle` bounds an idle keep-alive connection
@@ -45,11 +48,15 @@
 # automatically; the local stack passes an http loopback origin and serves it
 # without TLS, because there is nothing to terminate on loopback.
 {$PORKBOT_SITE_ADDRESS:http://localhost:8080} {
+	# Where the proxy image bakes the built client (`apps/web/dist/client`).
+	# The tests mount a fixture over the same path, so what they exercise is
+	# the directory the image ships.
+	root * /srv/client
+
 	# The mounts the API owns: the five the web dev server forwards
 	# (apps/web/vite.config.ts), the inbound webhook ingress providers call
 	# directly, and the health probes so the public health paths report the
-	# API and never the static host. A request that matches none of them is
-	# the SPA.
+	# API and never the SPA. A request that matches none of them is the SPA.
 	@api path /healthz /healthz/* /livez /readyz /rpc/* /api/* /files/* /oauth/* /webhooks/* /threads/*/attachments
 
 	handle @api {
@@ -66,13 +73,34 @@
 		}
 	}
 
+	# The SPA's file server, giving the three answers `src/host.ts` gives: a
+	# hashed asset is content-addressed and may be cached forever, a client
+	# route is an extension-less path and gets the shell (with no caching —
+	# the document is the release), an existing file is itself, and anything
+	# else is a missing file rather than a blank page with a 200.
+	@spa_assets path /assets/*
+	handle @spa_assets {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	@spa_route {
+		not path_regexp `\.[^/]+$`
+	}
+	handle @spa_route {
+		rewrite /_shell.html
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	@spa_file file
+	handle @spa_file {
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	handle {
-		reverse_proxy {$PORKBOT_WEB_UPSTREAM:web:3000} {
-			transport http {
-				dial_timeout 5s
-				response_header_timeout 30s
-			}
-		}
+		respond 404
 	}
 }
 

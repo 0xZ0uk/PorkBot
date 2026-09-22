@@ -7,14 +7,11 @@ import { createHealthListener, createReadinessListener } from "@porkbot/health";
 
 /**
  * The static host for the built SPA. It is not a client runtime: it serves
- * files and answers the container healthcheck, and every application behaviour
- * lives in the bundle it hands out.
- *
- * The one route-like rule is the SPA rewrite: a request that names an existing
- * file gets it, a request for a path with no file extension gets the shell and
- * lets the router resolve it, and a missing asset stays a 404. That is the
- * same contract the single TLS origin implements in a deployment, so what this
- * server exercises is what production serves.
+ * files and answers the health probe, and every application behaviour lives in
+ * the bundle it hands out. A deployment no longer runs one — since slice 14.7
+ * the proxy's own file server hands out the same artifact — but the desktop
+ * and the browser fixture mount this handler, and the rewrite below is the
+ * contract both file servers implement.
  */
 
 export const serviceName = "@porkbot/web";
@@ -43,10 +40,11 @@ export interface StaticServerOptions {
 }
 
 /**
- * The one SPA host contract, as a handler a second server can mount. The web
- * image calls it behind the health listener; the desktop wraps it beside the
- * API proxy (slice 11.6), so "the same rewrite a deployment serves" is the same
- * code rather than two files that claim to agree.
+ * The one SPA host contract, as a handler a second server can mount. The
+ * desktop wraps it beside the API proxy (slice 11.6) and the Playwright
+ * fixture runs it whole-process, so the rewrite they serve is one shared
+ * implementation of the same contract `deploy/Caddyfile` states for the
+ * deployment.
  */
 export interface StaticHandler {
   /** Answers the request from the client directory; always writes a response. */

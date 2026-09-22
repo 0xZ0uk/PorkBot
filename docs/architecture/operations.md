@@ -3,8 +3,9 @@
 ## Local stack
 
 `docker compose` (repository-root `compose.yaml`) brings up the whole product:
-Postgres 18, `api`, `worker`, `backup`, `web`, `proxy` and `supervisor`, each
-with a healthcheck. One command starts it and waits:
+Postgres 18, `api`, `worker`, `backup`, `proxy` and `supervisor`, each
+with a healthcheck; the proxy carries the built SPA in its own image, exactly
+as the deployment's does. One command starts it and waits:
 
 ```sh
 pnpm stack:up      # build, start, wait for every healthcheck
@@ -19,13 +20,13 @@ prints the recent logs. `stack:down` removes the containers, the network and the
 Postgres volume, so a shut down and a re-run leave nothing behind.
 
 - **No key, no vendor, no egress.** The processes ship no provider endpoint or
-  credential, and the only images pulled are Node, Postgres and the reverse
-  proxy; provider calls are replaced by offline emulators as the adapter slices
-  land (5.4, 6.9, 7.3). The stack runs offline.
-- **Ports.** `web` on 3000, `api` on 3001, Postgres on 5432 and `proxy` on
+  credential, and the only images pulled are Node, Postgres and Caddy (the
+  proxy's base); provider calls are replaced by offline emulators as the
+  adapter slices land (5.4, 6.9, 7.3). The stack runs offline.
+- **Ports.** `api` on 3001, Postgres on 5432 and `proxy` on
   8080, all published on loopback only; `worker` and `supervisor` answer only
   inside the compose network. Override the published ports with
-  `PORKBOT_WEB_PORT`, `PORKBOT_API_PORT`, `PORKBOT_POSTGRES_PORT`,
+  `PORKBOT_API_PORT`, `PORKBOT_POSTGRES_PORT`,
   `PORKBOT_REVERSE_PROXY_PORT`, and the health wait budget with
   `PORKBOT_STACK_WAIT_SECONDS`. The two database-role passwords default to local
   placeholders and are overridable with `PORKBOT_API_DB_PASSWORD` and
@@ -110,7 +111,7 @@ model connection and the first run — is
 [`docs/self-host.md`](../self-host.md); this section is the design record.
 
 `deploy/compose.yaml` is the production shape of the local stack: the same
-Postgres 18, one-shot `migrate`, `api`, `worker`, `web`, `proxy` and
+Postgres 18, one-shot `migrate`, `api`, `worker`, `proxy` and
 `supervisor`, with none of a developer's defaults left in it. Every secret and
 every operator choice is read through `${NAME:?}`, so Compose itself refuses a
 stack whose environment is incomplete, and every process exposes `/livez` plus
@@ -168,11 +169,12 @@ active release running; a failed switch attempts to restore it.
   their own boot checks on top: the API refuses a partial auth pair or a
   missing storage root, the logger refuses an unknown level, and the supervisor
   refuses a computer provider it cannot construct.
-- **The one public origin.** `proxy` runs the pinned Caddy image with the
+- **The one public origin.** `proxy` builds the Dockerfile's `proxy` stage —
+  the pinned Caddy image with the release's built client baked in — with the
   committed `deploy/Caddyfile`: it terminates HTTPS for the origin `deploy:up`
-  was given, serves the SPA from `web`, the API and its streams from `api`, and
-  is the only service that publishes a public port (`80` and `443` on
-  `PORKBOT_BIND_ADDRESS`). The API and web ports stay on loopback. The config
+  was given, serves the SPA from its own files, the API and its streams from
+  `api`, and is the only service that publishes a public port (`80` and `443`
+  on `PORKBOT_BIND_ADDRESS`). The API port stays on loopback. The config
   disables response buffering on the API path and caps client reads and idle
   connections, so a token stream crosses it frame by frame;
   [`docs/reverse-proxy.md`](../reverse-proxy.md) is the contract and the runbook for when it does not.
@@ -202,12 +204,11 @@ active release running; a failed switch attempts to restore it.
   | api                | 0.7         | 1 GB           |
   | worker             | 0.45        | 1 GB           |
   | backup             | 0.25        | 256 MB         |
-  | web                | 0.2         | 256 MB         |
   | proxy              | 0.1         | 128 MB         |
   | supervisor         | 0.2         | 384 MB         |
 
-  The test invariant still sums the ceilings: the declared stack is 3.0 vCPU
-  and about 5.5 GB, and the default one-bot share is
+  The test invariant still sums the ceilings: the declared stack is 2.8 vCPU
+  and about 5.25 GB, and the default one-bot share is
   `PORKBOT_COMPUTER_CPUS` (1) plus `PORKBOT_COMPUTER_MEMORY_MB` (512). This is
   a capacity guard, not the measured floor. Raise the ceilings in
   `deploy/compose.yaml` only after raising the host; the per-bot settings live
@@ -237,7 +238,7 @@ active release running; a failed switch attempts to restore it.
   `PORKBOT_BIND_ADDRESS:80` and `:443` — set it to `0.0.0.0` (or the host's
   public address) on a host reachable from the internet, and point DNS at the
   host before `deploy:up` so Caddy can obtain a certificate. Postgres is never
-  published and the API and web answer on loopback only; `deploy:exec` is the
+  published and the API answers on loopback only; `deploy:exec` is the
   way in. `deploy:exec -- backup node dist/cli.js status` reports the backup
   ledger and the envelope, and
   `deploy:exec -- backup node dist/cli.js restore --latest --database <name>`

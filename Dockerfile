@@ -34,7 +34,6 @@ RUN pnpm build
 # deployed directory still carries the workspace packages it imports.
 RUN pnpm deploy --filter @porkbot/api --prod --legacy /deploy/api
 RUN pnpm deploy --filter @porkbot/worker --prod --legacy /deploy/worker
-RUN pnpm deploy --filter @porkbot/web --prod --legacy /deploy/web
 RUN pnpm deploy --filter @porkbot/supervisor --prod --legacy /deploy/supervisor
 RUN pnpm deploy --filter @porkbot/backup --prod --legacy /deploy/backup
 
@@ -73,14 +72,14 @@ USER node
 EXPOSE 3002
 CMD ["node", "dist/main.js"]
 
-FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS web
+# The reverse proxy and the SPA in one image (slice 14.7): Caddy serves the
+# built client from /srv/client — the root deploy/Caddyfile names — so the
+# static host process and its image disappear and the deep-link fallback and
+# the asset cache headers live in the shipped config instead. The base is the
+# same pinned Caddy the register records and the integration suite boots.
+FROM caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e AS proxy
 
-ENV NODE_ENV=production
-WORKDIR /app
-COPY --from=build /deploy/web ./
-USER node
-EXPOSE 3000
-CMD ["node", "dist/host/main.js"]
+COPY --from=build /repo/apps/web/dist/client /srv/client
 
 # The backup process is the one image built on the pinned Postgres image
 # rather than the Node one, because `pg_dump` and `pg_restore` are the server's
