@@ -172,4 +172,51 @@ describe("the computer provider selection", () => {
       /PORKBOT_COMPUTER_IDLE_MS/,
     );
   });
+
+  it("offers the disk-quota verdict and snapshot maintenance only for a real provider", () => {
+    const offline = createComputerProviderSelection({});
+
+    expect(offline.diskQuota).toBeUndefined();
+    expect(offline.snapshotMaintenance).toBeUndefined();
+
+    const docker = createComputerProviderSelection({
+      PORKBOT_COMPUTER_PROVIDER: "docker",
+      PORKBOT_COMPUTER_IMAGE: "porkbot-computer:test",
+      PORKBOT_STORAGE_DIR: storageRoot,
+    });
+
+    expect(docker.diskQuota).toBeDefined();
+    expect(docker.snapshotMaintenance).toBeDefined();
+  });
+
+  it("takes the shipped disk-quota posture and refuses an unknown retention", () => {
+    // `auto` is the default, so a deployment that names nothing still gets a
+    // detected-and-reported budget rather than a silent no-op.
+    expect(() =>
+      createComputerProviderSelection({
+        PORKBOT_COMPUTER_PROVIDER: "docker",
+        PORKBOT_COMPUTER_IMAGE: "image",
+        PORKBOT_COMPUTER_DISK_QUOTA: "auto",
+        PORKBOT_STORAGE_DIR: storageRoot,
+      }),
+    ).not.toThrow();
+
+    expect(
+      createComputerProviderSelection({
+        PORKBOT_COMPUTER_PROVIDER: "docker",
+        PORKBOT_COMPUTER_IMAGE: "image",
+        PORKBOT_COMPUTER_SNAPSHOT_KEEP: "0",
+        PORKBOT_STORAGE_DIR: storageRoot,
+      }).snapshotMaintenance,
+    ).toBeDefined();
+
+    expect(() =>
+      createComputerProviderSelection({
+        PORKBOT_COMPUTER_PROVIDER: "docker",
+        PORKBOT_COMPUTER_IMAGE: "image",
+        PORKBOT_COMPUTER_SNAPSHOT_KEEP: "-1",
+        PORKBOT_STORAGE_DIR: storageRoot,
+      }),
+    ).toThrow(/PORKBOT_COMPUTER_SNAPSHOT_KEEP/);
+  });
 });

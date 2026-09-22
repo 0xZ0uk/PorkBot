@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { IncomingMessage } from "node:http";
 import type { Readable } from "node:stream";
-import type { ComputerNetworkPlan } from "@porkbot/core";
+import type { ComputerNetworkPlan, DiskQuotaDriverInfo } from "@porkbot/core";
 
 /**
  * The Docker Engine API client (slice 7.2, PRD decision 20).
@@ -176,8 +176,12 @@ export interface DockerStreamBody {
 
 export interface DockerEngine {
   ping(): Promise<void>;
-  /** The daemon's declared storage driver, or an empty string when it says none. */
-  storageDriver(): Promise<string>;
+  /**
+   * The daemon's declared storage driver and its backing filesystem, read from
+   * `/info`. It is the one input `disk-quota.ts` classifies: a write-layer
+   * quota is only promised for a driver whose answer supports it.
+   */
+  storageInfo(): Promise<DiskQuotaDriverInfo>;
   imageExists(image: string, budgetMs?: number): Promise<boolean>;
   pullImage(image: string, budgetMs?: number): Promise<void>;
   ensureNetwork(plan: ComputerNetworkPlan, budgetMs?: number): Promise<void>;
@@ -506,15 +510,32 @@ export function createDockerEngine(options: DockerEngineOptions = {}): DockerEng
       response.resume();
     },
 
-    async storageDriver(): Promise<string> {
-      const info = await jsonCall<{ Driver?: unknown }>(
+    async storageInfo(): Promise<DiskQuotaDriverInfo> {
+      const info = await jsonCall<{ Driver?: unknown; DriverStatus?: unknown }>(
         "GET",
         "/info",
         undefined,
         requestTimeoutMs,
       );
+      const driver = typeof info?.Driver === "string" ? info.Driver : "";
+      let backingFilesystem: string | undefined;
 
-      return typeof info?.Driver === "string" ? info.Driver : "";
+      // `/info` reports driver details as an array of `[name, value]` pairs;
+      // the backing filesystem is the one that decides whether overlay2 can
+      // answer a quota, so it is read by name and nothing else is inferred.
+      if (Array.isArray(info?.DriverStatus)) {
+        for (const entry of info.DriverStatus) {
+          if (
+            Array.isArray(entry) &&
+            entry[0] === "Backing Filesystem" &&
+            typeof entry[1] === "string"
+          ) {
+            backingFilesystem = entry[1];
+          }
+        }
+      }
+
+      return backingFilesystem === undefined ? { driver } : { driver, backingFilesystem };
     },
 
     async imageExists(image: string, budgetMs = requestTimeoutMs): Promise<boolean> {

@@ -65,11 +65,30 @@ guide](self-host.md#choosing-what-to-turn-on)).
   supervisor only, and the provider speaks the Engine API — no CLI, no SDK.
 - **Sizing.** `PORKBOT_COMPUTER_CPUS` (default `1`),
   `PORKBOT_COMPUTER_MEMORY_MB` (default `2048`) and
-  `PORKBOT_COMPUTER_DISK_MB` (default `10240`) are one bot's share of the host
-  floor. Memory swap is pinned to the same ceiling; the process count is
-  `PORKBOT_COMPUTER_PIDS` (default `512`). A disk quota is enforced only with
-  `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt`, which requires a daemon storage
-  driver that answers it.
+  `PORKBOT_COMPUTER_DISK_MB` (default `10240`) are one bot's declared share of
+  the host. Memory swap is pinned to the same ceiling; the process count is
+  `PORKBOT_COMPUTER_PIDS` (default `512`). The three terms cost different
+  things and scale with different counts: CPU and memory are a running
+  machine's slice, the image's read-only layers are paid once per daemon (N
+  bots do not cost N images), and disk is a per-machine budget.
+- **The disk budget is a promise only where the daemon can keep it.**
+  `PORKBOT_COMPUTER_DISK_QUOTA` decides the write layer: `auto` (the default)
+  detects the daemon's storage driver at supervisor boot and enforces
+  `PORKBOT_COMPUTER_DISK_MB` where it answers — `btrfs`, or `overlay2` over an
+  xfs backing filesystem mounted with `pquota` — and logs an explicit "not
+  enforced, and why" where it does not; `storage-opt` applies it
+  unconditionally, so a driver that cannot answer it refuses the create
+  (fail-closed); `none` never applies it and the write layer belongs to the
+  host's disk. Boot says which of the three happened, and `pnpm deploy:check`
+  reports the same verdict before the stack starts. A per-bot disk claim on a
+  host whose driver cannot enforce it is a budget the operator must watch, not
+  a floor the host guarantees.
+- **The home and its snapshots are the terms the quota does not bound.** A
+  machine's named volume holds the agent's files and grows with what it writes,
+  and each snapshot is an archive of that home. Snapshots are bounded per bot by
+  `PORKBOT_COMPUTER_SNAPSHOT_KEEP` (default `10`): the newest ten survive, and
+  the rest are pruned after a capture and once at boot, saying what it removes
+  before it removes it, so the archive store cannot grow without limit.
 - **Log cost.** A machine's container log is rotated by the daemon's
   `json-file` driver: `PORKBOT_COMPUTER_LOG_MAX_SIZE` (default `10m`) per
   file and `PORKBOT_COMPUTER_LOG_MAX_FILE` (default `3`) files, so a chatty
@@ -119,7 +138,7 @@ The Computer screen's machine panel has four verbs:
   volume and the next boot reuses it; a Daytona sandbox is deleted, so bring
   files across with a snapshot first; the offline emulator loses its home. Take
   a snapshot first when the files matter — the confirmation is the conservative
-  sentence, and snapshots are always kept.
+  sentence, and snapshots are bounded by retention rather than kept forever.
 
 Snapshots are the operator's backup for a machine's home, separate from the
 nightly database backup:
@@ -127,7 +146,11 @@ nightly database backup:
 - **Take a snapshot** captures the home — files, not processes: running
   commands, open sessions and network connections are not in the archive — into
   the snapshot store under `computer-snapshots/<scope>/<id>.tar`, with its size
-  and SHA-256 recorded.
+  and SHA-256 recorded. The newest `PORKBOT_COMPUTER_SNAPSHOT_KEEP` captures
+  per bot are kept; older ones are pruned after each capture, and once at
+  supervisor boot, and the log names every archive it removes before removing
+  it. A pruned capture's index row no longer restores — a restore of one is the
+  typed `NOT_FOUND`, and the home is what it was when the newest capture ran.
 - **Restore** fetches the archive through the store, verifies both before a
   byte reaches the machine, and replaces the machine's home. A corrupted
   snapshot leaves the existing machine exactly as it was.

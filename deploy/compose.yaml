@@ -376,6 +376,13 @@ services:
       PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
       PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
       PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
+      # Whether the disk budget is enforced: `auto` detects the daemon's
+      # storage driver and enforces it where it answers, `storage-opt` always
+      # asks (an incapable driver refuses the create), `none` never does.
+      PORKBOT_COMPUTER_DISK_QUOTA: ${PORKBOT_COMPUTER_DISK_QUOTA:-auto}
+      # Bounded snapshot retention per bot: older archives are pruned after a
+      # capture and once at boot, naming what it removes before it removes it.
+      PORKBOT_COMPUTER_SNAPSHOT_KEEP: ${PORKBOT_COMPUTER_SNAPSHOT_KEEP:-10}
       # The daemon's json-file log rotation for a machine's container: the
       # same policy the x-app anchor gives the stack's own services.
       PORKBOT_COMPUTER_LOG_MAX_SIZE: ${PORKBOT_COMPUTER_LOG_MAX_SIZE:-10m}

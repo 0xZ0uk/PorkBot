@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isProviderFailure } from "@porkbot/adapter-kit";
-import type { ComputerProvider, ComputerRef, ProviderFailure } from "@porkbot/adapter-kit";
+import type { ComputerRef, ProviderFailure } from "@porkbot/adapter-kit";
 import { planComputerNetwork } from "@porkbot/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -10,6 +10,7 @@ import {
   DEFAULT_COMPUTER_CEILINGS,
   DEFAULT_COMPUTER_LOG_CONFIG,
 } from "./docker-computer.ts";
+import type { DockerComputerProvider } from "./docker-computer.ts";
 import { DockerEngineEmulator } from "./docker-engine-emulator.ts";
 import { LocalStorageProvider } from "./local-storage.ts";
 
@@ -46,7 +47,7 @@ function tempDirectory(prefix: string): string {
 function providerOver(
   daemon: DockerEngineEmulator,
   overrides: Partial<Parameters<typeof createDockerComputerProvider>[0]> = {},
-): ComputerProvider {
+): DockerComputerProvider {
   return createDockerComputerProvider({
     image,
     socketPath: daemon.socketPath,
@@ -354,11 +355,88 @@ describe("the Docker computer provider isolation and ceilings", () => {
     });
   });
 
-  it("sends a write-layer quota only when the operator configured one", async () => {
+  it("sends a write-layer quota only when the daemon's driver answers it", async () => {
+    // The default `auto` posture: an overlay2 daemon that reports no backing
+    // filesystem cannot promise a quota, so the create does not pretend one.
     const daemon = await emulator();
-    await providerOver(daemon).ensure(computer);
+    const provider = providerOver(daemon);
+    await provider.ensure(computer);
 
     expect(createBodies(daemon)[0]?.HostConfig?.["StorageOpt"]).toBeUndefined();
+  });
+
+  it("enforces the budget under auto where the driver answers it, and reports the decision", async () => {
+    const daemon = await DockerEngineEmulator.start({
+      storageDriver: "overlay2",
+      backingFilesystem: "xfs",
+    });
+    running.push(daemon);
+
+    const provider = providerOver(daemon);
+    await provider.ensure(computer);
+
+    expect(createBodies(daemon)[0]?.HostConfig?.["StorageOpt"]).toEqual({
+      size: `${String(DEFAULT_COMPUTER_CEILINGS.diskMb)}M`,
+    });
+    await expect(provider.diskQuota()).resolves.toMatchObject({
+      mode: "auto",
+      applied: true,
+      enforced: true,
+      driver: "overlay2",
+      backingFilesystem: "xfs",
+    });
+  });
+
+  it("reports the budget as unenforced under auto when the driver cannot answer it", async () => {
+    const daemon = await DockerEngineEmulator.start({
+      storageDriver: "overlay2",
+      backingFilesystem: "ext4",
+    });
+    running.push(daemon);
+
+    const provider = providerOver(daemon);
+    await provider.ensure(computer);
+
+    expect(createBodies(daemon)[0]?.HostConfig?.["StorageOpt"]).toBeUndefined();
+    const decision = await provider.diskQuota();
+
+    expect(decision.enforced).toBe(false);
+    expect(decision.applied).toBe(false);
+    expect(decision.detail).toContain("not enforced");
+  });
+
+  it("never applies the budget under none, even on a driver that answers it", async () => {
+    const daemon = await DockerEngineEmulator.start({
+      storageDriver: "overlay2",
+      backingFilesystem: "xfs",
+    });
+    running.push(daemon);
+
+    const provider = providerOver(daemon, { diskQuota: "none" });
+    await provider.ensure(computer);
+
+    expect(createBodies(daemon)[0]?.HostConfig?.["StorageOpt"]).toBeUndefined();
+    await expect(provider.diskQuota()).resolves.toMatchObject({
+      mode: "none",
+      applied: false,
+      enforced: false,
+    });
+  });
+
+  it("fails closed under storage-opt on a driver that cannot answer the quota", async () => {
+    const daemon = await DockerEngineEmulator.start({ storageDriver: "vfs" });
+    running.push(daemon);
+
+    const provider = providerOver(daemon, { diskQuota: "storage-opt" });
+
+    // The create carries the quota and the daemon refuses it, rather than the
+    // budget being silently dropped. The refusal is an operator-visible
+    // protocol error because the mode asked for a guarantee the host cannot
+    // keep.
+    await expect(provider.ensure(computer)).rejects.toThrow(/storage-opt/);
+    expect(createBodies(daemon)[0]?.HostConfig?.["StorageOpt"]).toEqual({
+      size: `${String(DEFAULT_COMPUTER_CEILINGS.diskMb)}M`,
+    });
   });
 
   it("rejects an unusable per-bot ceiling as a caller bug", async () => {

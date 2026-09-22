@@ -515,6 +515,28 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
     }
   }
 
+  // The disk budget's enforcement mode and its snapshot retention. The
+  // supervisor refuses an unknown value at boot; checking the same two here is
+  // what makes `deploy:check` catch a typo before a restart.
+  const diskQuota = valueOf("PORKBOT_COMPUTER_DISK_QUOTA");
+
+  if (diskQuota !== "" && !["auto", "none", "storage-opt"].includes(diskQuota)) {
+    problems.push({
+      key: "PORKBOT_COMPUTER_DISK_QUOTA",
+      message: "must be one of auto, none, storage-opt",
+    });
+  }
+
+  const snapshotKeep = valueOf("PORKBOT_COMPUTER_SNAPSHOT_KEEP");
+
+  if (snapshotKeep !== "") {
+    const problem = integerProblem(snapshotKeep, 0);
+
+    if (problem !== undefined) {
+      problems.push({ key: "PORKBOT_COMPUTER_SNAPSHOT_KEEP", message: problem });
+    }
+  }
+
   const idleMs = valueOf("PORKBOT_COMPUTER_IDLE_MS");
 
   if (idleMs !== "") {

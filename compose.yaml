@@ -265,11 +265,15 @@ services:
       # volume survives. Zero disables the idle sweep.
       PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-900000}
       # One bot's share of the documented host floor
-      # (`docs/architecture/computers.md`): 4 vCPU / 8 GB plus ~2 GB per bot
-      # and 50 GB+ of disk. Raise these only after raising the host.
+      # (`docs/architecture/computers.md`): memory is the measured per-bot
+      # term; the disk figure is a write-layer budget enforced only where the
+      # daemon's storage driver answers a `size` quota, and snapshots are
+      # bounded per bot. Raise these only after raising the host.
       PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
       PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
       PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
+      PORKBOT_COMPUTER_DISK_QUOTA: ${PORKBOT_COMPUTER_DISK_QUOTA:-auto}
+      PORKBOT_COMPUTER_SNAPSHOT_KEEP: ${PORKBOT_COMPUTER_SNAPSHOT_KEEP:-10}
     volumes:
       # The only place the Docker socket is mounted in the stack. The
       # supervisor owns computer lifecycle; every other process reaches

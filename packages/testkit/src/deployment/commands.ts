@@ -25,9 +25,11 @@ import type { DeploymentProblem } from "./validate.ts";
  *
  * `deploy:setup` renders deploy/.env from the committed template, generating
  * every secret in the register; `deploy:check` validates the file without
- * touching Docker; `deploy:up` does the setup when the file is absent,
- * validates it, then runs the production compose file and waits for every
- * healthcheck, reporting readiness per service. `upgrade` preflights a target
+ * starting anything — and, when the Docker provider is selected, reads the
+ * daemon's storage driver to report whether the disk budget is enforceable;
+ * `deploy:up` does the setup when the file is absent, validates it, then runs
+ * the production compose file and waits for every healthcheck, reporting
+ * readiness per service. `upgrade` preflights a target
  * image, migrates after that preflight, and switches only after a second health
  * check; `rollback` redeploys the recorded prior image without migrations.
  * `status`, `logs`, `down` and `exec` wrap the matching compose commands.
@@ -104,6 +106,8 @@ export function usageText(): string {
     "Commands:",
     "  setup    Render deploy/.env from the template, generating every secret.",
     "  check    Validate the env file; --compose also proves Compose accepts the file.",
+    "           With the Docker provider selected it also reads the daemon's storage",
+    "           driver and reports whether PORKBOT_COMPUTER_DISK_MB is enforced.",
     "  up       Setup if needed, validate, build, start, and wait for every healthcheck.",
     "  upgrade  Pull a release, preflight its health, migrate, then switch services.",
     "  rollback Redeploy the previous release without reversing database migrations.",
@@ -682,8 +686,135 @@ function runCheck(context: DeploymentContext, options: DeployOptions): number {
   context.out(
     `ok   ${displayPath(context, envFile)}: ${String(values.size)} settings, every requirement satisfied.`,
   );
+  reportDiskQuota(context, values);
 
   return options.compose ? checkComposeDefinition(context, envFile) : 0;
+}
+
+/**
+ * Whether the supervisor this environment produces will construct the Docker
+ * provider, mirroring `apps/supervisor/src/computer-provider.ts`: an image
+ * selects the machine contract, and a cloud endpoint does not also build
+ * Docker unless Docker is the default kind.
+ */
+function dockerProviderConfigured(values: ReadonlyMap<string, string>): boolean {
+  const image = values.get("PORKBOT_COMPUTER_IMAGE")?.trim() ?? "";
+  const endpoint = values.get("PORKBOT_COMPUTER_ENDPOINT")?.trim() ?? "";
+  const kind = values.get("PORKBOT_COMPUTER_PROVIDER")?.trim() || "offline";
+
+  return image !== "" && (endpoint === "" || kind === "docker");
+}
+
+/**
+ * The storage drivers that answer a Docker `size` quota, mirrored from the
+ * authoritative register in `packages/core/src/disk-quota.ts` (the supervisor
+ * and the adapters apply that one). The mirror exists because the deployment
+ * CLI must stay free of workspace imports: `@porkbot/testkit` is a dev
+ * dependency of every other package, so depending on one of them would make
+ * Turborepo's build graph cyclic. Keep the two lists in step when a driver
+ * joins or leaves the register.
+ */
+const diskQuotaDrivers = ["btrfs", "overlay2"] as const;
+
+/** Whether the named driver answers a `size` quota on the given backing filesystem. */
+function diskQuotaDriverAnswers(driver: string, backingFilesystem: string | undefined): boolean {
+  const normalized = driver.trim().toLowerCase();
+  const backing = backingFilesystem?.trim().toLowerCase();
+
+  if (normalized === "btrfs") {
+    return true;
+  }
+
+  return normalized === "overlay2" && backing === "xfs";
+}
+
+/**
+ * Reports the write-layer budget's enforcement (slice 14.4) at the one place an
+ * operator looks before booting. The question "will `PORKBOT_COMPUTER_DISK_MB`
+ * actually hold?" has a driver-shaped answer, so it is read from the daemon's
+ * own `/info` and classified by the same rule the supervisor applies. The check
+ * stays a check: an unreachable daemon and an unsupported driver are reported,
+ * not fatal, because `auto` is a promise stated where it can be kept and a
+ * disclosed no-op where it cannot.
+ */
+function reportDiskQuota(context: DeploymentContext, values: ReadonlyMap<string, string>): void {
+  if (!dockerProviderConfigured(values)) {
+    return;
+  }
+
+  const rawMode = values.get("PORKBOT_COMPUTER_DISK_QUOTA")?.trim() || "auto";
+  const mode = rawMode === "none" || rawMode === "storage-opt" ? rawMode : "auto";
+
+  if (mode === "none") {
+    context.out(
+      "note disk budget: disabled by PORKBOT_COMPUTER_DISK_QUOTA=none; PORKBOT_COMPUTER_DISK_MB is not a quota",
+    );
+
+    return;
+  }
+
+  const result = context.spawn(
+    "docker",
+    ["info", "--format", "{{.Driver}}\t{{json .DriverStatus}}"],
+    { cwd: context.repoRoot },
+  );
+
+  if ((result.status ?? 1) !== 0) {
+    context.out(
+      "note disk budget: the daemon could not be reached here, so its storage driver (and whether PORKBOT_COMPUTER_DISK_MB is enforceable) was not determined",
+    );
+
+    return;
+  }
+
+  const [driver = "", statusJson = ""] = result.stdout.trim().split("\t");
+  let backingFilesystem: string | undefined;
+
+  try {
+    const parsed: unknown = JSON.parse(statusJson === "" ? "[]" : statusJson);
+
+    if (Array.isArray(parsed)) {
+      for (const entry of parsed) {
+        if (
+          Array.isArray(entry) &&
+          entry[0] === "Backing Filesystem" &&
+          typeof entry[1] === "string"
+        ) {
+          backingFilesystem = entry[1];
+        }
+      }
+    }
+  } catch {
+    // A daemon that answers no driver details leaves the backing filesystem
+    // unknown, which is reported as unsupported rather than assumed to be xfs.
+  }
+
+  const name = driver.trim().toLowerCase();
+  const answers = diskQuotaDriverAnswers(name, backingFilesystem);
+  const driverText = name === "" ? "the daemon named no storage driver" : `"${name}"`;
+  const backingText =
+    backingFilesystem === undefined ? "an unreported" : `a "${backingFilesystem}"`;
+
+  // `storage-opt` always sends the quota, so an incapable driver refuses the
+  // create; `auto` only claims what the driver answers. Either way the check
+  // says which happened rather than leaving the budget implicit.
+  if (mode === "storage-opt") {
+    context.out(
+      answers
+        ? `ok   disk budget: PORKBOT_COMPUTER_DISK_QUOTA=storage-opt is answered by ${driverText} over ${backingText} backing filesystem`
+        : `warn disk budget: PORKBOT_COMPUTER_DISK_QUOTA=storage-opt will be sent and refused, because ${driverText} does not answer a size quota (the drivers that do are ${diskQuotaDrivers.join(", ")}, the last only over xfs)`,
+    );
+
+    return;
+  }
+
+  if (answers) {
+    context.out(`ok   disk budget: PORKBOT_COMPUTER_DISK_MB is enforced by ${driverText}`);
+  } else {
+    context.err(
+      `warn disk budget: PORKBOT_COMPUTER_DISK_MB is not enforced, because ${driverText} does not answer a size quota (the drivers that do are ${diskQuotaDrivers.join(", ")}, the last only over xfs with pquota); the write layer belongs to the host's disk`,
+    );
+  }
 }
 
 function dockerSocketProblem(

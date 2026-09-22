@@ -214,10 +214,13 @@ export {
   computerSnapshotKeyPattern,
   createComputerSnapshotStore,
   DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+  DEFAULT_COMPUTER_ARCHIVE_STALE_MS,
+  DEFAULT_COMPUTER_SNAPSHOT_KEEP,
   snapshotChecksumAlgorithm,
   snapshotScope,
 } from "./computer-snapshot-store.ts";
 export type {
+  ComputerSnapshotMaintenance,
   ComputerSnapshotStore,
   ComputerSnapshotStoreOptions,
 } from "./computer-snapshot-store.ts";
@@ -259,6 +262,7 @@ export {
 } from "./docker-computer.ts";
 export type {
   ComputerCeilings,
+  DockerComputerProvider,
   DockerComputerProviderOptions,
   DockerProxyOptions,
 } from "./docker-computer.ts";
@@ -323,6 +327,7 @@ export {
 } from "./daytona-computer.ts";
 export type {
   DaytonaComputerCeilings,
+  DaytonaComputerProvider,
   DaytonaComputerProviderOptions,
 } from "./daytona-computer.ts";
 export { classifyDaytonaFailure, DaytonaProtocolError } from "./daytona-errors.ts";
