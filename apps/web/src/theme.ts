@@ -17,8 +17,8 @@ import "./globals.css";
  * cannot drift apart.
  *
  * `registerStyleSheet` is the last pre-Tailwind string left in the chain: it
- * draws the `pb-*` classes `@porkbot/ui` still emits. The register is rebuilt
- * on Tailwind classes in slice 2 and this last term goes with it.
+ * draws the `pb-*` classes the register's components still emit. It goes when
+ * those components are rebuilt on Tailwind classes.
  */
 export const themeStyleSheet = `${tokensThemeStyleSheet}${registerStyleSheet}`;
 

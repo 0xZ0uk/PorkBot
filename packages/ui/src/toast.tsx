@@ -1,6 +1,6 @@
-import { createContext, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
-import { Button, IconButton } from "./button.tsx";
+import { Toaster, toast } from "sonner";
 
 export type ToastTone = "neutral" | "success" | "warning" | "destructive";
 
@@ -15,8 +15,6 @@ export type ToastInput = {
     readonly onClick?: () => void;
   };
 };
-
-type ToastRecord = ToastInput & { readonly id: string };
 
 export type ToastApi = {
   /** Shows a toast and returns the id `dismiss` takes. */
@@ -36,25 +34,72 @@ export function useToast(): ToastApi {
   return api;
 }
 
+type Show = (message: string, options: Parameters<typeof toast>[1]) => string | number;
+
+const toneToShow: Record<ToastTone, Show> = {
+  neutral: (message, options) => toast(message, options),
+  success: (message, options) => toast.success(message, options),
+  warning: (message, options) => toast.warning(message, options),
+  destructive: (message, options) => toast.error(message, options),
+};
+
 /**
- * The toast host: it owns the queue, renders the region and hands screens a
- * `push`/`dismiss` pair. A toast announces politely, dismisses with a labelled
- * control, and carries at most one action link.
+ * The toast host. `sonner` owns the queue, the pause-on-hover and the live
+ * region; this module owns the `push`/`dismiss` pair the screens call and the
+ * one-action-a-toast rule the design record asks for.
+ *
+ * A destination keeps its link role: when the action names an `href` it renders
+ * as an `<a>` in the toast body rather than as sonner's action button, so a
+ * user hears "link" and can open it in a new tab. A bare `onClick` is an
+ * in-place action and takes sonner's button.
  */
 export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [toasts, setToasts] = useState<readonly ToastRecord[]>([]);
-  const counter = useRef(0);
-
   const api = useMemo<ToastApi>(
     () => ({
-      push(toast) {
-        counter.current += 1;
-        const id = `toast-${String(counter.current)}`;
-        setToasts((current) => [...current, { ...toast, id }]);
-        return id;
+      push: (input) => {
+        const show = toneToShow[input.tone ?? "neutral"];
+        const action = input.action;
+        const destination = action?.href;
+        const description =
+          input.body === undefined && destination === undefined
+            ? undefined
+            : ((
+                <>
+                  {input.body}
+                  {destination === undefined ? null : (
+                    <>
+                      {input.body === undefined ? "" : " "}
+                      <a
+                        href={destination}
+                        onClick={() => {
+                          action?.onClick?.();
+                        }}
+                      >
+                        {action?.label}
+                      </a>
+                    </>
+                  )}
+                </>
+              ) as ReactNode);
+
+        const id = show(input.title, {
+          description,
+          ...(destination === undefined && action !== undefined
+            ? {
+                action: {
+                  label: action.label,
+                  onClick: () => {
+                    action.onClick?.();
+                  },
+                },
+              }
+            : {}),
+        });
+
+        return String(id);
       },
-      dismiss(id) {
-        setToasts((current) => current.filter((entry) => entry.id !== id));
+      dismiss: (id) => {
+        toast.dismiss(id);
       },
     }),
     [],
@@ -63,42 +108,7 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="pb-toast-region" role="region" aria-label="Notifications">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={["pb-toast", toast.tone !== undefined && `pb-toast--${toast.tone}`]
-              .filter(Boolean)
-              .join(" ")}
-            role={toast.tone === "destructive" ? "alert" : "status"}
-          >
-            <div className="pb-toast__header">
-              <span className="pb-toast__title">{toast.title}</span>
-              <IconButton
-                label={`Dismiss ${toast.title}`}
-                icon="close"
-                onClick={() => {
-                  api.dismiss(toast.id);
-                }}
-              />
-            </div>
-            {toast.body === undefined ? null : <p className="pb-toast__body">{toast.body}</p>}
-            {toast.action === undefined ? null : (
-              <div className="pb-toast__actions">
-                {toast.action.href === undefined ? (
-                  <Button variant="ghost" onClick={toast.action.onClick}>
-                    {toast.action.label}
-                  </Button>
-                ) : (
-                  <a className="pb-button pb-button--ghost" href={toast.action.href}>
-                    {toast.action.label}
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      <Toaster position="bottom-right" closeButton />
     </ToastContext.Provider>
   );
 }

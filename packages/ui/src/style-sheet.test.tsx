@@ -229,8 +229,6 @@ describe("the register stylesheet", () => {
       "pb-sheet",
       "pb-tooltip",
       "pb-tooltip__bubble",
-      "pb-toast-region",
-      "pb-toast",
       "pb-skeleton",
     ]) {
       expect(classes.has(name), `${name} did not render in the gallery`).toBe(true);
