@@ -28,7 +28,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "lcov"],
-      include: ["base.js", "module-boundaries.js", "ui-colors.js", "ui-register.js"],
+      include: ["base.js", "module-boundaries.js", "ui-design-system.js"],
       exclude: [],
     },
   },

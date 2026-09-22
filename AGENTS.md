@@ -359,22 +359,28 @@ change it without breaking what the boundaries and the CI gate protect.
 ### UI
 
 - **Colours come from `@porkbot/tokens`.** No hardcoded hex, `rgb()`, `hsl()`
-  or `oklch()` colour in a surface; use the semantic tokens so a theme change
-  stays one file.
-  Checked by: lint (`no-restricted-syntax` colour selector, proven by
-  `packages/eslint-config/fixtures/ui-hardcoded-color.ts`).
-- **A screen composes the register.** `packages/eslint-config/ui-register.js`
-  names the markup each primitive in `@porkbot/ui` owns — the `button`, `input`,
-  `select` and `textarea` elements, the `card` and `field` chrome classes, and
-  the register's own `pb-` class namespace — and a surface may write none of it.
-  A screen that hand-rolls a primitive fails lint, and the register's component
-  names are tied to the package's exports so the map cannot drift from the
-  package. Checked by: lint (`no-restricted-syntax`, proven by
-  `packages/eslint-config/fixtures/ui-hand-rolled-button.tsx`,
-  `packages/eslint-config/fixtures/ui-hand-rolled-field.tsx`,
-  `packages/eslint-config/fixtures/ui-hand-rolled-card.tsx` and
-  `packages/eslint-config/fixtures/ui-register-namespace.tsx`) and
-  `packages/eslint-config/test/ui-register.test.mjs`.
+  or `oklch()` colour in a surface and no raw Tailwind palette class such as
+  `bg-pink-500`; use the semantic tokens and the theme's own classes so a
+  theme change stays one file.
+  Checked by: lint (`shadcn/no-raw-colors`, proven by
+  `packages/eslint-config/fixtures/ui-raw-colour.tsx`).
+- **A screen composes the register.** `@porkbot/ui` owns each primitive's
+  appearance as a variant and its placement as a caller's layout class, so a
+  surface may not restyle one with padding, colour or shape classes and may
+  not write a class no build generates. Checked by: lint (`shadcn/no-restyle`
+  and `shadcn/no-unknown-classes`, proven by
+  `packages/eslint-config/fixtures/ui-restyled.tsx` and
+  `packages/eslint-config/fixtures/ui-unknown-class.tsx`).
+- **Style through classes, not through a style object.** Dynamic values go
+  into a CSS custom property a class reads; a class name a value builds is a
+  class no rule can check. Checked by: lint (`shadcn/no-inline-styles` and
+  `shadcn/require-static-classes`, proven by
+  `packages/eslint-config/fixtures/ui-inline-style.tsx` and
+  `packages/eslint-config/fixtures/ui-dynamic-class.tsx`).
+- **Stay on the token scales.** An arbitrary value such as `p-[13px]` hardcodes
+  an off-token measurement; use the space and radius scales in
+  `@porkbot/tokens`. Checked by: lint (`shadcn/no-arbitrary-values`, proven by
+  `packages/eslint-config/fixtures/ui-arbitrary-value.tsx`).
 - **Reuse the design system before writing chrome.** Prefer an existing
   `@porkbot/ui` component and a shared primitive over a local copy. Checked by:
   review.

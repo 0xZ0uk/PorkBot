@@ -60,7 +60,7 @@ export function Rail({
       <div className="shell-rail-head">
         <span className="shell-rail-brand">PorkBot</span>
         <div className="shell-rail-search">
-          <Icon name="search" className="shell-rail-search-icon" />
+          <Icon name="search" />
           <Input
             type="search"
             className="shell-rail-search-input"
@@ -107,12 +107,12 @@ export function Rail({
           aria-label={pendingCount > 0 ? `Approvals, ${String(pendingCount)} waiting` : "Approvals"}
         >
           <Icon name="alert" />
-          <span className="shell-rail-foot-label">Approvals</span>
+          <span>Approvals</span>
           {pendingCount > 0 ? <CountBadge count={pendingCount} /> : null}
         </Link>
         <Link to="/settings" className="shell-rail-foot-row" onClick={onNavigate}>
           <Icon name="settings" />
-          <span className="shell-rail-foot-label">Settings</span>
+          <span>Settings</span>
         </Link>
         <Menu
           className="shell-rail-foot-mode"
@@ -128,7 +128,7 @@ export function Rail({
         />
         <Button variant="ghost" className="shell-rail-foot-row" onClick={onSignOut}>
           <Icon name="log-out" />
-          <span className="shell-rail-foot-label">Sign out</span>
+          <span>Sign out</span>
         </Button>
       </nav>
     </div>

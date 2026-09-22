@@ -6,7 +6,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 import { authGateConfigsFor } from "./auth-gate.js";
 import { boundaryConfigsFor } from "./module-boundaries.js";
-import { uiSurfaceConfigsFor } from "./ui-register.js";
+import { uiSurfaceConfigsFor } from "./ui-design-system.js";
 import {
   allSourceFiles as allFiles,
   typescriptSourceFiles as sourceFiles,
