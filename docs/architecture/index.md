@@ -17,3 +17,4 @@ what ships today.
 | [clients.md](clients.md)         | The web shell, the thread console and the desktop shell                                                                    |
 | [interface.md](interface.md)     | The workspace shell, bot identity, conversation grammar, state vocabulary, scales, register and screenshot set             |
 | [testing.md](testing.md)         | The CI tiers, the Postgres-per-suite harness, flake management, coverage and required checks                               |
+| [decisions/rewrite.md](decisions/rewrite.md) | Why the platform is not rewritten in a native language, and where native code does pay                           |

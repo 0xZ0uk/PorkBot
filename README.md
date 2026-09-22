@@ -16,6 +16,8 @@ product-facing ships until those are in place.
 - A self-hosted deployment sized from the [measured floor table](docs/architecture/operations-floor.md),
   with the Compose ceilings and per-bot limits kept as the separate deployment
   invariant in [`docs/architecture/operations.md`](docs/architecture/operations.md#single-host-deployment).
+- The platform is Node; the [rewrite decision record](docs/architecture/decisions/rewrite.md)
+  explains why and where native code is worth considering instead.
 
 Corepack is the easiest way to get the pinned pnpm:
 
