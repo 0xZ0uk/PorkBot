@@ -83,11 +83,13 @@ export interface DaytonaComputerCeilings {
  * One bot's share of the documented host floor, in Daytona's granularity.
  * Daytona's own minimums are 1 vCPU, 1 GiB of memory and 3 GiB of disk; a
  * ceiling below that is rounded up rather than refused, because the floor is
- * the provider's to enforce.
+ * the provider's to enforce. The default is the shell-shaped share
+ * (`DEFAULT_COMPUTER_CEILINGS` in `docker-computer.ts`), which Daytona rounds
+ * to its one-gibibyte floor.
  */
 export const DEFAULT_DAYTONA_CEILINGS: DaytonaComputerCeilings = {
   cpus: 1,
-  memoryMb: 2048,
+  memoryMb: 512,
   diskMb: 10_240,
 };
 

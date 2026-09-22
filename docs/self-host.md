@@ -43,18 +43,24 @@ and [the reverse proxy contract](reverse-proxy.md) is the contract it keeps.
 The supported shape is one Linux host with Docker Engine and the Compose v2
 plugin. Size a deployment from the committed [measured floor table](architecture/operations-floor.md),
 which separates idle usage from workload peaks and records the bot count and
-host shape it measured. The [single-host deployment
+host shape it measured. The floor's two terms scale differently: memory with
+the bots _active_ at once (a parked machine's memory is back with the host
+inside the park window) and disk with every _configured_ bot (a home volume
+survives a park). The [single-host deployment
 record](architecture/operations.md#single-host-deployment) keeps the Compose
 ceilings and per-bot limits as the invariant; the per-bot settings are
-`PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB` and
-`PORKBOT_COMPUTER_DISK_MB`.
+`PORKBOT_COMPUTER_CPUS`, `PORKBOT_COMPUTER_MEMORY_MB`,
+`PORKBOT_COMPUTER_SWAP_MB` and `PORKBOT_COMPUTER_DISK_MB`.
 
 Those settings are two different kinds of claim, so they are priced
 separately:
 
-- **Memory is a measured per-bot term.** `PORKBOT_COMPUTER_MEMORY_MB` (default
-  `2048`) sits beside the measured floor table, and a bot's container is capped
-  there.
+- **Memory and its swap bound are a measured per-bot term.**
+  `PORKBOT_COMPUTER_MEMORY_MB` (default `512`) sits beside the measured floor
+  table, and a bot's container is capped there; `2048` is what a
+  browser-inside-the-sandbox run needs. `PORKBOT_COMPUTER_SWAP_MB` (default
+  `256`) is its own, smaller bound, so a runaway bot pages a little and dies
+  instead of filling the host's swap.
 - **Disk is a budget, not a floor, and only where it can be kept.**
   `PORKBOT_COMPUTER_DISK_MB` (default `10240`) bounds a machine's write layer
   only when the daemon's storage driver answers a `size` quota — `btrfs`, or

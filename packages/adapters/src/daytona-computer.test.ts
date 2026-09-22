@@ -203,7 +203,9 @@ describe("the Daytona computer provider lifecycle", () => {
       .map((entry) => entry.body as Record<string, unknown>);
 
     expect(creates[0]).toMatchObject({ cpu: 2, memory: 4, disk: 8 });
-    expect(creates[1]).toMatchObject({ cpu: 1, memory: 2, disk: 10 });
+    // The default share is the shell-shaped one, which Daytona rounds up to
+    // its one-gibibyte floor rather than refusing.
+    expect(creates[1]).toMatchObject({ cpu: 1, memory: 1, disk: 10 });
   });
 
   it("snapshots a parked machine by waking it, and restores the home", async () => {

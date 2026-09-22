@@ -325,10 +325,15 @@ describe("the Docker computer provider isolation and ceilings", () => {
     await provider.ensure(otherComputer);
 
     const [first, second] = createBodies(daemon);
+    const mib = 1024 * 1024;
+    const defaultMemory = DEFAULT_COMPUTER_CEILINGS.memoryMb * mib;
+    const defaultSwap = DEFAULT_COMPUTER_CEILINGS.swapMb * mib;
 
     expect(first?.HostConfig?.["NanoCpus"]).toBe(2_000_000_000);
-    expect(first?.HostConfig?.["Memory"]).toBe(4096 * 1024 * 1024);
-    expect(first?.HostConfig?.["MemorySwap"]).toBe(4096 * 1024 * 1024);
+    expect(first?.HostConfig?.["Memory"]).toBe(4096 * mib);
+    // Raising one bot's memory leaves its swap bound where it was: swap is
+    // bounded independently of the memory ceiling, and smaller than it.
+    expect(first?.HostConfig?.["MemorySwap"]).toBe(4096 * mib + defaultSwap);
     expect(first?.HostConfig?.["PidsLimit"]).toBe(64);
     // Rotation is a host-floor concern: the log file under
     // /var/lib/docker/containers/<id>/ belongs to the host's disk, and a
@@ -343,9 +348,10 @@ describe("the Docker computer provider isolation and ceilings", () => {
       Config: { "max-size": "20m", "max-file": "5" },
     });
     expect(second?.HostConfig?.["NanoCpus"]).toBe(DEFAULT_COMPUTER_CEILINGS.cpus * 1_000_000_000);
-    expect(second?.HostConfig?.["Memory"]).toBe(DEFAULT_COMPUTER_CEILINGS.memoryMb * 1024 * 1024);
-    // No swap headroom beyond the memory ceiling, ever.
-    expect(second?.HostConfig?.["MemorySwap"]).toBe(second?.HostConfig?.["Memory"]);
+    expect(second?.HostConfig?.["Memory"]).toBe(defaultMemory);
+    // Docker's MemorySwap is memory plus swap, so the create body carries the
+    // sum and the swap portion is the independent bound.
+    expect(second?.HostConfig?.["MemorySwap"]).toBe(defaultMemory + defaultSwap);
     expect(second?.HostConfig?.["LogConfig"]).toEqual({
       Type: "json-file",
       Config: {

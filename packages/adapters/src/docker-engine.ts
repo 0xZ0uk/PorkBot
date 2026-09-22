@@ -107,6 +107,12 @@ export interface DockerLogConfig {
 export interface DockerContainerResources {
   readonly nanoCpus: number;
   readonly memoryBytes: number;
+  /**
+   * The swap the container may page to, beyond `memoryBytes`. Bounded on its
+   * own and smaller than the memory ceiling, so a runaway workload dies at a
+   * small total instead of parking the host's swap; `0` is no swap at all.
+   */
+  readonly swapBytes: number;
   /** A write layer quota, only for daemons whose storage driver answers it. */
   readonly storageSize?: string | undefined;
   readonly pidsLimit: number;
@@ -750,8 +756,10 @@ export function createDockerEngine(options: DockerEngineOptions = {}): DockerEng
             // quietly becomes a disk one.
             ...(tmpfs === undefined ? {} : { Tmpfs: tmpfs }),
             Memory: spec.resources.memoryBytes,
-            // Equal to Memory on purpose: no swap headroom beyond the ceiling.
-            MemorySwap: spec.resources.memoryBytes,
+            // Docker's MemorySwap is the total of memory plus swap, so the
+            // swap portion is `swapBytes`: an independent bound, smaller than
+            // the memory ceiling, rather than a second copy of it.
+            MemorySwap: spec.resources.memoryBytes + spec.resources.swapBytes,
             NanoCpus: spec.resources.nanoCpus,
             PidsLimit: spec.resources.pidsLimit,
             // A bounded json-file log is the same policy the stack's own

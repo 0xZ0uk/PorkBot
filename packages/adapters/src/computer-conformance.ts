@@ -55,6 +55,20 @@ export interface ComputerBrowserHarness {
   readonly unscriptedSelector: string;
 }
 
+/**
+ * The memory ceiling a live machine is expected to carry, and a reader for the
+ * one the instance actually has. Swap is the bound beyond memory, which is `0`
+ * on a provider that has no swap of its own.
+ */
+export interface ComputerConformanceMemoryCeiling {
+  readonly memoryBytes: number;
+  readonly swapBytes: number;
+  read: (computer: ComputerRef) => Promise<{
+    readonly memoryBytes: number;
+    readonly swapBytes: number;
+  }>;
+}
+
 export interface ComputerConformanceHarness {
   readonly provider: ComputerProvider;
   readonly computer: ComputerRef;
@@ -68,6 +82,13 @@ export interface ComputerConformanceHarness {
   readonly slowCommand: string;
   /** Present when the provider's computer can serve scripted pages. */
   readonly browser?: ComputerBrowserHarness | undefined;
+  /**
+   * Present when the provider can observe a machine's ceiling. The
+   * park-and-return case reads it before the park and again on the boot that
+   * follows, so a start that forgets the ceiling fails here rather than in a
+   * runaway run.
+   */
+  readonly memoryCeiling?: ComputerConformanceMemoryCeiling | undefined;
 }
 
 export type ComputerConformanceFactory = () => Promise<ComputerConformanceHarness>;
@@ -258,6 +279,35 @@ export async function computerConformance(
       await expect(
         harness.provider.stop({ computerId: "never-provisioned", botId: "bot-1" }),
       ).resolves.toMatchObject({ state: "gone" });
+    });
+
+    it("brings a parked computer back with its ceiling re-applied on boot", async () => {
+      const harness = await create();
+      await harness.provider.ensure(harness.computer);
+
+      // The ceiling is the provider's to observe; a harness that can read one
+      // proves the park drops the machine's memory and the boot that returns
+      // it applies the same bound again.
+      const ceiling = harness.memoryCeiling;
+
+      if (ceiling !== undefined) {
+        expect(await ceiling.read(harness.computer)).toEqual({
+          memoryBytes: ceiling.memoryBytes,
+          swapBytes: ceiling.swapBytes,
+        });
+      }
+
+      await harness.provider.stop(harness.computer);
+      await expect(harness.provider.ensure(harness.computer)).resolves.toMatchObject({
+        state: "running",
+      });
+
+      if (ceiling !== undefined) {
+        expect(await ceiling.read(harness.computer)).toEqual({
+          memoryBytes: ceiling.memoryBytes,
+          swapBytes: ceiling.swapBytes,
+        });
+      }
     });
 
     it("lists every computer it holds and forgets the ones it destroyed", async () => {

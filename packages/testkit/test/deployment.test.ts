@@ -164,11 +164,27 @@ describe("deployment register and template", () => {
         Number(memory?.[1] ?? 0) * (memory?.[2] === "g" ? memoryThresholds.g : memoryThresholds.m);
     }
 
-    // The single-host record: 4 vCPU / 8 GB is the base host, and the default
-    // per-bot settings are 1 vCPU / 2048 MB. The stack plus one bot has to fit
-    // with room for the OS and the daemon or the floor is a lie.
+    // The single-host record: 4 vCPU / 8 GB is the base host. The floor has
+    // two terms that scale differently — the memory term with the bots active
+    // at once (a parked machine's memory is back with the host inside the park
+    // window) and the disk term with every configured bot (a home volume
+    // survives a park). This checks the stack's ceilings plus one bot at the
+    // declared memory share against the host's RAM, and that the declared
+    // swap bound is independent of that share and smaller than it.
+    const perBotMemoryMb = Number(
+      /^PORKBOT_COMPUTER_MEMORY_MB=(\d+)$/m.exec(templateText)?.[1] ?? "0",
+    );
+    const perBotSwapMb = Number(
+      /^PORKBOT_COMPUTER_SWAP_MB=(\d+)$/m.exec(templateText)?.[1] ?? "-1",
+    );
+
+    expect(perBotMemoryMb).toBeGreaterThan(0);
+    expect(perBotSwapMb).toBeGreaterThanOrEqual(0);
+    expect(perBotSwapMb).toBeLessThan(perBotMemoryMb);
     expect(totalCpus + 1).toBeLessThanOrEqual(4);
-    expect(totalMemoryBytes + 2 * memoryThresholds.g).toBeLessThanOrEqual(8 * memoryThresholds.g);
+    expect(totalMemoryBytes + perBotMemoryMb * memoryThresholds.m).toBeLessThanOrEqual(
+      8 * memoryThresholds.g,
+    );
   });
 
   it("pins every pulled image by digest and never by latest", () => {
