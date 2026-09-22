@@ -268,11 +268,16 @@ services:
       # One bot's share of the documented host floor
       # (`docs/architecture/computers.md`): the memory term scales with the
       # bots active at once and the disk term with every configured bot. Swap
-      # is its own, smaller bound. Raise these only after raising the host.
+      # is its own, smaller bound. The disk figure is a write-layer budget
+      # enforced only where the daemon's storage driver answers a `size`
+      # quota, and snapshots are bounded per bot. Raise these only after
+      # raising the host.
       PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
       PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-512}
       PORKBOT_COMPUTER_SWAP_MB: ${PORKBOT_COMPUTER_SWAP_MB:-256}
       PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
+      PORKBOT_COMPUTER_DISK_QUOTA: ${PORKBOT_COMPUTER_DISK_QUOTA:-auto}
+      PORKBOT_COMPUTER_SNAPSHOT_KEEP: ${PORKBOT_COMPUTER_SNAPSHOT_KEEP:-10}
     volumes:
       # The only place the Docker socket is mounted in the stack. The
       # supervisor owns computer lifecycle; every other process reaches

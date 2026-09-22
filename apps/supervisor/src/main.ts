@@ -1,4 +1,5 @@
 import { createLogger } from "@porkbot/logging";
+import { DEFAULT_COMPUTER_ARCHIVE_STALE_MS } from "@porkbot/adapters";
 import { createScreenCapabilityCodec } from "@porkbot/effect";
 import { createComputerLifecycle } from "./computer-lifecycle.ts";
 import { createComputerProviderSelection } from "./computer-provider.ts";
@@ -36,7 +37,18 @@ const screenSecret = process.env["PORKBOT_SCREEN_TOKEN_SECRET"]?.trim() ?? "";
 let selection: ComputerProviderSelection;
 
 try {
-  selection = createComputerProviderSelection();
+  selection = createComputerProviderSelection(process.env, {
+    // Said before the bytes go: a prune reports the archives it is about to
+    // delete, so an operator sees bounded retention at work rather than a
+    // silent disappearance.
+    onSnapshotPrune: (removed) => {
+      logger.info("pruning snapshot archives beyond retention", {
+        count: removed.length,
+        keys: removed.map((object) => object.key),
+        bytes: removed.reduce((sum, object) => sum + object.size, 0),
+      });
+    },
+  });
 } catch (error) {
   logger.error("the computer provider configuration is invalid; refusing to start", { error });
   process.exit(1);
@@ -108,6 +120,53 @@ server.listen(requestedPort, () => {
       logger.error("computer reconciliation could not list the provider", { error });
     });
 });
+
+// The write-layer budget's enforcement is said out loud at boot (slice 14.4):
+// a driver that answers the quota is a promise kept, and a driver that does not
+// is reported as an explicit no-op rather than left implicit. The check is
+// read-only and fires after the health surface is up, so a daemon that is slow
+// or absent cannot hold the supervisor down.
+if (selection.diskQuota !== undefined) {
+  void selection
+    .diskQuota()
+    .then((decision) => {
+      const fields = {
+        mode: decision.mode,
+        applied: decision.applied,
+        enforced: decision.enforced,
+        driver: decision.driver,
+        backingFilesystem: decision.backingFilesystem ?? null,
+        detail: decision.detail,
+      };
+
+      if (decision.enforced) {
+        logger.info("computer write-layer disk budget is enforced", fields);
+      } else if (decision.mode === "storage-opt") {
+        logger.error("computer write-layer disk budget cannot be kept; creates will be refused", {
+          ...fields,
+        });
+      } else {
+        logger.warn("computer write-layer disk budget is not enforced", fields);
+      }
+    })
+    .catch((error: unknown) => {
+      logger.warn("the computer write-layer disk budget could not be determined", { error });
+    });
+}
+
+// Bounded retention holds for captures taken before this slice too: one boot
+// pass prunes every scope to `PORKBOT_COMPUTER_SNAPSHOT_KEEP` and sweeps a
+// staging file a crashed capture left. Both announce through `onSnapshotPrune`
+// above, so the log names what is removed before it is removed.
+if (selection.snapshotMaintenance !== undefined) {
+  const maintenance = selection.snapshotMaintenance;
+  const report = (error: unknown): void => {
+    logger.warn("the snapshot retention pass could not complete", { error });
+  };
+
+  void maintenance.pruneSnapshots().catch(report);
+  void maintenance.sweepStaging(DEFAULT_COMPUTER_ARCHIVE_STALE_MS).catch(report);
+}
 
 if (selection.idleTimeoutMs > 0) {
   const sweepMs = Math.max(1_000, Math.min(60_000, Math.floor(selection.idleTimeoutMs / 2)));

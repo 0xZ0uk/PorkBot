@@ -49,12 +49,16 @@ vocabulary's `timed_out`, and every daemon refusal is translated by
 the supervisor's reset rebuilds a clean machine with the agent's files intact,
 and the idle sweep parks anything no run has used for `PORKBOT_COMPUTER_IDLE_MS`
 with the same guarantee. Ceilings are per bot: CPU, memory, an independent and
-smaller swap bound, the process count, and a write-layer disk quota that only
-applies with `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt` on a daemon whose
-storage driver answers it. The defaults are one bot's capacity share; the
-[measured deployment floor](operations-floor.md) records what the complete
-stack and a stated bot count actually used. Raise the ceilings only after
-raising the host.
+smaller swap bound, the process count, and a write-layer disk quota whose
+enforcement is decided from the daemon's own storage driver
+(`packages/core/src/disk-quota.ts`): `PORKBOT_COMPUTER_DISK_QUOTA=auto` (the
+shipped default) applies the budget where the driver answers it — `btrfs`, or
+`overlay2` over xfs with `pquota` — and boot logs an explicit "not enforced,
+and why" where it does not, so `PORKBOT_COMPUTER_DISK_MB` is never a silent
+no-op. `deploy:check` reports the same verdict. The defaults are one bot's
+capacity share; the [measured deployment floor](operations-floor.md) records
+what the complete stack and a stated bot count actually used, and the RAM term
+is the measured one. Raise the ceilings only after raising the host.
 Snapshots stream the home through the archive API into a staging file that the
 shared snapshot store writes through the storage seam (slice 7.5). The image
 contract is a POSIX shell
@@ -112,6 +116,16 @@ because it knows only `StorageProvider`. What a snapshot captures is the agent
 home — files, not processes: running commands, open sessions and network
 connections are not in the archive, and a restore brings the files back into a
 fresh machine.
+
+Snapshots are bounded, not an ever-growing ledger (slice 14.4). The store keeps
+the newest `PORKBOT_COMPUTER_SNAPSHOT_KEEP` captures per scope — `write` prunes
+the scope it just wrote, and the supervisor's boot pass prunes every scope,
+so a capture taken before the slice shipped is bounded too — and reports each
+removal before it deletes, the same courtesies `deploy:down --volumes` shows. A
+staging file a crashed capture left in `PORKBOT_COMPUTER_ARCHIVE_DIR` is swept
+once it is older than a day. The snapshot index rows remain the operator's
+record of captures; restoring one whose archive was pruned is the same typed
+`not_found` as any missing archive.
 
 The operator's half is space-scoped. Each capture is recorded in
 `computer_snapshot` (the API's migration `0029`, grants `0030`), and

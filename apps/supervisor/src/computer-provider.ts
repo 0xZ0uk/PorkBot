@@ -5,14 +5,19 @@ import {
   createDockerComputerProvider,
   DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
   DEFAULT_COMPUTER_LOG_CONFIG,
+  DEFAULT_COMPUTER_SNAPSHOT_KEEP,
   LocalStorageProvider,
 } from "@porkbot/adapters";
 import type {
   ComputerCeilings,
+  ComputerSnapshotMaintenance,
   DaytonaComputerCeilings,
   DockerComputerProviderOptions,
   DockerProxyOptions,
 } from "@porkbot/adapters";
+import { DEFAULT_DISK_QUOTA_MODE, DISK_QUOTA_MODES } from "@porkbot/core";
+import type { DiskQuotaDecision } from "@porkbot/core";
+import type { StorageObject } from "@porkbot/adapter-kit";
 import { isProviderFailure } from "@porkbot/adapter-kit";
 import type {
   ComputerProvider,
@@ -71,6 +76,27 @@ export interface ComputerProviderSelection {
    * failing the write with it.
    */
   readonly validate: (kind: string) => Promise<ComputerProviderValidation>;
+  /**
+   * The Docker provider's resolved write-layer budget (slice 14.4), present
+   * only when this deployment configured Docker. Boot logs the decision — a
+   * promise kept where the driver answers, and an explicit "not enforced, and
+   * why" where it does not — instead of leaving `PORKBOT_COMPUTER_DISK_MB` a
+   * silent no-op.
+   */
+  readonly diskQuota?: (() => Promise<DiskQuotaDecision>) | undefined;
+  /**
+   * The snapshot store's maintenance half (slice 14.4), present only when a
+   * real provider was configured. Boot prunes every scope to
+   * `PORKBOT_COMPUTER_SNAPSHOT_KEEP` and sweeps a staging file a crash left,
+   * so bounded retention holds even for captures taken before this slice.
+   */
+  readonly snapshotMaintenance?: ComputerSnapshotMaintenance | undefined;
+}
+
+/** Callbacks the composition root supplies to the providers it builds. */
+export interface ComputerProviderSelectionOptions {
+  /** Called before a prune deletes, so boot's log names what it removes. */
+  readonly onSnapshotPrune?: ((removed: readonly StorageObject[]) => void) | undefined;
 }
 
 /** What one kind's selection check found. */
@@ -275,8 +301,18 @@ function snapshotStorage(env: Environment): StorageProvider {
 /** Builds the providers and the registry this process will own, from the environment alone. */
 export function createComputerProviderSelection(
   env: Environment = process.env,
+  options: ComputerProviderSelectionOptions = {},
 ): ComputerProviderSelection {
   const idleTimeoutMs = integer(env, "PORKBOT_COMPUTER_IDLE_MS", DEFAULT_IDLE_TIMEOUT_MS, 0);
+  // How many captures one bot keeps (slice 14.4). The store prunes older
+  // archives after each capture and a boot pass prunes the whole store, so a
+  // snapshot store cannot grow without bound.
+  const snapshotRetention = integer(
+    env,
+    "PORKBOT_COMPUTER_SNAPSHOT_KEEP",
+    DEFAULT_COMPUTER_SNAPSHOT_KEEP,
+    0,
+  );
   const image = setting(env, "PORKBOT_COMPUTER_IMAGE");
   const endpoint = setting(env, "PORKBOT_COMPUTER_ENDPOINT");
   const token = setting(env, "PORKBOT_COMPUTER_TOKEN");
@@ -335,6 +371,13 @@ export function createComputerProviderSelection(
   // storage root it never uses.
   let storage: StorageProvider | undefined;
   const snapshots = (): StorageProvider => (storage ??= snapshotStorage(env));
+  // The Docker provider's resolved write-layer budget (slice 14.4); present
+  // only when a Docker daemon is configured, so an offline deployment reports
+  // nothing to report.
+  let dockerDiskQuota: (() => Promise<DiskQuotaDecision>) | undefined;
+  // The snapshot store's maintenance half, present when a real provider built
+  // one. Both real providers write the same scope shapes, so either answers it.
+  let snapshotMaintenance: ComputerSnapshotMaintenance | undefined;
 
   if (dockerConfigured && image !== undefined) {
     const ceilings: Partial<ComputerCeilings> = {
@@ -362,22 +405,31 @@ export function createComputerProviderSelection(
     const diskQuota = choice(
       env,
       "PORKBOT_COMPUTER_DISK_QUOTA",
-      ["none", "storage-opt"] as const,
-      "none",
+      DISK_QUOTA_MODES,
+      DEFAULT_DISK_QUOTA_MODE,
     );
-    const options: DockerComputerProviderOptions = {
+    const dockerOptions: DockerComputerProviderOptions = {
       image,
       socketPath: setting(env, "PORKBOT_COMPUTER_SOCKET") ?? "/var/run/docker.sock",
       home: setting(env, "PORKBOT_COMPUTER_HOME") ?? "/home/agent",
       storage: snapshots(),
       scratchDirectory,
+      snapshotRetention,
+      onSnapshotPrune: options.onSnapshotPrune,
       pullPolicy,
       diskQuota,
       ceilings,
       ...(proxyOptions === undefined ? {} : { proxy: proxyOptions }),
     };
 
-    providers["docker"] = createDockerComputerProvider(options);
+    const docker = createDockerComputerProvider(dockerOptions);
+
+    providers["docker"] = docker;
+    dockerDiskQuota = docker.diskQuota;
+    snapshotMaintenance = {
+      pruneSnapshots: () => docker.pruneSnapshots(),
+      sweepStaging: (staleMs) => docker.sweepStaging(staleMs),
+    };
   }
 
   if (endpoint !== undefined || token !== undefined) {
@@ -393,7 +445,7 @@ export function createComputerProviderSelection(
       diskMb: integer(env, "PORKBOT_COMPUTER_DISK_MB", 10_240, 1),
     };
 
-    providers["daytona"] = createDaytonaComputerProvider({
+    const daytona = createDaytonaComputerProvider({
       endpoint,
       toolboxUrl: setting(env, "PORKBOT_COMPUTER_TOOLBOX_URL"),
       token,
@@ -401,8 +453,16 @@ export function createComputerProviderSelection(
       home: setting(env, "PORKBOT_COMPUTER_HOME") ?? "/home/agent",
       storage: snapshots(),
       scratchDirectory,
+      snapshotRetention,
+      onSnapshotPrune: options.onSnapshotPrune,
       ceilings,
     });
+
+    providers["daytona"] = daytona;
+    snapshotMaintenance = {
+      pruneSnapshots: () => daytona.pruneSnapshots(),
+      sweepStaging: (staleMs) => daytona.sweepStaging(staleMs),
+    };
   }
 
   if (providers[defaultKind] === undefined) {
@@ -417,6 +477,8 @@ export function createComputerProviderSelection(
     provider: createProviderRegistry(providers, defaultKind),
     idleTimeoutMs,
     validate: (kind) => validateProvider(providers, kind),
+    ...(dockerDiskQuota === undefined ? {} : { diskQuota: dockerDiskQuota }),
+    ...(snapshotMaintenance === undefined ? {} : { snapshotMaintenance }),
   };
 }
 

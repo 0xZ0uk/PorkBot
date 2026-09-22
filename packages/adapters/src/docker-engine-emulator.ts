@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { classifyDiskQuota } from "@porkbot/core";
 import { readTar, writeTar } from "./computer-archive.ts";
 
 export { readTar, writeTar };
@@ -89,6 +90,12 @@ interface ScriptedExec {
 export interface DockerEngineEmulatorOptions {
   /** The storage driver `/info` reports; `overlay2` by default. */
   readonly storageDriver?: string | undefined;
+  /**
+   * The driver's backing filesystem, as `/info`'s `DriverStatus` reports it.
+   * Absent means the daemon reports none, which is classified as unable to
+   * answer a write-layer quota rather than assumed to be xfs.
+   */
+  readonly backingFilesystem?: string | undefined;
 }
 
 function json(response: ServerResponse, status: number, body: unknown): void {
@@ -134,6 +141,7 @@ export class DockerEngineEmulator {
   readonly #directory: string;
   readonly #socketPath: string;
   readonly #storageDriver: string;
+  readonly #backingFilesystem: string | undefined;
   readonly #containers = new Map<string, EmulatedContainer>();
   readonly #images = new Set<string>();
   readonly #networks = new Map<string, EmulatedNetwork>();
@@ -151,11 +159,13 @@ export class DockerEngineEmulator {
     directory: string,
     socketPath: string,
     storageDriver: string,
+    backingFilesystem: string | undefined,
   ) {
     this.#server = server;
     this.#directory = directory;
     this.#socketPath = socketPath;
     this.#storageDriver = storageDriver;
+    this.#backingFilesystem = backingFilesystem;
   }
 
   static async start(options: DockerEngineEmulatorOptions = {}): Promise<DockerEngineEmulator> {
@@ -167,6 +177,7 @@ export class DockerEngineEmulator {
       directory,
       socketPath,
       options.storageDriver ?? "overlay2",
+      options.backingFilesystem,
     );
 
     server.on("request", (request, response) => {
@@ -357,7 +368,17 @@ export class DockerEngineEmulator {
     }
 
     if (method === "GET" && url.pathname === "/info") {
-      json(response, 200, { Driver: this.#storageDriver });
+      json(response, 200, {
+        Driver: this.#storageDriver,
+        ...(this.#backingFilesystem === undefined
+          ? {}
+          : {
+              DriverStatus: [
+                ["Backing Filesystem", this.#backingFilesystem],
+                ["Supports d_type", "true"],
+              ],
+            }),
+      });
       return;
     }
 
@@ -706,10 +727,39 @@ export class DockerEngineEmulator {
           readonly Labels?: unknown;
           readonly Healthcheck?: unknown;
           readonly HostConfig?:
-            { readonly Binds?: unknown; readonly NetworkMode?: unknown } | undefined;
+            | {
+                readonly Binds?: unknown;
+                readonly NetworkMode?: unknown;
+                readonly StorageOpt?: unknown;
+              }
+            | undefined;
         }
       | undefined;
     const image = typeof record?.Image === "string" ? record.Image : "";
+
+    // A real daemon refuses a create that asks for a `size` quota on a driver
+    // that cannot answer it, which is the fail-closed answer the provider's
+    // `storage-opt` mode relies on. The emulator refuses it the same way so a
+    // test can prove the budget is never silently dropped.
+    const storageOpt = record?.HostConfig?.StorageOpt;
+
+    if (
+      typeof storageOpt === "object" &&
+      storageOpt !== null &&
+      !classifyDiskQuota({
+        driver: this.#storageDriver,
+        ...(this.#backingFilesystem === undefined
+          ? {}
+          : { backingFilesystem: this.#backingFilesystem }),
+      }).supported
+    ) {
+      dockerError(
+        response,
+        500,
+        `--storage-opt is not supported on the "${this.#storageDriver}" storage driver`,
+      );
+      return;
+    }
     const imageReference = [...this.#images].find(
       (held) => held === image || held.startsWith(`${image}:`) || image.startsWith(`${held}:`),
     );

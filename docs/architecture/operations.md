@@ -50,8 +50,9 @@ Postgres volume, so a shut down and a re-run leave nothing behind.
   `PORKBOT_COMPUTER_ENDPOINT` / `PORKBOT_COMPUTER_TOKEN` (and optionally
   `PORKBOT_COMPUTER_TOOLBOX_URL`) are the cloud connection, and
   `PORKBOT_COMPUTER_CPUS` / `PORKBOT_COMPUTER_MEMORY_MB` /
-  `PORKBOT_COMPUTER_SWAP_MB` /
-  `PORKBOT_COMPUTER_DISK_MB` are one bot's share of the host floor under "A
+  `PORKBOT_COMPUTER_SWAP_MB` are one bot's measured share, and
+  `PORKBOT_COMPUTER_DISK_MB` is a write-layer budget enforced only where the
+  daemon's storage driver answers it, under "A
   bot's computer". `PORKBOT_COMPUTER_IDLE_MS` (default three minutes, zero
   disables) parks a machine no run is using; the home volume survives and the
   memory returns to the host.
@@ -211,6 +212,19 @@ active release running; a failed switch attempts to restore it.
   a capacity guard, not the measured floor. Raise the ceilings in
   `deploy/compose.yaml` only after raising the host; the per-bot settings live
   in the env file and are re-read at supervisor boot.
+
+  Per-bot disk is stated as three terms, because a single "disk per bot" number
+  would be a budget dressed as a floor. The write layer is bounded by
+  `PORKBOT_COMPUTER_DISK_MB` (default 10240 MB) only where the daemon's storage
+  driver answers a `size` quota — `btrfs`, or `overlay2` over xfs with
+  `pquota` — and `PORKBOT_COMPUTER_DISK_QUOTA=auto` detects it at boot and
+  reports the verdict, at boot and in `deploy:check`. The home volume is shared
+  with the write layer's budget but grows with what the agent writes, so it
+  scales with configured bots and their activity. Snapshot archives are bounded
+  per bot by `PORKBOT_COMPUTER_SNAPSHOT_KEEP` (default 10) and are the one term
+  that scales with active use. The machine image's read-only layers are paid
+  once per daemon, shared by every container, so N configured bots do not cost
+  N images.
 
 - **Operating it.** `pnpm deploy:status` prints each service's state, health
   and published ports; `pnpm deploy:logs` follows the logs;

@@ -625,6 +625,27 @@ describe("validating the deployment env file", () => {
 
     expect(validateDeploymentEnv(values)).toEqual([]);
   });
+
+  it("refuses an unknown disk-quota mode or a negative snapshot retention", () => {
+    const quota = problemsFor((values) => values.set("PORKBOT_COMPUTER_DISK_QUOTA", "unlimited"));
+
+    expect(quota.join("\n")).toMatch(/PORKBOT_COMPUTER_DISK_QUOTA: must be one of auto, none/);
+
+    const retention = problemsFor((values) => values.set("PORKBOT_COMPUTER_SNAPSHOT_KEEP", "-1"));
+
+    expect(retention.join("\n")).toMatch(/PORKBOT_COMPUTER_SNAPSHOT_KEEP/);
+
+    // Zero is a valid choice: it keeps every capture.
+    expect(
+      validateDeploymentEnv(
+        (() => {
+          const values = baseline();
+          values.set("PORKBOT_COMPUTER_SNAPSHOT_KEEP", "0");
+          return values;
+        })(),
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("the deployment commands", () => {
@@ -754,6 +775,54 @@ describe("the deployment commands", () => {
     ).toBe(0);
 
     expect(parseEnvFile(readFileSync(envFile, "utf8")).get("PORKBOT_COMPUTER_IMAGE")).toBe(image);
+  });
+
+  it("check reports the disk budget's enforcement from the daemon's storage driver", () => {
+    const { root, envFile } = workspace();
+
+    expect(
+      runDeploy(
+        ["setup", "--origin", testOrigin, "--computer-image", "registry.example.com/computer:1.0"],
+        contextFor(root).context,
+      ),
+    ).toBe(0);
+    // Select the Docker provider so the disk verdict is in scope, then leave
+    // every other setting the template rendered.
+    writeFileSync(
+      envFile,
+      readFileSync(envFile, "utf8").replace(
+        "PORKBOT_COMPUTER_PROVIDER=offline",
+        "PORKBOT_COMPUTER_PROVIDER=docker",
+      ),
+    );
+
+    const capable = contextFor(root, {
+      results: (command, args) =>
+        command === "docker" && args.includes("info")
+          ? { stdout: 'overlay2\t[["Backing Filesystem","xfs"]]\n' }
+          : undefined,
+    });
+
+    expect(runDeploy(["check"], capable.context)).toBe(0);
+    expect(capable.out.join("\n")).toMatch(/disk budget: .*is enforced by "overlay2"/);
+
+    const incapable = contextFor(root, {
+      results: (command, args) =>
+        command === "docker" && args.includes("info")
+          ? { stdout: 'overlay2\t[["Backing Filesystem","ext4"]]\n' }
+          : undefined,
+    });
+
+    expect(runDeploy(["check"], incapable.context)).toBe(0);
+    expect(incapable.err.join("\n")).toMatch(/disk budget: .*not enforced/);
+
+    const unreachable = contextFor(root, {
+      results: (command, args) =>
+        command === "docker" && args.includes("info") ? { status: 1 } : undefined,
+    });
+
+    expect(runDeploy(["check"], unreachable.context)).toBe(0);
+    expect(unreachable.out.join("\n")).toMatch(/could not be reached/);
   });
 
   it("setup --force rotates the generated secrets and keeps the operator settings", () => {

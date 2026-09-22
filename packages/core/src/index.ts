@@ -442,6 +442,20 @@ export type {
 } from "./computer-network.ts";
 
 export {
+  classifyDiskQuota,
+  decideDiskQuota,
+  DEFAULT_DISK_QUOTA_MODE,
+  DISK_QUOTA_DRIVERS,
+  DISK_QUOTA_MODES,
+} from "./disk-quota.ts";
+export type {
+  DiskQuotaCapability,
+  DiskQuotaDecision,
+  DiskQuotaDriverInfo,
+  DiskQuotaMode,
+} from "./disk-quota.ts";
+
+export {
   BACKUP_ALERT_KINDS,
   BACKUP_ENVELOPE_VERSION,
   BACKUP_OBJECT_PREFIX,

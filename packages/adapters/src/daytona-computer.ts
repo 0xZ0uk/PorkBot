@@ -9,6 +9,7 @@ import type {
   ComputerExecResult,
   ComputerProvider,
   ComputerRef,
+  StorageObject,
   StorageProvider,
 } from "@porkbot/adapter-kit";
 import { ComputerProviderError } from "./computer-errors.ts";
@@ -17,6 +18,7 @@ import {
   createComputerSnapshotStore,
   DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
 } from "./computer-snapshot-store.ts";
+import type { ComputerSnapshotMaintenance } from "./computer-snapshot-store.ts";
 import { computerIdentityHash, createRuntimeComputerProvider } from "./computer-runtime.ts";
 import type {
   ComputerListedMachine,
@@ -133,6 +135,10 @@ export interface DaytonaComputerProviderOptions {
   readonly storage: StorageProvider;
   /** Where an archive is staged while it is written or verified. */
   readonly scratchDirectory?: string | undefined;
+  /** How many captures one bot keeps; older archives are pruned after a capture. */
+  readonly snapshotRetention?: number | undefined;
+  /** Called with the archives a prune is about to delete, before it deletes. */
+  readonly onSnapshotPrune?: ((removed: readonly StorageObject[]) => void) | undefined;
   /** Injected for tests; built from the endpoint options when absent. */
   readonly engine?: DaytonaEngine | undefined;
   /**
@@ -616,15 +622,26 @@ function createDaytonaRuntime(options: DaytonaComputerProviderOptions): Computer
   };
 }
 
+/** The cloud provider's seam plus the snapshot-maintenance half the supervisor runs at boot. */
+export interface DaytonaComputerProvider extends ComputerProvider, ComputerSnapshotMaintenance {}
+
 export function createDaytonaComputerProvider(
   options: DaytonaComputerProviderOptions,
-): ComputerProvider {
-  return createRuntimeComputerProvider({
-    runtime: createDaytonaRuntime(options),
-    snapshots: createComputerSnapshotStore({
-      storage: options.storage,
-      scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
-    }),
-    bootTimeoutMs: options.bootTimeoutMs,
+): DaytonaComputerProvider {
+  const store = createComputerSnapshotStore({
+    storage: options.storage,
+    scratchDirectory: options.scratchDirectory ?? DEFAULT_COMPUTER_ARCHIVE_DIRECTORY,
+    retention: options.snapshotRetention,
+    onPrune: options.onSnapshotPrune,
   });
+
+  return {
+    ...createRuntimeComputerProvider({
+      runtime: createDaytonaRuntime(options),
+      snapshots: store,
+      bootTimeoutMs: options.bootTimeoutMs,
+    }),
+    pruneSnapshots: () => store.prune(),
+    sweepStaging: (staleMs) => store.sweepStaging(staleMs),
+  };
 }
