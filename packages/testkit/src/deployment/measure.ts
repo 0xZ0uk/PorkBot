@@ -32,7 +32,6 @@ export const measuredStackServices = [
   "migrate",
   "api",
   "worker",
-  "backup",
   "proxy",
   "supervisor",
 ] as const;
@@ -610,8 +609,9 @@ function runMigration(context: MeasurementContext): boolean {
 function runBackupDrill(context: MeasurementContext): boolean {
   context.out("Measuring the nightly backup and restore drill.");
   const result = compose(context, [
-    "exec",
-    "-T",
+    "run",
+    "--rm",
+    "--no-deps",
     "backup",
     "node",
     "dist/cli.js",
@@ -898,7 +898,7 @@ export function renderMeasurementTable(report: DeploymentMeasurementReport): str
       : `Docker server: ${report.host.dockerServerVersion}.`,
     "",
     "This table is measured usage, not the Compose ceilings. The idle column is the largest current memory and CPU sample during the idle phases; peak is the largest cgroup peak or `docker stats` sample observed across the complete workload.",
-    "The one-shot migration is covered by the workload phase and is not included in the persistent-service totals.",
+    "The one-shot migration and backup/restore job are covered by workload phases and are not included in the persistent-service totals.",
     "",
     "<!-- prettier-ignore -->",
     "| service | idle memory | peak memory | idle CPU | peak CPU | peak CPU time |",

@@ -10,8 +10,6 @@
  */
 export interface BackupEnvironment extends Readonly<Record<string, string | undefined>> {
   readonly DATABASE_URL: string | undefined;
-  readonly PORT: string | undefined;
-  readonly PORKBOT_BACKUP_TICK_MS: string | undefined;
   readonly PORKBOT_STORAGE_DIR: string | undefined;
   readonly PORKBOT_BACKUP_DIR: string | undefined;
   readonly PORKBOT_BACKUP_ENVELOPE_DIR: string | undefined;
@@ -32,8 +30,6 @@ export interface BackupEnvironment extends Readonly<Record<string, string | unde
 export function readBackupEnvironment(): BackupEnvironment {
   return {
     DATABASE_URL: process.env["DATABASE_URL"],
-    PORT: process.env["PORT"],
-    PORKBOT_BACKUP_TICK_MS: process.env["PORKBOT_BACKUP_TICK_MS"],
     PORKBOT_STORAGE_DIR: process.env["PORKBOT_STORAGE_DIR"],
     PORKBOT_BACKUP_DIR: process.env["PORKBOT_BACKUP_DIR"],
     PORKBOT_BACKUP_ENVELOPE_DIR: process.env["PORKBOT_BACKUP_ENVELOPE_DIR"],

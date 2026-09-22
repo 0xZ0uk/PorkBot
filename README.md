@@ -91,7 +91,7 @@ The docs, checked for staleness by the `docs` CI tier:
 | [`docs/self-host.md`](docs/self-host.md)                                         | Install and run a single-host deployment, first sign-in to first run    |
 | [`docs/environment.md`](docs/environment.md)                                     | Every environment variable, with its default and whether it is required |
 | [`docs/runbook.md`](docs/runbook.md)                                             | Dead disk, stuck run, rotated key, failed upgrade, restore              |
-| [`docs/backups.md`](docs/backups.md)                                             | The backup process, the envelope and the recovery path                  |
+| [`docs/backups.md`](docs/backups.md)                                             | The backup job, its timer, envelope and recovery path                   |
 | [`docs/computers.md`](docs/computers.md)                                         | Choosing and configuring a computer provider, sizing and snapshots      |
 | [`docs/architecture/operations-floor.md`](docs/architecture/operations-floor.md) | The measured deployment floor and workload record                       |
 | [`docs/security.md`](docs/security.md)                                           | The trust boundary and the non-goals                                    |

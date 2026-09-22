@@ -9,8 +9,8 @@ supports:
   does not fix;
 - the schema-rollback limitation is stated where an operator will meet it.
 
-Commands run from the checkout root. `deploy:exec` runs a command in a running
-service; the database is reachable no other way.
+Commands run from the checkout root. `deploy:exec` runs a command in a resident
+service; `deploy:backup` starts the backup image as a one-shot.
 
 ## First look
 
@@ -30,7 +30,7 @@ Values named `key`, `token`, `secret` or `password` are redacted before write.
 | A service is unhealthy or restarting | `pnpm deploy:logs <service>`; its `/readyz` names the dependency it cannot reach.                               |
 | The origin does not answer           | `pnpm deploy:logs proxy`; [the reverse proxy runbook](reverse-proxy.md#runbook-when-streaming-does-not-stream). |
 | No mail arrives                      | The `PORKBOT_MAIL_*` trio is configured, and the provider accepted the send: `pnpm deploy:logs api`.            |
-| A backup alert                       | `pnpm deploy:exec -- backup node dist/cli.js status`; [the backup runbook](backups.md#failing-loudly).          |
+| A backup alert                       | `pnpm deploy:backup -- status`; [the backup runbook](backups.md#failing-loudly).                                |
 | A run will not move                  | "A run is stuck" below.                                                                                         |
 
 ## A run is stuck
@@ -113,7 +113,7 @@ their key remains in `PORKBOT_CREDENTIAL_KEYS`. To rotate writes:
    it, or on demand:
 
    ```sh
-   pnpm deploy:exec -- backup node dist/cli.js envelope
+   pnpm deploy:backup -- envelope
    ```
 
 To rotate only the envelope passphrase, set the new
@@ -231,15 +231,15 @@ To recover onto a new host:
    `PORKBOT_BACKUP_ENVELOPE_PASSPHRASE`; the envelope is how the backup keyring
    is recovered. With S3 configured, the objects are already on the new host's
    side. If your off-host copy is a dump file rather than an S3 bucket, put it
-   where the backup process reads objects from — for example with
-   `docker cp <file> "$(docker compose --project-name porkbot --file deploy/compose.yaml --env-file deploy/.env ps -q backup):/var/lib/porkbot/backups/postgres/"`
-   — or restore the `backup-data` volume from its copy.
+   where the backup job reads objects from — for example with a temporary
+   one-shot that mounts the recovery directory and copies the object into the
+   `backup-data` volume — or restore that volume from its copy.
 3. **Start the stack** (`pnpm deploy:check && pnpm deploy:up`). It comes up with
    an empty database, which is expected: the point is a running Postgres and a
-   backup process that can open the destination and the envelope.
+   backup job that can open the destination and the envelope.
 4. **Restore the database into a new database.**
    ```sh
-   pnpm deploy:exec -- backup node dist/cli.js restore --latest --database porkbot_restored
+   pnpm deploy:backup -- restore --latest --database porkbot_restored
    # or: --key backups/postgres/<run id>.dump.enc
    ```
    The command verifies the object, restores it, proves the canary and the
@@ -248,14 +248,14 @@ To recover onto a new host:
    the restored one into `porkbot`, and start the stack:
    ```sh
    docker compose --project-name porkbot --file deploy/compose.yaml \
-     --env-file deploy/.env stop api worker backup
+     --env-file deploy/.env stop api worker
    pnpm deploy:exec -- postgres psql -U porkbot -d postgres \
      -c "alter database porkbot rename to porkbot_empty" \
      -c "alter database porkbot_restored rename to porkbot"
    pnpm deploy:up
    ```
 6. **Re-check the product.** Sign in, open a thread, and run
-   `pnpm deploy:exec -- backup node dist/cli.js status`. The next nightly run
+   `pnpm deploy:backup -- status`. The next nightly run
    writes fresh objects; the drill proves the chain again.
 7. **Bot homes.** If the storage root survived, snapshots restore from the
    Computer screen as usual. If it did not, the home archives under
@@ -274,8 +274,8 @@ envelope and passphrase are kept apart, is [the backup
 runbook](backups.md#the-key-envelope-and-the-recovery-path).
 
 ```sh
-pnpm deploy:exec -- backup node dist/cli.js status      # what exists, and the envelope
-pnpm deploy:exec -- backup node dist/cli.js restore --latest --database porkbot_restored
+pnpm deploy:backup -- status      # what exists, and the envelope
+pnpm deploy:backup -- restore --latest --database porkbot_restored
 ```
 
 A restore always creates a new database and refuses an existing name, so it can

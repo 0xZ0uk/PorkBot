@@ -37,17 +37,25 @@ worker on boot, and restoring stale queue state is noise rather than recovery.
 
 The nightly run is a UTC time (`PORKBOT_BACKUP_SCHEDULE_HOUR_UTC`,
 `PORKBOT_BACKUP_SCHEDULE_MINUTE_UTC`; default 03:00). The ledger's newest
-attempt is the only cursor: a process that was down for three days runs once on
-boot rather than three times, and a restart minutes after a run runs nothing.
-The first tick on boot runs immediately, so a fresh deployment has a backup
-before its first night.
+attempt is the cursor: a host that was down for three days runs once after it
+returns rather than replaying three nights, and another invocation minutes
+after a run does nothing. `deploy:up` runs the one-shot once with that same due
+check, so a fresh deployment has a backup before its first night.
 
-`apps/backup` is a sixth always-on process. It holds the database owner's
-connection — the only process that does — and nothing else: no HTTP surface
-beyond the health probe, no Docker socket, no agent-facing path. It reads the
-destination's keys from the environment credential store through the S3
-adapter when `PORKBOT_BACKUP_S3_*` is configured, and writes to a local volume
-otherwise, so a self-hosted deployment needs no vendor.
+`pnpm deploy:up` installs and enables a persistent per-user systemd timer and
+enables lingering for that user. At the calendar time, systemd starts an
+ephemeral Compose container and waits for it to exit. No backup process holds
+memory between runs. `pnpm deploy:schedule` refreshes the timer after a schedule
+change; `pnpm deploy:status` reports its loaded, enabled and active state and
+next firing. The service's logs are in
+`journalctl --user -u porkbot-backup.service`.
+
+The container holds the database owner's connection — the only application
+container that does — only for the run. It has no HTTP surface, Docker socket
+or agent-facing path. A session-scoped Postgres advisory lock permits only one
+owner, so an overlapping timer or operator command is refused instead of taking
+two dumps, while a killed container releases the lane automatically. The job reads destination keys through the S3 adapter when
+`PORKBOT_BACKUP_S3_*` is configured and writes to a local volume otherwise.
 
 ## Encryption at rest
 
@@ -73,8 +81,8 @@ passphrase; no key is hand-invented.
 ## The key envelope and the recovery path
 
 The envelope is written to `PORKBOT_BACKUP_ENVELOPE_DIR` (default
-`/var/lib/porkbot/backup-envelope`, its own volume in both compose files) on
-boot and after every run. It is a different location from the backup
+`/var/lib/porkbot/backup-envelope`, its own volume in both compose files) after
+every run. It is a different location from the backup
 destination on purpose: a bucket that holds both the ciphertext and the key
 that opens it is not encrypted at rest in any useful sense.
 
@@ -88,16 +96,16 @@ never stored. On a fresh host:
    `PORKBOT_BACKUP_ENVELOPE_DIR/key-envelope.json`;
 2. start Postgres and run the migrations (`pnpm db:migrate` or the `migrate`
    service) so the roles exist;
-3. `pnpm deploy:exec -- backup node dist/cli.js restore --latest --database
-porkbot_restored` — or `--key backups/postgres/<run id>.dump.enc` for a
+3. `pnpm deploy:backup -- restore --latest --database porkbot_restored` — or
+   `--key backups/postgres/<run id>.dump.enc` for a
    specific backup. The command creates the database, restores the dump,
    proves a canary row and the domain tables read back, and prints a summary.
 4. Point the API and the worker at the restored database, or rename it into
    place, and start the stack.
 
 Without the passphrase the envelope does not open; without the envelope the
-keyring lives only in the environment. Keep both. A run's `status` output
-(`node dist/cli.js status`) names the envelope path, whether it is present, and
+keyring lives only in the environment. Keep both. `pnpm deploy:backup -- status`
+names the envelope path, whether it is present, and
 the last run, success and drill.
 
 ## The restore drill
@@ -127,7 +135,7 @@ key wrote.
 
 ## Failing loudly
 
-The backup process settles every run in `backup_run` with a closed `error_code`
+The backup job settles every run in `backup_run` with a closed `error_code`
 and logs it. The worker's `backup.watchdog` job (every five minutes) reads the
 deployment-scoped ledger and alerts through the notification provider when:
 
@@ -146,6 +154,7 @@ is the loud part; a configured webhook pages the operator.
 | Concern                        | Module                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------- |
 | Schedule, retention, alerts    | `packages/core/src/backup-policy.ts`                                   |
+| Host timer                     | `packages/testkit/src/deployment/commands.ts`                          |
 | Stream cipher and envelope     | `apps/backup/src/cipher.ts`                                            |
 | Encrypted objects over storage | `apps/backup/src/archive.ts`                                           |
 | `pg_dump`/`pg_restore`         | `apps/backup/src/postgres.ts`                                          |

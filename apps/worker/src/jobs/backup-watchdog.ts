@@ -9,7 +9,7 @@ import type { JobContext, JobDefinition } from "../job-registry.ts";
 /**
  * The backup watchdog (slice 12.3; PRD story 5).
  *
- * The backup process writes the ledger; this five-minute job is what makes
+ * The backup one-shot writes the ledger; this five-minute job is what makes
  * "they do not run" loud. It reads the deployment-scoped ledger — no space, no
  * actor, because a backup covers the whole database — and asks `@porkbot/core`
  * whether anything is alert-worthy: a failed run, a run stuck past any

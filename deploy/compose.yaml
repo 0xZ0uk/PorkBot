@@ -1,7 +1,8 @@
 # The single-host deployment (slice 12.1, PRD stories 1 and 2, decision 32).
 #
 # This is the production shape of the local stack in the repository-root
-# compose.yaml: the same five always-on processes plus the one-shot migrate,
+# compose.yaml: the same resident processes plus the migrate and backup
+# one-shots,
 # with production's teeth instead of a developer's defaults.
 #
 #   - No local placeholder survives. Every secret and every operator choice is
@@ -213,13 +214,18 @@ services:
           memory: 1g
 
   backup:
-    <<: *app
+    # The host timer starts this one-shot at the configured UTC time. It also
+    # runs once during `deploy:up`, where `--if-due` catches a missed night but
+    # the durable ledger skips a duplicate. No backup process remains resident
+    # between runs.
+    profiles: [scheduled]
     build:
       context: ..
       target: backup
     image: porkbot/backup:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
+    restart: "no"
+    command: ["node", "dist/cli.js", "run", "--if-due"]
     environment:
-      PORT: "3004"
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # The database owner's connection: pg_dump reads the whole schema and the
       # drill creates and drops a scratch database. No other process holds it.
@@ -261,6 +267,8 @@ services:
     deploy:
       resources:
         limits:
+          # This is a per-run ceiling, not resident capacity: the container
+          # exits as soon as the backup and any due restore drill settle.
           cpus: "0.25"
           memory: 256m
 

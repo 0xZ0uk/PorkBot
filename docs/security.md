@@ -22,8 +22,9 @@ internet ── 80/443 ──► caddy (deploy/Caddyfile)
 ```
 
 Only the proxy is public. The API and web hosts are loopback; Postgres, the
-worker, the backup process and the supervisor are on the stack network and have
+worker and supervisor are on the stack network and have
 no published port. The one way in to the database is `pnpm deploy:exec`.
+The backup container joins that network only while its host timer runs.
 
 A bot's computer is a second boundary inside the first. A machine gets its own
 internal Docker network with an isolated gateway; it reaches neither another

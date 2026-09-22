@@ -102,8 +102,7 @@ COPY --from=build /deploy/backup ./
 # place.
 RUN mkdir -p /var/lib/porkbot/backups /var/lib/porkbot/backup-envelope && chown -R postgres:postgres /var/lib/porkbot
 USER postgres
-EXPOSE 3004
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/cli.js", "run", "--if-due"]
 
 FROM node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS supervisor
 

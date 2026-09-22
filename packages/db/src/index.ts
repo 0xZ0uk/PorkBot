@@ -414,7 +414,13 @@ export type {
 // backup process writes through `createBackupLedger` over the database owner's
 // connection, and the worker reads and claims through `createBackupStatusReader`
 // over its own restricted role.
-export { createBackupLedger, createBackupStatusReader, readCanaryToken } from "./backup-store.ts";
+export {
+  BackupRunOverlapError,
+  createBackupLedger,
+  createBackupStatusReader,
+  readCanaryToken,
+  withBackupRunLock,
+} from "./backup-store.ts";
 export type {
   BackupLedger,
   BackupRunRecord,

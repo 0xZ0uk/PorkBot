@@ -1,7 +1,8 @@
 import { isProviderFailure } from "@porkbot/adapter-kit";
+import { BackupRunOverlapError } from "@porkbot/db";
 
 /**
- * The backup process's closed failure vocabulary (slice 12.3).
+ * The backup job's closed failure vocabulary (slice 12.3).
  *
  * A run records one `error_code`; a notification or an operator's `status`
  * read names the same word. Free text from `pg_dump`, the filesystem or a
@@ -31,6 +32,8 @@ export const BACKUP_ERROR_CODES = [
   "config_invalid",
   /** The retention pass failed; old objects were not pruned. */
   "retention_failed",
+  /** Another timer or operator already owns the deployment-wide run lane. */
+  "already_running",
   /** Anything the code above does not recognize. */
   "internal_error",
 ] as const;
@@ -61,6 +64,10 @@ export function classifyBackupError(error: unknown): BackupErrorCode {
     return "storage_failed";
   }
 
+  if (error instanceof BackupRunOverlapError) {
+    return "already_running";
+  }
+
   return "internal_error";
 }
 
@@ -72,6 +79,10 @@ export function backupErrorDetail(error: unknown): string {
 
   if (isProviderFailure(error)) {
     return `${error.kind}${error.detail === undefined ? "" : `: ${error.detail}`}`;
+  }
+
+  if (error instanceof BackupRunOverlapError) {
+    return error.message;
   }
 
   return error instanceof Error ? error.name : "unknown error";

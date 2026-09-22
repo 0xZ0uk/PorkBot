@@ -27,7 +27,7 @@ containers on the same machine.
 | `migrate`    | One-shot: applies the committed migrations, sets the role passwords | nothing; exits          |
 | `api`        | The RPC and file surface, the auth gate, the streams                | the proxy, loopback     |
 | `worker`     | The job queue, run execution, notifications                         | the stack network only  |
-| `backup`     | The nightly encrypted backup and its restore drill                  | the stack network only  |
+| `backup`     | One-shot: nightly encrypted backup and restore drill; then exits    | the stack network only  |
 | `proxy`      | Caddy: TLS, one origin, and the built SPA itself                    | the public ports 80/443 |
 | `supervisor` | Computer lifecycle; the only holder of the Docker socket            | the stack network only  |
 
@@ -132,7 +132,7 @@ recent logs, and leaves nothing half-up. When it returns, the status table names
 the origin and the loopback ports:
 
 ```sh
-pnpm deploy:status   # each service's state, health and published ports
+pnpm deploy:status   # services plus the backup timer and its next firing
 pnpm deploy:logs     # follow the logs
 ```
 
@@ -257,7 +257,7 @@ pnpm deploy:status
 pnpm deploy:logs
 pnpm deploy:exec -- <service> <command>     # run a command in a running service
 pnpm deploy:exec -- postgres psql -U porkbot -d porkbot
-pnpm deploy:exec -- backup node dist/cli.js status
+pnpm deploy:backup -- status
 ```
 
 - **Upgrades.** `pnpm deploy:upgrade --tag <git-sha>` pulls the target release,
@@ -265,8 +265,9 @@ pnpm deploy:exec -- backup node dist/cli.js status
   `pnpm deploy:rollback` redeploys the previous release. Rollback is not a
   schema rollback; [the upgrade runbook](runbook.md#an-upgrade-failed) states
   what that means in practice.
-- **Backups.** The backup process runs nightly, writes encrypted objects to its
-  volume or to S3, and drills a restore every 30 days. Copy the sealed key
+- **Backups.** A persistent systemd timer starts an ephemeral backup container
+  nightly; no backup process remains resident. The job writes encrypted objects
+  to its volume or to S3 and drills a restore every 30 days. Copy the sealed key
   envelope off the host and keep the passphrase in a vault; [the backup
   runbook](backups.md#the-key-envelope-and-the-recovery-path) is the recovery
   path when the host is gone.
