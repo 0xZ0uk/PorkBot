@@ -79,10 +79,7 @@ export function uiSurfaceConfigsFor(packageName) {
         // Width and height are a size the caller chooses — a skeleton bar's
         // length, a usage bar's fill — and no class token carries them.
         "shadcn/no-inline-styles": ["error", { allow: ["width", "height", "maxHeight"] }],
-        // `pb-*` is the register's own class namespace, declared in
-        // `packages/ui/src/style-sheet.ts` rather than by Tailwind. Slice 2
-        // rebuilds the register on Tailwind classes and drops this entry.
-        "shadcn/no-unknown-classes": ["error", { allow: ["pb-*"] }],
+        "shadcn/no-unknown-classes": "error",
         "shadcn/require-static-classes": "error",
       },
     },

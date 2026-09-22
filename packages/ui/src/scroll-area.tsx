@@ -1,6 +1,6 @@
 /** ScrollArea: the overflow container the rail, transcript and inspector share. */
-
 import type { ReactNode, Ref, UIEvent } from "react";
+import { cn } from "./lib/utils.ts";
 
 export type ScrollAreaProps = {
   /** The accessible name for the scrollable region. */
@@ -30,7 +30,10 @@ export function ScrollArea({
     <div
       ref={ref}
       onScroll={onScroll}
-      className={["pb-scroll-area", className].filter(Boolean).join(" ")}
+      className={cn(
+        "min-h-0 overflow-auto overscroll-contain focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary",
+        className,
+      )}
       style={maxHeight === undefined ? undefined : { maxHeight }}
       tabIndex={0}
       role="region"

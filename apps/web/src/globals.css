@@ -1,13 +1,16 @@
 @import "tailwindcss";
 @import "./styles.css";
-
 /*
- * The shadcn semantic tokens, mapped into the Tailwind theme.
+ * The shadcn semantic tokens and the token scales, mapped into the Tailwind
+ * theme.
  *
  * `@porkbot/tokens` declares `--background`, `--primary`, `--sidebar` and the
  * rest of that set for both modes and inlines them before first paint;
  * `@theme inline` here turns each one into the utility that names it, so a
- * surface writes `bg-background` and gets `var(--background)`. No value is
+ * surface writes `bg-background` and gets `var(--background)`. The space scale
+ * is Tailwind's own 4px rhythm (the tokens share it), the radius and type
+ * steps are mapped name-for-name onto `@porkbot/tokens`, and the hover mixes
+ * are derived from the two colours the old stylesheet mixed — no value is
  * written down twice and no colour literal appears outside `packages/tokens`.
  */
 @theme inline {
@@ -19,6 +22,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: color-mix(in srgb, var(--primary) 88%, var(--foreground));
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -27,6 +31,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: color-mix(in srgb, var(--destructive) 88%, var(--foreground));
+  --color-success: var(--pb-color-success);
+  --color-warning: var(--pb-color-warning);
+  --color-info: var(--pb-color-info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -43,13 +51,34 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-
-  --radius-sm: calc(var(--radius) - 0.125rem);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 0.125rem);
-  --radius-xl: calc(var(--radius) + 0.25rem);
+  --radius-sm: var(--pb-radius-sm);
+  --radius-md: var(--pb-radius-md);
+  --radius-lg: var(--pb-radius-lg);
+  --radius-xl: var(--pb-radius-xl);
+  --radius-pill: var(--pb-radius-pill);
+  --font-sans: var(--pb-font-sans);
+  --font-mono: var(--pb-font-mono);
+  --text-display: var(--pb-type-display-size);
+  --text-display--line-height: var(--pb-type-display-line-height);
+  --text-display--font-weight: var(--pb-type-display-weight);
+  --text-title: var(--pb-type-title-size);
+  --text-title--line-height: var(--pb-type-title-line-height);
+  --text-title--font-weight: var(--pb-type-title-weight);
+  --text-heading: var(--pb-type-heading-size);
+  --text-heading--line-height: var(--pb-type-heading-line-height);
+  --text-heading--font-weight: var(--pb-type-heading-weight);
+  --text-body: var(--pb-type-body-size);
+  --text-body--line-height: var(--pb-type-body-line-height);
+  --text-body--font-weight: var(--pb-type-body-weight);
+  --text-code: var(--pb-type-code-size);
+  --text-code--line-height: var(--pb-type-code-line-height);
+  --text-code--font-weight: var(--pb-type-code-weight);
+  --text-meta: var(--pb-type-meta-size);
+  --text-meta--line-height: var(--pb-type-meta-line-height);
+  --text-meta--font-weight: var(--pb-type-meta-weight);
+  --shadow-raised: var(--pb-elevation-raised);
+  --shadow-overlay: var(--pb-elevation-overlay);
 }
-
 /* The document rules the shell needs before the bundle runs. They read the
    tokens' custom properties, so they survive a theme change untouched. */
 @layer base {
@@ -58,12 +87,10 @@
   *::after {
     box-sizing: border-box;
   }
-
   html,
   body {
     height: 100%;
   }
-
   body {
     margin: 0;
     background: var(--background);
@@ -73,11 +100,9 @@
     line-height: var(--pb-type-body-line-height);
     -webkit-font-smoothing: antialiased;
   }
-
   a {
     color: var(--primary);
   }
-
   /* One visible focus treatment everywhere, drawn in the ring colour so it
      survives a theme change with everything else. */
   a:focus-visible,

@@ -10,21 +10,21 @@ describe("Tooltip", () => {
         <button type="button">Compress</button>
       </Tooltip>,
     );
-    const wrapper = container.querySelector(".pb-tooltip");
+    const trigger = container.querySelector("button");
 
-    if (wrapper === null) {
-      throw new Error("the tooltip wrapper did not render");
+    if (trigger === null) {
+      throw new Error("the trigger did not render");
     }
 
-    expect(container.querySelector("[role='tooltip']")).toBeNull();
+    expect(document.querySelector("[role='tooltip']")).toBeNull();
 
-    await hover(wrapper, "enter");
-    expect(container.querySelector("[role='tooltip']")?.textContent).toBe(
-      "Compress the transcript",
-    );
+    await hover(trigger, "enter");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(document.querySelector("[role='tooltip']")?.textContent).toBe("Compress the transcript");
 
-    await hover(wrapper, "leave");
-    expect(container.querySelector("[role='tooltip']")).toBeNull();
+    await hover(trigger, "leave");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(document.querySelector("[role='tooltip']")).toBeNull();
     await unmount();
   });
 
@@ -41,8 +41,9 @@ describe("Tooltip", () => {
     }
 
     await focus(button);
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
-    const bubble = container.querySelector("[role='tooltip']");
+    const bubble = document.querySelector("[role='tooltip']");
     expect(bubble?.textContent).toBe("Compress the transcript");
     expect(button.getAttribute("aria-describedby")).toBe(bubble?.id);
     await unmount();

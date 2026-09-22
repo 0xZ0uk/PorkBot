@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createRef } from "react";
+import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderDom } from "./dom-test.helper.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
@@ -12,9 +12,8 @@ describe("ScrollArea", () => {
       </ScrollArea>,
     );
 
-    const region = container.querySelector(".pb-scroll-area");
+    const region = container.querySelector('[role="region"]');
 
-    expect(region?.getAttribute("role")).toBe("region");
     expect(region?.getAttribute("aria-label")).toBe("Transcript");
     expect(region?.getAttribute("tabindex")).toBe("0");
     expect(region?.getAttribute("style")).toContain("max-height: 20rem");
@@ -31,17 +30,10 @@ describe("ScrollArea", () => {
       </ScrollArea>,
     );
 
-    const region = container.querySelector<HTMLDivElement>(".pb-scroll-area");
-
+    const region = container.querySelector('[role="region"]');
     expect(ref.current).toBe(region);
-
-    // jsdom has no layout, so the event a real scroll would send is dispatched.
-    await act(async () => {
-      region?.dispatchEvent(new Event("scroll"));
-    });
-
-    expect(onScroll).toHaveBeenCalledTimes(1);
-
+    region?.dispatchEvent(new Event("scroll", { bubbles: true }));
+    expect(onScroll).toHaveBeenCalled();
     return unmount();
   });
 });

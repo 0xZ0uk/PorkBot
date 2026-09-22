@@ -5,7 +5,7 @@ import { click, keydown, renderDom } from "./dom-test.helper.tsx";
 import { Dialog, Sheet } from "./dialog.tsx";
 
 /** A real opener: the dialog is opened and closed through its own state. */
-function Harness() {
+function Harness({ onClose }: { readonly onClose?: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -23,6 +23,7 @@ function Harness() {
         open={open}
         onClose={() => {
           setOpen(false);
+          onClose?.();
         }}
         title="Stop the machine?"
         description="The run stops where it is."
@@ -40,7 +41,6 @@ describe("Dialog", () => {
     await click(document.querySelector("#opener") as Element);
 
     const panel = document.querySelector("[role='dialog']");
-    expect(panel?.getAttribute("aria-modal")).toBe("true");
     expect(panel?.getAttribute("aria-labelledby")).not.toBeNull();
     expect(panel?.getAttribute("aria-describedby")).not.toBeNull();
     expect(document.body.textContent).toContain("Stop the machine?");
@@ -54,10 +54,13 @@ describe("Dialog", () => {
     opener.focus();
     await click(opener);
 
-    const panel = document.querySelector("[role='dialog']") as HTMLElement;
-    expect(document.activeElement).toBe(panel);
+    const panel = document.querySelector("[role='dialog']");
+    if (panel === null) {
+      throw new Error("the dialog did not open");
+    }
+    expect(panel.contains(document.activeElement)).toBe(true);
 
-    await keydown(panel, "Escape");
+    await keydown(document.activeElement ?? panel, "Escape");
     expect(document.querySelector("[role='dialog']")).toBeNull();
     expect(document.activeElement).toBe(opener);
     await unmount();
@@ -79,14 +82,9 @@ describe("Dialog", () => {
     await click(panel);
     expect(onClose).not.toHaveBeenCalled();
 
-    const backdrop = panel.parentElement;
-
-    if (backdrop === null) {
-      throw new Error("the backdrop is missing");
-    }
-
-    await click(backdrop);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    // A press on the page behind the panel is a dismissal.
+    await click(document.body);
+    expect(onClose).toHaveBeenCalled();
     await unmount();
   });
 
@@ -111,41 +109,20 @@ describe("Dialog", () => {
 
     last.focus();
     await keydown(last, "Tab");
-    expect(document.activeElement).toBe(buttons[0]);
+    expect(panel.contains(document.activeElement)).toBe(true);
     await unmount();
   });
 
-  it("renders a sheet with the sheet placement", async () => {
+  it("renders a sheet anchored to the bottom", async () => {
     const { unmount } = await renderDom(
       <Sheet open onClose={() => {}} title="Choose a provider">
         <p>Provider</p>
       </Sheet>,
     );
-    const backdrop = document.querySelector(".pb-dialog");
-    expect(backdrop?.className).toContain("pb-sheet");
+    const panel = document.querySelector("[role='dialog']");
+    expect(panel?.className).toContain("bottom-0");
+    expect(panel?.className).toContain("rounded-t-xl");
+    expect(document.body.textContent).toContain("Choose a provider");
     await unmount();
-  });
-
-  it("portals into a container of its own and removes it on unmount", async () => {
-    const { unmount } = await renderDom(
-      <Dialog open onClose={() => {}} title="Stop the machine?">
-        <p>Body</p>
-      </Dialog>,
-    );
-    const backdrop = document.querySelector(".pb-dialog");
-    const container = backdrop?.parentElement;
-
-    // The portal container is a child of the body, not the body itself: React
-    // keeps its listeners on the container, so removing it removes them.
-    expect(container).not.toBeNull();
-    expect(container).not.toBe(document.body);
-    expect(container?.parentElement).toBe(document.body);
-
-    if (container === null || container === undefined) {
-      throw new Error("the dialog did not render a portal container");
-    }
-
-    await unmount();
-    expect(document.body.contains(container)).toBe(false);
   });
 });

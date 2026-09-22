@@ -56,7 +56,6 @@ export {
 } from "./toast.tsx";
 export { Skeleton, type SkeletonProps } from "./skeleton.tsx";
 export { Icon, iconNames, type IconName, type IconProps } from "./icon.tsx";
-export { registerStyleSheet } from "./style-sheet.ts";
 
 export const moduleInfo = {
   name: "@porkbot/ui",

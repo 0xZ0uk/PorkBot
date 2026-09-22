@@ -1,4 +1,6 @@
 import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "./lib/utils.ts";
 
 export type CardVariant = "flat" | "raised" | "interactive";
 
@@ -27,15 +29,26 @@ export type CardProps = CardOwnProps &
     | ({ readonly as: "li" } & Omit<ComponentPropsWithoutRef<"li">, "className" | "children">)
   );
 
+const cardVariants = cva(
+  "flex flex-col gap-3 rounded-xl border border-border bg-card p-4 [&>h1]:m-0 [&>h1]:text-title [&>h2]:m-0 [&>h2]:text-title [&>h3]:m-0 [&>h3]:text-title",
+  {
+    variants: {
+      variant: {
+        flat: "",
+        raised: "shadow-raised",
+        interactive: "cursor-pointer shadow-raised transition-colors hover:bg-accent",
+      },
+    },
+    defaultVariants: { variant: "flat" },
+  },
+);
+
 export function Card({ variant = "flat", className, children, ...rest }: CardProps) {
   const { as: tag, ...elementProps } = rest as { as?: string } & Record<string, unknown>;
   const Element = (tag ?? "div") as ElementType;
-  const classes = ["pb-card", variant !== "flat" && `pb-card--${variant}`, className]
-    .filter(Boolean)
-    .join(" ");
 
   return (
-    <Element className={classes} {...elementProps}>
+    <Element className={cn(cardVariants({ variant }), className)} {...elementProps}>
       {children}
     </Element>
   );

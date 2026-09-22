@@ -68,7 +68,14 @@ export async function focus(element: Element): Promise<void> {
 /** React synthesises enter/leave from mouseover/mouseout, so send those. */
 export async function hover(element: Element, type: "enter" | "leave"): Promise<void> {
   await act(async () => {
-    const name = type === "enter" ? "mouseover" : "mouseout";
-    element.dispatchEvent(new MouseEvent(name, { bubbles: true, relatedTarget: document.body }));
+    const related = document.body;
+    const over = type === "enter" ? "mouseover" : "mouseout";
+    const pointer = type === "enter" ? "pointerover" : "pointerout";
+    const enter = type === "enter" ? "pointerenter" : "pointerleave";
+    const mouseEnter = type === "enter" ? "mouseenter" : "mouseleave";
+    element.dispatchEvent(new MouseEvent(over, { bubbles: true, relatedTarget: related }));
+    element.dispatchEvent(new PointerEvent(pointer, { bubbles: true, relatedTarget: related }));
+    element.dispatchEvent(new PointerEvent(enter, { bubbles: false, relatedTarget: related }));
+    element.dispatchEvent(new MouseEvent(mouseEnter, { bubbles: false, relatedTarget: related }));
   });
 }

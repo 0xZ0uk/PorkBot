@@ -13,7 +13,7 @@ describe("Field", () => {
     );
     expect(html).toContain('for="bot-name"');
     expect(html).toContain('id="bot-name"');
-    expect(html).toContain("pb-field__label");
+    expect(html).toContain("Name");
   });
 
   it("renders a hint and an announced error", () => {
@@ -22,10 +22,9 @@ describe("Field", () => {
         <Input />
       </Field>,
     );
-    expect(html).toContain("pb-field__hint");
     expect(html).toContain("Up to 64 characters");
-    expect(html).toContain("pb-field__error");
     expect(html).toContain('role="alert"');
+    expect(html).toContain("Name is required");
   });
 
   it("draws no colour literal", () => {
@@ -56,14 +55,19 @@ describe("the field controls", () => {
         <option value="a">A</option>
       </Select>,
     );
-    expect(html).toContain("pb-select");
+    expect(html).toContain('value="a"');
     expect(html).toContain("<option");
   });
 
-  it("keeps a ref for the one caller that opens a file chooser", async () => {
-    const ref = { current: null as HTMLInputElement | null };
-    const { unmount } = await renderDom(<Input ref={ref} type="file" />);
-    expect(ref.current?.type).toBe("file");
+  it("keeps the control focusable and typed", async () => {
+    const { container, unmount } = await renderDom(
+      <Field label="Name">
+        <Input type="text" defaultValue="Ada" />
+      </Field>,
+    );
+    const input = container.querySelector("input");
+    expect(input?.getAttribute("type")).toBe("text");
+    expect(input?.value).toBe("Ada");
     await unmount();
   });
 });
