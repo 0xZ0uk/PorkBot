@@ -5,7 +5,11 @@ import { isProviderFailure } from "@porkbot/adapter-kit";
 import type { ComputerProvider, ComputerRef, ProviderFailure } from "@porkbot/adapter-kit";
 import { planComputerNetwork } from "@porkbot/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { createDockerComputerProvider, DEFAULT_COMPUTER_CEILINGS, DEFAULT_COMPUTER_LOG_CONFIG } from "./docker-computer.ts";
+import {
+  createDockerComputerProvider,
+  DEFAULT_COMPUTER_CEILINGS,
+  DEFAULT_COMPUTER_LOG_CONFIG,
+} from "./docker-computer.ts";
 import { DockerEngineEmulator } from "./docker-engine-emulator.ts";
 import { LocalStorageProvider } from "./local-storage.ts";
 

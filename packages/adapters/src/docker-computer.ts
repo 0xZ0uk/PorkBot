@@ -23,11 +23,7 @@ import {
 import { proxyGrantFileName, serializeProxyGrant } from "./credential-proxy.ts";
 import { writeTar } from "./computer-archive.ts";
 import { createDockerEngine } from "./docker-engine.ts";
-import type {
-  DockerContainerInspect,
-  DockerEngine,
-  DockerLogConfig,
-} from "./docker-engine.ts";
+import type { DockerContainerInspect, DockerEngine, DockerLogConfig } from "./docker-engine.ts";
 import { classifyDockerFailure, DockerProtocolError } from "./docker-errors.ts";
 import { computerIdentityHash, createRuntimeComputerProvider } from "./computer-runtime.ts";
 import type {

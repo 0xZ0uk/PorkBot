@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -144,27 +144,6 @@ function inspectHostConfig(containerId: string): Record<string, unknown> {
   return inspection.HostConfig;
 }
 
-function logPathFor(containerId: string): string | undefined {
-  const [inspection] = JSON.parse(dockerOrThrow(["inspect", containerId])) as {
-    LogPath?: string;
-  }[];
-
-  return inspection?.LogPath;
-}
-
-function totalLogBytes(logPath: string): { bytes: number; files: number } {
-  const directory = path.dirname(logPath);
-  const basename = path.basename(logPath);
-  const entries = readdirSync(directory).filter((entry) => entry === basename || entry.startsWith(`${basename}.`));
-  let bytes = 0;
-
-  for (const entry of entries) {
-    bytes += statSync(path.join(directory, entry)).size;
-  }
-
-  return { bytes, files: entries.length };
-}
-
 afterAll(async () => {
   const active = await providerUnderTest();
 
@@ -275,21 +254,17 @@ describe("the Docker provider against the real daemon", () => {
         containerId ?? "",
         "sh",
         "-c",
-        "for i in $(seq 1 500); do echo \"chatty line $i padding padding padding padding padding padding padding padding padding padding\"; done > /proc/1/fd/1",
+        'for i in $(seq 1 500); do echo "chatty line $i padding padding padding padding padding padding padding padding padding padding"; done > /proc/1/fd/1',
       ]);
       await new Promise((resolve) => setTimeout(resolve, 2_000));
 
-      const logPath = logPathFor(containerId ?? "");
+      // `docker logs` reads whatever the daemon kept. Without the cap the
+      // full 50 kB of output would still be there; with it the oldest lines
+      // are rotated away and the total stays near max-size × max-file.
+      const logs = dockerOrThrow(["logs", containerId ?? ""]);
 
-      expect(logPath).toBeDefined();
-      const { bytes, files } = totalLogBytes(logPath ?? "");
-      const maxFiles = Number(logConfig.maxFile);
-
-      // max-file counts the current file plus its rotations. The daemon may
-      // slightly overshoot max-size at a write boundary, but the total stays
-      // near max-size × max-file — not the 50 kB the machine just wrote.
-      expect(files).toBeLessThanOrEqual(maxFiles);
-      expect(bytes).toBeLessThan(50_000);
+      expect(logs).not.toContain("chatty line 1 ");
+      expect(logs.length).toBeLessThan(50_000);
     } finally {
       await daemonProvider.destroy(computer).catch(() => undefined);
     }
