@@ -247,6 +247,14 @@ jobs:
       - name: Start the local stack
         timeout-minutes: 25
         run: pnpm stack:up
+      # Every service image is built by now (stack:up builds the backup image
+      # for its startup run too), so measure each one against the ceiling in
+      # image-budgets.json and write the table to the job summary: the sizes
+      # land on the pull request, and an image past its budget is a red tier
+      # rather than a surprise on a host's disk.
+      - name: Check image sizes against their budgets
+        timeout-minutes: 5
+        run: node packages/testkit/src/image-sizes/cli.ts check
       # The harness attaches to the stack's Postgres (the compose defaults are
       # `porkbot`/`porkbot-local` on 127.0.0.1:5432) and migrates the template,
       # so the specs clone from the template rather than each booting a

@@ -471,6 +471,24 @@ change it without breaking what the boundaries and the CI gate protect.
   the bots active at once and the disk term by every configured bot); raising
   either is a host change a reviewer can see. Checked by: test
   (`packages/testkit/test/deployment.test.ts`) and review.
+- **Every built image has a stated size budget.** `image-budgets.json` names
+  each service image's ceiling in MiB and the measured size the number came
+  from; the `image-sizes` check records the measurement against it and fails
+  past the ceiling, and a built target with no budget — or a budget with no
+  built target — fails the unit suite. Checked by: test
+  (`packages/testkit/test/image-sizes.test.ts`) and the `integration` CI tier.
+- **A service's heap is a value, not its container's ceiling.** Every Node
+  service in `deploy/compose.yaml` sets `NODE_OPTIONS=--max-old-space-size` to
+  three quarters of its memory limit and the pair is recorded in
+  `docs/environment.md`, so a leak fails at a known heap size instead of at a
+  cgroup kill. Checked by: test
+  (`packages/testkit/test/deployment.test.ts`).
+- **The backup image carries clients, not a server.** `pg_dump` and
+  `pg_restore` are copied from the pinned Postgres image into the same Node
+  runtime base every other service uses, and load-checked at build time;
+  building the backup stage on a Postgres image again is a review failure.
+  Checked by: test (`packages/testkit/test/image-sizes.test.ts`) and the
+  `dependencies` CI tier.
 - **The backup target and its key envelope are separate.** The sealed envelope
   defaults to its own directory and its own volume, never a path under the
   backup destination, so the ciphertext and the key that opens it do not share

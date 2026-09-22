@@ -199,6 +199,26 @@ them by hand only when running a process outside the stack.
 | `PORKBOT_DESKTOP_UPDATE_FEED`            | optional | —                                      | HTTPS base URL the desktop release publishes `update.json` under. Unset, the app reports no feed.                                                                                                                                    |
 | `PORKBOT_DESKTOP_UPDATE_PUBLIC_KEY`      | optional | —                                      | The Ed25519 public key update manifests must be signed with; pinned by the app.                                                                                                                                                      |
 
+### Heap ceilings
+
+Each Node service also carries its own V8 heap ceiling in `NODE_OPTIONS`, set
+beside the service's memory limit in `deploy/compose.yaml`. The heap is three
+quarters of the container ceiling — the last quarter is the runtime's
+non-heap memory (buffers, native code, stacks) — so a leak fails as a V8
+heap-out-of-memory error at a known value instead of growing until the cgroup
+kills the process. Raise a heap cap only together with the memory limit it
+sits inside.
+
+| Service      | `NODE_OPTIONS`             | Memory ceiling |
+| ------------ | -------------------------- | -------------- |
+| `migrate`    | `--max-old-space-size=384` | 512m           |
+| `api`        | `--max-old-space-size=768` | 1g             |
+| `worker`     | `--max-old-space-size=768` | 1g             |
+| `backup`     | `--max-old-space-size=192` | 256m           |
+| `supervisor` | `--max-old-space-size=288` | 384m           |
+
+The `proxy` is Caddy and runs no Node heap.
+
 ## Local stack overrides
 
 `pnpm stack:up` runs the development stack from the repository-root

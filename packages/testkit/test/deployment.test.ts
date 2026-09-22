@@ -163,6 +163,47 @@ describe("deployment register and template", () => {
     }
   });
 
+  it("caps every Node service's heap at three quarters of its memory ceiling", () => {
+    // The heap ceiling is a value, not the container's: a leak fails as a V8
+    // heap error at a known size instead of growing until the cgroup kills the
+    // process. Three quarters of the limit leaves the rest to the runtime's
+    // non-heap memory, and docs/environment.md records the pairs.
+    const memoryCeilingMb = new Map<string, number>();
+
+    for (const service of composeServices(deployComposeText)) {
+      const block = composeServiceBlock(deployComposeText, service) ?? "";
+      const memory = /memory:\s*(\d+(?:\.\d+)?)([mg])\b/.exec(block);
+
+      expect(memory, `${service} must cap memory`).not.toBeNull();
+      memoryCeilingMb.set(service, Number(memory?.[1] ?? 0) * (memory?.[2] === "g" ? 1024 : 1));
+    }
+
+    const environmentDoc = readFileSync(path.join(repoRoot, "docs", "environment.md"), "utf8");
+
+    for (const service of ["migrate", "api", "worker", "backup", "supervisor"]) {
+      const block = composeServiceBlock(deployComposeText, service) ?? "";
+      const heap = /--max-old-space-size=(\d+)/.exec(block);
+
+      expect(heap, `${service} must cap its V8 heap`).not.toBeNull();
+      expect(
+        Number(heap?.[1] ?? 0),
+        `${service} heap must be three quarters of its ${memoryCeilingMb.get(service) ?? 0} MB ceiling`,
+      ).toBe(Math.floor((memoryCeilingMb.get(service) ?? 0) * 0.75));
+      expect(environmentDoc, `docs/environment.md must record ${service}'s heap cap`).toContain(
+        `--max-old-space-size=${heap?.[1] ?? ""}`,
+      );
+    }
+
+    // The proxy is Caddy and Postgres is Postgres: neither runs a Node heap,
+    // and nothing outside the Node services carries the flag.
+    for (const service of ["proxy", "postgres"]) {
+      expect(
+        composeServiceBlock(deployComposeText, service) ?? "",
+        `${service} runs no Node heap to cap`,
+      ).not.toContain("max-old-space-size");
+    }
+  });
+
   it("keeps the stack's ceilings plus one bot inside the documented host floor", () => {
     const memoryThresholds = { m: 1024 ** 2, g: 1024 ** 3 } as const;
     let totalCpus = 0;
