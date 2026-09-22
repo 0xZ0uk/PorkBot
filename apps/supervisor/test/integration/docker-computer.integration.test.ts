@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -144,6 +144,27 @@ function inspectHostConfig(containerId: string): Record<string, unknown> {
   return inspection.HostConfig;
 }
 
+function logPathFor(containerId: string): string | undefined {
+  const [inspection] = JSON.parse(dockerOrThrow(["inspect", containerId])) as {
+    LogPath?: string;
+  }[];
+
+  return inspection?.LogPath;
+}
+
+function totalLogBytes(logPath: string): { bytes: number; files: number } {
+  const directory = path.dirname(logPath);
+  const basename = path.basename(logPath);
+  const entries = readdirSync(directory).filter((entry) => entry === basename || entry.startsWith(`${basename}.`));
+  let bytes = 0;
+
+  for (const entry of entries) {
+    bytes += statSync(path.join(directory, entry)).size;
+  }
+
+  return { bytes, files: entries.length };
+}
+
 afterAll(async () => {
   const active = await providerUnderTest();
 
@@ -202,12 +223,73 @@ describe("the Docker provider against the real daemon", () => {
       expect(hostConfig["MemorySwap"]).toBe(256 * 1024 * 1024);
       expect(hostConfig["PidsLimit"]).toBe(32);
       expect(hostConfig["Init"]).toBe(true);
+      expect(hostConfig["LogConfig"]).toEqual({
+        Type: "json-file",
+        Config: { "max-size": "10m", "max-file": "3" },
+      });
       expect(hostConfig["NetworkMode"]).toBe(planComputerNetwork(computer).name);
       expect(hostConfig["Binds"]).toEqual(
         expect.arrayContaining([
           expect.stringMatching(/^porkbot-home-[0-9a-f]{16}:\/home\/agent$/),
         ]),
       );
+    } finally {
+      await daemonProvider.destroy(computer).catch(() => undefined);
+    }
+  });
+
+  it("stops a chatty machine's log file from growing past the rotation cap", async () => {
+    const logConfig = { maxSize: "1k", maxFile: "2" };
+    const daemonProvider = createDockerComputerProvider({
+      image: nodeImage,
+      ...endpoint(),
+      storage: new LocalStorageProvider({
+        root: await makeTemporaryDirectory("porkbot-docker-logcap-storage-"),
+      }),
+      scratchDirectory: await makeTemporaryDirectory("porkbot-docker-logcap-archives-"),
+      ceilings: { logConfig },
+    });
+    const computer = {
+      computerId: `dockersuite-logcap-${suffix}`,
+      botId: `dockersuite-bot-${suffix}`,
+    };
+    created.push(computer);
+
+    try {
+      await daemonProvider.ensure(computer);
+      const containerId = containerIdFor(computer);
+
+      expect(containerId).toBeDefined();
+      const hostConfig = inspectHostConfig(containerId ?? "");
+
+      expect(hostConfig["LogConfig"]).toEqual({
+        Type: "json-file",
+        Config: { "max-size": logConfig.maxSize, "max-file": logConfig.maxFile },
+      });
+
+      // Flood the container's stdout — the main process's fd, not exec's own
+      // output — with far more text than the cap allows, then let the daemon
+      // flush and rotate.
+      dockerOrThrow([
+        "exec",
+        containerId ?? "",
+        "sh",
+        "-c",
+        "for i in $(seq 1 500); do echo \"chatty line $i padding padding padding padding padding padding padding padding padding padding\"; done > /proc/1/fd/1",
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+      const logPath = logPathFor(containerId ?? "");
+
+      expect(logPath).toBeDefined();
+      const { bytes, files } = totalLogBytes(logPath ?? "");
+      const maxFiles = Number(logConfig.maxFile);
+
+      // max-file counts the current file plus its rotations. The daemon may
+      // slightly overshoot max-size at a write boundary, but the total stays
+      // near max-size × max-file — not the 50 kB the machine just wrote.
+      expect(files).toBeLessThanOrEqual(maxFiles);
+      expect(bytes).toBeLessThan(50_000);
     } finally {
       await daemonProvider.destroy(computer).catch(() => undefined);
     }

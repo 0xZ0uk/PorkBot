@@ -248,6 +248,7 @@ export type {
 export {
   createDockerComputerProvider,
   DEFAULT_COMPUTER_CEILINGS,
+  DEFAULT_COMPUTER_LOG_CONFIG,
   DEFAULT_DOCKER_COMPUTER_HOME,
   DEFAULT_DOCKER_PROXY_PORT,
   DOCKER_PROXY_GRANT_DIR,
@@ -297,6 +298,7 @@ export type {
   DockerExecRequest,
   DockerExecResult,
   DockerFailureOrigin,
+  DockerLogConfig,
   DockerStreamBody,
 } from "./docker-engine.ts";
 export { DockerEngineEmulator } from "./docker-engine-emulator.ts";

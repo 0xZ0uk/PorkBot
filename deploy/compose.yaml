@@ -376,6 +376,10 @@ services:
       PORKBOT_COMPUTER_CPUS: ${PORKBOT_COMPUTER_CPUS:-1}
       PORKBOT_COMPUTER_MEMORY_MB: ${PORKBOT_COMPUTER_MEMORY_MB:-2048}
       PORKBOT_COMPUTER_DISK_MB: ${PORKBOT_COMPUTER_DISK_MB:-10240}
+      # The daemon's json-file log rotation for a machine's container: the
+      # same policy the x-app anchor gives the stack's own services.
+      PORKBOT_COMPUTER_LOG_MAX_SIZE: ${PORKBOT_COMPUTER_LOG_MAX_SIZE:-10m}
+      PORKBOT_COMPUTER_LOG_MAX_FILE: ${PORKBOT_COMPUTER_LOG_MAX_FILE:-3}
       # A machine whose last command is older than this is parked; the home
       # volume survives. Zero disables the idle sweep.
       PORKBOT_COMPUTER_IDLE_MS: ${PORKBOT_COMPUTER_IDLE_MS:-900000}

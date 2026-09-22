@@ -5,7 +5,7 @@ import { isProviderFailure } from "@porkbot/adapter-kit";
 import type { ComputerProvider, ComputerRef, ProviderFailure } from "@porkbot/adapter-kit";
 import { planComputerNetwork } from "@porkbot/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { createDockerComputerProvider, DEFAULT_COMPUTER_CEILINGS } from "./docker-computer.ts";
+import { createDockerComputerProvider, DEFAULT_COMPUTER_CEILINGS, DEFAULT_COMPUTER_LOG_CONFIG } from "./docker-computer.ts";
 import { DockerEngineEmulator } from "./docker-engine-emulator.ts";
 import { LocalStorageProvider } from "./local-storage.ts";
 
@@ -306,7 +306,14 @@ describe("the Docker computer provider isolation and ceilings", () => {
     const daemon = await emulator();
     const provider = providerOver(daemon, {
       ceilings: (ref) =>
-        ref.computerId === computer.computerId ? { cpus: 2, memoryMb: 4096, pids: 64 } : {},
+        ref.computerId === computer.computerId
+          ? {
+              cpus: 2,
+              memoryMb: 4096,
+              pids: 64,
+              logConfig: { maxSize: "20m", maxFile: "5" },
+            }
+          : {},
     });
 
     await provider.ensure(computer);
@@ -318,10 +325,29 @@ describe("the Docker computer provider isolation and ceilings", () => {
     expect(first?.HostConfig?.["Memory"]).toBe(4096 * 1024 * 1024);
     expect(first?.HostConfig?.["MemorySwap"]).toBe(4096 * 1024 * 1024);
     expect(first?.HostConfig?.["PidsLimit"]).toBe(64);
+    // Rotation is a host-floor concern: the log file under
+    // /var/lib/docker/containers/<id>/ belongs to the host's disk, and a
+    // working agent streams enough to fill it without a ceiling. Every create
+    // therefore carries the same bounded json-file policy the stack's own
+    // compose services use. The Daytona control plane has no equivalent —
+    // sandbox output is returned inline by the toolbox API rather than
+    // written to a host-side log file — so the asymmetry is a property of
+    // the provider, not an omission.
+    expect(first?.HostConfig?.["LogConfig"]).toEqual({
+      Type: "json-file",
+      Config: { "max-size": "20m", "max-file": "5" },
+    });
     expect(second?.HostConfig?.["NanoCpus"]).toBe(DEFAULT_COMPUTER_CEILINGS.cpus * 1_000_000_000);
     expect(second?.HostConfig?.["Memory"]).toBe(DEFAULT_COMPUTER_CEILINGS.memoryMb * 1024 * 1024);
     // No swap headroom beyond the memory ceiling, ever.
     expect(second?.HostConfig?.["MemorySwap"]).toBe(second?.HostConfig?.["Memory"]);
+    expect(second?.HostConfig?.["LogConfig"]).toEqual({
+      Type: "json-file",
+      Config: {
+        "max-size": DEFAULT_COMPUTER_LOG_CONFIG.maxSize,
+        "max-file": DEFAULT_COMPUTER_LOG_CONFIG.maxFile,
+      },
+    });
   });
 
   it("sends a write-layer quota only when the operator configured one", async () => {
@@ -335,6 +361,12 @@ describe("the Docker computer provider isolation and ceilings", () => {
     const daemon = await emulator();
 
     expect(() => providerOver(daemon, { ceilings: { cpus: 0 } })).toThrow(RangeError);
+    expect(() =>
+      providerOver(daemon, { ceilings: { logConfig: { maxSize: "abc", maxFile: "3" } } }),
+    ).toThrow(RangeError);
+    expect(() =>
+      providerOver(daemon, { ceilings: { logConfig: { maxSize: "10m", maxFile: "0" } } }),
+    ).toThrow(RangeError);
   });
 });
 

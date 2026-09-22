@@ -91,6 +91,18 @@ export interface DockerContainerInspect {
   readonly State?: DockerContainerState | undefined;
 }
 
+/**
+ * The daemon's `json-file` rotation policy for a container's stdout and
+ * stderr. Without one the log file under `/var/lib/docker/containers/<id>/`
+ * has no ceiling and belongs to the host's disk, so every create carries it.
+ */
+export interface DockerLogConfig {
+  /** Docker's `max-size`, for example `"10m"` or `"1048576"`. */
+  readonly maxSize: string;
+  /** Docker's `max-file`, for example `"3"`. */
+  readonly maxFile: string;
+}
+
 /** The resource slice one container is created with. */
 export interface DockerContainerResources {
   readonly nanoCpus: number;
@@ -99,6 +111,8 @@ export interface DockerContainerResources {
   readonly storageSize?: string | undefined;
   readonly pidsLimit: number;
   readonly tmpfsBytes?: number | undefined;
+  /** The rotation policy the daemon applies to the container's log file. */
+  readonly logConfig: DockerLogConfig;
 }
 
 export interface DockerCreateContainerSpec {
@@ -719,6 +733,16 @@ export function createDockerEngine(options: DockerEngineOptions = {}): DockerEng
             MemorySwap: spec.resources.memoryBytes,
             NanoCpus: spec.resources.nanoCpus,
             PidsLimit: spec.resources.pidsLimit,
+            // A bounded json-file log is the same policy the stack's own
+            // compose services carry: a working agent streams a lot, and an
+            // unbounded log file belongs to the host's disk.
+            LogConfig: {
+              Type: "json-file",
+              Config: {
+                "max-size": spec.resources.logConfig.maxSize,
+                "max-file": spec.resources.logConfig.maxFile,
+              },
+            },
             RestartPolicy: { Name: "no" },
             // A real init reaps the zombies exec'd commands leave behind and
             // forwards the stop signal, so `docker stop` is a second rather

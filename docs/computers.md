@@ -70,6 +70,13 @@ guide](self-host.md#choosing-what-to-turn-on)).
   `PORKBOT_COMPUTER_PIDS` (default `512`). A disk quota is enforced only with
   `PORKBOT_COMPUTER_DISK_QUOTA=storage-opt`, which requires a daemon storage
   driver that answers it.
+- **Log cost.** A machine's container log is rotated by the daemon's
+  `json-file` driver: `PORKBOT_COMPUTER_LOG_MAX_SIZE` (default `10m`) per
+  file and `PORKBOT_COMPUTER_LOG_MAX_FILE` (default `3`) files, so a chatty
+  agent costs at most about 30 MB of the host's disk per machine rather than
+  growing without bound. The Daytona control plane has no equivalent — sandbox
+  output is returned inline by the toolbox API rather than written to a
+  host-side log file.
 - **Pull policy** is `PORKBOT_COMPUTER_PULL` (`missing`, `always` or `never`).
   Keep `missing` in production so a restart does not depend on the registry.
 - **Idle sweep.** A machine no run has used for `PORKBOT_COMPUTER_IDLE_MS`
