@@ -45,6 +45,7 @@
     "dev": "turbo run dev",
     "docs:check": "node packages/testkit/src/docs/cli.ts check",
     "env:check": "node scripts/env-check.mjs",
+    "image-sizes:check": "node packages/testkit/src/image-sizes/cli.ts check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",

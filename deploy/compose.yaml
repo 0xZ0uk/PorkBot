@@ -19,6 +19,12 @@
 #     and `docs/architecture/operations-floor.md` records measured usage. The
 #     ceilings remain the capacity invariant checked against the host shape.
 #     Raise them here only after raising the host.
+#   - Every Node service's heap is capped at a value of its own
+#     (NODE_OPTIONS=--max-old-space-size=…): three quarters of the service's
+#     memory ceiling, leaving the rest to the runtime's non-heap memory. A leak
+#     fails as a V8 heap error at that value instead of ballooning until the
+#     cgroup kills the process. docs/environment.md records the pairs and a
+#     test keeps them consistent.
 #   - Container logs are rotated, so a long-lived host does not fill its disk
 #     with one chatty process.
 #   - The proxy terminates HTTPS for the one public origin (slice 12.2), ships
@@ -113,6 +119,8 @@ services:
     image: porkbot/migrate:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
     restart: "no"
     environment:
+      # Three quarters of the 512m ceiling below.
+      NODE_OPTIONS: --max-old-space-size=384
       DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
       PORKBOT_API_DB_PASSWORD: ${PORKBOT_API_DB_PASSWORD:?}
       PORKBOT_WORKER_DB_PASSWORD: ${PORKBOT_WORKER_DB_PASSWORD:?}
@@ -136,6 +144,8 @@ services:
     environment:
       PORT: "3001"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Three quarters of the 1g ceiling below.
+      NODE_OPTIONS: --max-old-space-size=768
       # The API's own role, over the compose network: read and write the
       # application schema, and nothing in the worker's queue.
       DATABASE_URL: postgres://porkbot_api:${PORKBOT_API_DB_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
@@ -187,6 +197,8 @@ services:
     environment:
       PORT: "3002"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Three quarters of the 1g ceiling below.
+      NODE_OPTIONS: --max-old-space-size=768
       # The worker's own role: read the run state it executes, own the job
       # queue's schema, and no domain write.
       DATABASE_URL: postgres://porkbot_worker:${PORKBOT_WORKER_DB_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
@@ -227,6 +239,8 @@ services:
     command: ["node", "dist/cli.js", "run", "--if-due"]
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Three quarters of the 256m ceiling below.
+      NODE_OPTIONS: --max-old-space-size=192
       # The database owner's connection: pg_dump reads the whole schema and the
       # drill creates and drops a scratch database. No other process holds it.
       DATABASE_URL: postgres://${PORKBOT_POSTGRES_USER:-porkbot}:${PORKBOT_POSTGRES_PASSWORD:?}@postgres:5432/${PORKBOT_POSTGRES_DB:-porkbot}
@@ -333,6 +347,8 @@ services:
     environment:
       PORT: "3003"
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Three quarters of the 384m ceiling below.
+      NODE_OPTIONS: --max-old-space-size=288
       # The measurement harness runs its authenticated workload script inside
       # this service and dials the service's own loopback origin.
       PORKBOT_SUPERVISOR_URL: http://127.0.0.1:3003
