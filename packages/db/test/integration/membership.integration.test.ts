@@ -21,7 +21,7 @@ let client: Client | undefined;
 
 beforeAll(async () => {
   suite = await createSuiteDatabase({ suite: "db_membership" });
-  handle = openDatabase(suite.connectionString);
+  handle = openDatabase(suite.connectionString, "api");
   client = new Client({ connectionString: suite.connectionString });
   await client.connect();
 }, 180_000);

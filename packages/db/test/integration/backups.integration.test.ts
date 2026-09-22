@@ -115,8 +115,8 @@ describe("the backup ledger", () => {
       throw new Error("the suite database was not created");
     }
 
-    const first = openDatabase(suite.connectionString);
-    const second = openDatabase(suite.connectionString);
+    const first = openDatabase(suite.connectionString, "api");
+    const second = openDatabase(suite.connectionString, "api");
     let release: (() => void) | undefined;
     let announceAcquired: (() => void) | undefined;
     const acquired = new Promise<void>((resolve) => {

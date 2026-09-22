@@ -18,6 +18,18 @@ export * from "./schema/index.ts";
 // before registration.
 export { openDatabase, queryable } from "./database.ts";
 export type { DatabaseHandle, PostgresDatabase } from "./database.ts";
+
+// The deployment's connection budget (slice 14.6): the named pool caps every
+// `openDatabase` caller picks from, the worker's job concurrency that sizes the
+// queue's pool, and the headroom the server keeps free. `deploy/compose.yaml`
+// names the matching `max_connections`, and `connection-budget.test.ts` fails
+// when either side moves without the other.
+export {
+  databaseConnections,
+  pooledConnections,
+  poolConnectionLimit,
+} from "./connection-budget.ts";
+export type { DatabasePool } from "./connection-budget.ts";
 export { readDeploymentSettings } from "./deployment-settings.ts";
 
 // The signup bootstrap: the pre-actor write that turns a registration into the

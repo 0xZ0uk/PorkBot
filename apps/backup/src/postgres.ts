@@ -153,7 +153,9 @@ export function createPostgresTools(): PostgresTools {
     connectionString: string,
     work: (query: QueryFunction) => Promise<Result>,
   ): Promise<Result> {
-    const handle = openDatabase(connectionString);
+    // The budget's `backupTools` pool (slice 14.6): the one connection an
+    // administrative statement needs, released before the next one.
+    const handle = openDatabase(connectionString, "backupTools");
     const database = queryable(handle);
 
     try {

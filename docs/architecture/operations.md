@@ -229,6 +229,43 @@ that scales with active use. The machine image's read-only layers are paid
 once per daemon, shared by every container, so N configured bots do not cost
 N images.
 
+- **Postgres' own budget.** `postgres` carries the largest ceiling in the stack
+  (1.0 vCPU / 2 GB above), so `deploy/compose.yaml` starts it with the settings
+  that decide what may use them instead of leaving the image's defaults in
+  charge. The memory half divides the ceiling: `shared_buffers` 256 MB,
+  `work_mem` 8 MB (a hash node may use twice that — `hash_mem_multiplier`'s
+  default), `maintenance_work_mem` 64 MB with two autovacuum workers, and
+  `wal_buffers` following `shared_buffers` at 8 MB — 904 MB in the worst case,
+  with the rest left for each connection's own memory and the page cache. The
+  I/O half is Postgres 18's: `io_method` `worker` with two I/O worker
+  processes, sixteen requests in flight per process, `effective_io_concurrency`
+  and `maintenance_io_concurrency` at 16, and a background writer and
+  checkpoint policy (`bgwriter_delay` 200 ms, `bgwriter_lru_maxpages` 100,
+  `checkpoint_timeout` 5 min, `max_wal_size` 512 MB, `min_wal_size` 80 MB) that
+  bounds how eagerly the container touches disk. The
+  [measured floor](operations-floor.md) records what the configured server
+  actually uses.
+
+  The connection budget has the same two sides, and
+  `packages/db/src/connection-budget.test.ts` keeps them together: the server's
+  `max_connections` is 32 with three slots reserved for the owner's own `psql`,
+  and every pool a shipped process opens is capped in
+  `packages/db/src/connection-budget.ts`:
+
+  | pool              | cap    | what it covers                                                        |
+  | ----------------- | ------ | --------------------------------------------------------------------- |
+  | `api`             | 5      | the API's per-statement borrows                                       |
+  | `workerQueue`     | 6      | Graphile's pool: the 4 jobs it runs plus 2 connections of bookkeeping |
+  | `workerReadiness` | 1      | the worker's `/readyz` probe and the run-dispatch scan it shares      |
+  | `backup`          | 2      | the backup process's ledger handle                                    |
+  | `backupTools`     | 2      | one administrative handle beside one `pg_dump`/`pg_restore` child     |
+  | `migrate`         | 1      | the one-shot migrator                                                 |
+  | **sum**           | **17** | with **12** of the 32 slots deliberately free                         |
+
+  The local stack (`compose.yaml`) leaves Postgres at the image's defaults: it
+  is a developer surface, and the integration tier's parallel suites attach to
+  it rather than to the deployment's budget.
+
 - **Operating it.** `pnpm deploy:status` prints each service's state, health
   and published ports; `pnpm deploy:logs` follows the logs;
   `pnpm deploy:exec -- postgres psql -U porkbot` runs a command in a running

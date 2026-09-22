@@ -25,7 +25,7 @@ let store: IngressStore;
 
 beforeAll(async () => {
   suite = await createSuiteDatabase({ suite: "db_ingress" });
-  handle = openDatabase(suite.connectionString);
+  handle = openDatabase(suite.connectionString, "api");
   client = new Client({ connectionString: suite.connectionString });
   await client.connect();
   store = createIngressStore(handle.database);

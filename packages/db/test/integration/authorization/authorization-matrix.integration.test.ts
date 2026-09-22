@@ -48,7 +48,7 @@ beforeAll(async () => {
   suite = await createSuiteDatabase({ suite: "db_authorization_matrix" });
   client = new Client({ connectionString: suite.connectionString });
   await client.connect();
-  handle = openDatabase(suite.connectionString);
+  handle = openDatabase(suite.connectionString, "api");
 }, 180_000);
 
 afterAll(async () => {

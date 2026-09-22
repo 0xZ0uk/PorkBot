@@ -1,5 +1,6 @@
 import process from "node:process";
 import { Pool } from "pg";
+import { poolConnectionLimit } from "./connection-budget.ts";
 import { formatMigrationReport } from "./migrate.ts";
 import { readRolePasswords, setRolePasswords } from "./roles.ts";
 import { runMigrations } from "./run-migrations.ts";
@@ -32,7 +33,11 @@ if (connectionString === undefined || connectionString === "") {
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 10_000 });
+const pool = new Pool({
+  connectionString,
+  max: poolConnectionLimit("migrate"),
+  connectionTimeoutMillis: 10_000,
+});
 
 try {
   const report = await runMigrations(pool);

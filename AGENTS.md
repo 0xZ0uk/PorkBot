@@ -471,6 +471,13 @@ change it without breaking what the boundaries and the CI gate protect.
   the bots active at once and the disk term by every configured bot); raising
   either is a host change a reviewer can see. Checked by: test
   (`packages/testkit/test/deployment.test.ts`) and review.
+- **A pool cap and the server's connection limit are one budget.** Every pool a
+  shipped process opens names an entry in
+  `packages/db/src/connection-budget.ts`, `deploy/compose.yaml` starts Postgres
+  with the matching `max_connections` and superuser reserve, and the caps plus
+  the stated headroom add up to it; the Postgres memory and I/O settings beside
+  them divide the ceiling the same way. Checked by: test
+  (`packages/db/src/connection-budget.test.ts`) and review.
 - **Every built image has a stated size budget.** `image-budgets.json` names
   each service image's ceiling in MiB and the measured size the number came
   from; the `image-sizes` check records the measurement against it and fails

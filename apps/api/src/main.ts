@@ -58,8 +58,9 @@ try {
 }
 
 // The pool is lazy: constructing it opens no connection, so the process boots
-// and answers its healthcheck while Postgres finishes coming up.
-const database = openDatabase(connectionString);
+// and answers its healthcheck while Postgres finishes coming up. Its cap is the
+// budget's `api` entry (slice 14.6), not the driver's default of ten.
+const database = openDatabase(connectionString, "api");
 
 /** The API is live while Postgres is unavailable, but it is not ready for data-backed work. */
 const readiness = async (): Promise<boolean> => {

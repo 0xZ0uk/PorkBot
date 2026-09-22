@@ -79,6 +79,43 @@ services:
     image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     restart: unless-stopped
     stop_grace_period: 60s
+    # The server's own budget (slice 14.6), named rather than inherited from
+    # the image. The memory settings divide the 2 GB ceiling below, the
+    # connection settings are the server half of the pool budget in
+    # `packages/db/src/connection-budget.ts`, and the Postgres 18 I/O settings
+    # say how eagerly this container touches disk. The arithmetic and the pool
+    # caps are stated beside the ceiling in
+    # `docs/architecture/operations.md`; `connection-budget.test.ts` fails when
+    # a pool cap or `max_connections` moves without the other.
+    command:
+      - postgres
+      # Memory: a quarter of the ceiling in shared buffers, with the work and
+      # maintenance worst cases stated beside the ceiling.
+      - --shared_buffers=256MB
+      - --work_mem=8MB
+      - --maintenance_work_mem=64MB
+      # Connections: 32 slots, 3 of them reserved for the owner's own psql.
+      - --max_connections=32
+      - --superuser_reserved_connections=3
+      # Two autovacuum workers bound the maintenance-memory worst case to
+      # 2 x 64 MB on a one-bot host.
+      - --autovacuum_max_workers=2
+      # I/O (Postgres 18): asynchronous I/O through two worker processes, one
+      # process allowed sixteen requests in flight, and the storage's own
+      # concurrency named instead of left to the image.
+      - --io_method=worker
+      - --io_workers=2
+      - --io_max_concurrency=16
+      - --effective_io_concurrency=16
+      - --maintenance_io_concurrency=16
+      # Writing: the background writer's rounds and the checkpoint sizes are
+      # bounded so a small host never sees a burst of disk activity, and the
+      # WAL is capped at 512 MB rather than the image's 1 GB.
+      - --bgwriter_delay=200ms
+      - --bgwriter_lru_maxpages=100
+      - --checkpoint_timeout=5min
+      - --max_wal_size=512MB
+      - --min_wal_size=80MB
     environment:
       POSTGRES_USER: ${PORKBOT_POSTGRES_USER:-porkbot}
       POSTGRES_PASSWORD: ${PORKBOT_POSTGRES_PASSWORD:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
