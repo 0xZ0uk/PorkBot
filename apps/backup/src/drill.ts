@@ -37,7 +37,9 @@ export interface CanaryReader {
 
 const defaultCanaryReader: CanaryReader = {
   async read(databaseUrl: string): Promise<string | null> {
-    const handle = openDatabase(databaseUrl);
+    // The budget's `backupTools` pool (slice 14.6): a short-lived handle for
+    // one administrative read, beside the dump's own child connection.
+    const handle = openDatabase(databaseUrl, "backupTools");
 
     try {
       return await readCanaryToken(queryable(handle));

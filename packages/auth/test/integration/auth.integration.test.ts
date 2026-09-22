@@ -100,7 +100,7 @@ function buildAuth(options: { readonly secureCookies?: boolean } = {}): Auth {
 
 beforeAll(async () => {
   suite = await createSuiteDatabase({ suite: "auth_email_password" });
-  handle = openDatabase(suite.connectionString);
+  handle = openDatabase(suite.connectionString, "api");
   instance = buildAuth();
 }, 180_000);
 

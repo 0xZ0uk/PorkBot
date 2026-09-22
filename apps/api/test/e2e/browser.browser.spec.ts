@@ -261,7 +261,7 @@ function offlineComputer(computer: ComputerEmulator): ComputerLifecycleProvider 
 
 async function createHarness(): Promise<BrowserHarness> {
   const suite = await createSuiteDatabase({ suite: "api_browser" });
-  const database = openDatabase(suite.connectionString);
+  const database = openDatabase(suite.connectionString, "api");
   const storageRoot = await mkdtemp(path.join(tmpdir(), "porkbot-browser-storage-"));
   const credentialKeys = createCredentialKeyring({
     activeKeyId: "browser",

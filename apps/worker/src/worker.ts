@@ -1,6 +1,7 @@
 import { parseCronItems, run } from "graphile-worker";
 import type { CronItem, Runner } from "graphile-worker";
 import type { NotificationProvider } from "@porkbot/adapter-kit";
+import { databaseConnections, poolConnectionLimit } from "@porkbot/db";
 import type { CredentialKeyring } from "@porkbot/db";
 import type { Logger } from "@porkbot/logging";
 import { graphileLogger } from "./graphile-logger.ts";
@@ -81,7 +82,10 @@ export interface WorkerOptions {
   readonly logger: Logger;
   /** Unlocks the stored provider credentials used by live runs. */
   readonly credentialKeys?: CredentialKeyring;
-  /** Jobs Graphile may run at once. Defaults to 4. */
+  /**
+   * Jobs Graphile may run at once. Defaults to the connection budget's
+   * `workerJobConcurrency` (slice 14.6), which is what sizes the queue pool.
+   */
   readonly concurrency?: number;
   /** How long Graphile waits between polls, in milliseconds. Defaults to 2 s. */
   readonly pollInterval?: number;
@@ -154,7 +158,11 @@ export async function startWorker(options: WorkerOptions): Promise<Runner> {
   return run({
     connectionString: options.connectionString,
     taskList: registry.taskList,
-    concurrency: options.concurrency ?? 4,
+    concurrency: options.concurrency ?? databaseConnections.workerJobConcurrency,
+    // The queue's own pool (slice 14.6). Graphile's default is ten; the budget
+    // sizes it to the job concurrency plus the two connections its bookkeeping
+    // needs, so a worker that runs four jobs holds six backends, not ten.
+    maxPoolSize: poolConnectionLimit("workerQueue"),
     pollInterval: options.pollInterval ?? 2000,
     logger: graphileLogger(options.logger),
     noHandleSignals: true,

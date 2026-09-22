@@ -42,10 +42,12 @@ if (connectionString === undefined || connectionString.length === 0) {
   process.exit(1);
 }
 
-// Graphile owns the queue connection. This small process-scoped handle is only
-// the readiness probe, so a lost database flips `/readyz` without taking down
-// `/livez` or making the worker guess from the runner's in-memory state.
-const readinessDatabase = openDatabase(connectionString);
+// Graphile owns the queue connection. This small process-scoped handle carries
+// the readiness probe and the run-dispatch scan, so a lost database flips
+// `/readyz` without taking down `/livez` or making the worker guess from the
+// runner's in-memory state. Its cap is the budget's `workerReadiness` entry
+// (slice 14.6): one statement at a time.
+const readinessDatabase = openDatabase(connectionString, "workerReadiness");
 let workerReady = false;
 
 const credentialKeys = readCredentialKeys();

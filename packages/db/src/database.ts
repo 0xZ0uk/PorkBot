@@ -1,6 +1,8 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { poolConnectionLimit } from "./connection-budget.ts";
+import type { DatabasePool } from "./connection-budget.ts";
 import type { Queryable } from "./queryable.ts";
 
 /**
@@ -15,6 +17,11 @@ import type { Queryable } from "./queryable.ts";
  * A handle is a pool plus its drizzle view. `close` is idempotent because both
  * the API's shutdown path and a test suite's teardown may call it, and a second
  * `end()` on a released pool throws.
+ *
+ * The caller names the pool its handle belongs to, and the cap comes from
+ * `connection-budget.ts` rather than the driver's default of ten: a process
+ * that opens a pool without saying which one it is would put the deployment's
+ * connection budget back to a driver's choice.
  */
 
 export type PostgresDatabase = NodePgDatabase & {
@@ -33,19 +40,23 @@ export interface DatabaseHandle {
   close(): Promise<void>;
 }
 
-export function openDatabase(connectionString: string): DatabaseHandle {
-  const pool = new Pool({ connectionString, connectionTimeoutMillis: 10_000 });
+export function openDatabase(connectionString: string, pool: DatabasePool): DatabaseHandle {
+  const connections = new Pool({
+    connectionString,
+    max: poolConnectionLimit(pool),
+    connectionTimeoutMillis: 10_000,
+  });
   let closed = false;
 
   return {
-    database: drizzle(pool),
+    database: drizzle(connections),
     async close(): Promise<void> {
       if (closed) {
         return;
       }
 
       closed = true;
-      await pool.end();
+      await connections.end();
     },
   };
 }

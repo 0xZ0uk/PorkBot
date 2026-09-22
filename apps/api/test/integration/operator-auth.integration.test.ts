@@ -66,7 +66,7 @@ function api(): ReturnType<typeof createApiApp> {
 beforeAll(async () => {
   suite = await createSuiteDatabase({ suite: "api_operator_auth" });
 
-  const opened = openDatabase(suite.connectionString);
+  const opened = openDatabase(suite.connectionString, "api");
 
   handle = opened;
   operator = createOperatorAuth({

@@ -83,7 +83,9 @@ async function main(): Promise<number> {
 
   const environment = readBackupEnvironment();
   const paths = loadBackupPaths(environment, logger);
-  const handle = openDatabase(paths.connectionString);
+  // The budget's `backup` pool (slice 14.6): the ledger handle the process
+  // holds for the command's lifetime.
+  const handle = openDatabase(paths.connectionString, "backup");
   const database = queryable(handle);
 
   try {
