@@ -124,10 +124,10 @@ describe("the built services and their budgets", () => {
     expect(backupStage, "the Dockerfile must keep a backup stage").toBeDefined();
     expect(pgClientStage, "the Postgres clients need their own source stage").toBeDefined();
     expect(backupStage).toMatch(/^FROM node:\S+ AS backup$/m);
-    expect(backupStage).toContain("COPY --from=pg-client /usr/local/bin/pg_dump");
+    expect(backupStage).toContain("COPY --from=pg-client /usr/lib/postgresql/18/bin/pg_dump");
     expect(backupStage).toContain("pg_dump --version && pg_restore --version");
     expect(backupStage).not.toMatch(/^FROM postgres:/m);
-    expect(pgClientStage).toMatch(/^FROM postgres:18-alpine@sha256:/m);
+    expect(pgClientStage).toMatch(/^FROM postgres:18@sha256:/m);
   });
 });
 

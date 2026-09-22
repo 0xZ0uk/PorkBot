@@ -3,33 +3,33 @@
   "images": [
     {
       "name": "porkbot/api",
-      "budgetMiB": 780,
-      "reason": "Measured 721 MiB on the alpine runtime base (804 MiB on the bookworm base it replaced). The headroom is one large dependency's worth: the budget is under the old base's size on purpose, so reverting the runtime base fails here rather than silently re-inflating every service."
+      "budgetMiB": 850,
+      "reason": "Measured 805 MiB on the current base (the alpine trial measured 721 MiB and is stopped; see the PR that introduced this file). The headroom is one large dependency's worth: a dependency added without looking or a toolchain that leaks into the runtime fails here instead of on a host's disk."
     },
     {
       "name": "porkbot/migrate",
-      "budgetMiB": 780,
-      "reason": "Measured 721 MiB — it carries the same deployed workspace as the api, so it shares the api's ceiling and the same under-the-old-base property (804 MiB before)."
+      "budgetMiB": 850,
+      "reason": "Measured 805 MiB — it carries the same deployed workspace as the api, so it shares the api's ceiling and the same headroom rationale."
     },
     {
       "name": "porkbot/worker",
-      "budgetMiB": 560,
-      "reason": "Measured 517 MiB on the alpine runtime base (600 MiB before). The headroom is one large dependency's worth, and the ceiling is under the old base's size so a reversion cannot pass unnoticed."
+      "budgetMiB": 640,
+      "reason": "Measured 601 MiB on the current base (517 MiB in the stopped alpine trial). Same headroom as its siblings: enough for one dependency, not for a toolchain."
     },
     {
       "name": "porkbot/backup",
-      "budgetMiB": 520,
-      "reason": "Measured 477 MiB now that the image is the Node runtime plus the two Postgres clients (1014 MiB when it carried the whole server image for them). The ceiling is far under the old shape, so a return to a server base is a red budget rather than a slow drift."
+      "budgetMiB": 610,
+      "reason": "Measured 572 MiB now that the image is a Node runtime plus the two Postgres clients (1014 MiB when it carried the whole server image for them). The ceiling is far under the old shape, so a return to a server base is a red budget rather than a slow drift."
     },
     {
       "name": "porkbot/supervisor",
-      "budgetMiB": 480,
-      "reason": "Measured 436 MiB on the alpine runtime base (520 MiB before). Same headroom as its siblings: enough for one dependency, not for a toolchain."
+      "budgetMiB": 555,
+      "reason": "Measured 520 MiB on the current base (436 MiB in the stopped alpine trial). Same headroom as its siblings: enough for one dependency, not for a toolchain."
     },
     {
       "name": "porkbot/proxy",
       "budgetMiB": 100,
-      "reason": "Measured 87 MiB: the pinned Caddy image plus the built SPA in /srv/client. The margin is the client bundle's growth, and it is deliberately tight — the proxy must never come to carry a Node runtime."
+      "reason": "Measured 88 MiB: the pinned Caddy image plus the built SPA in /srv/client. The margin is the client bundle's growth, and it is deliberately tight — the proxy must never come to carry a Node runtime."
     }
   ]
 }
