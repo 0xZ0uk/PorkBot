@@ -2,7 +2,6 @@ import { HeadContent, Scripts, createRootRouteWithContext } from "@tanstack/reac
 import type { ReactNode } from "react";
 import { themeBootstrapScript, themeStyleSheet } from "../theme.ts";
 import { NotFoundScreen } from "../screens/not-found.tsx";
-import "../styles.css";
 import type { RouterContext } from "../router.tsx";
 
 /**
@@ -35,7 +34,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       <body>
         {/* The first focusable element on every screen, so a keyboard user can
             jump past the header once the app chrome exists. */}
-        <a className="skip-link" href="#main">
+        <a className="absolute left-3 top-3 z-10 -translate-y-[calc(100%+1rem)] rounded-md border border-border bg-card px-3 py-2 text-foreground focus:translate-y-0" href="#main">
           Skip to main content
         </a>
         {children}

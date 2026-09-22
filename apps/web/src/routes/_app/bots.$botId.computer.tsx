@@ -36,7 +36,7 @@ function ComputerRoute() {
 
   return (
     <>
-      <p className="muted">
+      <p className="text-muted-foreground">
         <Link to="/">Back to bots</Link>
       </p>
       <ComputerScreen

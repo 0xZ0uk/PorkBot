@@ -206,12 +206,12 @@ function HomeRow({
       ];
 
   return (
-    <article className="roster-card">
-      <div className="roster-card-head">
+    <article className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <div className="flex items-center gap-3">
         <Link
           to="/bots/$botId"
           params={{ botId: bot.id }}
-          className="roster-card-identity"
+          className="flex min-w-0 flex-1 items-center gap-3 p-0.5 text-foreground no-underline hover:bg-accent focus-visible:outline-2 focus-visible:outline-primary"
           onClick={onNavigate}
         >
           <BotAvatar
@@ -221,9 +221,9 @@ function HomeRow({
             imageUrl={entry.avatarUrl}
             size={40}
           />
-          <span className="roster-card-body">
-            <span className="roster-card-name">{bot.name}</span>
-            <span className="roster-card-role">{roleOf(bot)}</span>
+          <span className="flex min-w-0 flex-col">
+            <span className="overflow-hidden whitespace-nowrap text-ellipsis text-heading">{bot.name}</span>
+            <span className="overflow-hidden whitespace-nowrap text-ellipsis text-meta text-muted-foreground">{roleOf(bot)}</span>
           </span>
         </Link>
         <StateChip
@@ -234,14 +234,14 @@ function HomeRow({
         <Menu label="Actions" ariaLabel={`Actions for ${bot.name}`} items={actions} align="end" />
       </div>
 
-      <p className="roster-card-activity">
+      <p className="m-0 text-muted-foreground">
         <Activity entry={entry} />
       </p>
 
       {confirming ? (
-        <div className="roster-confirm">
-          <p className="muted">Archive this bot? Its threads and settings will be kept.</p>
-          <div className="roster-confirm-actions">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+          <p className="text-muted-foreground">Archive this bot? Its threads and settings will be kept.</p>
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               onClick={() => {

@@ -43,12 +43,7 @@ export const shadcnRuleIds = [
  * register and deletes this list; until then their custom classes and inline
  * widths are the old stack's chrome, not a new restyle.
  */
-export const preSweepPaths = [
-  // The globs are relative to whichever root ESLint runs from: the repo root
-  // (the fixture tests) or the package directory (its `lint` script).
-  "**/src/screens/**",
-  "**/settings-sections.tsx",
-];
+export const preSweepPaths = [];
 
 export function uiSurfaceConfigsFor(packageName) {
   if (!uiSurfacePackages.includes(packageName)) {
@@ -91,19 +86,6 @@ export function uiSurfaceConfigsFor(packageName) {
       rules: {
         "shadcn/no-restyle": "off",
         "shadcn/no-arbitrary-values": "off",
-        "shadcn/require-static-classes": "off",
-      },
-    },
-    {
-      name: "porkbot/ui-design-system/pre-sweep",
-      // Issue #283 sweeps these screens and deletes this override. The rules
-      // it relaxes are the ones a hand-rolled class string trips; the colour
-      // and arbitrary-value rules stay on here.
-      files: preSweepPaths,
-      rules: {
-        "shadcn/no-restyle": "off",
-        "shadcn/no-inline-styles": "off",
-        "shadcn/no-unknown-classes": "off",
         "shadcn/require-static-classes": "off",
       },
     },

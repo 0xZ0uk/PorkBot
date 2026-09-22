@@ -137,20 +137,20 @@ export function SettingsScreen({ sections }: SettingsScreenProps) {
   }, [count]);
 
   return (
-    <section className="settings" aria-labelledby="settings-title" ref={rootRef}>
-      <header className="settings-head">
-        <h1 className="settings-title" id="settings-title">
+    <section className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4" aria-labelledby="settings-title" ref={rootRef}>
+      <header className="flex flex-col gap-1">
+        <h1 className="m-0 text-title" id="settings-title">
           Settings
         </h1>
         <ModeControl />
       </header>
 
-      <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
+      <div className="flex flex-wrap gap-6">
+        <nav className="flex min-w-40 flex-col gap-1" aria-label="Settings sections">
           {sections.map((section) => (
             <a
               key={section.id}
-              className="settings-nav-link"
+              className="rounded-md px-2 py-1 text-body hover:bg-accent"
               href={`#${section.id}`}
               aria-current={active === section.id ? "true" : undefined}
               onClick={() => {
@@ -162,11 +162,11 @@ export function SettingsScreen({ sections }: SettingsScreenProps) {
           ))}
         </nav>
 
-        <div className="settings-sections">
+        <div className="flex min-w-0 flex-1 flex-col gap-6">
           {sections.map((section) => (
             <div
               key={section.id}
-              className="settings-section"
+              className="flex flex-col gap-3"
               id={section.id}
               data-settings-section={section.id}
             >

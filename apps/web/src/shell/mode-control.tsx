@@ -22,16 +22,16 @@ export function ModeControl() {
   const { mode, setMode } = useMode();
 
   return (
-    <div className="settings-mode">
-      <span className="settings-mode-label" id="settings-mode-label">
+    <div className="flex items-center gap-2">
+      <span className="text-meta font-medium text-muted-foreground" id="settings-mode-label">
         Mode
       </span>
-      <div className="settings-mode-options" role="group" aria-labelledby="settings-mode-label">
+      <div className="inline-flex gap-1" role="group" aria-labelledby="settings-mode-label">
         {modes.map((candidate) => (
           <Button
             key={candidate}
             variant="ghost"
-            className="settings-mode-option"
+            className="px-2 py-1 text-muted-foreground"
             aria-pressed={candidate === mode}
             onClick={() => {
               setMode(candidate);

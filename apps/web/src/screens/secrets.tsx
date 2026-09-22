@@ -38,8 +38,8 @@ export function SecretsScreen({
 
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -52,8 +52,8 @@ export function SecretsScreen({
   }
 
   return (
-    <section className="console">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <header className="flex flex-col gap-1">
         <h2>Secrets</h2>
         {state.bots.length === 0 ? null : (
           <Button
@@ -69,7 +69,7 @@ export function SecretsScreen({
 
       {state.bots.length === 0 ? (
         state.status === "ready" ? (
-          <p className="muted">No bots yet. Create one to store a secret for it.</p>
+          <p className="text-muted-foreground">No bots yet. Create one to store a secret for it.</p>
         ) : null
       ) : (
         <>
@@ -91,7 +91,7 @@ export function SecretsScreen({
 
           {state.notice === null ? null : (
             <p
-              className={state.notice.kind === "error" ? "form-error" : "muted"}
+              className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
               role={state.notice.kind === "error" ? "alert" : "status"}
             >
               {state.notice.text}
@@ -111,15 +111,15 @@ export function SecretsScreen({
           ) : null}
 
           {state.secrets.length === 0 ? (
-            <p className="muted">No secrets stored for this bot.</p>
+            <p className="text-muted-foreground">No secrets stored for this bot.</p>
           ) : (
-            <ul className="connection-key-list">
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {state.secrets.map((secret) => (
-                <li key={secret.name} className="connection-key">
-                  <span className="connection-credential">{secret.name}</span>{" "}
-                  <span className="muted">{hostOf(secret.origin)}</span>{" "}
-                  <span className="muted">{authLabel(secret.auth)}</span>{" "}
-                  <span className="connection-key-use muted">
+                <li key={secret.name} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+                  <span className="font-mono text-code wrap-anywhere">{secret.name}</span>{" "}
+                  <span className="text-muted-foreground">{hostOf(secret.origin)}</span>{" "}
+                  <span className="text-muted-foreground">{authLabel(secret.auth)}</span>{" "}
+                  <span className="flex flex-wrap items-center gap-2 text-muted-foreground">
                     {secretStatusLabel(secret.status)}
                   </span>
                   <ForgetSecret
@@ -160,8 +160,8 @@ function ForgetSecret({ name, pending, onForget }: ForgetSecretProps) {
   }
 
   return (
-    <span className="connection-confirm">
-      <span className="muted" role="status">
+    <span className="flex flex-wrap items-center gap-2 rounded-md border border-destructive bg-card p-2">
+      <span className="text-muted-foreground" role="status">
         {forgetWarning(name)}
       </span>{" "}
       <Button
@@ -211,7 +211,7 @@ function StoreSecretForm({ pending, existingNames, onSubmit }: StoreSecretFormPr
 
   return (
     <form
-      className="memory-form"
+      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -299,15 +299,15 @@ function StoreSecretForm({ pending, existingNames, onSubmit }: StoreSecretFormPr
         </Field>
       ) : null}
 
-      <p className="muted">Stored encrypted; it is never shown again.</p>
+      <p className="text-muted-foreground">Stored encrypted; it is never shown again.</p>
 
       {rotating ? (
-        <p className="muted" role="status">
+        <p className="text-muted-foreground" role="status">
           {rotateWarning(trimmedName)}
         </p>
       ) : null}
 
-      <div className="memory-actions">
+      <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={pending}>
           {rotating ? "Replace value" : "Store"}
         </Button>

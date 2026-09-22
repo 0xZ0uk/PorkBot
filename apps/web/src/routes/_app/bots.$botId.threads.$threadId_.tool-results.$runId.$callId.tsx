@@ -39,8 +39,8 @@ function ToolResultRoute() {
 
 function ToolResultUnavailable({ reset }: ErrorComponentProps) {
   return (
-    <section className="console">
-      <p className="form-error" role="alert">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
         The tool result could not be loaded.
       </p>
       <Button onClick={reset}>Try again</Button>

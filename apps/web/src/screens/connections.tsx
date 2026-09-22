@@ -63,8 +63,8 @@ export function ConnectionsScreen({
 
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -77,8 +77,8 @@ export function ConnectionsScreen({
   }
 
   return (
-    <section className="console">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <header className="flex flex-col gap-1">
         <h2>Models and connections</h2>
         <Button
           aria-expanded={creating}
@@ -92,7 +92,7 @@ export function ConnectionsScreen({
 
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "form-error" : "muted"}
+          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -113,10 +113,10 @@ export function ConnectionsScreen({
 
       {state.connections.length === 0 ? (
         state.status === "ready" ? (
-          <p className="muted">No connections yet. Add one to give a bot a model.</p>
+          <p className="text-muted-foreground">No connections yet. Add one to give a bot a model.</p>
         ) : null
       ) : (
-        <ul className="connection-list">
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {state.connections.map((connection) => {
             const impact = disconnectImpact(state, connection.id);
 
@@ -145,11 +145,11 @@ export function ConnectionsScreen({
       />
 
       {state.bots.length > 0 && state.connections.length > 0 ? (
-        <section className="connection-bots">
+        <section className="flex flex-wrap gap-1">
           <h3>Bots</h3>
-          <ul className="connection-bot-list">
+          <ul className="flex flex-wrap gap-1">
             {state.bots.map((bot) => (
-              <li key={bot.id} className="connection-bot">
+              <li key={bot.id} className="inline-flex items-center gap-1 rounded-full border border-border bg-accent px-2 py-0.5 text-meta">
                 <Field label={bot.name}>
                   <Select
                     disabled={state.pending === bot.id}
@@ -201,26 +201,26 @@ function ConnectionCard({
   const [disconnecting, setDisconnecting] = useState(false);
 
   return (
-    <li className="connection">
-      <div className="connection-header">
+    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <div className="flex flex-wrap items-center gap-2">
         <h3>{connection.label}</h3>
-        {connection.isDefault ? <span className="connection-badge">Space default</span> : null}
+        {connection.isDefault ? <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta">Space default</span> : null}
       </div>
 
-      <p className="connection-provider muted">{hostOf(connection.baseUrl)}</p>
+      <p className="text-heading text-muted-foreground">{hostOf(connection.baseUrl)}</p>
 
-      <dl className="connection-details">
+      <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body">
         <dt>Key</dt>
         <dd>
-          <span className="connection-credential">{connection.credentialName}</span>{" "}
+          <span className="font-mono text-code wrap-anywhere">{connection.credentialName}</span>{" "}
           {connection.credentialMaskedValue === null ? (
-            <span className="connection-missing-key">no key stored</span>
+            <span className="text-warning">no key stored</span>
           ) : (
-            <span className="muted">{connection.credentialMaskedValue}</span>
+            <span className="text-muted-foreground">{connection.credentialMaskedValue}</span>
           )}
         </dd>
         <dt>Model</dt>
-        <dd>{connection.defaultModel ?? <span className="muted">Endpoint default</span>}</dd>
+        <dd>{connection.defaultModel ?? <span className="text-muted-foreground">Endpoint default</span>}</dd>
         <dt>Last used</dt>
         <dd>
           {connection.lastUsedAt === null ? "Never used" : formatMoment(connection.lastUsedAt)}
@@ -231,7 +231,7 @@ function ConnectionCard({
         </dd>
       </dl>
 
-      <div className="memory-actions">
+      <div className="flex flex-wrap gap-2">
         <Button
           disabled={pending}
           onClick={() => {
@@ -261,12 +261,12 @@ function ConnectionCard({
       </div>
 
       {disconnecting ? (
-        <div className="memory-form">
-          <p className="muted">
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-background p-2">
+          <p className="text-muted-foreground">
             {disconnectWasDefault ? `This is the space default. ` : ""}
             {disconnectWarning({ wasDefault: disconnectWasDefault, bots: disconnectBots })}
           </p>
-          <div className="memory-actions">
+          <div className="flex flex-wrap gap-2">
             <Button
               disabled={pending}
               onClick={() => {
@@ -301,17 +301,17 @@ interface StoredKeysProps {
 
 function StoredKeys({ credentials, state, pendingName, onRevoke }: StoredKeysProps) {
   return (
-    <section className="connection-keys">
+    <section className="flex flex-col gap-1">
       <h3>Stored keys</h3>
       {credentials.length === 0 ? (
-        <p className="muted">No stored keys.</p>
+        <p className="text-muted-foreground">No stored keys.</p>
       ) : (
-        <ul className="connection-key-list">
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {credentials.map((credential) => (
-            <li key={credential.id} className="connection-key">
-              <span className="connection-credential">{credential.name}</span>{" "}
-              <span className="muted">{credential.maskedValue}</span>
-              <span className="connection-key-use muted"> {keyUse(state, credential.name)}</span>
+            <li key={credential.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+              <span className="font-mono text-code wrap-anywhere">{credential.name}</span>{" "}
+              <span className="text-muted-foreground">{credential.maskedValue}</span>
+              <span className="flex flex-wrap items-center gap-2 text-muted-foreground"> {keyUse(state, credential.name)}</span>
               <RevokeKey
                 name={credential.name}
                 state={state}
@@ -351,8 +351,8 @@ function RevokeKey({ name, state, pending, onRevoke }: RevokeKeyProps) {
   }
 
   return (
-    <span className="connection-confirm">
-      <span className="muted">{revokeWarning(impact, name)}</span>{" "}
+    <span className="flex flex-wrap items-center gap-2 rounded-md border border-destructive bg-card p-2">
+      <span className="text-muted-foreground">{revokeWarning(impact, name)}</span>{" "}
       <Button
         disabled={pending}
         onClick={() => {
@@ -399,7 +399,7 @@ function CreateConnectionForm({
 
   return (
     <form
-      className="memory-form"
+      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -464,14 +464,14 @@ function CreateConnectionForm({
           }}
         />
       </Field>
-      <p className="muted">
+      <p className="text-muted-foreground">
         {reuse
           ? `A key named ${trimmedName} is already stored; leave this blank to reuse it.`
           : "Stored encrypted; it is never shown again."}
       </p>
 
       {replacing ? (
-        <p className="muted" role="status">
+        <p className="text-muted-foreground" role="status">
           {replaceKeyWarning(trimmedName)}
         </p>
       ) : null}
@@ -485,7 +485,7 @@ function CreateConnectionForm({
           }}
         />
       </Field>
-      <div className="memory-actions">
+      <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={pending}>
           {replacing ? "Replace key" : "Connect"}
         </Button>
@@ -507,25 +507,25 @@ function CreateConnectionForm({
 /** What a connection's last probe answered, in the probe's own words. */
 function ProbeLine({ probe }: { readonly probe: ConnectionProbeState | undefined }) {
   if (probe === undefined) {
-    return <span className="muted">Not tested yet</span>;
+    return <span className="text-muted-foreground">Not tested yet</span>;
   }
 
   if (probe.status === "probing") {
-    return <span className="muted">Testing…</span>;
+    return <span className="text-muted-foreground">Testing…</span>;
   }
 
   if (probe.status === "failed") {
-    return <span className="connection-probe-failed">The endpoint could not be tested.</span>;
+    return <span className="text-destructive">The endpoint could not be tested.</span>;
   }
 
   const { probe: answer } = probe;
 
   if (answer.failure !== null) {
-    return <span className="connection-probe-failed">{failureLabels[answer.failure]}</span>;
+    return <span className="text-destructive">{failureLabels[answer.failure]}</span>;
   }
 
   if (!answer.reachable) {
-    return <span className="connection-probe-failed">Not reachable</span>;
+    return <span className="text-destructive">Not reachable</span>;
   }
 
   return (

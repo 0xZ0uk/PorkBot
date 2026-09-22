@@ -25,11 +25,11 @@ export interface UsageScreenProps {
 
 export function UsageScreen({ usage }: UsageScreenProps) {
   return (
-    <section className="console usage-screen">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3 gap-4">
+      <header className="flex flex-col gap-1">
         <div>
           <h2>Usage</h2>
-          <p className="muted">Recorded and displayed only; nothing here is metered or enforced.</p>
+          <p className="text-muted-foreground">Recorded and displayed only; nothing here is metered or enforced.</p>
         </div>
         <Badge tone="info">Informational</Badge>
       </header>
@@ -49,20 +49,20 @@ export function UsageReport({ usage }: UsageScreenProps) {
   const empty = usage.total.reported === 0 && usage.total.unreported === 0;
 
   if (empty) {
-    return <p className="muted">No usage recorded yet.</p>;
+    return <p className="text-muted-foreground">No usage recorded yet.</p>;
   }
 
   return (
     <>
-      <section className="usage-section" aria-label="All time">
-        <h3 className="usage-section-title">All time</h3>
+      <section className="flex flex-col gap-2" aria-label="All time">
+        <h3 className="m-0 text-heading">All time</h3>
         <UsageStats totals={usage.total} />
       </section>
 
-      <section className="usage-section" aria-label="Daily spend">
-        <h3 className="usage-section-title">Daily spend</h3>
+      <section className="flex flex-col gap-2" aria-label="Daily spend">
+        <h3 className="m-0 text-heading">Daily spend</h3>
         {usage.periods.length === 0 ? (
-          <p className="muted">No usage in this period.</p>
+          <p className="text-muted-foreground">No usage in this period.</p>
         ) : (
           <UsageChart periods={usage.periods} />
         )}
@@ -77,21 +77,21 @@ function UsageStats({ totals }: { readonly totals: UsageTotalsView }) {
   const partial = totals.reported > 0 && totals.unreported > 0;
 
   return (
-    <div className="usage-stats">
-      <div className="usage-stat">
-        <span className="usage-stat-label">Input tokens</span>
-        <span className="usage-stat-value">{tokenText(totals.inputTokens)}</span>
+    <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-meta text-muted-foreground">Input tokens</span>
+        <span className="font-medium text-body">{tokenText(totals.inputTokens)}</span>
       </div>
-      <div className="usage-stat">
-        <span className="usage-stat-label">Output tokens</span>
-        <span className="usage-stat-value">{tokenText(totals.outputTokens)}</span>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-meta text-muted-foreground">Output tokens</span>
+        <span className="font-medium text-body">{tokenText(totals.outputTokens)}</span>
       </div>
-      <div className="usage-stat">
-        <span className="usage-stat-label">Calls</span>
-        <span className="usage-stat-value">{String(calls)}</span>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-meta text-muted-foreground">Calls</span>
+        <span className="font-medium text-body">{String(calls)}</span>
       </div>
       {partial ? (
-        <p className="usage-partial muted">
+        <p className="text-meta text-muted-foreground">
           {String(totals.unreported)} of {String(calls)} not reported
         </p>
       ) : null}
@@ -114,42 +114,42 @@ function UsageChart({ periods }: { readonly periods: UsageBot["periods"] }) {
   const busiest = Math.max(1, ...totals.map((total) => total.input + total.output));
 
   return (
-    <figure className="usage-chart">
-      <ul className="usage-bars">
+    <figure className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2">
         {periods.map((period, index) => {
           const total = totals[index] ?? { input: 0, output: 0 };
           const reported = period.inputTokens !== null || period.outputTokens !== null;
 
           return (
-            <li key={period.startsAt} className="usage-bar-row">
-              <time className="usage-bar-day muted" dateTime={period.startsAt}>
+            <li key={period.startsAt} className="flex items-center gap-2">
+              <time className="w-20 flex-none text-meta text-muted-foreground" dateTime={period.startsAt}>
                 {formatDay(period.startsAt)}
               </time>
-              <span className="usage-bar-track">
+              <span className="h-2 flex-1 overflow-hidden rounded-full bg-accent">
                 {reported ? (
                   <>
                     <span
-                      className="usage-bar-segment usage-bar-segment--input"
+                      className="h-full bg-primary"
                       style={{ width: `${String((total.input / busiest) * 100)}%` }}
                     />
                     <span
-                      className="usage-bar-segment usage-bar-segment--output"
+                      className="h-full bg-primary bg-primary/60"
                       style={{ width: `${String((total.output / busiest) * 100)}%` }}
                     />
                   </>
                 ) : null}
               </span>
-              <span className="usage-bar-total">
+              <span className="w-16 flex-none text-right text-meta text-muted-foreground">
                 {reported ? tokenText(total.input + total.output) : "Not reported"}
               </span>
             </li>
           );
         })}
       </ul>
-      <figcaption className="usage-legend muted">
-        <span className="usage-swatch usage-swatch--input" aria-hidden="true" />
+      <figcaption className="flex flex-wrap gap-3 text-muted-foreground">
+        <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
         Input
-        <span className="usage-swatch usage-swatch--output" aria-hidden="true" />
+        <span className="size-2 rounded-full bg-primary bg-primary/60" aria-hidden="true" />
         Output
       </figcaption>
     </figure>

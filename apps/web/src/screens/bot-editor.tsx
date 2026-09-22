@@ -2,6 +2,7 @@ import { avatarContentTypes, maxAvatarBytes } from "@porkbot/contracts";
 import { srgbAccent } from "@porkbot/tokens";
 import { BotAvatar, Button, Field, Input, Select, Textarea } from "@porkbot/ui";
 import { useState } from "react";
+import { cn } from "../lib/cn.ts";
 import type { AvatarContentType, Bot, BotSection, ComputerView } from "@porkbot/contracts";
 import { formFromBot, validateBotForm } from "../bots.ts";
 import type { BotFormErrors, BotFormValues, ComputerHealth } from "../bots.ts";
@@ -51,24 +52,24 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
   }
 
   return (
-    <section className="console bot-editor">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3 gap-4">
+      <header className="flex flex-col gap-1">
         <div>
           <h2>{editing ? props.bot.name : "New bot"}</h2>
-          <p className="muted">{editing ? "Profile and runtime settings" : "Set up a teammate"}</p>
+          <p className="text-muted-foreground">{editing ? "Profile and runtime settings" : "Set up a teammate"}</p>
         </div>
-        {archived ? <span className="bot-status bot-status-stopped">Archived</span> : null}
+        {archived ? <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta bg-destructive/14 text-destructive border-destructive/40">Archived</span> : null}
       </header>
 
       {props.notice === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {props.notice}
         </p>
       )}
 
-      <section className="editor-section">
+      <section className="flex flex-col gap-3">
         <h3>Avatar</h3>
-        <div className="avatar-editor">
+        <div className="flex items-center gap-3">
           <BotAvatar
             id={previewId}
             name={previewName}
@@ -76,17 +77,17 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
             imageUrl={props.avatarUrl}
             size={40}
           />
-          <div className="avatar-preview-copy">
+          <div className="flex flex-col gap-1">
             <strong>{previewName}</strong>
-            <p className="muted">
+            <p className="text-muted-foreground">
               {props.avatarUrl === null
                 ? "Generated from this bot’s id and colour."
                 : "Your uploaded avatar appears in the roster."}
             </p>
           </div>
           {editing ? (
-            <div className="bot-actions">
-              <Field label="Upload image" className="file-button" error={avatarError ?? undefined}>
+            <div className="flex flex-wrap gap-2">
+              <Field label="Upload image" className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-transparent bg-transparent text-body hover:bg-accent" error={avatarError ?? undefined}>
                 <Input
                   type="file"
                   accept={avatarContentTypes.join(",")}
@@ -120,7 +121,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
       </section>
 
       <form
-        className="editor-form"
+        className="flex flex-col gap-3"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -129,7 +130,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
           if (Object.keys(nextErrors).length === 0) void props.onSave(values);
         }}
       >
-        <section className="editor-section">
+        <section className="flex flex-col gap-3">
           <h3>Identity</h3>
           <Field label="Name" error={errors.name}>
             <Input
@@ -155,7 +156,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
               onChange={(event) => field("description", event.target.value)}
             />
           </Field>
-          <Field label="Colour" className="color-field" error={errors.color}>
+          <Field label="Colour" className="flex items-center gap-2" error={errors.color}>
             <Input
               type="color"
               value={values.color}
@@ -165,7 +166,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
           </Field>
         </section>
 
-        <section className="editor-section">
+        <section className="flex flex-col gap-3">
           <h3>Instructions</h3>
           <Field label="What should this bot do?" error={errors.instructions}>
             <Textarea
@@ -177,7 +178,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
           </Field>
         </section>
 
-        <section className="editor-section">
+        <section className="flex flex-col gap-3">
           <h3>Section</h3>
           <Field label="Group">
             <Select
@@ -192,7 +193,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
               ))}
             </Select>
           </Field>
-          <div className="inline-form">
+          <div className="flex flex-wrap gap-2">
             <Field label="New section">
               <Input value={newSection} onChange={(event) => setNewSection(event.target.value)} />
             </Field>
@@ -212,7 +213,7 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
           </div>
         </section>
 
-        <section className="editor-section">
+        <section className="flex flex-col gap-3">
           <h3>Computer</h3>
           <Field label="Provider" error={errors.computerProvider}>
             <Input
@@ -229,11 +230,11 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
               onComputer={props.onComputer}
             />
           ) : (
-            <p className="muted">Computer controls are available after the bot is created.</p>
+            <p className="text-muted-foreground">Computer controls are available after the bot is created.</p>
           )}
         </section>
 
-        <div className="editor-save">
+        <div className="self-start">
           <Button type="submit" variant="primary" disabled={props.pending}>
             {props.pending ? "Saving…" : editing ? "Save changes" : "Create bot"}
           </Button>
@@ -241,9 +242,9 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
       </form>
 
       {editing ? (
-        <section className="editor-section archive-section">
+        <section className="flex flex-col gap-3 gap-2 border-t border-border pt-3">
           <h3>{archived ? "Restore" : "Archive"}</h3>
-          <p className="muted">
+          <p className="text-muted-foreground">
             {archived
               ? "Restore this bot to make it active again."
               : "Archiving hides this bot but keeps its settings and threads."}
@@ -252,8 +253,8 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
             {confirmingArchive ? "Cancel" : archived ? "Restore bot" : "Archive bot"}
           </Button>
           {confirmingArchive ? (
-            <div className="confirm-row">
-              <p className="muted">Confirm this change?</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-muted-foreground">Confirm this change?</p>
               <Button
                 variant="primary"
                 disabled={props.pending}
@@ -280,7 +281,7 @@ function ComputerControls({
 }>) {
   if (health.kind === "failed") {
     return (
-      <div className="computer-state computer-state-failed">
+      <div className="inline-flex items-center gap-1 text-meta text-muted-foreground text-destructive">
         <p>Computer status is unavailable.</p>
         <Button disabled={pending} onClick={() => void onComputer("recover")}>
           Recover
@@ -293,9 +294,9 @@ function ComputerControls({
   const running = view.assigned && view.state === "running";
 
   return (
-    <div className={`computer-state ${health.kind === "stopped" ? "computer-state-failed" : ""}`}>
+    <div className={cn("inline-flex items-center gap-1 text-meta text-muted-foreground", health.kind === "stopped" && "text-destructive")}>
       <p>{!view.assigned ? "No computer assigned" : `Computer ${view.state}`}</p>
-      <div className="bot-actions">
+      <div className="flex flex-wrap gap-2">
         <Button disabled={pending || running} onClick={() => void onComputer("boot")}>
           Start
         </Button>

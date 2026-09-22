@@ -1,3 +1,4 @@
+import { cn } from "../lib/cn.ts";
 import type { Approval } from "@porkbot/contracts";
 import { connectorDangerousActions } from "@porkbot/core";
 import type { ApprovalStatus, ApprovalVote } from "@porkbot/core";
@@ -62,6 +63,13 @@ export interface ApprovalCardProps {
   readonly showArguments?: boolean | undefined;
 }
 
+const approvalTitleTone: Record<string, string> = {
+  pending: "text-primary",
+  approved: "text-success",
+  denied: "text-destructive",
+  timed_out: "text-destructive",
+};
+
 export function ApprovalCard({
   tool,
   arguments: callArguments,
@@ -119,13 +127,13 @@ export function ApprovalCard({
   }
 
   return (
-    <Card className="approval-card" data-approval-state={live} data-approval-tool={tool}>
-      <div className="approval-card-head">
-        <span className={`approval-card-title approval-card-title-${live}`}>
+    <Card className="mt-2 flex flex-col gap-2 border-l-4 border-border pl-3" data-approval-state={live} data-approval-tool={tool}>
+      <div className="flex flex-col items-start gap-1">
+        <span className={cn("inline-flex items-center gap-1 text-meta font-semibold", approvalTitleTone[live])}>
           <Icon name={statusIcon(live)} size={14} />
           {statusTitle(live)}
         </span>
-        <span className="approval-card-deadline">
+        <span className="tabular-nums text-meta font-medium text-muted-foreground">
           {pending ? (
             <time dateTime={current.expiresAt} title={approvalDateLabel(current.expiresAt)}>
               {approvalDeadlineLabel(current.expiresAt, clock)}
@@ -137,26 +145,26 @@ export function ApprovalCard({
       </div>
 
       {bot === null || bot === undefined ? null : (
-        <p className="approval-card-bot">
+        <p className="m-0 flex items-center gap-1 text-meta text-muted-foreground">
           <BotAvatar id={bot.id} name={bot.name} color={bot.color ?? null} size={20} />
           <span>{bot.name}</span>
         </p>
       )}
 
-      <p className="approval-card-consequence">{description.consequence}</p>
+      <p className="m-0 wrap-anywhere text-meta text-muted-foreground">{description.consequence}</p>
 
-      <p className="approval-card-meta">
-        <code className="approval-card-tool">{description.action}</code>
+      <p className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
+        <code className="font-mono text-code">{description.action}</code>
         {description.target === null ? null : (
-          <code className="approval-card-target">{description.target}</code>
+          <code className="m-0 wrap-anywhere font-mono text-code text-muted-foreground">{description.target}</code>
         )}
         {runId === null || runId === undefined ? null : (
-          <span className="approval-card-run">Run {runId}</span>
+          <span className="text-meta text-muted-foreground">Run {runId}</span>
         )}
       </p>
 
       {pending && onDecide !== undefined ? (
-        <div className="approval-card-actions">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="primary"
             loading={busy === "approve"}
@@ -181,27 +189,27 @@ export function ApprovalCard({
       ) : null}
 
       {live === "timed_out" ? (
-        <p className="approval-card-decision">The deadline passed, so the run was denied.</p>
+        <p className="m-0 wrap-anywhere text-body text-muted-foreground">The deadline passed, so the run was denied.</p>
       ) : current.reason === null || current.reason === "" ? null : (
-        <p className="approval-card-decision">{current.reason}</p>
+        <p className="m-0 wrap-anywhere text-body text-muted-foreground">{current.reason}</p>
       )}
 
       {error ? (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           The decision could not be recorded. Try again.
         </p>
       ) : null}
 
       {transcriptHref === null || transcriptHref === undefined ? null : (
-        <a className="approval-card-link" href={transcriptHref}>
+        <a className="text-body text-primary" href={transcriptHref}>
           Open transcript
         </a>
       )}
 
       {showArguments ? (
-        <details className="approval-card-details">
+        <details className="">
           <summary>Arguments</summary>
-          <pre className="approval-card-json">{json(callArguments)}</pre>
+          <pre className="mt-2 m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">{json(callArguments)}</pre>
         </details>
       ) : null}
     </Card>

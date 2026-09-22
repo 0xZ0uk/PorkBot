@@ -66,8 +66,8 @@ export function ThreadConsoleScreen({
 
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onRetry}>Try again</Button>
@@ -84,10 +84,10 @@ export function ThreadConsoleScreen({
   const sessions = groupTranscriptSessions(state.entries);
 
   return (
-    <section className="console">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       {connection === null ? null : (
-        <div className="console-state-row">
-          <span className="console-connection" role="status">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex" role="status">
             <Badge tone="info">
               <Icon name="info" size={12} />
               {connection}
@@ -102,27 +102,27 @@ export function ThreadConsoleScreen({
           {...(bot === undefined ? {} : { color: bot.color })}
         />
       )}
-      <div className="conversation-transcript">
+      <div className="flex min-h-0 flex-1 flex-col">
         <ScrollArea
           label="Transcript"
-          className="transcript-scroll"
+          className="flex min-h-0 flex-1 flex-col"
           ref={anchor.ref}
           onScroll={anchor.onScroll}
         >
-          <div className="thread-column">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
             {state.entries.length === 0 ? (
               state.status === "ready" ? (
-                <p className="muted">No messages yet.</p>
+                <p className="text-muted-foreground">No messages yet.</p>
               ) : null
             ) : (
               sessions.map((session) => (
-                <div className="transcript-session" key={session.key}>
+                <div className="flex flex-col gap-2" key={session.key}>
                   {session.label === null ? null : (
-                    <p className="transcript-separator">
+                    <p className="mx-auto w-full max-w-2xl border-t border-border">
                       <time dateTime={session.startedAt ?? undefined}>{session.label}</time>
                     </p>
                   )}
-                  <ol className="transcript">
+                  <ol className="flex min-h-0 flex-1 flex-col">
                     {session.entries.map((entry) => {
                       if (entry.kind === "tool") {
                         return (
@@ -160,7 +160,7 @@ export function ThreadConsoleScreen({
           </div>
         </ScrollArea>
         {anchor.atLatest || state.entries.length === 0 ? null : (
-          <div className="transcript-jump">
+          <div className="ml-auto flex-none">
             <Button variant="neutral" onClick={anchor.jumpToLatest}>
               <Icon name="chevron-down" size={14} />
               Jump to latest
@@ -198,10 +198,10 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
 
   return (
     <li className={classes}>
-      <div className="message-body">
-        <div className={operator ? "message-attribution sr-only" : "message-attribution"}>
+      <div className="flex flex-col gap-1">
+        <div className={operator ? "flex items-center gap-1 text-meta text-muted-foreground sr-only" : "flex items-center gap-1 text-meta text-muted-foreground"}>
           {operator ? (
-            <span className="message-role">You</span>
+            <span className="font-medium text-foreground">You</span>
           ) : (
             <>
               {bot === undefined ? null : (
@@ -213,23 +213,23 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
                   size={24}
                 />
               )}
-              <span className="message-role">{bot?.name ?? "Bot"}</span>
+              <span className="font-medium text-foreground">{bot?.name ?? "Bot"}</span>
             </>
           )}
         </div>
         {entry.delivery === "sending" ? (
-          <span className="message-delivery" role="status">
+          <span className="text-meta text-muted-foreground" role="status">
             Sending…
           </span>
         ) : entry.delivery === "failed" ? (
-          <span className="message-delivery message-delivery-failed" role="alert">
+          <span className="text-meta text-muted-foreground text-destructive" role="alert">
             Not sent
           </span>
         ) : null}
-        <Card variant="raised" className="message-bubble">
-          <p className="message-text">{entry.text}</p>
+        <Card variant="raised" className="max-w-[44rem] rounded-xl border border-border bg-card p-3">
+          <p className="m-0 break-words whitespace-pre-wrap text-body">{entry.text}</p>
           {entry.attachments.length === 0 ? null : (
-            <ul className="message-attachments">
+            <ul className="flex flex-wrap gap-2">
               {entry.attachments.map((file) => (
                 <AttachmentCard key={file.attachmentId} file={file} />
               ))}
@@ -244,18 +244,18 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
 /** One stored file: its name, type and size, with the card itself opening it. */
 function AttachmentCard({ file }: { readonly file: FileMessageBlock }) {
   return (
-    <Card as="li" className="attachment-card">
-      <a className="message-attachment" href={fileDownloadPath(file.attachmentId)}>
-        <span className="attachment-icon" aria-hidden="true">
+    <Card as="li" className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
+      <a className="flex items-center gap-2" href={fileDownloadPath(file.attachmentId)}>
+        <span className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground" aria-hidden="true">
           <Icon name="download" size={14} />
         </span>
-        <span className="attachment-body">
-          <span className="attachment-name">{file.filename}</span>
-          <span className="attachment-meta muted">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="break-words font-medium text-body">{file.filename}</span>
+          <span className="text-meta text-muted-foreground">
             {file.contentType} · {formatBytes(file.sizeBytes)}
           </span>
         </span>
-        <span className="attachment-action">Open</span>
+        <span className="ml-auto flex-none">Open</span>
       </a>
     </Card>
   );
@@ -308,14 +308,14 @@ function LiveStrip({
 
   return (
     <div
-      className={["live-strip", `live-strip-${state}`].join(" ")}
+      className={["flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-body", `live-strip-${state}`].join(" ")}
       data-liveness={state}
       role="status"
       style={style}
     >
-      <span className="live-strip-dot" aria-hidden="true" />
-      <span className="live-strip-step">{stepLabel(liveness)}</span>
-      <span className="live-strip-beat muted">
+      <span className="size-2 flex-none rounded-full bg-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 font-medium wrap-anywhere">{stepLabel(liveness)}</span>
+      <span className="ml-auto flex-none text-meta text-muted-foreground">
         {stale ? "signal lost" : `heartbeat ${formatDuration(liveness.heartbeatLagMs)} ago`}
       </span>
     </div>

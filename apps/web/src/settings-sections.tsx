@@ -35,8 +35,8 @@ export interface UnavailableSectionProps {
 /** A section whose data source refused or was never composed. */
 export function UnavailableSection({ message, onRetry }: UnavailableSectionProps) {
   return (
-    <section className="console">
-      <p className="form-error" role="alert">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
         {message}
       </p>
       {onRetry === undefined ? null : <Button onClick={onRetry}>Try again</Button>}

@@ -78,8 +78,8 @@ export function MemoryScreen({
 }: MemoryScreenProps) {
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onRetry}>Try again</Button>
@@ -92,11 +92,11 @@ export function MemoryScreen({
   }
 
   return (
-    <section className="console">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <header className="flex flex-col gap-1">
         <div>
           <h2>Memory</h2>
-          <p className="muted">What this bot remembers, correctable in place.</p>
+          <p className="text-muted-foreground">What this bot remembers, correctable in place.</p>
         </div>
         <SegmentedControl
           label="Which documents to show"
@@ -110,9 +110,9 @@ export function MemoryScreen({
 
       {state.documents.length === 0 ? (
         state.status === "ready" ? (
-          <div className="empty-state">
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
             <h3>{state.scope === "active" ? "Nothing remembered yet" : "Nothing removed"}</h3>
-            <p className="muted">
+            <p className="text-muted-foreground">
               {state.scope === "active"
                 ? "This bot has no durable documents."
                 : "A removed document keeps its history and can be restored."}
@@ -120,7 +120,7 @@ export function MemoryScreen({
           </div>
         ) : null
       ) : (
-        <ul className="memory-list">
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {state.documents.map((document) => (
             <MemoryDocumentCard
               key={document.documentId}
@@ -192,33 +192,33 @@ function MemoryDocumentCard({
     <Card
       as="li"
       variant="raised"
-      className={removed ? "memory-document memory-document--removed" : "memory-document"}
+      className={removed ? "flex flex-col gap-2 rounded-lg border border-border bg-card p-3 border-dashed" : "flex flex-col gap-2 rounded-lg border border-border bg-card p-3"}
       data-removed={removed ? "true" : undefined}
     >
-      <div className="memory-document-header">
+      <div className="flex flex-wrap items-baseline gap-2">
         <h3>{document.title}</h3>
         <Badge>{kindLabels[document.kind]}</Badge>
         {removed ? <Badge tone="destructive">Removed</Badge> : null}
-        <span className="memory-revision muted">v{document.revision}</span>
+        <span className="ml-auto text-meta text-muted-foreground">v{document.revision}</span>
       </div>
 
-      <p className="memory-meta muted">
+      <p className="m-0 text-meta text-muted-foreground">
         Last change by {originLabel(document.lastChangedOrigin)} ·{" "}
         <time dateTime={document.lastChangedAt}>{formatInstant(document.lastChangedAt)}</time>
       </p>
 
-      <MemoryText text={document.content} className="memory-content" />
+      <MemoryText text={document.content} className="m-0 wrap-anywhere whitespace-pre-wrap" />
 
       {notice === null ? null : (
         <p
-          className={notice.kind === "error" ? "form-error" : "muted"}
+          className={notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
           role={notice.kind === "error" ? "alert" : "status"}
         >
           {notice.text}
         </p>
       )}
 
-      <div className="memory-actions">
+      <div className="flex flex-wrap gap-2">
         {scope === "deleted" ? (
           <Button
             variant="primary"
@@ -342,7 +342,7 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
 
   return (
     <form
-      className="memory-form"
+      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit({ documentId: document.documentId, title, content, reason });
@@ -380,7 +380,7 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
           }}
         />
       </Field>
-      <Button className="memory-inline-action" type="submit" variant="primary" disabled={pending}>
+      <Button className="self-start" type="submit" variant="primary" disabled={pending}>
         Save
       </Button>
     </form>
@@ -406,13 +406,13 @@ function RemoveConfirm({ document, pending, onCancel, onSubmit }: RemoveConfirmP
 
   return (
     <form
-      className="memory-form"
+      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit(reason);
       }}
     >
-      <p className="memory-consequence" role="note">
+      <p className="m-0 wrap-anywhere text-body" role="note">
         Removing &quot;{document.title}&quot; leaves Current. Its history and its id are kept, and
         you can restore it from Removed.
       </p>
@@ -427,7 +427,7 @@ function RemoveConfirm({ document, pending, onCancel, onSubmit }: RemoveConfirmP
           }}
         />
       </Field>
-      <div className="memory-actions">
+      <div className="flex flex-wrap gap-2">
         <Button disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
@@ -459,13 +459,13 @@ function RestoreConfirm({ document, revision, pending, onCancel, onSubmit }: Res
 
   return (
     <form
-      className="memory-form"
+      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit(reason);
       }}
     >
-      <p className="memory-consequence" role="note">
+      <p className="m-0 wrap-anywhere text-body" role="note">
         {removed
           ? `Restoring revision ${String(revision)} returns "${document.title}" to Current as its newest revision.`
           : `Restoring revision ${String(revision)} makes its text the newest revision; nothing already recorded is erased.`}
@@ -480,7 +480,7 @@ function RestoreConfirm({ document, revision, pending, onCancel, onSubmit }: Res
           }}
         />
       </Field>
-      <div className="memory-actions">
+      <div className="flex flex-wrap gap-2">
         <Button disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
@@ -520,12 +520,12 @@ function RevisionTimeline({
   onSubmitRestore,
 }: RevisionTimelineProps) {
   if (history === undefined || history.status === "loading") {
-    return <p className="muted">Loading history…</p>;
+    return <p className="text-muted-foreground">Loading history…</p>;
   }
 
   if (history.status === "refused") {
     return (
-      <p className="form-error" role="alert">
+      <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
         The history could not be loaded.
       </p>
     );
@@ -534,27 +534,27 @@ function RevisionTimeline({
   const latest = history.revisions[history.revisions.length - 1]?.revision;
 
   return (
-    <ol className="memory-timeline">
+    <ol className="relative m-0 flex list-none flex-col gap-4 border-l border-border p-0 pl-4">
       {history.revisions.map((revision) => (
         <li
           key={revision.revision}
-          className="memory-timeline-entry"
+          className="relative flex flex-col gap-1"
           data-latest={revision.revision === latest ? "true" : undefined}
           data-deleted={revision.deleted ? "true" : undefined}
         >
-          <span className="memory-timeline-marker" aria-hidden="true" />
-          <div className="memory-timeline-header">
-            <span className="memory-revision muted">v{revision.revision}</span>
+          <span className="absolute -left-4 top-1 size-2 rounded-full bg-muted-foreground" aria-hidden="true" />
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="ml-auto text-meta text-muted-foreground">v{revision.revision}</span>
             <span>{originLabel(revision.origin)}</span>
-            <time className="muted" dateTime={revision.createdAt}>
+            <time className="text-muted-foreground" dateTime={revision.createdAt}>
               {formatInstant(revision.createdAt)}
             </time>
             {revision.deleted ? <Badge tone="destructive">Removed</Badge> : null}
           </div>
-          <p className="memory-timeline-reason">{revision.reason}</p>
-          <MemoryText text={revision.content} className="memory-timeline-content" />
+          <p className="m-0 wrap-anywhere text-body">{revision.reason}</p>
+          <MemoryText text={revision.content} className="m-0 wrap-anywhere whitespace-pre-wrap" />
           <Button
-            className="memory-inline-action"
+            className="self-start"
             disabled={pending}
             onClick={() => {
               onRestore(revision.revision);
@@ -592,8 +592,8 @@ function MemoryText({ text, className }: { readonly text: string; readonly class
   }
 
   return (
-    <details className="memory-text-details">
-      <summary className="memory-summary">{text.slice(0, limit)}…</summary>
+    <details className="">
+      <summary className="wrap-anywhere whitespace-pre-wrap text-muted-foreground">{text.slice(0, limit)}…</summary>
       <p className={className}>{text}</p>
     </details>
   );

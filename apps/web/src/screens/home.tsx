@@ -41,8 +41,8 @@ export function HomeScreen({
   const groups = groupRoster(roster.active, roster.sections);
 
   return (
-    <section className="console bot-home">
-      <header className="roster-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <header className="flex flex-wrap items-center gap-3">
         <h2>Bots</h2>
         <Button variant="primary" onClick={onCreate}>
           New bot
@@ -50,21 +50,21 @@ export function HomeScreen({
       </header>
 
       {error === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {error}
         </p>
       )}
 
       {failed ? (
-        <div className="empty-state">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
           <h3>The bot list could not be loaded</h3>
-          <p className="muted">Check your connection and try again.</p>
+          <p className="text-muted-foreground">Check your connection and try again.</p>
           <Button onClick={onRetry}>Try again</Button>
         </div>
       ) : roster.active.length === 0 ? (
-        <div className="empty-state">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
           <h3>Create your first bot</h3>
-          <p className="muted">Give it a name and instructions, then start its first thread.</p>
+          <p className="text-muted-foreground">Give it a name and instructions, then start its first thread.</p>
           <Button variant="primary" onClick={onCreate}>
             New bot
           </Button>
@@ -84,7 +84,7 @@ export function HomeScreen({
       )}
 
       {roster.archived.length === 0 ? null : (
-        <section className="roster-group">
+        <section className="flex flex-col gap-2">
           <Button
             aria-expanded={showArchived}
             onClick={() => {
@@ -94,7 +94,7 @@ export function HomeScreen({
             {showArchived ? "Hide archived" : `Archived (${String(roster.archived.length)})`}
           </Button>
           {showArchived ? (
-            <ul className="roster-list">
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {roster.archived.map((entry) => (
                 <li key={entry.bot.id}>
                   <RosterRow
@@ -131,9 +131,9 @@ function RosterGroupSection({
   onPin,
 }: RosterGroupSectionProps) {
   return (
-    <section className="roster-group">
+    <section className="flex flex-col gap-2">
       {group.name === null ? null : <h3>{group.name}</h3>}
-      <ul className="roster-list">
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {group.entries.map((entry) => (
           <li key={entry.bot.id}>
             <RosterRow

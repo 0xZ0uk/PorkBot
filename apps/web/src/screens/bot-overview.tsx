@@ -26,26 +26,26 @@ export function BotOverviewScreen({
   onNewThread,
 }: BotOverviewScreenProps) {
   return (
-    <section className="console bot-overview">
-      {bot.description === "" ? null : <p className="muted">{bot.description}</p>}
-      <div className="bot-overview-actions">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      {bot.description === "" ? null : <p className="text-muted-foreground">{bot.description}</p>}
+      <div className="flex flex-wrap gap-2">
         <Button variant="primary" loading={creating} onClick={onNewThread}>
           New thread
         </Button>
       </div>
       {error === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {error}
         </p>
       )}
       <h2>Threads</h2>
       {threads.length === 0 ? (
-        <div className="empty-state">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
           <h3>No threads yet</h3>
-          <p className="muted">Start one and this bot gets to work.</p>
+          <p className="text-muted-foreground">Start one and this bot gets to work.</p>
         </div>
       ) : (
-        <ul className="thread-list">
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {threads.map((thread) => (
             <li key={thread.id}>
               <Link

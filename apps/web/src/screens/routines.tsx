@@ -69,11 +69,11 @@ export function RoutinesScreen({
   }
 
   return (
-    <section className="console routines-screen" aria-busy={pending !== null}>
-      <header className="memory-header routines-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3 gap-4" aria-busy={pending !== null}>
+      <header className="flex flex-col gap-1 flex-wrap items-center gap-3">
         <div>
           <h2>Routines</h2>
-          <p className="muted">
+          <p className="text-muted-foreground">
             Schedule repeatable work and see every slot the scheduler settles.
           </p>
         </div>
@@ -83,7 +83,7 @@ export function RoutinesScreen({
       </header>
 
       {notice === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {notice}
         </p>
       )}
@@ -134,13 +134,13 @@ export function RoutinesScreen({
       )}
 
       {routines.length === 0 && !creating ? (
-        <div className="empty-state routines-empty">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
           <h3>No routines yet</h3>
-          <p className="muted">Create one to give this bot recurring work and a visible history.</p>
+          <p className="text-muted-foreground">Create one to give this bot recurring work and a visible history.</p>
           <Button onClick={openCreate}>Create routine</Button>
         </div>
       ) : routines.length > 0 ? (
-        <ul className="routine-list">
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {routines.map((routine) => (
             <RoutineCard
               key={routine.id}
@@ -243,13 +243,13 @@ function RoutineEditor({
 
   return (
     <section
-      className="routine-editor"
+      className="flex flex-col gap-3"
       aria-label={routine === null ? "New routine" : "Edit routine"}
     >
-      <header className="routine-editor-header">
+      <header className="flex flex-wrap items-center gap-2">
         <div>
           <h3>{routine === null ? "New routine" : "Edit routine"}</h3>
-          <p className="muted">The preview uses the scheduler's cron and timezone rules.</p>
+          <p className="text-muted-foreground">The preview uses the scheduler's cron and timezone rules.</p>
         </div>
         <Button variant="ghost" onClick={onClose} disabled={pending}>
           Cancel
@@ -257,13 +257,13 @@ function RoutineEditor({
       </header>
 
       {saveError === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {saveError}
         </p>
       )}
 
       <form
-        className="routine-form"
+        className="flex flex-col gap-3"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -281,7 +281,7 @@ function RoutineEditor({
             onChange={(event) => change("instruction", event.target.value)}
           />
         </Field>
-        <div className="routine-schedule-fields">
+        <div className="flex flex-wrap gap-2">
           <Field
             label="Cron expression"
             hint="Five fields: minute hour day-of-month month day-of-week"
@@ -316,7 +316,7 @@ function RoutineEditor({
 
         <RoutinePreview preview={preview} timezone={values.timezone} />
 
-        <div className="routine-editor-actions">
+        <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="primary" loading={pending}>
             Save routine
           </Button>
@@ -334,21 +334,21 @@ function RoutinePreview({
   readonly timezone: string;
 }) {
   return (
-    <section className="routine-preview" aria-labelledby="routine-preview-title">
-      <div className="routine-section-heading">
+    <section className="flex flex-col gap-2" aria-labelledby="routine-preview-title">
+      <div className="m-0 text-heading">
         <h4 id="routine-preview-title">Next fires</h4>
-        {preview.status === "loading" ? <span className="muted">Checking…</span> : null}
+        {preview.status === "loading" ? <span className="text-muted-foreground">Checking…</span> : null}
       </div>
-      <p className="routine-preview-status" role="status" aria-live="polite">
+      <p className="text-meta text-muted-foreground" role="status" aria-live="polite">
         {preview.status === "idle" ? "Edit the schedule to preview its next fires." : null}
       </p>
       {preview.message === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {preview.message}
         </p>
       )}
       {preview.status === "ready" ? (
-        <ol className="routine-preview-list">
+        <ol className="m-0 flex list-none flex-col gap-1 p-0">
           {preview.fireTimes.map((fireTime) => (
             <li key={fireTime}>
               <time dateTime={fireTime}>{formatRoutineDate(fireTime, timezone)}</time>
@@ -399,11 +399,11 @@ function RoutineCard({
   }
 
   return (
-    <Card as="li" className="routine-card">
-      <div className="routine-card-header">
-        <div className="routine-card-title">
+    <Card as="li" className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="m-0 text-heading">
           <h3>{routine.instruction}</h3>
-          <p className="routine-schedule">
+          <p className="text-meta text-muted-foreground">
             {describeRoutineSchedule(routine.cron, routine.timezone)}
           </p>
         </div>
@@ -412,7 +412,7 @@ function RoutineCard({
         </Badge>
       </div>
 
-      <dl className="routine-details">
+      <dl className="m-0 break-words text-body">
         <dt>Next fire</dt>
         <dd>
           {routine.enabled ? (
@@ -420,13 +420,13 @@ function RoutineCard({
               {formatRoutineDate(routine.nextRunAt, routine.timezone)}
             </time>
           ) : (
-            <span className="muted">Paused</span>
+            <span className="text-muted-foreground">Paused</span>
           )}
         </dd>
         <dt>Last outcome</dt>
         <dd>
           {lastOutcome === undefined ? (
-            <span className="muted">No scheduled runs yet</span>
+            <span className="text-muted-foreground">No scheduled runs yet</span>
           ) : (
             <OutcomeSummary outcome={lastOutcome} timezone={routine.timezone} />
           )}
@@ -434,18 +434,18 @@ function RoutineCard({
       </dl>
 
       {testError === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {testError}
         </p>
       )}
       {testRun === null ? null : (
-        <p className="routine-test-result" role="status">
+        <p className="m-0 rounded-md border border-border bg-background p-2 font-mono text-code" role="status">
           Test run started.{" "}
           <a href={threadPath(botId, testRun.threadId, testRun.runId)}>Open the test run</a>
         </p>
       )}
 
-      <div className="routine-actions">
+      <div className="flex flex-wrap gap-2">
         <Button disabled={pending} onClick={() => onEdit(routine)}>
           Edit
         </Button>
@@ -467,7 +467,7 @@ function RoutineCard({
       </div>
 
       {confirmingRemove ? (
-        <div className="routine-confirm">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-destructive bg-card p-2">
           <p>
             Remove this routine? Future fires will stop, and its occurrence history will stay
             available.
@@ -500,18 +500,18 @@ function RoutineLedger({
   readonly outcomes: readonly RoutineOutcome[];
 }) {
   return (
-    <details className="routine-ledger">
+    <details className="m-0 flex list-none flex-col gap-2 p-0">
       <summary>
         <span>Occurrence ledger</span>
-        <span className="muted">{String(outcomes.length)} recorded</span>
+        <span className="text-muted-foreground">{String(outcomes.length)} recorded</span>
       </summary>
       {outcomes.length === 0 ? (
-        <p className="muted">No scheduled slots have settled yet.</p>
+        <p className="text-muted-foreground">No scheduled slots have settled yet.</p>
       ) : (
-        <ol className="routine-outcome-list">
+        <ol className="m-0 flex list-none flex-col gap-1 p-0">
           {outcomes.map((outcome) => (
-            <li key={outcome.occurrenceId} className="routine-outcome">
-              <div className="routine-outcome-main">
+            <li key={outcome.occurrenceId} className="flex items-start gap-2">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <time dateTime={outcome.scheduledFor}>
                   {formatRoutineDate(outcome.scheduledFor, routine.timezone)}
                 </time>
@@ -520,7 +520,7 @@ function RoutineLedger({
                 </Badge>
               </div>
               {outcome.runId === null ? (
-                <span className="muted">No run was created for this slot.</span>
+                <span className="text-muted-foreground">No run was created for this slot.</span>
               ) : (
                 <a href={threadPath(botId, routine.threadId, outcome.runId)}>
                   Open run {outcome.runId}
@@ -542,7 +542,7 @@ function OutcomeSummary({
   readonly timezone: string;
 }): ReactNode {
   return (
-    <span className="routine-outcome-summary">
+    <span className="m-0 break-words text-body">
       <Badge tone={outcomeTone(outcome.status)}>{routineOutcomeLabel(outcome.status)}</Badge>{" "}
       <time dateTime={outcome.scheduledFor}>
         {formatRoutineDate(outcome.scheduledFor, timezone)}

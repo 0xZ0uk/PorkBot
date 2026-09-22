@@ -27,32 +27,32 @@ export function RunCardEntry({ run, outcome }: RunCardEntryProps) {
   const note = runNote(run);
 
   return (
-    <li className="run-card">
-      <Card variant="raised" className="run-card-body">
-        <div className="run-card-head">
+    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <Card variant="raised" className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-baseline gap-2">
           <span
-            className={failed ? "run-card-icon run-card-icon-failed" : "run-card-icon"}
+            className={failed ? "grid size-6 flex-none place-items-center rounded-full bg-accent bg-destructive/14 text-destructive" : "grid size-6 flex-none place-items-center rounded-full bg-accent"}
             aria-hidden="true"
           >
             <Icon name={failed ? "alert" : "check"} size={15} />
           </span>
-          <p className="run-card-title">{title}</p>
-          {note === null ? null : <span className="run-card-note muted">{note}</span>}
+          <p className="text-heading">{title}</p>
+          {note === null ? null : <span className="m-0 text-meta text-muted-foreground">{note}</span>}
         </div>
-        <ul className="run-card-lines">
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {outcome.map((line, index) => (
-            <li className="run-card-line" key={`${line.kind}:${String(index)}`}>
+            <li className="text-meta text-muted-foreground" key={`${line.kind}:${String(index)}`}>
               <span
                 className={
                   line.kind === "done"
-                    ? "run-card-mark run-card-mark-done"
-                    : "run-card-mark run-card-mark-follow-up"
+                    ? "size-2 flex-none rounded-full bg-muted-foreground bg-success"
+                    : "size-2 flex-none rounded-full bg-muted-foreground bg-warning"
                 }
                 aria-hidden="true"
               >
                 {line.kind === "done" ? "✓" : "→"}
               </span>
-              <span className="run-card-text">{line.text}</span>
+              <span className="m-0 break-words text-body">{line.text}</span>
             </li>
           ))}
         </ul>
