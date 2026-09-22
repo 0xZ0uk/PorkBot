@@ -19,15 +19,15 @@ export interface ToolResultScreenProps {
 
 export function ToolResultScreen({ botId, threadId, tool, result }: ToolResultScreenProps) {
   return (
-    <section className="console">
-      <p className="muted">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <p className="text-muted-foreground">
         <Link to="/bots/$botId/threads/$threadId" params={{ botId, threadId }}>
           Back to thread
         </Link>
       </p>
-      <h1 className="tool-result-title">Tool result</h1>
-      <p className="muted">{tool}</p>
-      <pre className="tool-result-json">{json(result)}</pre>
+      <h1 className="text-title">Tool result</h1>
+      <p className="text-muted-foreground">{tool}</p>
+      <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">{json(result)}</pre>
     </section>
   );
 }

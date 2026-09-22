@@ -68,7 +68,7 @@ function ThreadConsoleRoute() {
   useShellHeaderState(stateFromLiveness(state.liveness));
 
   return (
-    <div className="conversation">
+    <div className="flex min-h-0 flex-1 flex-col">
       <ThreadConsoleScreen
         botId={botId}
         state={state}

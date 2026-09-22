@@ -34,8 +34,8 @@ function windowLabel(days: UsageWindow): string {
 export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageScreenProps) {
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -48,13 +48,13 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
   }
 
   return (
-    <section className="console">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <header className="flex flex-col gap-1">
         <div>
           <h2>Usage</h2>
-          <p className="muted">Recorded and displayed only; nothing here is metered or enforced.</p>
+          <p className="text-muted-foreground">Recorded and displayed only; nothing here is metered or enforced.</p>
         </div>
-        <div className="usage-controls">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone="info">Informational</Badge>
           <Field label="Window">
             <Select
@@ -75,19 +75,19 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
       </header>
 
       {state.reports.length === 0 ? (
-        <p className="muted">No bots yet.</p>
+        <p className="text-muted-foreground">No bots yet.</p>
       ) : (
         <>
-          <section className="usage-section" aria-label="By bot">
-            <h3 className="usage-section-title">By bot</h3>
+          <section className="flex flex-col gap-2" aria-label="By bot">
+            <h3 className="m-0 text-heading">By bot</h3>
             <UsageComparison reports={state.reports} />
           </section>
 
           {state.reports.map(({ bot, usage }) => (
-            <section key={bot.id} className="usage-bot" aria-label={bot.name}>
-              <header className="usage-bot-header">
+            <section key={bot.id} className="flex flex-col gap-2" aria-label={bot.name}>
+              <header className="flex flex-wrap items-center gap-2">
                 <BotAvatar id={bot.id} name={bot.name} color={bot.color} size={24} />
-                <h3 className="usage-section-title">{bot.name}</h3>
+                <h3 className="m-0 text-heading">{bot.name}</h3>
               </header>
               <UsageReport usage={usage} />
             </section>
@@ -111,23 +111,23 @@ function UsageComparison({ reports }: { readonly reports: readonly BotUsage[] })
   const busiest = Math.max(1, ...totals);
 
   return (
-    <ul className="usage-bars usage-bars--bots">
+    <ul className="flex flex-col gap-2 gap-3">
       {reports.map(({ bot, usage }, index) => {
         const calls = usage.total.reported + usage.total.unreported;
         const total = totals[index] ?? 0;
 
         return (
-          <li key={bot.id} className="usage-bar-row">
-            <span className="usage-bar-day">{bot.name}</span>
-            <span className="usage-bar-track">
+          <li key={bot.id} className="flex items-center gap-2">
+            <span className="w-20 flex-none text-meta text-muted-foreground">{bot.name}</span>
+            <span className="h-2 flex-1 overflow-hidden rounded-full bg-accent">
               {calls === 0 ? null : (
                 <span
-                  className="usage-bar-segment usage-bar-segment--input"
+                  className="h-full bg-primary"
                   style={{ width: `${String((total / busiest) * 100)}%` }}
                 />
               )}
             </span>
-            <span className="usage-bar-total">
+            <span className="w-16 flex-none text-right text-meta text-muted-foreground">
               {calls === 0 ? "No calls" : total === 0 ? "Not reported" : String(total)}
             </span>
           </li>

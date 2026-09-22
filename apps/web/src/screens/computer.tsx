@@ -85,8 +85,8 @@ export function ComputerScreen({
 
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -103,8 +103,8 @@ export function ComputerScreen({
   const switchOpen = state.candidate !== null;
 
   return (
-    <section className="console computer" aria-busy={state.status === "loading"}>
-      <div className="computer-bar">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3" aria-busy={state.status === "loading"}>
+      <div className="flex flex-wrap items-center gap-2">
         <MachineControl
           state={state}
           onLifecycle={onLifecycle}
@@ -122,7 +122,7 @@ export function ComputerScreen({
 
       {state.notice === null || switchOpen ? null : (
         <p
-          className={state.notice.kind === "error" ? "form-error" : "muted"}
+          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -141,7 +141,7 @@ export function ComputerScreen({
             panel: running ? (
               <Terminal state={state} onRun={onRun} />
             ) : (
-              <p className="muted">{machineStateNote(state)}</p>
+              <p className="text-muted-foreground">{machineStateNote(state)}</p>
             ),
           },
           {
@@ -155,7 +155,7 @@ export function ComputerScreen({
                 onOpenParent={onOpenParent}
               />
             ) : (
-              <p className="muted">{machineStateNote(state)}</p>
+              <p className="text-muted-foreground">{machineStateNote(state)}</p>
             ),
           },
         ]}
@@ -244,8 +244,8 @@ function MachineControl({
   const label = pending === null ? machineStateWord(state) : lifecyclePendingLabel(pending);
 
   return (
-    <span className="computer-state">
-      <span className="computer-state-dot" data-state={machineState(state)} aria-hidden="true" />
+    <span className="inline-flex items-center gap-1 text-meta text-muted-foreground">
+      <span className="size-2 rounded-full bg-muted-foreground" data-state={machineState(state)} aria-hidden="true" />
       <Menu
         label={label}
         ariaLabel={`${label} — machine actions`}
@@ -302,15 +302,15 @@ function ProviderBar({
   const unconfigured = selectionUnconfigured(state);
 
   return (
-    <span className="computer-provider">
-      <span className="muted">Runs on</span>
-      <span className="computer-provider-name">
+    <span className="inline-flex items-center gap-1 text-meta">
+      <span className="text-muted-foreground">Runs on</span>
+      <span className="font-medium">
         {kind === null ? "no provider" : providerName(kind)}
       </span>
       {unconfigured ? (
-        <span className="provider-unavailable">Not configured</span>
+        <span className="text-warning">Not configured</span>
       ) : current === null ? null : (
-        <span className={current.available ? "muted" : "provider-unavailable"}>
+        <span className={current.available ? "text-muted-foreground" : "text-warning"}>
           {availabilityOf(current)}
         </span>
       )}
@@ -331,20 +331,20 @@ function ScreenPanel({ state }: { readonly state: ComputerState }) {
   const kind = effectiveKind(state);
 
   return (
-    <div className="computer-frame">
-      <div className="computer-chrome">
-        <span className="computer-lights" aria-hidden="true">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border bg-accent px-3 py-2">
+        <span className="flex gap-1" aria-hidden="true">
           <span />
           <span />
           <span />
         </span>
-        <span className="computer-address">
+        <span className="mx-auto rounded-md bg-background px-3 py-0.5 font-mono text-code text-muted-foreground">
           {kind === null ? "No machine" : providerName(kind)}
         </span>
       </div>
-      <div className="computer-view">
-        <p className="computer-view-state">{machineStateWord(state)}</p>
-        <p className="muted">{machineStateNote(state)}</p>
+      <div className="flex min-h-40 flex-col items-center justify-center gap-1 p-6">
+        <p className="m-0 text-title">{machineStateWord(state)}</p>
+        <p className="text-muted-foreground">{machineStateNote(state)}</p>
       </div>
     </div>
   );
@@ -362,9 +362,9 @@ function Terminal({
   const pending = state.terminal.pending;
 
   return (
-    <div className="terminal">
+    <div className="flex flex-col gap-2">
       <form
-        className="terminal-form"
+        className="flex flex-wrap gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           const next = command.trim();
@@ -394,19 +394,19 @@ function Terminal({
       </form>
 
       {state.terminal.entries.length === 0 ? (
-        <p className="muted">No commands run yet.</p>
+        <p className="text-muted-foreground">No commands run yet.</p>
       ) : (
-        <ol className="terminal-list">
+        <ol className="m-0 flex list-none flex-col gap-2 p-0">
           {state.terminal.entries.map((entry, index) => (
-            <li key={index} className="terminal-entry">
-              <pre className="terminal-command">{`$ ${entry.command}`}</pre>
-              {entry.stdout === "" ? null : <pre className="terminal-stdout">{entry.stdout}</pre>}
-              {entry.stderr === "" ? null : <pre className="terminal-stderr">{entry.stderr}</pre>}
+            <li key={index} className="flex flex-col gap-1 rounded-md border border-border bg-background p-2">
+              <pre className="m-0 font-mono text-code">{`$ ${entry.command}`}</pre>
+              {entry.stdout === "" ? null : <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code">{entry.stdout}</pre>}
+              {entry.stderr === "" ? null : <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code text-destructive">{entry.stderr}</pre>}
               {entry.exitCode === 0 ? null : (
-                <p className="muted">{`Exit code ${String(entry.exitCode)}`}</p>
+                <p className="text-muted-foreground">{`Exit code ${String(entry.exitCode)}`}</p>
               )}
               {entry.truncated ? (
-                <p className="muted">Output was cut at the view&apos;s limit.</p>
+                <p className="text-muted-foreground">Output was cut at the view&apos;s limit.</p>
               ) : null}
             </li>
           ))}
@@ -432,8 +432,8 @@ function Files({
   const home = files.path === null || files.path === "";
 
   return (
-    <div className="files">
-      <div className="file-path">
+    <div className="flex flex-col gap-2">
+      <div className="wrap-anywhere font-mono text-code">
         <Button
           disabled={files.pending || home}
           onClick={() => {
@@ -442,25 +442,25 @@ function Files({
         >
           Up
         </Button>
-        <span className="muted">{home ? "Home" : `/${files.path ?? ""}`}</span>
+        <span className="text-muted-foreground">{home ? "Home" : `/${files.path ?? ""}`}</span>
       </div>
 
       {files.refusal === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {files.refusal}
         </p>
       )}
 
       {files.pending && files.entries.length === 0 ? (
-        <p className="muted" aria-busy="true">
+        <p className="text-muted-foreground" aria-busy="true">
           Listing…
         </p>
       ) : files.entries.length === 0 ? (
-        <p className="muted">This directory is empty.</p>
+        <p className="text-muted-foreground">This directory is empty.</p>
       ) : (
-        <ul className="file-list">
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {files.entries.map((entry) => (
-            <li key={entry.name} className="file-entry">
+            <li key={entry.name} className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
               <Button
                 disabled={files.pending}
                 onClick={() => {
@@ -470,7 +470,7 @@ function Files({
                 {entry.kind === "directory" ? `${entry.name}/` : entry.name}
               </Button>
               {entry.kind === "file" && entry.sizeBytes > 0 ? (
-                <span className="muted">{formatBytes(entry.sizeBytes)}</span>
+                <span className="text-muted-foreground">{formatBytes(entry.sizeBytes)}</span>
               ) : null}
             </li>
           ))}
@@ -478,11 +478,11 @@ function Files({
       )}
 
       {files.preview === null ? null : (
-        <div className="file-preview">
-          <p className="muted">{`/${files.preview.path}`}</p>
-          <pre className="file-content">{files.preview.content}</pre>
+        <div className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
+          <p className="text-muted-foreground">{`/${files.preview.path}`}</p>
+          <pre className="min-w-0 flex-1 wrap-anywhere">{files.preview.content}</pre>
           {files.preview.truncated ? (
-            <p className="muted">Only the first part of the file is shown.</p>
+            <p className="text-muted-foreground">Only the first part of the file is shown.</p>
           ) : null}
         </div>
       )}
@@ -523,12 +523,12 @@ function ProviderSheet({
       onClose={onClose}
     >
       {selectionUnconfigured(state) ? (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {`This bot is set to "${String(state.bot?.computerProvider)}", which this deployment does not configure. Choose a provider below.`}
         </p>
       ) : null}
 
-      <ul className="provider-list">
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
         <ProviderOption
           name="Deployment default"
           detail={detailOf(providers.defaultKind)}
@@ -580,7 +580,7 @@ function ProviderOption({
   readonly onChoose: () => void;
 }) {
   return (
-    <li className="provider-option">
+    <li className="flex items-start gap-2 rounded-md border border-border bg-background p-2">
       <label>
         <Input
           type="radio"
@@ -589,15 +589,15 @@ function ProviderOption({
           disabled={disabled}
           onChange={onChoose}
         />
-        <span className="provider-choice-body">
-          <span className="provider-name">{name}</span>
-          {detail === "" ? null : <span className="provider-detail muted">{detail}</span>}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-heading">{name}</span>
+          {detail === "" ? null : <span className="text-meta text-muted-foreground">{detail}</span>}
         </span>
         <span
           className={
             provider.available
-              ? "provider-availability muted"
-              : "provider-availability provider-unavailable"
+              ? "text-meta text-muted-foreground"
+              : "text-meta text-muted-foreground text-warning"
           }
         >
           {availabilityOf(provider)}
@@ -685,7 +685,7 @@ function SwitchConfirmation({
     >
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "form-error" : "muted"}
+          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -710,12 +710,12 @@ function Snapshots({
   readonly onRestore: (snapshotId: string) => Promise<void>;
 }) {
   return (
-    <section className="computer-snapshots">
+    <section className="flex flex-col gap-2">
       <h3>Snapshots</h3>
       {state.snapshots.length === 0 ? (
-        <p className="muted">No snapshots yet.</p>
+        <p className="text-muted-foreground">No snapshots yet.</p>
       ) : (
-        <ul className="computer-snapshot-list">
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {state.snapshots.map((snapshot) => (
             <SnapshotRow
               key={snapshot.id}
@@ -742,12 +742,12 @@ function SnapshotRow({
   const [restoring, setRestoring] = useState(false);
 
   return (
-    <li className="computer-snapshot">
+    <li className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
       <span>{formatMoment(snapshot.createdAt)}</span>{" "}
-      <span className="muted">{formatBytes(snapshot.sizeBytes)}</span>
+      <span className="text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</span>
       {restoring ? (
-        <span className="computer-snapshot-confirm">
-          <span className="muted">Restoring replaces this machine&apos;s home. </span>{" "}
+        <span className="flex flex-wrap items-center gap-2 rounded-md border border-destructive bg-card p-2">
+          <span className="text-muted-foreground">Restoring replaces this machine&apos;s home. </span>{" "}
           <Button
             disabled={pending !== null}
             onClick={() => {

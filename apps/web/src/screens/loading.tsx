@@ -17,7 +17,7 @@ export function ScreenSkeleton({
 }>) {
   return (
     <section
-      className={["screen-skeleton", className].filter(Boolean).join(" ")}
+      className={["mx-auto flex w-full max-w-2xl flex-col gap-3", className].filter(Boolean).join("")}
       role="status"
       aria-busy="true"
       aria-label={label}
@@ -29,7 +29,7 @@ export function ScreenSkeleton({
 
 function SkeletonHeader({ action = true }: Readonly<{ readonly action?: boolean }>) {
   return (
-    <div className="screen-skeleton-header">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <Skeleton width="9rem" height="1.5rem" />
       {action ? <Skeleton width="7rem" height="2.25rem" /> : null}
     </div>
@@ -38,7 +38,7 @@ function SkeletonHeader({ action = true }: Readonly<{ readonly action?: boolean 
 
 function SkeletonCard({ lines = 3 }: Readonly<{ readonly lines?: number }>) {
   return (
-    <div className="screen-skeleton-card">
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
       <Skeleton width="42%" height="1rem" />
       <Skeleton lines={lines} height="0.75rem" />
     </div>
@@ -47,7 +47,7 @@ function SkeletonCard({ lines = 3 }: Readonly<{ readonly lines?: number }>) {
 
 function SkeletonList({ count = 2 }: Readonly<{ readonly count?: number }>) {
   return (
-    <div className="screen-skeleton-list">
+    <div className="flex flex-col gap-3">
       {Array.from({ length: count }, (_, index) => (
         <SkeletonCard key={index} />
       ))}
@@ -57,7 +57,7 @@ function SkeletonList({ count = 2 }: Readonly<{ readonly count?: number }>) {
 
 export function RosterSkeleton() {
   return (
-    <ScreenSkeleton label="Loading bots" className="roster-skeleton">
+    <ScreenSkeleton label="Loading bots" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonList count={3} />
     </ScreenSkeleton>
@@ -66,7 +66,7 @@ export function RosterSkeleton() {
 
 export function BotOverviewSkeleton() {
   return (
-    <ScreenSkeleton label="Loading bot" className="bot-overview-skeleton">
+    <ScreenSkeleton label="Loading bot" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonCard lines={2} />
       <SkeletonList count={3} />
@@ -76,7 +76,7 @@ export function BotOverviewSkeleton() {
 
 export function BotEditorSkeleton() {
   return (
-    <ScreenSkeleton label="Loading bot editor" className="bot-editor-skeleton">
+    <ScreenSkeleton label="Loading bot editor" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonCard lines={5} />
       <SkeletonCard lines={4} />
@@ -87,15 +87,15 @@ export function BotEditorSkeleton() {
 export function ThreadSkeleton() {
   return (
     <section
-      className="console screen-skeleton thread-skeleton"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3 min-h-0 max-w-none"
       role="status"
       aria-busy="true"
       aria-label="Loading conversation"
     >
-      <div className="screen-skeleton-strip">
+      <div className="flex min-h-8 items-center">
         <Skeleton width="7rem" height="1.75rem" />
       </div>
-      <div className="screen-skeleton-messages">
+      <div className="flex flex-col items-start gap-3 p-2">
         <Skeleton width="58%" height="4.5rem" />
         <Skeleton width="72%" height="5.5rem" />
         <Skeleton width="46%" height="3.75rem" />
@@ -106,7 +106,7 @@ export function ThreadSkeleton() {
 
 export function MemorySkeleton() {
   return (
-    <ScreenSkeleton label="Loading memory" className="memory-skeleton">
+    <ScreenSkeleton label="Loading memory" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonList count={2} />
     </ScreenSkeleton>
@@ -115,7 +115,7 @@ export function MemorySkeleton() {
 
 export function ConnectionsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading connections" className="connections-skeleton">
+    <ScreenSkeleton label="Loading connections" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonList count={2} />
       <SkeletonCard lines={3} />
@@ -125,7 +125,7 @@ export function ConnectionsSkeleton() {
 
 export function ComputerSkeleton() {
   return (
-    <ScreenSkeleton label="Loading computer" className="computer-skeleton">
+    <ScreenSkeleton label="Loading computer" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader action={false} />
       <SkeletonCard lines={2} />
       <SkeletonCard lines={4} />
@@ -136,7 +136,7 @@ export function ComputerSkeleton() {
 
 export function SecretsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading secrets" className="secrets-skeleton">
+    <ScreenSkeleton label="Loading secrets" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <Skeleton width="14rem" height="2.5rem" />
       <SkeletonList count={2} />
@@ -146,7 +146,7 @@ export function SecretsSkeleton() {
 
 export function McpSkeleton() {
   return (
-    <ScreenSkeleton label="Loading MCP servers" className="mcp-skeleton">
+    <ScreenSkeleton label="Loading MCP servers" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonList count={2} />
     </ScreenSkeleton>
@@ -155,7 +155,7 @@ export function McpSkeleton() {
 
 export function NotificationsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading notifications" className="notifications-skeleton">
+    <ScreenSkeleton label="Loading notifications" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader action={false} />
       <Skeleton lines={2} height="0.75rem" />
       <SkeletonList count={3} />
@@ -165,7 +165,7 @@ export function NotificationsSkeleton() {
 
 export function UsageSkeleton() {
   return (
-    <ScreenSkeleton label="Loading usage" className="usage-skeleton">
+    <ScreenSkeleton label="Loading usage" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <Skeleton lines={2} height="0.75rem" />
       <SkeletonList count={2} />
@@ -175,7 +175,7 @@ export function UsageSkeleton() {
 
 export function ApprovalsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading approvals" className="approvals-skeleton">
+    <ScreenSkeleton label="Loading approvals" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader action={false} />
       <SkeletonList count={3} />
     </ScreenSkeleton>
@@ -184,7 +184,7 @@ export function ApprovalsSkeleton() {
 
 export function RoutinesSkeleton() {
   return (
-    <ScreenSkeleton label="Loading routines" className="routines-skeleton">
+    <ScreenSkeleton label="Loading routines" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader />
       <SkeletonList count={2} />
     </ScreenSkeleton>
@@ -193,7 +193,7 @@ export function RoutinesSkeleton() {
 
 export function AccountSkeleton() {
   return (
-    <ScreenSkeleton label="Loading account" className="account-skeleton">
+    <ScreenSkeleton label="Loading account" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <SkeletonHeader action={false} />
       <SkeletonCard lines={3} />
     </ScreenSkeleton>
@@ -202,7 +202,7 @@ export function AccountSkeleton() {
 
 export function ToolResultSkeleton() {
   return (
-    <ScreenSkeleton label="Loading tool result" className="tool-result-skeleton">
+    <ScreenSkeleton label="Loading tool result" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <Skeleton width="7rem" height="1rem" />
       <Skeleton width="12rem" height="1.75rem" />
       <Skeleton height="16rem" />

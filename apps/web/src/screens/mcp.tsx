@@ -38,8 +38,8 @@ export function McpScreen(props: McpScreenProps) {
 
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={props.onReload}>Try again</Button>
@@ -62,10 +62,10 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
   const [installing, setInstalling] = useState(false);
 
   return (
-    <section className="console">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+      <header className="flex flex-col gap-1">
         <h2>MCP servers</h2>
-        <div className="memory-actions">
+        <div className="flex flex-wrap gap-2">
           <Button disabled={state.status === "loading"} onClick={onReload}>
             Refresh
           </Button>
@@ -82,7 +82,7 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
 
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "form-error" : "muted"}
+          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -102,18 +102,18 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
 
       {state.servers.length === 0 ? (
         state.status === "ready" ? (
-          <p className="muted">No servers installed.</p>
+          <p className="text-muted-foreground">No servers installed.</p>
         ) : null
       ) : (
-        <ul className="connection-list">
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {state.servers.map((server) => (
-            <li key={server.id} className="connection">
-              <div className="connection-header">
+            <li key={server.id} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3>{server.name}</h3>
-                <span className="connection-badge">{serverStatusLabel(server.status)}</span>
+                <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta">{serverStatusLabel(server.status)}</span>
               </div>
-              <p className="connection-provider muted">{hostOf(server.url)}</p>
-              <dl className="connection-details">
+              <p className="text-heading text-muted-foreground">{hostOf(server.url)}</p>
+              <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body">
                 <dt>Auth</dt>
                 <dd>{authLabel(server.auth)}</dd>
                 <dt>Tools</dt>
@@ -121,11 +121,11 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
                 {server.lastError === null ? null : (
                   <>
                     <dt>Last error</dt>
-                    <dd className="connection-probe-failed">{server.lastError}</dd>
+                    <dd className="text-destructive">{server.lastError}</dd>
                   </>
                 )}
               </dl>
-              <div className="memory-actions">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   disabled={state.pending === server.id}
                   onClick={() => {
@@ -163,7 +163,7 @@ function McpDetail({
   const [grantBotId, setGrantBotId] = useState("");
 
   return (
-    <section className="console">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <p>
         <Button onClick={onClose}>Back to servers</Button>
       </p>
@@ -171,14 +171,14 @@ function McpDetail({
 
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "form-error" : "muted"}
+          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
         </p>
       )}
 
-      <dl className="connection-details">
+      <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body">
         <dt>Endpoint</dt>
         <dd>{hostOf(selected.url)}</dd>
         <dt>Auth</dt>
@@ -188,13 +188,13 @@ function McpDetail({
         {selected.lastError === null ? null : (
           <>
             <dt>Last error</dt>
-            <dd className="connection-probe-failed">{selected.lastError}</dd>
+            <dd className="text-destructive">{selected.lastError}</dd>
           </>
         )}
       </dl>
 
       {state.consent === null || state.consent.serverId !== selected.id ? null : (
-        <p className="muted">
+        <p className="text-muted-foreground">
           <a href={state.consent.url} target="_blank" rel="noreferrer">
             Open the consent page
           </a>{" "}
@@ -203,30 +203,30 @@ function McpDetail({
         </p>
       )}
 
-      <section className="connection-bots">
+      <section className="flex flex-wrap gap-1">
         <h3>Tools</h3>
         {selected.tools.length === 0 ? (
-          <p className="muted">No tools discovered.</p>
+          <p className="text-muted-foreground">No tools discovered.</p>
         ) : (
-          <ul className="mcp-tools">
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {selected.tools.map((tool) => (
-              <li key={tool.name} className="mcp-tool">
-                <span className="connection-credential">{tool.name}</span>{" "}
-                <span className="muted">{tool.description}</span>
+              <li key={tool.name} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+                <span className="font-mono text-code wrap-anywhere">{tool.name}</span>{" "}
+                <span className="text-muted-foreground">{tool.description}</span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section className="connection-bots">
+      <section className="flex flex-wrap gap-1">
         <h3>Bots with access</h3>
         {live.length === 0 ? (
-          <p className="muted">No bot has access.</p>
+          <p className="text-muted-foreground">No bot has access.</p>
         ) : (
-          <ul className="connection-key-list">
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {live.map((grant) => (
-              <li key={grant.botId} className="connection-key">
+              <li key={grant.botId} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
                 <span>{botName(state.bots, grant.botId)}</span>
                 <RevokeGrant
                   botLabel={botName(state.bots, grant.botId)}
@@ -239,11 +239,11 @@ function McpDetail({
         )}
 
         {state.bots.length === 0 ? (
-          <p className="muted">No active bots.</p>
+          <p className="text-muted-foreground">No active bots.</p>
         ) : available.length === 0 ? (
-          <p className="muted">Every active bot has access.</p>
+          <p className="text-muted-foreground">Every active bot has access.</p>
         ) : (
-          <div className="memory-actions">
+          <div className="flex flex-wrap gap-2">
             <Field label="Grant to">
               <Select
                 value={grantBotId}
@@ -276,14 +276,14 @@ function McpDetail({
         )}
       </section>
 
-      <section className="connection-keys">
+      <section className="flex flex-col gap-1">
         <h3>Remove</h3>
         {confirmingRemove ? (
-          <div className="memory-form">
-            <p className="muted" role="status">
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-background p-2">
+            <p className="text-muted-foreground" role="status">
               {removeWarning(selected, state.grants)}
             </p>
-            <div className="memory-actions">
+            <div className="flex flex-wrap gap-2">
               <Button
                 disabled={state.pending === selected.id}
                 onClick={() => {
@@ -342,8 +342,8 @@ function RevokeGrant({ botLabel, pending, onRevoke }: RevokeGrantProps) {
   }
 
   return (
-    <span className="connection-confirm">
-      <span className="muted" role="status">
+    <span className="flex flex-wrap items-center gap-2 rounded-md border border-destructive bg-card p-2">
+      <span className="text-muted-foreground" role="status">
         {revokeWarning(botLabel)}
       </span>{" "}
       <Button
@@ -382,7 +382,7 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
 
   return (
     <form
-      className="memory-form"
+      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
         const secret = clientSecret.trim();

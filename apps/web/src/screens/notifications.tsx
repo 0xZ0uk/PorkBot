@@ -24,8 +24,8 @@ export interface NotificationsScreenProps {
 export function NotificationsScreen({ state, onToggle, onReload }: NotificationsScreenProps) {
   if (state.status === "refused") {
     return (
-      <section className="console">
-        <p className="form-error" role="alert">
+      <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -38,19 +38,19 @@ export function NotificationsScreen({ state, onToggle, onReload }: Notifications
   }
 
   return (
-    <section className="console">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <h2>Notifications</h2>
-      <p className="muted">Nothing interrupts you until you turn it on.</p>
+      <p className="text-muted-foreground">Nothing interrupts you until you turn it on.</p>
 
       {state.notice === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.notice}
         </p>
       )}
 
-      <ul className="settings-toggles">
+      <ul className="flex flex-col gap-2">
         {state.preferences.map((preference) => (
-          <li key={preference.kind} className="settings-toggle">
+          <li key={preference.kind} className="flex items-center gap-2">
             <Field label={notificationLabel(preference.kind)}>
               <Input
                 type="checkbox"

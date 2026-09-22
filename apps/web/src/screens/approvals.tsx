@@ -130,15 +130,15 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
   }
 
   return (
-    <section className="console approvals-screen">
-      <header className="memory-header">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3 gap-4">
+      <header className="flex flex-col gap-1">
         <div>
           <h2>Approvals</h2>
-          <p className="muted">Decide what a bot may do, and see what was decided.</p>
+          <p className="text-muted-foreground">Decide what a bot may do, and see what was decided.</p>
         </div>
       </header>
 
-      <div className="approval-filters" aria-label="Approval filters">
+      <div className="flex flex-wrap gap-2" aria-label="Approval filters">
         <Field label="Bot">
           <Select
             aria-label="Filter by bot"
@@ -177,27 +177,27 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
       </div>
 
       {rows.length === 0 ? (
-        <p className="muted">Nothing has needed a decision yet.</p>
+        <p className="text-muted-foreground">Nothing has needed a decision yet.</p>
       ) : visible.length === 0 ? (
-        <p className="muted">No approvals match these filters.</p>
+        <p className="text-muted-foreground">No approvals match these filters.</p>
       ) : (
         <>
           {waiting.length === 0 ? null : (
-            <section className="approval-section" aria-labelledby="approvals-waiting">
-              <h3 className="approval-section-title" id="approvals-waiting">
+            <section className="flex flex-col gap-2" aria-labelledby="approvals-waiting">
+              <h3 className="m-0 flex items-center gap-2 text-heading" id="approvals-waiting">
                 Waiting for you
-                <span className="approval-section-count">{waiting.length}</span>
+                <span className="inline-flex min-w-4.5 items-center justify-center rounded-full bg-primary px-0.5 text-meta text-primary-foreground">{waiting.length}</span>
               </h3>
-              <ol className="approval-queue">{waiting.map((approval) => card(approval))}</ol>
+              <ol className="m-0 flex list-none flex-col gap-3 p-0">{waiting.map((approval) => card(approval))}</ol>
             </section>
           )}
 
           {history.length === 0 ? null : (
-            <section className="approval-section" aria-labelledby="approvals-history">
-              <h3 className="approval-section-title" id="approvals-history">
+            <section className="flex flex-col gap-2" aria-labelledby="approvals-history">
+              <h3 className="m-0 flex items-center gap-2 text-heading" id="approvals-history">
                 History
               </h3>
-              <ol className="approval-queue">{history.map((approval) => card(approval))}</ol>
+              <ol className="m-0 flex list-none flex-col gap-3 p-0">{history.map((approval) => card(approval))}</ol>
             </section>
           )}
         </>

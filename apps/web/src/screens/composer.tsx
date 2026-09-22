@@ -1,6 +1,7 @@
 import { MAX_MESSAGE_TEXT_LENGTH } from "@porkbot/core";
 import { Button, Card, Icon, IconButton, Input, Textarea } from "@porkbot/ui";
 import { useRef } from "react";
+import { cn } from "../lib/cn.ts";
 import type { ClipboardEvent, DragEvent, KeyboardEvent, ChangeEvent } from "react";
 import type { ComposerFileInput, ComposerState } from "../composer.ts";
 
@@ -135,7 +136,7 @@ export function ComposerScreen({
 
   return (
     <form
-      className={state.dragActive ? "composer composer-drop" : "composer"}
+      className={state.dragActive ? "mx-auto flex w-full max-w-xl flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-raised border-primary outline-2 outline-dashed" : "mx-auto flex w-full max-w-xl flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-raised"}
       aria-label="Message composer"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -146,28 +147,28 @@ export function ComposerScreen({
       }}
     >
       {state.files.length === 0 ? null : (
-        <ul className="composer-files">
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {state.files.map((file) => (
             <Card
               as="li"
               variant="raised"
               key={file.key}
-              className={`composer-file composer-file-${file.status}`}
+              className={cn("flex flex-row flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1 text-body", file.status === "invalid" && "border-destructive", file.status === "failed" && "border-destructive")}
             >
-              <span className="composer-file-name">{file.filename}</span>
-              <span className="composer-file-meta muted">
+              <span className="font-medium wrap-anywhere">{file.filename}</span>
+              <span className="text-meta text-muted-foreground">
                 {file.contentType} · {formatBytes(file.sizeBytes)}
               </span>
               {file.status === "uploading" ? (
                 <progress
-                  className="composer-file-progress"
+                  className="h-2 min-w-24 flex-1 accent-primary"
                   value={file.progress}
                   max={1}
                   aria-label={`Uploading ${file.filename}`}
                 />
               ) : null}
               {file.detail === null ? null : (
-                <span className="composer-file-detail" role="alert">
+                <span className="text-destructive" role="alert">
                   {file.detail}
                 </span>
               )}
@@ -182,7 +183,7 @@ export function ComposerScreen({
               ) : null}
               <Button
                 variant="ghost"
-                className="composer-file-remove"
+                className="ml-auto p-0 text-meta text-muted-foreground underline"
                 aria-label={`Remove ${file.filename}`}
                 onClick={() => {
                   onRemoveFile(file.key);
@@ -194,9 +195,9 @@ export function ComposerScreen({
           ))}
         </ul>
       )}
-      <div className="composer-row">
+      <div className="flex items-end gap-2">
         <Textarea
-          className="composer-text"
+          className="flex-1 resize-y border-transparent bg-transparent focus-visible:border-primary"
           aria-label="Message"
           placeholder={botName === undefined ? "Message the bot" : `Message ${botName}`}
           value={state.text}
@@ -212,7 +213,7 @@ export function ComposerScreen({
           ref={chooser}
           type="file"
           multiple
-          className="composer-chooser"
+          className="hidden"
           aria-hidden="true"
           tabIndex={-1}
           onChange={onChoose}
@@ -238,12 +239,12 @@ export function ComposerScreen({
         </Button>
       </div>
       {stopError === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {stopError}
         </p>
       )}
       {state.error === null ? null : (
-        <p className="form-error" role="alert">
+        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
           {state.error}
         </p>
       )}

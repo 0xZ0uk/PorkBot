@@ -19,17 +19,17 @@ export interface AccountScreenProps {
 
 export function AccountScreen({ role, ownerEmail }: AccountScreenProps) {
   return (
-    <section className="console">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
       <h2>Account</h2>
-      <dl className="connection-details">
+      <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body">
         <dt>Your role</dt>
         <dd>{roleLabel(role)}</dd>
         <dt>Deployment owner</dt>
         <dd>
           {ownerEmail === null ? (
-            <span className="muted">No owner configured</span>
+            <span className="text-muted-foreground">No owner configured</span>
           ) : (
-            <span className="connection-credential">{ownerEmail}</span>
+            <span className="font-mono text-code wrap-anywhere">{ownerEmail}</span>
           )}
         </dd>
       </dl>
