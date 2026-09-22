@@ -1,4 +1,7 @@
 {
   "extends": "@porkbot/typescript-config/base.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"]
+  },
   "include": ["src"]
 }
