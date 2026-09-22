@@ -1,13 +1,36 @@
-import type { SVGProps } from "react";
+import type { Icon as PhosphorIcon, IconProps as PhosphorIconProps } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon } from "@phosphor-icons/react/dist/ssr/ArrowSquareOut";
+import { CaretDownIcon } from "@phosphor-icons/react/dist/ssr/CaretDown";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/ssr/CaretRight";
+import { CheckIcon } from "@phosphor-icons/react/dist/ssr/Check";
+import { DotsThreeIcon } from "@phosphor-icons/react/dist/ssr/DotsThree";
+import { DownloadIcon } from "@phosphor-icons/react/dist/ssr/Download";
+import { FolderIcon } from "@phosphor-icons/react/dist/ssr/Folder";
+import { GearIcon } from "@phosphor-icons/react/dist/ssr/Gear";
+import { InfoIcon } from "@phosphor-icons/react/dist/ssr/Info";
+import { ListIcon } from "@phosphor-icons/react/dist/ssr/List";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/ssr/MagnifyingGlass";
+import { MonitorIcon } from "@phosphor-icons/react/dist/ssr/Monitor";
+import { MoonIcon } from "@phosphor-icons/react/dist/ssr/Moon";
+import { PaperPlaneRightIcon } from "@phosphor-icons/react/dist/ssr/PaperPlaneRight";
+import { PlusIcon } from "@phosphor-icons/react/dist/ssr/Plus";
+import { SidebarSimpleIcon } from "@phosphor-icons/react/dist/ssr/SidebarSimple";
+import { SignOutIcon } from "@phosphor-icons/react/dist/ssr/SignOut";
+import { StopIcon } from "@phosphor-icons/react/dist/ssr/Stop";
+import { SunIcon } from "@phosphor-icons/react/dist/ssr/Sun";
+import { TerminalIcon } from "@phosphor-icons/react/dist/ssr/Terminal";
+import { TrashIcon } from "@phosphor-icons/react/dist/ssr/Trash";
+import { WarningIcon } from "@phosphor-icons/react/dist/ssr/Warning";
+import { XIcon } from "@phosphor-icons/react/dist/ssr/X";
 
 /**
  * The one icon set (design record, Anti-goals: no emoji as interface icons).
  *
- * The glyphs are drawn here rather than taken from a package: a 24-unit grid,
- * a single stroke weight and `currentColor` mean an icon cannot carry a colour
- * of its own, and a surface names a glyph instead of pasting a platform emoji.
- * A glyph the register does not have is added here, in one file a reviewer can
- * see, rather than at the screen that wanted it.
+ * Every glyph is a Phosphor icon at the pinned regular weight, drawn in
+ * `currentColor` so a control's text colour is its icon colour. Names stay the
+ * register's own vocabulary — the Phosphor glyph behind each name is this
+ * module's business, and vendored internals go through `Icon` rather than
+ * importing a glyph directly.
  */
 
 export type IconName =
@@ -35,76 +58,56 @@ export type IconName =
   | "terminal"
   | "trash";
 
-const iconPaths: Readonly<Record<IconName, readonly string[]>> = {
-  alert: ["M12 4 21 19H3z", "M12 10v4", "M12 17h.01"],
-  check: ["M5 12.5 9.5 17 19 7.5"],
-  "chevron-down": ["M6 9l6 6 6-6"],
-  "chevron-right": ["M9 6l6 6-6 6"],
-  close: ["M6 6l12 12", "M18 6 6 18"],
-  download: ["M12 4v11", "M7 10l5 5 5-5", "M5 20h14"],
-  external: ["M14 4h6v6", "M20 4l-8 8", "M18 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"],
-  folder: ["M4 7h5l2 2h9v10H4z"],
-  info: ["M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z", "M12 11v5", "M12 8h.01"],
-  "log-out": ["M10 5H5v14h5", "M15 8l4 4-4 4", "M19 12H9"],
-  menu: ["M4 6h16", "M4 12h16", "M4 18h16"],
-  monitor: ["M4 5h16v11H4z", "M9 20h6", "M12 16v4"],
-  moon: ["M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"],
-  more: ["M6 12h.01", "M12 12h.01", "M18 12h.01"],
-  "panel-left": ["M4 5h16v14H4z", "M10 5v14"],
-  plus: ["M12 5v14", "M5 12h14"],
-  search: ["M11 5a6 6 0 1 0 0 12 6 6 0 0 0 0-12z", "M20 20l-4.5-4.5"],
-  send: ["M4 12l16-7-7 16-2-7z"],
-  settings: [
-    "M5 8h9",
-    "M18 8h1",
-    "M5 16h3",
-    "M12 16h7",
-    "M16 8a2 2 0 1 0 0 .01",
-    "M10 16a2 2 0 1 0 0 .01",
-  ],
-  stop: ["M6 6h12v12H6z"],
-  sun: [
-    "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z",
-    "M12 2v2",
-    "M12 20v2",
-    "M4.9 4.9l1.4 1.4",
-    "M17.7 17.7l1.4 1.4",
-    "M2 12h2",
-    "M20 12h2",
-    "M4.9 19.1l1.4-1.4",
-    "M17.7 6.3l1.4-1.4",
-  ],
-  terminal: ["M5 7l4 4-4 4", "M12 16h7", "M4 5h16v14H4z"],
-  trash: ["M5 7h14", "M9 7V5h6v2", "M7 7l1 13h8l1-13", "M10 11v5", "M14 11v5"],
+const glyphs: Readonly<Record<IconName, PhosphorIcon>> = {
+  alert: WarningIcon,
+  check: CheckIcon,
+  "chevron-down": CaretDownIcon,
+  "chevron-right": CaretRightIcon,
+  close: XIcon,
+  download: DownloadIcon,
+  external: ArrowSquareOutIcon,
+  folder: FolderIcon,
+  info: InfoIcon,
+  "log-out": SignOutIcon,
+  menu: ListIcon,
+  monitor: MonitorIcon,
+  moon: MoonIcon,
+  more: DotsThreeIcon,
+  "panel-left": SidebarSimpleIcon,
+  plus: PlusIcon,
+  search: MagnifyingGlassIcon,
+  send: PaperPlaneRightIcon,
+  settings: GearIcon,
+  stop: StopIcon,
+  sun: SunIcon,
+  terminal: TerminalIcon,
+  trash: TrashIcon,
 };
 
-export type IconProps = Omit<SVGProps<SVGSVGElement>, "name" | "ref"> & {
+export type IconProps = Omit<PhosphorIconProps, "name" | "ref" | "size" | "weight" | "color"> & {
   readonly name: IconName;
-  /** The glyph's pixel box; 16 is the register's default. */
   readonly size?: number;
 };
 
+/**
+ * A decorative glyph by default (`aria-hidden`), or an image with a name when
+ * the caller passes `aria-label`. Everything else is the caller's SVG props.
+ */
 export function Icon({ name, size = 16, ...rest }: IconProps) {
+  const Glyph = glyphs[name];
+  const labelled = rest["aria-label"] !== undefined || rest["aria-labelledby"] !== undefined;
+
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
+    <Glyph
       {...rest}
-    >
-      {iconPaths[name].map((d) => (
-        <path key={d} d={d} />
-      ))}
-    </svg>
+      weight="regular"
+      color="currentColor"
+      size={size}
+      role={labelled ? "img" : undefined}
+      aria-hidden={labelled ? undefined : true}
+      focusable="false"
+    />
   );
 }
 
-/** The names the register ships, for tests and the specimen. */
-export const iconNames = Object.keys(iconPaths) as readonly IconName[];
+export const iconNames = Object.keys(glyphs) as readonly IconName[];
