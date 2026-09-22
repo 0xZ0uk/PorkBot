@@ -153,7 +153,7 @@ export function ComposerScreen({
               as="li"
               variant="raised"
               key={file.key}
-              className={cn("flex flex-row flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1 text-body", file.status === "invalid" && "border-destructive", file.status === "failed" && "border-destructive")}
+              data-composer-file className={cn("flex flex-row flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1 text-body", file.status === "invalid" && "border-destructive", file.status === "failed" && "border-destructive")}
             >
               <span className="font-medium wrap-anywhere">{file.filename}</span>
               <span className="text-meta text-muted-foreground">

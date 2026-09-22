@@ -244,7 +244,7 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
 /** One stored file: its name, type and size, with the card itself opening it. */
 function AttachmentCard({ file }: { readonly file: FileMessageBlock }) {
   return (
-    <Card as="li" className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
+    <Card as="li" className="flex items-center gap-2 rounded-md border border-border bg-background p-2" data-attachment>
       <a className="flex items-center gap-2" href={fileDownloadPath(file.attachmentId)}>
         <span className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground" aria-hidden="true">
           <Icon name="download" size={14} />
