@@ -19,9 +19,11 @@ import { findRepoRoot } from "../paths.ts";
  * The integration suite runs `deploy/Caddyfile` itself — the file the
  * deployment mounts — against the real image the register pins, so a config
  * edit that breaks streaming or the one-origin routing fails a test instead of
- * an operator's browser. The upstreams are host-local servers reached through
- * `host.docker.internal`, which keeps the suite's API and SPA stubs on the
- * host rather than in more containers.
+ * an operator's browser. The API upstream is a host-local server reached
+ * through `host.docker.internal`, which keeps the suite's app stubs on the
+ * host rather than in more containers; the SPA is a directory bind-mounted
+ * over the path the proxy image bakes the built client into, so the file
+ * server and its rewrite are exercised exactly as production runs them.
  *
  * Readiness is the deployment's own healthcheck: the container runs the same
  * loopback probe `deploy/compose.yaml` declares, and this module waits on
@@ -35,13 +37,20 @@ import { findRepoRoot } from "../paths.ts";
 /** The loopback port the shipped Caddyfile's health listener binds inside the container. */
 export const caddyProbePort = 8899;
 
+/**
+ * Where the proxy image bakes `apps/web/dist/client` and where the shipped
+ * Caddyfile roots its file server. A test mounts its fixture here, so the
+ * directory it serves is the directory the image ships.
+ */
+export const spaRootPath = "/srv/client";
+
 export interface CaddyProxyOptions {
   /** The Caddy site address: an absolute origin, e.g. `https://localhost`. */
   readonly siteAddress: string;
   /** Where the API mounts point, reachable from inside the container. */
   readonly apiUpstream: string;
-  /** Where everything else points. */
-  readonly webUpstream: string;
+  /** The SPA directory to mount at {@link spaRootPath}. */
+  readonly webRoot: string;
   /** Defaults to `<repoRoot>/deploy/Caddyfile`, the shipped config. */
   readonly configFile?: string;
   readonly repoRoot?: string;
@@ -172,10 +181,10 @@ export async function startCaddyProxy(options: CaddyProxyOptions): Promise<Runni
     `PORKBOT_SITE_ADDRESS=${options.siteAddress}`,
     "--env",
     `PORKBOT_API_UPSTREAM=${options.apiUpstream}`,
-    "--env",
-    `PORKBOT_WEB_UPSTREAM=${options.webUpstream}`,
     "--mount",
     `type=bind,source=${configFile},target=/etc/caddy/Caddyfile,readonly`,
+    "--mount",
+    `type=bind,source=${options.webRoot},target=${spaRootPath},readonly`,
     caddyImage,
   ];
   const { stdout } = await runCommand("docker", args, { timeoutMs: 180_000 });

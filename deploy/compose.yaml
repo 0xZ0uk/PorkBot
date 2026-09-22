@@ -1,7 +1,7 @@
 # The single-host deployment (slice 12.1, PRD stories 1 and 2, decision 32).
 #
 # This is the production shape of the local stack in the repository-root
-# compose.yaml: the same six always-on processes plus the one-shot migrate,
+# compose.yaml: the same five always-on processes plus the one-shot migrate,
 # with production's teeth instead of a developer's defaults.
 #
 #   - No local placeholder survives. Every secret and every operator choice is
@@ -12,21 +12,22 @@
 #     `pnpm deploy:up`). No key in it is invented by hand.
 #   - App images are built from the root Dockerfile and tagged with
 #     PORKBOT_IMAGE_TAG (the release's git SHA). Nothing is tagged `:latest`.
-#     The only pulled image is Postgres, pinned by the digest registered in
-#     dependencies.json.
+#     The images that are pulled — Postgres and the proxy's Caddy base — are
+#     pinned by the digest registered in dependencies.json.
 #   - Every service declares CPU and memory ceilings (deploy.resources.limits),
 #     and `docs/architecture/operations-floor.md` records measured usage. The
 #     ceilings remain the capacity invariant checked against the host shape.
 #     Raise them here only after raising the host.
 #   - Container logs are rotated, so a long-lived host does not fill its disk
 #     with one chatty process.
-#   - The proxy terminates HTTPS for the one public origin (slice 12.2) and is
-#     the only service that publishes a public port: the SPA, the API and the
-#     streaming subscriptions all enter through it. Its config is
-#     deploy/Caddyfile, and its healthcheck answers only when that config
-#     loaded and the API route in it works.
-#   - The web and API ports are published on loopback only, for an operator's
-#     own inspection; PORKBOT_BIND_ADDRESS governs the proxy's public ports.
+#   - The proxy terminates HTTPS for the one public origin (slice 12.2), ships
+#     the built SPA in its own image (slice 14.7) and is the only service that
+#     publishes a public port: the SPA, the API and the streaming
+#     subscriptions all enter through it. Its config is deploy/Caddyfile, and
+#     its healthcheck answers only when that config loaded and the API route
+#     in it works.
+#   - The API port is published on loopback only, for an operator's own
+#     inspection; PORKBOT_BIND_ADDRESS governs the proxy's public ports.
 #
 # `pnpm deploy:up` renders the env file when it is missing, validates it, runs
 # `docker compose up --build --wait` with this file and reports readiness per
@@ -263,37 +264,22 @@ services:
           cpus: "0.25"
           memory: 256m
 
-  web:
-    <<: *app
-    build:
-      context: ..
-      target: web
-    image: porkbot/web:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
-    environment:
-      PORT: "3000"
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      # Loopback only, like the API's: the proxy is the public surface.
-      - "127.0.0.1:${PORKBOT_WEB_PORT:-3000}:3000"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.2"
-          memory: 256m
-
   proxy:
     <<: *app
-    # The one origin (slice 12.2). Caddy terminates TLS for
-    # PORKBOT_AUTH_ORIGIN automatically, passes requests to the API or the
-    # SPA by path, and streams responses without buffering; deploy/Caddyfile
-    # is that contract and the only place it is written down.
-    image: caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e
+    # The one origin (slice 12.2), now carrying the SPA itself (slice 14.7):
+    # Caddy terminates TLS for PORKBOT_AUTH_ORIGIN automatically, serves the
+    # built client baked into this image, routes the API's paths to `api` and
+    # streams responses without buffering; deploy/Caddyfile is that contract
+    # and the only place it is written down.
+    build:
+      context: ..
+      target: proxy
+    image: porkbot/proxy:${PORKBOT_IMAGE_TAG:?run `pnpm deploy:setup` (or `pnpm deploy:up`) to render deploy/.env}
     environment:
       # The site Caddy serves and obtains a certificate for. It is the same
       # public origin sessions, links and the MCP callback are bound to.
       PORKBOT_SITE_ADDRESS: ${PORKBOT_AUTH_ORIGIN:?}
       PORKBOT_API_UPSTREAM: http://api:3001
-      PORKBOT_WEB_UPSTREAM: http://web:3000
     ports:
       # The public surface. PORKBOT_BIND_ADDRESS must name the interface the
       # host is reachable on (0.0.0.0, or the host's public address);
@@ -310,8 +296,6 @@ services:
       - caddy-config:/config
     depends_on:
       api:
-        condition: service_healthy
-      web:
         condition: service_healthy
     # Replaces the anchor's process probe with the proxy's own: a loopback
     # listener that answers only when the config loaded and the API route in

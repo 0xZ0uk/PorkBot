@@ -1,4 +1,4 @@
-# The reverse proxy contract (slice 12.2)
+# The reverse proxy contract (slice 12.2, and the SPA move in 14.7)
 
 PRD decision 32; story 4; audit P1 item 8. The acceptance criteria this
 document supports:
@@ -15,10 +15,13 @@ document supports:
 
 One origin serves everything: the SPA, the API, the operator auth routes, file
 uploads and downloads, the MCP OAuth callback, the health probes and the SSE
-subscriptions. `proxy` in `deploy/compose.yaml` runs the pinned Caddy image
-with `deploy/Caddyfile`; it is the only service that publishes a port (`80` and
-`443` on `PORKBOT_BIND_ADDRESS`). The API and web containers stay on loopback,
-so there is no second way in and no second origin to configure.
+subscriptions. `proxy` in `deploy/compose.yaml` builds the Dockerfile's
+`proxy` stage: the pinned Caddy image with the built client baked in at
+`/srv/client`, running `deploy/Caddyfile`. It is the only service that
+publishes a port (`80` and `443` on `PORKBOT_BIND_ADDRESS`) and the only
+process that serves a byte of the SPA — there is no static host container
+behind it (slice 14.7), and the API container stays on loopback, so there is
+no second way in and no second origin to configure.
 
 ```
 browser ── https://<PORKBOT_AUTH_ORIGIN> ──► caddy (deploy/Caddyfile)
@@ -26,14 +29,33 @@ browser ── https://<PORKBOT_AUTH_ORIGIN> ──► caddy (deploy/Caddyfile)
                                               │  /webhooks/* /healthz* /livez
                                               │  /readyz
                                               │  /threads/*/attachments  ──► api:3001
-                                              └─ everything else         ──► web:3000
+                                              └─ everything else         ──► file_server
+                                                                             (/srv/client
+                                                                             in this image)
 ```
 
 The mounts are the same five the web dev server forwards
 (`apps/web/vite.config.ts`), plus the webhook ingress that providers call
 directly (a browser never does, which is why the dev proxy does not forward it)
 and the health paths so `/healthz`, `/livez` and `/readyz` answer from the API
-rather than the static host.
+rather than the SPA's file server.
+
+## What the file server guarantees
+
+The SPA's half of the config is three rules over `/srv/client`, in the order
+`src/host.ts` served the artifact when a Node process still did:
+
+| Concern            | In `deploy/Caddyfile`                                                       | Why it matters                                                                                               |
+| ------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Deep-link fallback | `not path_regexp \.[^/]+$` → `rewrite /_shell.html`                         | An extension-less path is a client route and gets the shell so the router resolves it.                       |
+| A missing asset    | the `respond 404` fallback, never the shell                                 | A broken bundle reference must be a 404, not a blank page with a 200.                                        |
+| Hashed assets      | `header Cache-Control "public, max-age=31536000, immutable"` on `/assets/*` | The bundle is content-addressed; a year of immutable caching is safe and keeps a reload off the network.     |
+| The document       | `header Cache-Control "no-cache"` for the shell and any served file         | The document is the release: a cached shell pins stale asset URLs and an operator would run last week's app. |
+
+The two cache policies are asserted against the real image in the
+`apps/api` integration suite and against the real built artifact in
+`apps/web`'s e2e, so the difference is a measured behaviour rather than a
+comment.
 
 ## What the shipped config guarantees
 
@@ -133,12 +155,14 @@ edit that breaks one of these behaviours fails a test before it reaches a host.
 
 ## Where the pieces live
 
-| Concern                  | Module                                                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| The shipped config       | `deploy/Caddyfile`                                                                                                        |
-| The proxy service        | `deploy/compose.yaml`, `compose.yaml` (local shape)                                                                       |
-| The streaming probe      | `packages/health/src/index.ts`, mounted in `apps/api/src/app.ts`                                                          |
-| The route register       | `apps/api/src/limits.ts` (`probe` family)                                                                                 |
-| The suite that drives it | `apps/api/test/integration/reverse-proxy.integration.test.ts`, `startCaddyProxy` in `packages/testkit/src/proxy/caddy.ts` |
-| The config assertions    | `packages/testkit/test/deployment.test.ts`                                                                                |
-| Cookie attributes        | `packages/auth/src/config.ts`, `apps/api/src/operator-auth.ts`                                                            |
+| Concern                   | Module                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| The shipped config        | `deploy/Caddyfile`                                                                                                        |
+| The proxy image           | the Dockerfile's `proxy` stage (Caddy + `apps/web/dist/client` at `/srv/client`)                                          |
+| The proxy service         | `deploy/compose.yaml`, `compose.yaml` (local shape)                                                                       |
+| The streaming probe       | `packages/health/src/index.ts`, mounted in `apps/api/src/app.ts`                                                          |
+| The route register        | `apps/api/src/limits.ts` (`probe` family)                                                                                 |
+| The suite that drives it  | `apps/api/test/integration/reverse-proxy.integration.test.ts`, `startCaddyProxy` in `packages/testkit/src/proxy/caddy.ts` |
+| The SPA through the proxy | `apps/web/test/e2e/static-build.e2e.test.ts`                                                                              |
+| The config assertions     | `packages/testkit/test/deployment.test.ts`                                                                                |
+| Cookie attributes         | `packages/auth/src/config.ts`, `apps/api/src/operator-auth.ts`                                                            |

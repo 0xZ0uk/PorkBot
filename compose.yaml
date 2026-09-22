@@ -1,7 +1,8 @@
-# The local stack: Postgres, api, worker, backup, web, proxy and supervisor on
+# The local stack: Postgres, api, worker, backup, proxy and supervisor on
 # one network, every service with a healthcheck, plus a one-shot `migrate` that
 # applies the schema and the two service roles before the always-on processes
-# start.
+# start. The proxy carries the built SPA in its own image, exactly as the
+# deployment's does.
 # `pnpm stack:up` builds these images and blocks until each healthcheck passes;
 # `pnpm stack:down` removes the containers, the network and the Postgres volume.
 #
@@ -12,7 +13,7 @@
 #
 # Host ports bind to loopback and are overridable so the stack can run beside
 # another Postgres or dev server: PORKBOT_POSTGRES_PORT, PORKBOT_API_PORT,
-# PORKBOT_WEB_PORT. The role passwords are the local-stack placeholders unless
+# PORKBOT_REVERSE_PROXY_PORT. The role passwords are the local-stack placeholders unless
 # PORKBOT_API_DB_PASSWORD / PORKBOT_WORKER_DB_PASSWORD override them; a real
 # deployment supplies its own, and they never appear in a committed file.
 
@@ -167,29 +168,20 @@ services:
       postgres:
         condition: service_healthy
 
-  web:
+  proxy:
+    # The production reverse proxy (slice 12.2 and 14.7) in its local shape:
+    # the same deploy/Caddyfile and the same baked-in SPA, one loopback origin
+    # serving the SPA, the API and the streams over plain HTTP.
+    # `pnpm stack:up` waits on its healthcheck, so the shipped config is parsed
+    # and driven on every stack boot.
     <<: *app
     build:
       context: .
-      target: web
-    image: porkbot/web:local
-    environment:
-      PORT: "3000"
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      - "127.0.0.1:${PORKBOT_WEB_PORT:-3000}:3000"
-
-  proxy:
-    # The production reverse proxy (slice 12.2) in its local shape: the same
-    # deploy/Caddyfile, one loopback origin serving the SPA, the API and the
-    # streams over plain HTTP. `pnpm stack:up` waits on its healthcheck, so
-    # the shipped config is parsed and driven on every stack boot.
-    <<: *app
-    image: caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e
+      target: proxy
+    image: porkbot/proxy:local
     environment:
       PORKBOT_SITE_ADDRESS: http://localhost:8080
       PORKBOT_API_UPSTREAM: http://api:3001
-      PORKBOT_WEB_UPSTREAM: http://web:3000
     ports:
       - "127.0.0.1:${PORKBOT_REVERSE_PROXY_PORT:-8080}:8080"
     volumes:
@@ -198,8 +190,6 @@ services:
       - caddy-config:/config
     depends_on:
       api:
-        condition: service_healthy
-      web:
         condition: service_healthy
     healthcheck:
       # Through the proxy to the API's probe: config loaded, route works.

@@ -81,7 +81,6 @@ describe("the compose deployment", () => {
       "postgres",
       "proxy",
       "supervisor",
-      "web",
       "worker",
     ]);
   });

@@ -19,7 +19,7 @@ import { createBackupScheduler } from "./scheduler.ts";
 /**
  * The backup process (slice 12.3; PRD story 5).
  *
- * A sixth always-on process beside the API, the worker, the web and the
+ * An always-on process beside the API, the worker, the proxy and the
  * supervisor, and the only one that holds a database connection with dump
  * rights. It owns the nightly run and the monthly restore drill, and nothing
  * else: no HTTP surface beyond the health probe, no agent-facing path, no

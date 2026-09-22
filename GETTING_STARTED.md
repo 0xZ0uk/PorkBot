@@ -146,7 +146,7 @@ Turbo builds the workspace dependencies, then runs the always-on processes:
 
 `apps/backup`, `apps/desktop` and `apps/www` have no `dev` script. The desktop shell runs
 with `pnpm --filter @porkbot/desktop start` after `pnpm build`, since it packages the same
-client build the web image serves.
+client build the deployment's proxy image serves.
 
 The Vite server proxies the API's paths to port 3001, so the SPA and the API share one
 origin in development exactly as they do behind the deployment's proxy — which is why
@@ -261,7 +261,7 @@ and a failed upgrade.
 | `Configuration is currently invalid`, naming `PORKBOT_CREDENTIAL_ACTIVE_KEY` | The key id is shorter than three characters. Use a longer one that matches the keyring's entry.                                                 |
 | The supervisor logs that its token is not set and `/readyz` answers 503      | The token is missing from `apps/supervisor/.env.local`, or it differs from the api's.                                                           |
 | `DATABASE_URL is not set`, or the api exits immediately                      | The root `.env.local` is missing, or a process was started directly instead of through its package's `dev` script (which runs varlock).         |
-| A port is already in use                                                     | `PORKBOT_POSTGRES_PORT`, `PORKBOT_API_PORT`, `PORKBOT_WEB_PORT` and `PORKBOT_REVERSE_PROXY_PORT` move the local ports.                          |
+| A port is already in use                                                     | `PORKBOT_POSTGRES_PORT`, `PORKBOT_API_PORT` and `PORKBOT_REVERSE_PROXY_PORT` move the local ports.                                              |
 | The sign-up page says registration is closed                                 | The `deployment_settings` row is missing, or more than one exists.                                                                              |
 | A connection stores but a run cannot use it                                  | The credential was stored under a different keyring than the one the process holds; a rotated keyring must keep the old entry to read old rows. |
 | `Unsupported engine` during install                                          | Node is not 24.x. Switch versions and re-run.                                                                                                   |

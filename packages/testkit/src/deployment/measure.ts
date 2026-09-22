@@ -33,7 +33,6 @@ export const measuredStackServices = [
   "api",
   "worker",
   "backup",
-  "web",
   "proxy",
   "supervisor",
 ] as const;

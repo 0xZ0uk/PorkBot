@@ -403,7 +403,7 @@ export function validateDeploymentEnv(env: ReadonlyMap<string, string>): Deploym
     });
   }
 
-  for (const key of ["PORKBOT_WEB_PORT", "PORKBOT_API_PORT"]) {
+  for (const key of ["PORKBOT_API_PORT"]) {
     const value = valueOf(key);
 
     if (value === "") {
