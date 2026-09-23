@@ -6,4 +6,12 @@ import { integration } from "@porkbot/testkit";
 // show the isolation policy behaves. CI starts the stack with `pnpm stack:up`
 // before this tier runs, which is why the stack specs can assert instead of
 // skipping.
-export default integration({ include: ["test/integration/**/*.integration.test.ts"] });
+const config = integration({ include: ["test/integration/**/*.integration.test.ts"] });
+
+export default {
+  ...config,
+  test: {
+    ...config.test,
+    fileParallelism: false,
+  },
+};
