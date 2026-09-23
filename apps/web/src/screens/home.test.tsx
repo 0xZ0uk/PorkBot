@@ -148,18 +148,18 @@ async function mountHome(options: MountOptions = {}): Promise<ReturnType<typeof 
 }
 
 function rowNamed(name: string): HTMLElement | undefined {
-  return [...container.querySelectorAll<HTMLElement>("[data-name]")].find((row) =>
+  return [...container.querySelectorAll<HTMLElement>("[data-roster-card]")].find((row) =>
     row.textContent?.includes(name),
   );
 }
 
-function buttonByText(text: string, scope: ParentNode = container): HTMLButtonElement {
-  const found = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(
-    (button) => button.textContent === text,
+function buttonByText(text: string, scope: ParentNode = container): HTMLElement {
+  const found = [...scope.querySelectorAll<HTMLElement>("button, [role='menuitem']")].find(
+    (el) => el.textContent === text,
   );
 
   if (found === undefined) {
-    throw new Error(`no button labelled "${text}"`);
+    throw new Error(`no control labelled "${text}"`);
   }
 
   return found;
@@ -175,6 +175,9 @@ async function openActions(row: HTMLElement): Promise<HTMLElement> {
   await act(async () => {
     trigger.click();
   });
+
+  // Base UI opens the menu asynchronously; wait a frame for the portal.
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
   const menu = document.body.querySelector<HTMLElement>("[role='menu']");
 
@@ -225,7 +228,7 @@ describe("the roster's home screen", () => {
     const ledger = rowNamed("Ledger");
 
     expect(ledger?.querySelector("[data-state]")?.getAttribute("data-state")).toBe("waiting");
-    expect(ledger?.querySelector(".pb-count-badge")?.textContent).toBe("1");
+    expect(ledger?.querySelector("[data-count-badge]")?.textContent).toBe("1");
     expect(ledger?.textContent).toContain("Waiting on web_fetch");
     expect(ledger?.textContent).toContain("2d ago");
 
@@ -383,7 +386,7 @@ describe("the roster's home screen", () => {
     });
 
     expect(container.textContent).toContain("The bot list could not be loaded");
-    expect(container.querySelector(".shell-rail-empty")?.textContent).toContain(
+    expect(container.querySelector("[data-rail-empty]")?.textContent).toContain(
       "The bot list could not be loaded.",
     );
 

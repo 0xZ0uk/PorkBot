@@ -48,11 +48,21 @@ export function SignInScreen({ error, signup, onSubmit, footer }: SignInScreenPr
   }
 
   return (
-    <main id="main" className="flex min-h-full flex-col items-center justify-center gap-4 p-4" tabIndex={-1}>
+    <main
+      id="main"
+      className="flex min-h-full flex-col items-center justify-center gap-4 p-4"
+      tabIndex={-1}
+    >
       <Card as="form" className="w-full max-w-sm" onSubmit={handleSubmit} aria-busy={pending}>
         <h1>Sign in</h1>
         {error !== null && (
-          <p id={errorId} className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert" tabIndex={-1} ref={errorRef}>
+          <p
+            id={errorId}
+            className="rounded-md border border-destructive bg-card p-2 text-foreground"
+            role="alert"
+            tabIndex={-1}
+            ref={errorRef}
+          >
             {error}
           </p>
         )}

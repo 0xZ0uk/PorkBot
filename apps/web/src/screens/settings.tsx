@@ -137,7 +137,11 @@ export function SettingsScreen({ sections }: SettingsScreenProps) {
   }, [count]);
 
   return (
-    <section className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4" aria-labelledby="settings-title" ref={rootRef}>
+    <section
+      className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4"
+      aria-labelledby="settings-title"
+      ref={rootRef}
+    >
       <header className="flex flex-col gap-1">
         <h1 className="m-0 text-title" id="settings-title">
           Settings

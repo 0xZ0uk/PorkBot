@@ -39,7 +39,10 @@ export function McpScreen(props: McpScreenProps) {
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={props.onReload}>Try again</Button>
@@ -82,7 +85,11 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
 
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+          className={
+            state.notice.kind === "error"
+              ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+              : "text-muted-foreground"
+          }
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -107,10 +114,15 @@ function McpList({ state, onReload, onOpen, onInstall }: McpScreenProps) {
       ) : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {state.servers.map((server) => (
-            <li key={server.id} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+            <li
+              key={server.id}
+              className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <h3>{server.name}</h3>
-                <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta">{serverStatusLabel(server.status)}</span>
+                <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta">
+                  {serverStatusLabel(server.status)}
+                </span>
               </div>
               <p className="text-heading text-muted-foreground">{hostOf(server.url)}</p>
               <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body">
@@ -171,7 +183,11 @@ function McpDetail({
 
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+          className={
+            state.notice.kind === "error"
+              ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+              : "text-muted-foreground"
+          }
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -210,7 +226,10 @@ function McpDetail({
         ) : (
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {selected.tools.map((tool) => (
-              <li key={tool.name} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+              <li
+                key={tool.name}
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2"
+              >
                 <span className="font-mono text-code wrap-anywhere">{tool.name}</span>{" "}
                 <span className="text-muted-foreground">{tool.description}</span>
               </li>
@@ -226,7 +245,10 @@ function McpDetail({
         ) : (
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {live.map((grant) => (
-              <li key={grant.botId} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+              <li
+                key={grant.botId}
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2"
+              >
                 <span>{botName(state.bots, grant.botId)}</span>
                 <RevokeGrant
                   botLabel={botName(state.bots, grant.botId)}

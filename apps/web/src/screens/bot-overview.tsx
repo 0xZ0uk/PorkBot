@@ -34,7 +34,10 @@ export function BotOverviewScreen({
         </Button>
       </div>
       {error === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {error}
         </p>
       )}

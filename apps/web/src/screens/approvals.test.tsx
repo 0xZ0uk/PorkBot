@@ -91,9 +91,9 @@ describe("the approvals queue", () => {
     const waiting = container.querySelector("#approvals-waiting");
 
     expect(waiting?.textContent).toContain("Waiting for you");
-    expect(waiting?.nextElementSibling?.querySelector("[data-approval-state]")?.textContent).toContain(
-      "Approval needed",
-    );
+    expect(
+      waiting?.nextElementSibling?.querySelector("[data-approval-state]")?.textContent,
+    ).toContain("Approval needed");
     expect(container.textContent).toContain(
       "Fetch https://example.invalid. The request leaves this machine.",
     );

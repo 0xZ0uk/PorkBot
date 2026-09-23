@@ -17,7 +17,9 @@ export function ScreenSkeleton({
 }>) {
   return (
     <section
-      className={["mx-auto flex w-full max-w-2xl flex-col gap-3", className].filter(Boolean).join("")}
+      className={["mx-auto flex w-full max-w-2xl flex-col gap-3", className]
+        .filter(Boolean)
+        .join("")}
       role="status"
       aria-busy="true"
       aria-label={label}
@@ -76,7 +78,10 @@ export function BotOverviewSkeleton() {
 
 export function BotEditorSkeleton() {
   return (
-    <ScreenSkeleton label="Loading bot editor" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading bot editor"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader />
       <SkeletonCard lines={5} />
       <SkeletonCard lines={4} />
@@ -115,7 +120,10 @@ export function MemorySkeleton() {
 
 export function ConnectionsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading connections" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading connections"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader />
       <SkeletonList count={2} />
       <SkeletonCard lines={3} />
@@ -125,7 +133,10 @@ export function ConnectionsSkeleton() {
 
 export function ComputerSkeleton() {
   return (
-    <ScreenSkeleton label="Loading computer" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading computer"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader action={false} />
       <SkeletonCard lines={2} />
       <SkeletonCard lines={4} />
@@ -136,7 +147,10 @@ export function ComputerSkeleton() {
 
 export function SecretsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading secrets" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading secrets"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader />
       <Skeleton width="14rem" height="2.5rem" />
       <SkeletonList count={2} />
@@ -146,7 +160,10 @@ export function SecretsSkeleton() {
 
 export function McpSkeleton() {
   return (
-    <ScreenSkeleton label="Loading MCP servers" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading MCP servers"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader />
       <SkeletonList count={2} />
     </ScreenSkeleton>
@@ -155,7 +172,10 @@ export function McpSkeleton() {
 
 export function NotificationsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading notifications" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading notifications"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader action={false} />
       <Skeleton lines={2} height="0.75rem" />
       <SkeletonList count={3} />
@@ -175,7 +195,10 @@ export function UsageSkeleton() {
 
 export function ApprovalsSkeleton() {
   return (
-    <ScreenSkeleton label="Loading approvals" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading approvals"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader action={false} />
       <SkeletonList count={3} />
     </ScreenSkeleton>
@@ -184,7 +207,10 @@ export function ApprovalsSkeleton() {
 
 export function RoutinesSkeleton() {
   return (
-    <ScreenSkeleton label="Loading routines" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading routines"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader />
       <SkeletonList count={2} />
     </ScreenSkeleton>
@@ -193,7 +219,10 @@ export function RoutinesSkeleton() {
 
 export function AccountSkeleton() {
   return (
-    <ScreenSkeleton label="Loading account" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading account"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <SkeletonHeader action={false} />
       <SkeletonCard lines={3} />
     </ScreenSkeleton>
@@ -202,7 +231,10 @@ export function AccountSkeleton() {
 
 export function ToolResultSkeleton() {
   return (
-    <ScreenSkeleton label="Loading tool result" className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+    <ScreenSkeleton
+      label="Loading tool result"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+    >
       <Skeleton width="7rem" height="1rem" />
       <Skeleton width="12rem" height="1.75rem" />
       <Skeleton height="16rem" />

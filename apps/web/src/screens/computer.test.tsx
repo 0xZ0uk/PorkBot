@@ -165,7 +165,9 @@ describe("the screen surface", () => {
   it("says there is no machine yet for a bot that has never run", async () => {
     await render(<ComputerScreen {...screenProps(state())} />);
 
-    expect(document.body.querySelector("[data-computer-view-state]")?.textContent).toBe("No machine");
+    expect(document.body.querySelector("[data-computer-view-state]")?.textContent).toBe(
+      "No machine",
+    );
     expect(document.body.textContent).toContain("It is created the first time this bot runs.");
   });
 });

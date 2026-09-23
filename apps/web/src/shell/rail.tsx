@@ -94,14 +94,16 @@ export function Rail({
               ))}
               {rosterFailed ? (
                 <>
-                  <p className="text-body text-muted-foreground">The bot list could not be loaded.</p>
+                  <p className="text-body text-muted-foreground">
+                    The bot list could not be loaded.
+                  </p>
                   <Button variant="ghost" onClick={onRetryRoster}>
                     Try again
                   </Button>
                 </>
               ) : null}
               {!rosterFailed && visible.length === 0 ? (
-                <p className="text-body text-muted-foreground">
+                <p className="text-body text-muted-foreground" data-rail-empty>
                   {entries.length === 0 ? "No bots yet." : "No bots match."}
                 </p>
               ) : null}
@@ -124,7 +126,9 @@ export function Rail({
           <Link
             to="/approvals"
             onClick={onNavigate}
-            aria-label={pendingCount > 0 ? `Approvals, ${String(pendingCount)} waiting` : "Approvals"}
+            aria-label={
+              pendingCount > 0 ? `Approvals, ${String(pendingCount)} waiting` : "Approvals"
+            }
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-body hover:bg-accent"
           >
             <Icon name="alert" aria-hidden="true" />

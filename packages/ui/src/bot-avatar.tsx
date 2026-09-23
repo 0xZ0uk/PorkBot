@@ -109,6 +109,8 @@ export function BotAvatar({ id, name, color, imageUrl, size = 32, className }: B
   return (
     <span
       className={classes}
+      data-avatar
+
       aria-hidden="true"
       title={name}
       style={{ "--pb-avatar-color": fill } as CSSProperties}

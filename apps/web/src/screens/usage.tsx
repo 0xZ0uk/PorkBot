@@ -29,7 +29,9 @@ export function UsageScreen({ usage }: UsageScreenProps) {
       <header className="flex flex-col gap-1">
         <div>
           <h2>Usage</h2>
-          <p className="text-muted-foreground">Recorded and displayed only; nothing here is metered or enforced.</p>
+          <p className="text-muted-foreground">
+            Recorded and displayed only; nothing here is metered or enforced.
+          </p>
         </div>
         <Badge tone="info">Informational</Badge>
       </header>
@@ -122,7 +124,10 @@ function UsageChart({ periods }: { readonly periods: UsageBot["periods"] }) {
 
           return (
             <li key={period.startsAt} className="flex items-center gap-2">
-              <time className="w-20 flex-none text-meta text-muted-foreground" dateTime={period.startsAt}>
+              <time
+                className="w-20 flex-none text-meta text-muted-foreground"
+                dateTime={period.startsAt}
+              >
                 {formatDay(period.startsAt)}
               </time>
               <span className="h-2 flex-1 overflow-hidden rounded-full bg-accent">
@@ -130,6 +135,7 @@ function UsageChart({ periods }: { readonly periods: UsageBot["periods"] }) {
                   <>
                     <span
                       className="h-full bg-primary"
+                      data-usage-bar-segment
                       style={{ width: `${String((total.input / busiest) * 100)}%` }}
                     />
                     <span

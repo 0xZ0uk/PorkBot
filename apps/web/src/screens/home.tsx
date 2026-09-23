@@ -50,7 +50,10 @@ export function HomeScreen({
       </header>
 
       {error === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -64,7 +67,9 @@ export function HomeScreen({
       ) : roster.active.length === 0 ? (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
           <h3>Create your first bot</h3>
-          <p className="text-muted-foreground">Give it a name and instructions, then start its first thread.</p>
+          <p className="text-muted-foreground">
+            Give it a name and instructions, then start its first thread.
+          </p>
           <Button variant="primary" onClick={onCreate}>
             New bot
           </Button>

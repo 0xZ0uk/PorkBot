@@ -25,7 +25,10 @@ export function NotificationsScreen({ state, onToggle, onReload }: Notifications
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -43,7 +46,10 @@ export function NotificationsScreen({ state, onToggle, onReload }: Notifications
       <p className="text-muted-foreground">Nothing interrupts you until you turn it on.</p>
 
       {state.notice === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.notice}
         </p>
       )}

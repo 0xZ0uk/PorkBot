@@ -127,9 +127,18 @@ export function ApprovalCard({
   }
 
   return (
-    <Card className="mt-2 flex flex-col gap-2 border-l-4 border-border pl-3" data-approval-state={live} data-approval-tool={tool}>
+    <Card
+      className="mt-2 flex flex-col gap-2 border-l-4 border-border pl-3"
+      data-approval-state={live}
+      data-approval-tool={tool}
+    >
       <div className="flex flex-col items-start gap-1">
-        <span className={cn("inline-flex items-center gap-1 text-meta font-semibold", approvalTitleTone[live])}>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-meta font-semibold",
+            approvalTitleTone[live],
+          )}
+        >
           <Icon name={statusIcon(live)} size={14} />
           {statusTitle(live)}
         </span>
@@ -154,9 +163,13 @@ export function ApprovalCard({
       <p className="m-0 wrap-anywhere text-meta text-muted-foreground">{description.consequence}</p>
 
       <p className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
-        <code className="font-mono text-code" data-approval-tool>{description.action}</code>
+        <code className="font-mono text-code" data-approval-tool>
+          {description.action}
+        </code>
         {description.target === null ? null : (
-          <code className="m-0 wrap-anywhere font-mono text-code text-muted-foreground">{description.target}</code>
+          <code className="m-0 wrap-anywhere font-mono text-code text-muted-foreground">
+            {description.target}
+          </code>
         )}
         {runId === null || runId === undefined ? null : (
           <span className="text-meta text-muted-foreground">Run {runId}</span>
@@ -189,13 +202,18 @@ export function ApprovalCard({
       ) : null}
 
       {live === "timed_out" ? (
-        <p className="m-0 wrap-anywhere text-body text-muted-foreground">The deadline passed, so the run was denied.</p>
+        <p className="m-0 wrap-anywhere text-body text-muted-foreground">
+          The deadline passed, so the run was denied.
+        </p>
       ) : current.reason === null || current.reason === "" ? null : (
         <p className="m-0 wrap-anywhere text-body text-muted-foreground">{current.reason}</p>
       )}
 
       {error ? (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           The decision could not be recorded. Try again.
         </p>
       ) : null}
@@ -209,7 +227,9 @@ export function ApprovalCard({
       {showArguments ? (
         <details className="">
           <summary>Arguments</summary>
-          <pre className="mt-2 m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">{json(callArguments)}</pre>
+          <pre className="mt-2 m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">
+            {json(callArguments)}
+          </pre>
         </details>
       ) : null}
     </Card>

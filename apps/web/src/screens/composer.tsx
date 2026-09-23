@@ -136,7 +136,11 @@ export function ComposerScreen({
 
   return (
     <form
-      className={state.dragActive ? "mx-auto flex w-full max-w-xl flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-raised border-primary outline-2 outline-dashed" : "mx-auto flex w-full max-w-xl flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-raised"}
+      className={
+        state.dragActive
+          ? "mx-auto flex w-full max-w-xl flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-raised border-primary outline-2 outline-dashed"
+          : "mx-auto flex w-full max-w-xl flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-raised"
+      }
       aria-label="Message composer"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -153,7 +157,12 @@ export function ComposerScreen({
               as="li"
               variant="raised"
               key={file.key}
-              data-composer-file className={cn("flex flex-row flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1 text-body", file.status === "invalid" && "border-destructive", file.status === "failed" && "border-destructive")}
+              data-composer-file
+              className={cn(
+                "flex flex-row flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1 text-body",
+                file.status === "invalid" && "border-destructive",
+                file.status === "failed" && "border-destructive",
+              )}
             >
               <span className="font-medium wrap-anywhere">{file.filename}</span>
               <span className="text-meta text-muted-foreground">
@@ -239,12 +248,18 @@ export function ComposerScreen({
         </Button>
       </div>
       {stopError === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {stopError}
         </p>
       )}
       {state.error === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.error}
         </p>
       )}

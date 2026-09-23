@@ -1,8 +1,4 @@
-import {
-  themeBootstrapScript,
-  themeStyleSheet,
-  themeStorageKey,
-} from "@porkbot/tokens";
+import { themeBootstrapScript, themeStyleSheet, themeStorageKey } from "@porkbot/tokens";
 import "./globals.css";
 
 /**

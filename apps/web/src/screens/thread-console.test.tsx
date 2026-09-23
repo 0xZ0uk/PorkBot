@@ -311,7 +311,9 @@ describe("the tool-call timeline", () => {
     expect(item?.querySelector("[data-tool-call-duration]")?.textContent).toBe("120 ms");
     expect(item?.className).not.toContain("tool-call-failed");
 
-    const details = container.querySelector("details[data-tool-call-details]") as HTMLDetailsElement;
+    const details = container.querySelector(
+      "details[data-tool-call-details]",
+    ) as HTMLDetailsElement;
     expect(details.open).toBe(false);
 
     await act(async () => {
@@ -460,7 +462,9 @@ describe("the tool-call timeline", () => {
       />,
     );
 
-    expect(container.querySelector("[data-tool-call-status]")?.textContent).toBe("Waiting for approval");
+    expect(container.querySelector("[data-tool-call-status]")?.textContent).toBe(
+      "Waiting for approval",
+    );
   });
 
   it("renders the approval card with its consequence and live deadline", async () => {
@@ -538,9 +542,9 @@ describe("the tool-call timeline", () => {
         callId: "call-1",
         vote: "approve",
       });
-      expect(container.querySelector("[data-approval-state]")?.getAttribute("data-approval-state")).toBe(
-        "approved",
-      );
+      expect(
+        container.querySelector("[data-approval-state]")?.getAttribute("data-approval-state"),
+      ).toBe("approved");
       expect(container.querySelectorAll(".approval-card button")).toHaveLength(0);
     } finally {
       vi.useRealTimers();
@@ -568,7 +572,9 @@ describe("the tool-call timeline", () => {
     expect(card?.getAttribute("data-approval-state")).toBe("timed_out");
     expect(card?.textContent).toContain("Timed out");
     expect(card?.textContent).toContain("The deadline passed, so the run was denied.");
-    expect(container.querySelector("details[data-tool-call-details]")?.hasAttribute("open")).toBe(false);
+    expect(container.querySelector("details[data-tool-call-details]")?.hasAttribute("open")).toBe(
+      false,
+    );
     expect(card?.querySelectorAll("button")).toHaveLength(0);
   });
 });

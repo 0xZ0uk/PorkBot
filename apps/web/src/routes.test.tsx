@@ -281,7 +281,7 @@ describe("the console routes", () => {
 
     expect(container.textContent).toContain("Ada");
 
-    const row = [...container.querySelectorAll("[data-name]")].find((card) =>
+    const row = [...container.querySelectorAll("[data-roster-card]")].find((card) =>
       card.textContent?.includes("Ada"),
     );
     const trigger = row?.querySelector("button[aria-haspopup='menu']");
@@ -402,9 +402,9 @@ describe("the console routes", () => {
       () => container.querySelector("#main [data-state='working']") !== null,
       "the header's working chip",
     );
-    expect(container.querySelector('a[href^="/bots/"][aria-current="page"]')?.textContent).toContain(
-      "Ada",
-    );
+    expect(
+      container.querySelector('a[href^="/bots/"][aria-current="page"]')?.textContent,
+    ).toContain("Ada");
   });
 
   it("sends a message with an attachment from the composer, chips and all", async () => {
@@ -478,7 +478,9 @@ describe("the console routes", () => {
     });
 
     // Stage a file through the chooser; the send stays off while it uploads.
-    const chooser = container.querySelector("[data-composer] input[type='file']") as HTMLInputElement;
+    const chooser = container.querySelector(
+      "[data-composer] input[type='file']",
+    ) as HTMLInputElement;
 
     Object.defineProperty(chooser, "files", {
       value: [new File(["data"], "notes.txt", { type: "text/plain" })],
@@ -511,10 +513,7 @@ describe("the console routes", () => {
 
     // The sent message is in the transcript — not on the next mount — with
     // its file as a download chip.
-    await until(
-      () => container.querySelector("[data-attachment]") !== null,
-      "the attachment chip",
-    );
+    await until(() => container.querySelector("[data-attachment]") !== null, "the attachment chip");
 
     const chip = container.querySelector("a[data-attachment]");
 
@@ -681,7 +680,7 @@ describe("the memory route", () => {
       }),
     );
 
-    const card = container.querySelector("[data-name]");
+    const card = container.querySelector("[data-memory-document]");
 
     expect(card?.textContent).toContain("Last change by Bot");
     expect(card?.querySelector("time")?.getAttribute("datetime")).toBe("2026-01-02T00:00:00.000Z");
@@ -741,7 +740,7 @@ describe("the memory route", () => {
       buttonByText("Edit").click();
     });
 
-    const form = container.querySelector("form.memory-form");
+    const form = container.querySelector("[data-memory-form]");
 
     expect(form).not.toBeNull();
 
@@ -756,12 +755,12 @@ describe("the memory route", () => {
     await until(
       () =>
         container.textContent?.includes("v2") === true &&
-        container.querySelector("form.memory-form") === null,
+        container.querySelector("[data-memory-form]") === null,
       "the persisted correction",
     );
 
     expect(container.textContent).toContain("The operator prefers Neovim.");
-    expect(container.querySelector("form.memory-form")).toBeNull();
+    expect(container.querySelector("[data-memory-form]")).toBeNull();
   });
 
   it("shows the history with who made each change and when", async () => {
@@ -788,11 +787,11 @@ describe("the memory route", () => {
     });
 
     await until(
-      () => container.querySelectorAll(".memory-timeline-entry").length === 2,
+      () => container.querySelectorAll("[data-memory-timeline-entry]").length === 2,
       "the revision history",
     );
 
-    const revisions = [...container.querySelectorAll(".memory-timeline-entry")];
+    const revisions = [...container.querySelectorAll("[data-memory-timeline-entry]")];
 
     expect(revisions[0]?.textContent).toContain("You");
     expect(revisions[1]?.textContent).toContain("Bot");
@@ -814,7 +813,7 @@ describe("the memory route", () => {
       buttonByText("Remove").click();
     });
 
-    const form = container.querySelector("form.memory-form");
+    const form = container.querySelector("[data-memory-form]");
 
     expect(form?.textContent).toContain("leaves Current. Its history and its id are kept");
     setValue(form?.querySelector("input") as HTMLInputElement, "no longer relevant");
@@ -851,7 +850,7 @@ describe("the memory route", () => {
       buttonByText("Restore").click();
     });
 
-    const form = container.querySelector("form.memory-form");
+    const form = container.querySelector("[data-memory-form]");
 
     expect(form?.textContent).toContain("returns");
     expect(form?.textContent).toContain("to Current");
@@ -892,11 +891,11 @@ describe("the memory route", () => {
     });
 
     await until(
-      () => container.querySelectorAll(".memory-timeline-entry").length === 2,
+      () => container.querySelectorAll("[data-memory-timeline-entry]").length === 2,
       "the revision history",
     );
 
-    const first = container.querySelectorAll(".memory-timeline-entry")[0];
+    const first = container.querySelectorAll("[data-memory-timeline-entry]")[0];
 
     await act(async () => {
       const restore = [...(first?.querySelectorAll("button") ?? [])].find(
@@ -975,7 +974,7 @@ describe("the usage route", () => {
     expect(container.textContent).toContain("1400");
     expect(container.textContent).toContain("1 of 5 not reported");
 
-    const segments = [...container.querySelectorAll(".usage-bar-segment")];
+    const segments = [...container.querySelectorAll("[data-usage-bar-segment]")];
 
     expect(segments).toHaveLength(2);
     expect(segments[0]?.getAttribute("style")).toContain("width");
