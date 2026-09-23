@@ -108,7 +108,7 @@ export function ThreadConsoleScreen({
       <div className="flex min-h-0 flex-1 flex-col">
         <ScrollArea
           label="Transcript"
-          className="flex min-h-0 flex-1 flex-col"
+          className="transcript-scroll flex min-h-0 flex-1 flex-col"
           ref={anchor.ref}
           onScroll={anchor.onScroll}
         >
@@ -121,11 +121,11 @@ export function ThreadConsoleScreen({
               sessions.map((session) => (
                 <div className="flex flex-col gap-2" key={session.key}>
                   {session.label === null ? null : (
-                    <p className="mx-auto w-full max-w-2xl border-t border-border">
+                    <p className="transcript-separator mx-auto w-full max-w-2xl border-t border-border">
                       <time dateTime={session.startedAt ?? undefined}>{session.label}</time>
                     </p>
                   )}
-                  <ol className="flex min-h-0 flex-1 flex-col">
+                  <ol className="transcript flex min-h-0 flex-1 flex-col">
                     {session.entries.map((entry) => {
                       if (entry.kind === "tool") {
                         return (
@@ -200,13 +200,13 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
     .join(" ");
 
   return (
-    <li className={classes}>
-      <div className="flex flex-col gap-1" data-tool-call>
+    <li className={classes} data-transcript-entry>
+      <div className="flex flex-col gap-1">
         <div
           className={
             operator
-              ? "flex items-center gap-1 text-meta text-muted-foreground sr-only"
-              : "flex items-center gap-1 text-meta text-muted-foreground"
+              ? "message-attribution flex items-center gap-1 text-meta text-muted-foreground sr-only"
+              : "message-attribution flex items-center gap-1 text-meta text-muted-foreground"
           }
         >
           {operator ? (
@@ -259,10 +259,13 @@ function AttachmentCard({ file }: { readonly file: FileMessageBlock }) {
   return (
     <Card
       as="li"
-      className="flex items-center gap-2 rounded-md border border-border bg-background p-2"
-      data-attachment
+      className="attachment-card flex items-center gap-2 rounded-md border border-border bg-background p-2"
     >
-      <a className="flex items-center gap-2" href={fileDownloadPath(file.attachmentId)}>
+      <a
+        className="message-attachment flex items-center gap-2"
+        href={fileDownloadPath(file.attachmentId)}
+        data-attachment
+      >
         <span
           className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground"
           aria-hidden="true"
@@ -337,10 +340,10 @@ function LiveStrip({
       style={style}
     >
       <span className="size-2 flex-none rounded-full bg-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 font-medium wrap-anywhere" data-live-strip-step>
+      <span className="live-strip-step min-w-0 font-medium wrap-anywhere" data-live-strip-step>
         {stepLabel(liveness)}
       </span>
-      <span className="ml-auto flex-none text-meta text-muted-foreground">
+      <span className="ml-auto flex-none text-meta text-muted-foreground" data-live-strip-beat>
         {stale ? "signal lost" : `heartbeat ${formatDuration(liveness.heartbeatLagMs)} ago`}
       </span>
     </div>

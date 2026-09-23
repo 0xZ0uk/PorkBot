@@ -82,15 +82,19 @@ function UsageStats({ totals }: { readonly totals: UsageTotalsView }) {
     <div className="flex flex-wrap gap-3">
       <div className="flex flex-col gap-0.5" data-usage-stat>
         <span className="text-meta text-muted-foreground">Input tokens</span>
-        <span className="font-medium text-body">{tokenText(totals.inputTokens)}</span>
+        <span className="usage-stat-value font-medium text-body">
+          {tokenText(totals.inputTokens)}
+        </span>
       </div>
       <div className="flex flex-col gap-0.5" data-usage-stat>
         <span className="text-meta text-muted-foreground">Output tokens</span>
-        <span className="font-medium text-body">{tokenText(totals.outputTokens)}</span>
+        <span className="usage-stat-value font-medium text-body">
+          {tokenText(totals.outputTokens)}
+        </span>
       </div>
       <div className="flex flex-col gap-0.5" data-usage-stat>
         <span className="text-meta text-muted-foreground">Calls</span>
-        <span className="font-medium text-body">{String(calls)}</span>
+        <span className="usage-stat-value font-medium text-body">{String(calls)}</span>
       </div>
       {partial ? (
         <p className="text-meta text-muted-foreground">
@@ -140,6 +144,7 @@ function UsageChart({ periods }: { readonly periods: UsageBot["periods"] }) {
                     />
                     <span
                       className="h-full bg-primary bg-primary/60"
+                      data-usage-bar-segment
                       style={{ width: `${String((total.output / busiest) * 100)}%` }}
                     />
                   </>

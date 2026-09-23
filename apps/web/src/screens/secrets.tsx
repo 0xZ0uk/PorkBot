@@ -221,7 +221,7 @@ function StoreSecretForm({ pending, existingNames, onSubmit }: StoreSecretFormPr
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
 

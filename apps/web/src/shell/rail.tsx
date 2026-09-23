@@ -94,7 +94,7 @@ export function Rail({
               ))}
               {rosterFailed ? (
                 <>
-                  <p className="text-body text-muted-foreground">
+                  <p className="text-body text-muted-foreground" data-rail-empty>
                     The bot list could not be loaded.
                   </p>
                   <Button variant="ghost" onClick={onRetryRoster}>

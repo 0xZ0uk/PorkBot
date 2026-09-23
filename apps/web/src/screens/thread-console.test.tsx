@@ -160,8 +160,8 @@ describe("the thread console screen", () => {
     // The shell header owns the thread's identity now, so the pane repeats no
     // header: the bot is named where it speaks.
     expect(container.querySelector(".thread-header")).toBeNull();
-    expect(container.querySelectorAll(".message-attribution .pb-avatar")).toHaveLength(1);
-    expect(container.querySelectorAll('.pb-avatar img[alt=""]')).toHaveLength(1);
+    expect(container.querySelectorAll(".message-attribution [data-avatar]")).toHaveLength(1);
+    expect(container.querySelectorAll('[data-avatar] img[alt=""]')).toHaveLength(1);
     expect(container.textContent).toContain("AdaHello");
   });
 
@@ -204,7 +204,7 @@ describe("the thread console screen", () => {
     const card = container.querySelector(".attachment-card");
     const open = card?.querySelector("a[data-attachment]");
 
-    expect(card?.className).toContain("pb-card");
+    expect(card?.hasAttribute("data-card")).toBe(true);
     expect(open?.getAttribute("href")).toBe("/files/attachment-1");
     expect(card?.textContent).toContain("notes.txt");
     expect(card?.textContent).toContain("text/plain · 2.0 KiB");
@@ -234,7 +234,7 @@ describe("the thread console screen", () => {
         expect(status, connection).toBeNull();
       } else {
         expect(status?.textContent, connection).toBe(label);
-        expect(status?.querySelector(".pb-badge"), connection).not.toBeNull();
+        expect(status?.querySelector("[data-badge]"), connection).not.toBeNull();
       }
     }
   });

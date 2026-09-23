@@ -27,20 +27,20 @@ export function RunCardEntry({ run, outcome }: RunCardEntryProps) {
   const note = runNote(run);
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3" data-run-card>
-      <Card variant="raised" className="flex flex-col gap-1">
+    <li className="run-card" data-transcript-entry data-run-card>
+      <Card variant="raised" className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline gap-2">
           <span
             className={
               failed
-                ? "grid size-6 flex-none place-items-center rounded-full bg-accent bg-destructive/14 text-destructive"
+                ? "run-card-icon-failed grid size-6 flex-none place-items-center rounded-full bg-accent bg-destructive/14 text-destructive"
                 : "grid size-6 flex-none place-items-center rounded-full bg-accent"
             }
             aria-hidden="true"
           >
             <Icon name={failed ? "alert" : "check"} size={15} />
           </span>
-          <p className="text-heading" data-run-card-title>
+          <p className="run-card-title text-heading" data-run-card-title>
             {title}
           </p>
           {note === null ? null : (
@@ -52,7 +52,7 @@ export function RunCardEntry({ run, outcome }: RunCardEntryProps) {
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {outcome.map((line, index) => (
             <li
-              className="text-meta text-muted-foreground"
+              className="run-card-line text-meta text-muted-foreground"
               data-run-card-line
               key={`${line.kind}:${String(index)}`}
             >

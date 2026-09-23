@@ -29,7 +29,11 @@ const badgeVariants = cva(
 );
 
 export function Badge({ tone = "neutral", className, children }: BadgeProps) {
-  return <span className={cn(badgeVariants({ tone }), className)}>{children}</span>;
+  return (
+    <span className={cn(badgeVariants({ tone }), className)} data-badge>
+      {children}
+    </span>
+  );
 }
 
 export type CountBadgeProps = {

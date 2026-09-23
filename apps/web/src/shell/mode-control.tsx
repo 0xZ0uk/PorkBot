@@ -22,7 +22,7 @@ export function ModeControl() {
   const { mode, setMode } = useMode();
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-settings-mode>
       <span className="text-meta font-medium text-muted-foreground" id="settings-mode-label">
         Mode
       </span>

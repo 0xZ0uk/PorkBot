@@ -343,7 +343,7 @@ function ScreenPanel({ state }: { readonly state: ComputerState }) {
   const kind = effectiveKind(state);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card" data-computer-frame>
       <div className="flex items-center gap-2 border-b border-border bg-accent px-3 py-2">
         <span className="flex gap-1" aria-hidden="true">
           <span />
@@ -355,7 +355,7 @@ function ScreenPanel({ state }: { readonly state: ComputerState }) {
         </span>
       </div>
       <div className="flex min-h-40 flex-col items-center justify-center gap-1 p-6">
-        <p className="m-0 text-title" data-computer-view-state>
+        <p className="computer-view-state m-0 text-title" data-computer-view-state>
           {machineStateWord(state)}
         </p>
         <p className="text-muted-foreground">{machineStateNote(state)}</p>
@@ -376,9 +376,9 @@ function Terminal({
   const pending = state.terminal.pending;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="terminal flex flex-col gap-2">
       <form
-        className="flex flex-wrap gap-2"
+        className="terminal-form flex flex-wrap gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           const next = command.trim();
@@ -565,7 +565,7 @@ function ProviderSheet({
         </p>
       ) : null}
 
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      <ul className="provider-list m-0 flex list-none flex-col gap-2 p-0">
         <ProviderOption
           name="Deployment default"
           detail={detailOf(providers.defaultKind)}
@@ -617,7 +617,7 @@ function ProviderOption({
   readonly onChoose: () => void;
 }) {
   return (
-    <li className="flex items-start gap-2 rounded-md border border-border bg-background p-2">
+    <li className="provider-option flex items-start gap-2 rounded-md border border-border bg-background p-2">
       <label>
         <Input
           type="radio"
