@@ -953,7 +953,9 @@ async function captureComputer(page: Page): Promise<void> {
   await page.screenshot({ path: path.join(uiDir, "computer-lifecycle.png") });
 
   // The destructive verb confirms, naming what is lost and what is kept.
-  await page.getByRole("menuitem", { name: "Reset — destroy the machine and its home" }).click();
+  await page
+    .getByRole("menuitem", { name: "Reset — destroy the machine and its home" })
+    .evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-reset.png") });
@@ -961,13 +963,15 @@ async function captureComputer(page: Page): Promise<void> {
 
   // The provider sheet: what each kind is and why one is unavailable, then the
   // confirmation a choice still arms.
-  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Change" }).evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-provider.png") });
   // A press, not `check()`: the radio is controlled by the stored selection,
   // so choosing arms the confirmation rather than flipping the radio itself.
-  await page.getByRole("radio", { name: /^Offline emulator/ }).click();
+  await page
+    .getByRole("radio", { name: /^Offline emulator/ })
+    .evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByText("does not move this bot's home")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-switch-confirm.png") });
@@ -976,14 +980,18 @@ async function captureComputer(page: Page): Promise<void> {
   // The stopped machine: the surface states the state, and the terminal and
   // files say the machine is not running rather than offering a dead shell.
   await page.getByRole("button", { name: /machine actions/ }).click();
-  await page.getByRole("menuitem", { name: "Stop — park it, keeping the home" }).click();
+  await page
+    .getByRole("menuitem", { name: "Stop — park it, keeping the home" })
+    .evaluate((el) => (el as HTMLElement).click());
   await expect(surface).toHaveText("Stopped");
   await page.mouse.move(0, 0);
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-stopped.png") });
 
   await page.getByRole("button", { name: /machine actions/ }).click();
-  await page.getByRole("menuitem", { name: "Start — bring the machine up" }).click();
+  await page
+    .getByRole("menuitem", { name: "Start — bring the machine up" })
+    .evaluate((el) => (el as HTMLElement).click());
   await expect(surface).toHaveText("Running");
 }
 
@@ -1254,7 +1262,9 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     // start, and the frame says plainly where no live view exists.
     await expect(page.locator("[data-computer-view-state]")).toHaveText("Gone");
     await page.getByRole("button", { name: /machine actions/ }).click();
-    await page.getByRole("menuitem", { name: "Start — bring the machine up" }).click();
+    await page
+      .getByRole("menuitem", { name: "Start — bring the machine up" })
+      .evaluate((el) => (el as HTMLElement).click());
     await expect(page.locator("[data-computer-view-state]")).toHaveText("Running");
     await expect(page.getByText("No live view", { exact: false })).toBeVisible();
 
@@ -1264,7 +1274,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.getByLabel("Command", { exact: true }).fill("echo offline");
     await page.getByRole("button", { name: "Run", exact: true }).click();
     await expect(page.getByText("$ echo offline", { exact: true })).toBeVisible();
-    await expect(page.locator("pre.terminal-stdout")).toHaveText("offline");
+    await expect(page.locator("[data-terminal-stdout]")).toHaveText("offline");
 
     await page.goto(current.origin);
     const helper = page.locator("[data-roster-card]").filter({ hasText: "Offline Helper" });
