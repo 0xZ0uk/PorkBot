@@ -122,10 +122,10 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-    await act(async () => {
+  await act(async () => {
     root.unmount();
   });
-    container.remove();
+  container.remove();
 });
 
 async function render(element: ReactElement): Promise<void> {
@@ -193,7 +193,7 @@ describe("the workspace", () => {
 
     expect(active?.textContent).toContain("Ada");
     expect(rowNamed("Ledger")?.getAttribute("aria-current")).toBeNull();
-    expect(container.querySelector('#main .text-heading')?.textContent).toBe('Ada');
+    expect(container.querySelector("#main .text-heading")?.textContent).toBe("Ada");
     expect(container.querySelector('[data-side="right"] .text-heading')?.textContent).toBe("Ada");
   });
 
@@ -212,9 +212,9 @@ describe("the workspace", () => {
       setValue(search, "ledg");
     });
 
-    expect(
-      [...container.querySelectorAll('[data-name]')].map((name) => name.textContent),
-    ).toEqual(["Ledger"]);
+    expect([...container.querySelectorAll("[data-name]")].map((name) => name.textContent)).toEqual([
+      "Ledger",
+    ]);
 
     await act(async () => {
       const again = container.querySelector<HTMLInputElement>('input[type="search"]') ?? search;
@@ -265,9 +265,9 @@ describe("the workspace", () => {
 
     await mount(router);
 
-    expect(rowNamed('Ada')?.textContent).toContain('1');
+    expect(rowNamed("Ada")?.textContent).toContain("1");
     expect(container.querySelector('#main [data-state="waiting"]')).not.toBeNull();
-    expect(container.querySelector('nav[aria-label="Workspace"]')?.textContent).toContain('1');
+    expect(container.querySelector('nav[aria-label="Workspace"]')?.textContent).toContain("1");
     expect(container.textContent).toContain("1 action is waiting for you.");
   });
 
@@ -281,8 +281,8 @@ describe("the workspace", () => {
     expect(footer).not.toBeNull();
 
     for (const label of ["Approvals", "Settings", "Sign out"]) {
-      const row = [...(footer?.querySelectorAll<HTMLElement>("a, button") ?? [])].find(
-        (entry) => entry.textContent?.includes(label),
+      const row = [...(footer?.querySelectorAll<HTMLElement>("a, button") ?? [])].find((entry) =>
+        entry.textContent?.includes(label),
       );
 
       expect(row, label).toBeDefined();
@@ -300,7 +300,7 @@ describe("the workspace", () => {
 
     expect(container.querySelector('[data-side="left"][data-state="expanded"]')).toBeNull();
     expect(container.querySelector('[data-side="right"][data-state="expanded"]')).toBeNull();
-    expect(container.querySelector('#main')).not.toBeNull();
+    expect(container.querySelector("#main")).not.toBeNull();
 
     const switcher = buttonByLabel("Switch bot");
 
@@ -310,13 +310,13 @@ describe("the workspace", () => {
 
     const sheet = document.body.querySelector("[role='dialog']");
 
-    expect(sheet?.getAttribute('role')).toBe('dialog');
+    expect(sheet?.getAttribute("role")).toBe("dialog");
     expect(document.querySelector('[aria-label="Bots"]')).not.toBeNull();
     expect(sheet?.textContent).toContain("Ledger");
 
-    const ledger = [...(sheet?.querySelectorAll<HTMLAnchorElement>('a[href^="/bots/"]') ?? [])].find(
-      (row) => row.textContent?.includes("Ledger"),
-    );
+    const ledger = [
+      ...(sheet?.querySelectorAll<HTMLAnchorElement>('a[href^="/bots/"]') ?? []),
+    ].find((row) => row.textContent?.includes("Ledger"));
 
     await act(async () => {
       ledger?.click();

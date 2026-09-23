@@ -45,6 +45,7 @@ export function CountBadge({ count, className }: CountBadgeProps) {
         "inline-flex min-w-4.5 items-center justify-center rounded-full bg-primary px-0.5 text-meta text-primary-foreground",
         className,
       )}
+      data-count-badge
     >
       {count}
     </span>

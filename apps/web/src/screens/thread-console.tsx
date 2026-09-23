@@ -67,7 +67,10 @@ export function ThreadConsoleScreen({
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onRetry}>Try again</Button>
@@ -199,7 +202,13 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
   return (
     <li className={classes}>
       <div className="flex flex-col gap-1" data-tool-call>
-        <div className={operator ? "flex items-center gap-1 text-meta text-muted-foreground sr-only" : "flex items-center gap-1 text-meta text-muted-foreground"}>
+        <div
+          className={
+            operator
+              ? "flex items-center gap-1 text-meta text-muted-foreground sr-only"
+              : "flex items-center gap-1 text-meta text-muted-foreground"
+          }
+        >
           {operator ? (
             <span className="font-medium text-foreground">You</span>
           ) : (
@@ -226,7 +235,11 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
             Not sent
           </span>
         ) : null}
-        <Card variant="raised" className="max-w-[44rem] rounded-xl border border-border bg-card p-3" data-message-bubble>
+        <Card
+          variant="raised"
+          className="max-w-[44rem] rounded-xl border border-border bg-card p-3"
+          data-message-bubble
+        >
           <p className="m-0 break-words whitespace-pre-wrap text-body">{entry.text}</p>
           {entry.attachments.length === 0 ? null : (
             <ul className="flex flex-wrap gap-2">
@@ -244,9 +257,16 @@ function MessageTurn({ entry, bot, avatarUrl }: MessageTurnProps) {
 /** One stored file: its name, type and size, with the card itself opening it. */
 function AttachmentCard({ file }: { readonly file: FileMessageBlock }) {
   return (
-    <Card as="li" className="flex items-center gap-2 rounded-md border border-border bg-background p-2" data-attachment>
+    <Card
+      as="li"
+      className="flex items-center gap-2 rounded-md border border-border bg-background p-2"
+      data-attachment
+    >
       <a className="flex items-center gap-2" href={fileDownloadPath(file.attachmentId)}>
-        <span className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground" aria-hidden="true">
+        <span
+          className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground"
+          aria-hidden="true"
+        >
           <Icon name="download" size={14} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -308,7 +328,10 @@ function LiveStrip({
 
   return (
     <div
-      className={["flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-body", `live-strip-${state}`].join(" ")}
+      className={[
+        "flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-body",
+        `live-strip-${state}`,
+      ].join(" ")}
       data-liveness={state}
       role="status"
       style={style}

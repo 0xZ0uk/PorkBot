@@ -1,12 +1,6 @@
 import { useRouterState } from "@tanstack/react-router";
 import type { Approval } from "@porkbot/contracts";
-import {
-  BotAvatar,
-  IconButton,
-  SidebarProvider,
-  StateChip,
-  useSidebar,
-} from "@porkbot/ui";
+import { BotAvatar, IconButton, SidebarProvider, StateChip, useSidebar } from "@porkbot/ui";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { findRosterBot } from "../roster.ts";
@@ -198,7 +192,9 @@ export function Workspace({
                         state={state}
                         pendingForBot={pendingForBot}
                       />
-                      <div className="flex min-h-0 flex-1 flex-col" data-shell-pane>{children}</div>
+                      <div className="flex min-h-0 flex-1 flex-col" data-shell-pane>
+                        {children}
+                      </div>
                     </main>
                     {inspector}
                   </div>

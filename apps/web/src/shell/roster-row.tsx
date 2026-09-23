@@ -63,7 +63,9 @@ export function RosterRow({
           size={24}
         />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-body font-medium text-foreground" data-name>{bot.name}</span>
+          <span className="truncate text-body font-medium text-foreground" data-name>
+            {bot.name}
+          </span>
           <span className="truncate text-meta text-muted-foreground">{roleOf(bot)}</span>
           <span className="truncate text-meta text-muted-foreground">
             <Activity entry={entry} />
@@ -206,7 +208,10 @@ function HomeRow({
       ];
 
   return (
-    <article className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+    <article
+      className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
+      data-roster-card
+    >
       <div className="flex items-center gap-3">
         <Link
           to="/bots/$botId"
@@ -222,8 +227,12 @@ function HomeRow({
             size={40}
           />
           <span className="flex min-w-0 flex-col">
-            <span className="overflow-hidden whitespace-nowrap text-ellipsis text-heading">{bot.name}</span>
-            <span className="overflow-hidden whitespace-nowrap text-ellipsis text-meta text-muted-foreground">{roleOf(bot)}</span>
+            <span className="overflow-hidden whitespace-nowrap text-ellipsis text-heading">
+              {bot.name}
+            </span>
+            <span className="overflow-hidden whitespace-nowrap text-ellipsis text-meta text-muted-foreground">
+              {roleOf(bot)}
+            </span>
           </span>
         </Link>
         <StateChip
@@ -240,7 +249,9 @@ function HomeRow({
 
       {confirming ? (
         <div className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
-          <p className="text-muted-foreground">Archive this bot? Its threads and settings will be kept.</p>
+          <p className="text-muted-foreground">
+            Archive this bot? Its threads and settings will be kept.
+          </p>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"

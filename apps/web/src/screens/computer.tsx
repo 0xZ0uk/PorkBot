@@ -86,7 +86,10 @@ export function ComputerScreen({
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -103,7 +106,10 @@ export function ComputerScreen({
   const switchOpen = state.candidate !== null;
 
   return (
-    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3" aria-busy={state.status === "loading"}>
+    <section
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3"
+      aria-busy={state.status === "loading"}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <MachineControl
           state={state}
@@ -122,7 +128,11 @@ export function ComputerScreen({
 
       {state.notice === null || switchOpen ? null : (
         <p
-          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+          className={
+            state.notice.kind === "error"
+              ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+              : "text-muted-foreground"
+          }
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -245,7 +255,11 @@ function MachineControl({
 
   return (
     <span className="inline-flex items-center gap-1 text-meta text-muted-foreground">
-      <span className="size-2 rounded-full bg-muted-foreground" data-state={machineState(state)} aria-hidden="true" />
+      <span
+        className="size-2 rounded-full bg-muted-foreground"
+        data-state={machineState(state)}
+        aria-hidden="true"
+      />
       <Menu
         label={label}
         ariaLabel={`${label} — machine actions`}
@@ -304,9 +318,7 @@ function ProviderBar({
   return (
     <span className="inline-flex items-center gap-1 text-meta">
       <span className="text-muted-foreground">Runs on</span>
-      <span className="font-medium">
-        {kind === null ? "no provider" : providerName(kind)}
-      </span>
+      <span className="font-medium">{kind === null ? "no provider" : providerName(kind)}</span>
       {unconfigured ? (
         <span className="text-warning">Not configured</span>
       ) : current === null ? null : (
@@ -343,7 +355,9 @@ function ScreenPanel({ state }: { readonly state: ComputerState }) {
         </span>
       </div>
       <div className="flex min-h-40 flex-col items-center justify-center gap-1 p-6">
-        <p className="m-0 text-title" data-computer-view-state>{machineStateWord(state)}</p>
+        <p className="m-0 text-title" data-computer-view-state>
+          {machineStateWord(state)}
+        </p>
         <p className="text-muted-foreground">{machineStateNote(state)}</p>
       </div>
     </div>
@@ -398,10 +412,21 @@ function Terminal({
       ) : (
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
           {state.terminal.entries.map((entry, index) => (
-            <li key={index} className="flex flex-col gap-1 rounded-md border border-border bg-background p-2">
+            <li
+              key={index}
+              className="flex flex-col gap-1 rounded-md border border-border bg-background p-2"
+            >
               <pre className="m-0 font-mono text-code">{`$ ${entry.command}`}</pre>
-              {entry.stdout === "" ? null : <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code">{entry.stdout}</pre>}
-              {entry.stderr === "" ? null : <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code text-destructive">{entry.stderr}</pre>}
+              {entry.stdout === "" ? null : (
+                <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code">
+                  {entry.stdout}
+                </pre>
+              )}
+              {entry.stderr === "" ? null : (
+                <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code text-destructive">
+                  {entry.stderr}
+                </pre>
+              )}
               {entry.exitCode === 0 ? null : (
                 <p className="text-muted-foreground">{`Exit code ${String(entry.exitCode)}`}</p>
               )}
@@ -446,7 +471,10 @@ function Files({
       </div>
 
       {files.refusal === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {files.refusal}
         </p>
       )}
@@ -460,7 +488,10 @@ function Files({
       ) : (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {files.entries.map((entry) => (
-            <li key={entry.name} className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
+            <li
+              key={entry.name}
+              className="flex items-center gap-2 rounded-md border border-border bg-background p-2"
+            >
               <Button
                 disabled={files.pending}
                 onClick={() => {
@@ -523,7 +554,10 @@ function ProviderSheet({
       onClose={onClose}
     >
       {selectionUnconfigured(state) ? (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {`This bot is set to "${String(state.bot?.computerProvider)}", which this deployment does not configure. Choose a provider below.`}
         </p>
       ) : null}
@@ -685,7 +719,11 @@ function SwitchConfirmation({
     >
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+          className={
+            state.notice.kind === "error"
+              ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+              : "text-muted-foreground"
+          }
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -747,7 +785,9 @@ function SnapshotRow({
       <span className="text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</span>
       {restoring ? (
         <span className="flex flex-wrap items-center gap-2 rounded-md border border-destructive bg-card p-2">
-          <span className="text-muted-foreground">Restoring replaces this machine&apos;s home. </span>{" "}
+          <span className="text-muted-foreground">
+            Restoring replaces this machine&apos;s home.{" "}
+          </span>{" "}
           <Button
             disabled={pending !== null}
             onClick={() => {

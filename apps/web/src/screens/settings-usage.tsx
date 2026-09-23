@@ -35,7 +35,10 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -52,7 +55,9 @@ export function SettingsUsageScreen({ state, onReload, onDays }: SettingsUsageSc
       <header className="flex flex-col gap-1">
         <div>
           <h2>Usage</h2>
-          <p className="text-muted-foreground">Recorded and displayed only; nothing here is metered or enforced.</p>
+          <p className="text-muted-foreground">
+            Recorded and displayed only; nothing here is metered or enforced.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="info">Informational</Badge>

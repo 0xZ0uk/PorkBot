@@ -134,7 +134,9 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
       <header className="flex flex-col gap-1">
         <div>
           <h2>Approvals</h2>
-          <p className="text-muted-foreground">Decide what a bot may do, and see what was decided.</p>
+          <p className="text-muted-foreground">
+            Decide what a bot may do, and see what was decided.
+          </p>
         </div>
       </header>
 
@@ -186,9 +188,13 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
             <section className="flex flex-col gap-2" aria-labelledby="approvals-waiting">
               <h3 className="m-0 flex items-center gap-2 text-heading" id="approvals-waiting">
                 Waiting for you
-                <span className="inline-flex min-w-4.5 items-center justify-center rounded-full bg-primary px-0.5 text-meta text-primary-foreground">{waiting.length}</span>
+                <span className="inline-flex min-w-4.5 items-center justify-center rounded-full bg-primary px-0.5 text-meta text-primary-foreground">
+                  {waiting.length}
+                </span>
               </h3>
-              <ol className="m-0 flex list-none flex-col gap-3 p-0">{waiting.map((approval) => card(approval))}</ol>
+              <ol className="m-0 flex list-none flex-col gap-3 p-0">
+                {waiting.map((approval) => card(approval))}
+              </ol>
             </section>
           )}
 
@@ -197,7 +203,9 @@ export function ApprovalsScreen({ approvals, bots, onDecision }: ApprovalsScreen
               <h3 className="m-0 flex items-center gap-2 text-heading" id="approvals-history">
                 History
               </h3>
-              <ol className="m-0 flex list-none flex-col gap-3 p-0">{history.map((approval) => card(approval))}</ol>
+              <ol className="m-0 flex list-none flex-col gap-3 p-0">
+                {history.map((approval) => card(approval))}
+              </ol>
             </section>
           )}
         </>

@@ -27,7 +27,9 @@ export function ToolResultScreen({ botId, threadId, tool, result }: ToolResultSc
       </p>
       <h1 className="text-title">Tool result</h1>
       <p className="text-muted-foreground">{tool}</p>
-      <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">{json(result)}</pre>
+      <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">
+        {json(result)}
+      </pre>
     </section>
   );
 }

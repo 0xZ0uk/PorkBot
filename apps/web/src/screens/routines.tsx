@@ -69,7 +69,10 @@ export function RoutinesScreen({
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-2xl flex-col gap-3 gap-4" aria-busy={pending !== null}>
+    <section
+      className="mx-auto flex w-full max-w-2xl flex-col gap-3 gap-4"
+      aria-busy={pending !== null}
+    >
       <header className="flex flex-col gap-1 flex-wrap items-center gap-3">
         <div>
           <h2>Routines</h2>
@@ -83,7 +86,10 @@ export function RoutinesScreen({
       </header>
 
       {notice === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {notice}
         </p>
       )}
@@ -136,7 +142,9 @@ export function RoutinesScreen({
       {routines.length === 0 && !creating ? (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
           <h3>No routines yet</h3>
-          <p className="text-muted-foreground">Create one to give this bot recurring work and a visible history.</p>
+          <p className="text-muted-foreground">
+            Create one to give this bot recurring work and a visible history.
+          </p>
           <Button onClick={openCreate}>Create routine</Button>
         </div>
       ) : routines.length > 0 ? (
@@ -249,7 +257,9 @@ function RoutineEditor({
       <header className="flex flex-wrap items-center gap-2">
         <div>
           <h3>{routine === null ? "New routine" : "Edit routine"}</h3>
-          <p className="text-muted-foreground">The preview uses the scheduler's cron and timezone rules.</p>
+          <p className="text-muted-foreground">
+            The preview uses the scheduler's cron and timezone rules.
+          </p>
         </div>
         <Button variant="ghost" onClick={onClose} disabled={pending}>
           Cancel
@@ -257,7 +267,10 @@ function RoutineEditor({
       </header>
 
       {saveError === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {saveError}
         </p>
       )}
@@ -337,13 +350,18 @@ function RoutinePreview({
     <section className="flex flex-col gap-2" aria-labelledby="routine-preview-title">
       <div className="m-0 text-heading">
         <h4 id="routine-preview-title">Next fires</h4>
-        {preview.status === "loading" ? <span className="text-muted-foreground">Checking…</span> : null}
+        {preview.status === "loading" ? (
+          <span className="text-muted-foreground">Checking…</span>
+        ) : null}
       </div>
       <p className="text-meta text-muted-foreground" role="status" aria-live="polite">
         {preview.status === "idle" ? "Edit the schedule to preview its next fires." : null}
       </p>
       {preview.message === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {preview.message}
         </p>
       )}
@@ -434,12 +452,18 @@ function RoutineCard({
       </dl>
 
       {testError === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {testError}
         </p>
       )}
       {testRun === null ? null : (
-        <p className="m-0 rounded-md border border-border bg-background p-2 font-mono text-code" role="status">
+        <p
+          className="m-0 rounded-md border border-border bg-background p-2 font-mono text-code"
+          role="status"
+        >
           Test run started.{" "}
           <a href={threadPath(botId, testRun.threadId, testRun.runId)}>Open the test run</a>
         </p>

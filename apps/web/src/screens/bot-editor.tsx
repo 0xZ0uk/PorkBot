@@ -56,13 +56,22 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
       <header className="flex flex-col gap-1">
         <div>
           <h2>{editing ? props.bot.name : "New bot"}</h2>
-          <p className="text-muted-foreground">{editing ? "Profile and runtime settings" : "Set up a teammate"}</p>
+          <p className="text-muted-foreground">
+            {editing ? "Profile and runtime settings" : "Set up a teammate"}
+          </p>
         </div>
-        {archived ? <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta bg-destructive/14 text-destructive border-destructive/40">Archived</span> : null}
+        {archived ? (
+          <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta bg-destructive/14 text-destructive border-destructive/40">
+            Archived
+          </span>
+        ) : null}
       </header>
 
       {props.notice === null ? null : (
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {props.notice}
         </p>
       )}
@@ -87,7 +96,11 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
           </div>
           {editing ? (
             <div className="flex flex-wrap gap-2">
-              <Field label="Upload image" className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-transparent bg-transparent text-body hover:bg-accent" error={avatarError ?? undefined}>
+              <Field
+                label="Upload image"
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-transparent bg-transparent text-body hover:bg-accent"
+                error={avatarError ?? undefined}
+              >
                 <Input
                   type="file"
                   accept={avatarContentTypes.join(",")}
@@ -230,7 +243,9 @@ export function BotEditorScreen(props: BotEditorScreenProps) {
               onComputer={props.onComputer}
             />
           ) : (
-            <p className="text-muted-foreground">Computer controls are available after the bot is created.</p>
+            <p className="text-muted-foreground">
+              Computer controls are available after the bot is created.
+            </p>
           )}
         </section>
 
@@ -294,7 +309,12 @@ function ComputerControls({
   const running = view.assigned && view.state === "running";
 
   return (
-    <div className={cn("inline-flex items-center gap-1 text-meta text-muted-foreground", health.kind === "stopped" && "text-destructive")}>
+    <div
+      className={cn(
+        "inline-flex items-center gap-1 text-meta text-muted-foreground",
+        health.kind === "stopped" && "text-destructive",
+      )}
+    >
       <p>{!view.assigned ? "No computer assigned" : `Computer ${view.state}`}</p>
       <div className="flex flex-wrap gap-2">
         <Button disabled={pending || running} onClick={() => void onComputer("boot")}>

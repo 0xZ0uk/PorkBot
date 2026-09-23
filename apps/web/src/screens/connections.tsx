@@ -64,7 +64,10 @@ export function ConnectionsScreen({
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -92,7 +95,11 @@ export function ConnectionsScreen({
 
       {state.notice === null ? null : (
         <p
-          className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+          className={
+            state.notice.kind === "error"
+              ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+              : "text-muted-foreground"
+          }
           role={state.notice.kind === "error" ? "alert" : "status"}
         >
           {state.notice.text}
@@ -113,7 +120,9 @@ export function ConnectionsScreen({
 
       {state.connections.length === 0 ? (
         state.status === "ready" ? (
-          <p className="text-muted-foreground">No connections yet. Add one to give a bot a model.</p>
+          <p className="text-muted-foreground">
+            No connections yet. Add one to give a bot a model.
+          </p>
         ) : null
       ) : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
@@ -149,7 +158,10 @@ export function ConnectionsScreen({
           <h3>Bots</h3>
           <ul className="flex flex-wrap gap-1">
             {state.bots.map((bot) => (
-              <li key={bot.id} className="inline-flex items-center gap-1 rounded-full border border-border bg-accent px-2 py-0.5 text-meta">
+              <li
+                key={bot.id}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-accent px-2 py-0.5 text-meta"
+              >
                 <Field label={bot.name}>
                   <Select
                     disabled={state.pending === bot.id}
@@ -204,7 +216,11 @@ function ConnectionCard({
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3>{connection.label}</h3>
-        {connection.isDefault ? <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta">Space default</span> : null}
+        {connection.isDefault ? (
+          <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-meta">
+            Space default
+          </span>
+        ) : null}
       </div>
 
       <p className="text-heading text-muted-foreground">{hostOf(connection.baseUrl)}</p>
@@ -220,7 +236,11 @@ function ConnectionCard({
           )}
         </dd>
         <dt>Model</dt>
-        <dd>{connection.defaultModel ?? <span className="text-muted-foreground">Endpoint default</span>}</dd>
+        <dd>
+          {connection.defaultModel ?? (
+            <span className="text-muted-foreground">Endpoint default</span>
+          )}
+        </dd>
         <dt>Last used</dt>
         <dd>
           {connection.lastUsedAt === null ? "Never used" : formatMoment(connection.lastUsedAt)}
@@ -308,10 +328,16 @@ function StoredKeys({ credentials, state, pendingName, onRevoke }: StoredKeysPro
       ) : (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {credentials.map((credential) => (
-            <li key={credential.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+            <li
+              key={credential.id}
+              className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2"
+            >
               <span className="font-mono text-code wrap-anywhere">{credential.name}</span>{" "}
               <span className="text-muted-foreground">{credential.maskedValue}</span>
-              <span className="flex flex-wrap items-center gap-2 text-muted-foreground"> {keyUse(state, credential.name)}</span>
+              <span className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                {" "}
+                {keyUse(state, credential.name)}
+              </span>
               <RevokeKey
                 name={credential.name}
                 state={state}

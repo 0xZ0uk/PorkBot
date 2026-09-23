@@ -89,10 +89,16 @@ export function ToolCallEntry({
       <details className="">
         <summary className="flex cursor-pointer items-center gap-2 rounded-md p-1 hover:bg-accent">
           <span className="font-medium text-body">{call.tool}</span>
-          {target === null ? null : <span className="break-words font-mono text-code text-muted-foreground">{target}</span>}
+          {target === null ? null : (
+            <span className="break-words font-mono text-code text-muted-foreground">{target}</span>
+          )}
           <span className="ml-auto flex flex-none items-baseline gap-2">
             <span
-              className={failed ? "text-meta uppercase tracking-wide text-muted-foreground text-destructive" : "text-meta uppercase tracking-wide text-muted-foreground"}
+              className={
+                failed
+                  ? "text-meta uppercase tracking-wide text-muted-foreground text-destructive"
+                  : "text-meta uppercase tracking-wide text-muted-foreground"
+              }
             >
               {statusLabel(call)}
             </span>
@@ -108,7 +114,9 @@ export function ToolCallEntry({
               </a>
             )}
             {call.durationMs === undefined ? null : (
-              <span className="text-meta text-muted-foreground">{formatDuration(call.durationMs)}</span>
+              <span className="text-meta text-muted-foreground">
+                {formatDuration(call.durationMs)}
+              </span>
             )}
             <span className="flex-none transition-transform" aria-hidden="true">
               <Icon name="chevron-right" size={14} />
@@ -118,14 +126,20 @@ export function ToolCallEntry({
         <dl className="mt-2 flex flex-col gap-1">
           <dt>Arguments</dt>
           <dd>
-            <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">{json(call.arguments)}</pre>
+            <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">
+              {json(call.arguments)}
+            </pre>
           </dd>
           <dt>Result</dt>
           <dd>
             {failed ? (
-              <p className="m-0 wrap-anywhere text-destructive">{call.error ?? "The call failed."}</p>
+              <p className="m-0 wrap-anywhere text-destructive">
+                {call.error ?? "The call failed."}
+              </p>
             ) : call.status === "completed" ? (
-              <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">{json(call.result)}</pre>
+              <pre className="m-0 wrap-anywhere whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-code">
+                {json(call.result)}
+              </pre>
             ) : (
               <p className="text-muted-foreground">{statusLabel(call)}.</p>
             )}
@@ -150,7 +164,10 @@ export function ToolCallEntry({
       )}
       {download === undefined ? null : (
         <Card className="flex items-center gap-2 rounded-md border border-border bg-background p-2">
-          <span className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground" aria-hidden="true">
+          <span
+            className="grid size-7 flex-none place-items-center rounded-md bg-accent text-muted-foreground"
+            aria-hidden="true"
+          >
             <Icon name="download" size={14} />
           </span>
           <a className="text-body text-primary ml-auto flex-none" href={download.downloadPath}>

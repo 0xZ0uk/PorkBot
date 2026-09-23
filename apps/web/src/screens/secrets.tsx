@@ -39,7 +39,10 @@ export function SecretsScreen({
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onReload}>Try again</Button>
@@ -91,7 +94,11 @@ export function SecretsScreen({
 
           {state.notice === null ? null : (
             <p
-              className={state.notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+              className={
+                state.notice.kind === "error"
+                  ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+                  : "text-muted-foreground"
+              }
               role={state.notice.kind === "error" ? "alert" : "status"}
             >
               {state.notice.text}
@@ -115,7 +122,10 @@ export function SecretsScreen({
           ) : (
             <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {state.secrets.map((secret) => (
-                <li key={secret.name} className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+                <li
+                  key={secret.name}
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2"
+                >
                   <span className="font-mono text-code wrap-anywhere">{secret.name}</span>{" "}
                   <span className="text-muted-foreground">{hostOf(secret.origin)}</span>{" "}
                   <span className="text-muted-foreground">{authLabel(secret.auth)}</span>{" "}

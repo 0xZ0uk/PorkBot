@@ -79,7 +79,10 @@ export function MemoryScreen({
   if (state.status === "refused") {
     return (
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-        <p className="rounded-md border border-destructive bg-card p-2 text-foreground" role="alert">
+        <p
+          className="rounded-md border border-destructive bg-card p-2 text-foreground"
+          role="alert"
+        >
           {state.refusal}
         </p>
         <Button onClick={onRetry}>Try again</Button>
@@ -192,7 +195,11 @@ function MemoryDocumentCard({
     <Card
       as="li"
       variant="raised"
-      className={removed ? "flex flex-col gap-2 rounded-lg border border-border bg-card p-3 border-dashed" : "flex flex-col gap-2 rounded-lg border border-border bg-card p-3"}
+      className={
+        removed
+          ? "flex flex-col gap-2 rounded-lg border border-border bg-card p-3 border-dashed"
+          : "flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
+      }
       data-removed={removed ? "true" : undefined}
     >
       <div className="flex flex-wrap items-baseline gap-2">
@@ -211,7 +218,11 @@ function MemoryDocumentCard({
 
       {notice === null ? null : (
         <p
-          className={notice.kind === "error" ? "rounded-md border border-destructive bg-card p-2 text-foreground" : "text-muted-foreground"}
+          className={
+            notice.kind === "error"
+              ? "rounded-md border border-destructive bg-card p-2 text-foreground"
+              : "text-muted-foreground"
+          }
           role={notice.kind === "error" ? "alert" : "status"}
         >
           {notice.text}
@@ -343,6 +354,7 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
   return (
     <form
       className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      data-memory-form
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit({ documentId: document.documentId, title, content, reason });
@@ -407,6 +419,7 @@ function RemoveConfirm({ document, pending, onCancel, onSubmit }: RemoveConfirmP
   return (
     <form
       className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      data-memory-form
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit(reason);
@@ -460,6 +473,7 @@ function RestoreConfirm({ document, revision, pending, onCancel, onSubmit }: Res
   return (
     <form
       className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      data-memory-form
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit(reason);
@@ -539,10 +553,14 @@ function RevisionTimeline({
         <li
           key={revision.revision}
           className="relative flex flex-col gap-1"
+          data-memory-timeline-entry
           data-latest={revision.revision === latest ? "true" : undefined}
           data-deleted={revision.deleted ? "true" : undefined}
         >
-          <span className="absolute -left-4 top-1 size-2 rounded-full bg-muted-foreground" aria-hidden="true" />
+          <span
+            className="absolute -left-4 top-1 size-2 rounded-full bg-muted-foreground"
+            aria-hidden="true"
+          />
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="ml-auto text-meta text-muted-foreground">v{revision.revision}</span>
             <span>{originLabel(revision.origin)}</span>
@@ -593,7 +611,9 @@ function MemoryText({ text, className }: { readonly text: string; readonly class
 
   return (
     <details className="">
-      <summary className="wrap-anywhere whitespace-pre-wrap text-muted-foreground">{text.slice(0, limit)}…</summary>
+      <summary className="wrap-anywhere whitespace-pre-wrap text-muted-foreground">
+        {text.slice(0, limit)}…
+      </summary>
       <p className={className}>{text}</p>
     </details>
   );

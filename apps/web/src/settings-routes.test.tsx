@@ -222,7 +222,9 @@ describe("the settings surface", () => {
     await mount("/settings");
     await until(() => container.querySelector("#account") !== null, "the six sections");
 
-    const links = [...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')];
+    const links = [
+      ...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a'),
+    ];
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "#models",
@@ -295,9 +297,9 @@ describe("the settings surface", () => {
     await mount("/settings");
     await until(() => container.querySelector("#account") !== null, "the six sections");
 
-    const secretsLink = [...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(
-      (link) => link.textContent === "Secrets",
-    );
+    const secretsLink = [
+      ...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a'),
+    ].find((link) => link.textContent === "Secrets");
 
     expect(secretsLink?.getAttribute("aria-current")).toBeNull();
 
@@ -332,9 +334,9 @@ describe("the settings surface", () => {
     await mount("/settings");
     await until(() => container.querySelector("#account") !== null, "the six sections");
 
-    const secretsLink = [...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a')].find(
-      (link) => link.textContent === "Secrets",
-    );
+    const secretsLink = [
+      ...container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Settings sections"] a'),
+    ].find((link) => link.textContent === "Secrets");
 
     expect(secretsLink?.getAttribute("aria-current")).toBe("true");
   });

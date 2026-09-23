@@ -5,7 +5,11 @@
  */
 export function BootstrappingScreen() {
   return (
-    <main id="main" className="flex min-h-full flex-col items-center justify-center gap-4 p-4" tabIndex={-1}>
+    <main
+      id="main"
+      className="flex min-h-full flex-col items-center justify-center gap-4 p-4"
+      tabIndex={-1}
+    >
       <p className="text-muted-foreground" role="status">
         Checking your session…
       </p>
