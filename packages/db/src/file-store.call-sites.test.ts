@@ -80,6 +80,10 @@ function shippedSourceFiles(): string[] {
 
   for (const group of ["apps", "packages"]) {
     for (const entry of readdirSync(path.join(repoRoot, group), { withFileTypes: true })) {
+      if (group === "packages" && entry.name === "testkit") {
+        continue;
+      }
+
       const sourceDirectory = path.join(repoRoot, group, entry.name, "src");
 
       if (entry.isDirectory() && existsSync(sourceDirectory)) {
