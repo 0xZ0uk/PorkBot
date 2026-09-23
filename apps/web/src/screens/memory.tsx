@@ -200,6 +200,7 @@ function MemoryDocumentCard({
           ? "flex flex-col gap-2 rounded-lg border border-border bg-card p-3 border-dashed"
           : "flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
       }
+      data-memory-document
       data-removed={removed ? "true" : undefined}
     >
       <div className="flex flex-wrap items-baseline gap-2">

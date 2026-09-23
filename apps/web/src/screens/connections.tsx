@@ -213,7 +213,10 @@ function ConnectionCard({
   const [disconnecting, setDisconnecting] = useState(false);
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+    <li
+      className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
+      data-connection-row
+    >
       <div className="flex flex-wrap items-center gap-2">
         <h3>{connection.label}</h3>
         {connection.isDefault ? (

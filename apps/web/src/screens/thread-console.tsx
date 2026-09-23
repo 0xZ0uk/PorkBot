@@ -337,7 +337,9 @@ function LiveStrip({
       style={style}
     >
       <span className="size-2 flex-none rounded-full bg-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 font-medium wrap-anywhere">{stepLabel(liveness)}</span>
+      <span className="min-w-0 font-medium wrap-anywhere" data-live-strip-step>
+        {stepLabel(liveness)}
+      </span>
       <span className="ml-auto flex-none text-meta text-muted-foreground">
         {stale ? "signal lost" : `heartbeat ${formatDuration(liveness.heartbeatLagMs)} ago`}
       </span>

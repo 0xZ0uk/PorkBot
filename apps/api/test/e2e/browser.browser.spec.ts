@@ -791,7 +791,7 @@ async function captureRoster(
   await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
   // The loader is what fills the rows; wait for the roster to settle rather
   // than for the heading alone, so a capture is never of a loading pane.
-  await expect(page.locator(".roster-card, .empty-state").first()).toBeVisible();
+  await expect(page.locator("[data-roster-card], [data-empty]").first()).toBeVisible();
 
   if (options.archived === true) {
     await page.getByRole("button", { name: /^Archived \(/ }).click();
@@ -810,7 +810,7 @@ async function captureRoster(
     await page.waitForTimeout(200);
 
     const overflow = await page.evaluate(() => {
-      const pane = document.querySelector(".shell-pane");
+      const pane = document.querySelector("[data-shell-pane]");
       return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
     });
 
@@ -852,7 +852,7 @@ async function captureWorkspace(
 
       if (width === 390) {
         const overflow = await page.evaluate(() => {
-          const pane = document.querySelector(".shell-pane");
+          const pane = document.querySelector("[data-shell-pane]");
           return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
         });
 
@@ -907,7 +907,7 @@ async function captureApprovalState(
     await page.waitForTimeout(200);
 
     const overflow = await page.evaluate(() => {
-      const pane = document.querySelector(".shell-pane");
+      const pane = document.querySelector("[data-shell-pane]");
       return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
     });
 
@@ -927,7 +927,7 @@ async function captureApprovalState(
  */
 async function captureComputer(page: Page): Promise<void> {
   const uiDir = path.resolve("test-results/ui");
-  const surface = page.locator(".computer-view-state");
+  const surface = page.locator("[data-computer-view-state]");
 
   await mkdir(uiDir, { recursive: true });
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -1009,7 +1009,7 @@ async function captureSettings(page: Page, origin: string): Promise<void> {
     await page.waitForTimeout(200);
 
     await page.evaluate(() => {
-      document.querySelector(".shell-pane")?.scrollTo(0, 0);
+      document.querySelector("[data-shell-pane]")?.scrollTo(0, 0);
     });
     await page.waitForTimeout(200);
     await page.screenshot({
@@ -1045,8 +1045,12 @@ async function captureMemory(
   await mkdir(uiDir, { recursive: true });
 
   if (options.history === true) {
-    await page.locator(".memory-document").first().getByRole("button", { name: "History" }).click();
-    await expect(page.locator(".memory-timeline-entry").first()).toBeVisible();
+    await page
+      .locator("[data-memory-document]")
+      .first()
+      .getByRole("button", { name: "History" })
+      .click();
+    await expect(page.locator("[data-memory-timeline-entry]").first()).toBeVisible();
   }
 
   for (const mode of ["dark", "light"] as const) {
@@ -1070,7 +1074,7 @@ async function captureUsage(page: Page, origin: string, botId: string): Promise<
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${origin}/bots/${botId}/usage`);
-  await expect(page.locator(".usage-stat").first()).toBeVisible();
+  await expect(page.locator("[data-usage-stat]").first()).toBeVisible();
 
   for (const mode of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: mode });
@@ -1079,7 +1083,7 @@ async function captureUsage(page: Page, origin: string, botId: string): Promise<
   }
 
   await page.goto(`${origin}/settings/usage`);
-  await expect(page.locator(".usage-stat").first()).toBeVisible();
+  await expect(page.locator("[data-usage-stat]").first()).toBeVisible();
 
   for (const mode of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: mode });
@@ -1183,10 +1187,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await current.seedMemory(botId);
 
     await page.goto(`${current.origin}/bots/${botId}/memory`);
-    const memoryCard = page.locator(".memory-document").first();
+    const memoryCard = page.locator("[data-memory-document]").first();
     await expect(memoryCard.getByRole("heading", { name: "Release note" })).toBeVisible();
     await memoryCard.getByRole("button", { name: "Edit" }).click();
-    const memoryForm = memoryCard.locator("form.memory-form");
+    const memoryForm = memoryCard.locator("[data-memory-form]");
     await memoryForm.getByLabel("Title", { exact: true }).fill("Release note updated");
     await memoryForm.locator("textarea").fill("The browser fixture still starts offline.");
     await memoryForm.locator("input").nth(1).fill("Verify memory editing");
@@ -1199,20 +1203,20 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await captureMemory(page, "memory-history", { history: true });
 
     await memoryCard.getByRole("button", { name: "Remove" }).click();
-    await memoryCard.locator("form.memory-form").locator("input").fill("Release done");
+    await memoryCard.locator("[data-memory-form]").locator("input").fill("Release done");
     await memoryCard.getByRole("button", { name: "Remove document" }).click();
     await expect(page.getByText("Nothing remembered yet")).toBeVisible();
     await page.getByRole("radio", { name: "Removed" }).click();
-    await expect(page.locator(".memory-document--removed")).toBeVisible();
+    await expect(page.locator("[data-removed]")).toBeVisible();
     await captureMemory(page, "memory-removed");
 
     await page
-      .locator(".memory-document--removed")
+      .locator("[data-removed]")
       .getByRole("button", { name: "Restore", exact: true })
       .click();
     await page
-      .locator(".memory-document--removed")
-      .locator("form.memory-form")
+      .locator("[data-removed]")
+      .locator("[data-memory-form]")
       .getByRole("button", { name: "Restore revision" })
       .click();
     await expect(page.getByText("Nothing removed")).toBeVisible();
@@ -1238,7 +1242,9 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await models.getByLabel("API key", { exact: true }).fill("offline");
     await models.getByLabel("Default model (optional)", { exact: true }).fill("porkbot-e2e");
     await models.getByRole("button", { name: "Connect" }).click();
-    const modelConnection = models.locator(".connection").filter({ hasText: "Offline model" });
+    const modelConnection = models
+      .locator("[data-connection-row]")
+      .filter({ hasText: "Offline model" });
     await expect(modelConnection).toBeVisible();
     await modelConnection.getByRole("button", { name: "Test" }).click();
     await expect(modelConnection.getByText(/Reachable · 1 model · streaming/)).toBeVisible();
@@ -1246,10 +1252,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await page.goto(`${current.origin}/bots/${botId}/computer`);
     // The surface states the machine's state as a state: gone until the first
     // start, and the frame says plainly where no live view exists.
-    await expect(page.locator(".computer-view-state")).toHaveText("Gone");
+    await expect(page.locator("[data-computer-view-state]")).toHaveText("Gone");
     await page.getByRole("button", { name: /machine actions/ }).click();
     await page.getByRole("menuitem", { name: "Start — bring the machine up" }).click();
-    await expect(page.locator(".computer-view-state")).toHaveText("Running");
+    await expect(page.locator("[data-computer-view-state]")).toHaveText("Running");
     await expect(page.getByText("No live view", { exact: false })).toBeVisible();
 
     await captureComputer(page);
@@ -1261,7 +1267,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.locator("pre.terminal-stdout")).toHaveText("offline");
 
     await page.goto(current.origin);
-    const helper = page.locator(".roster-card").filter({ hasText: "Offline Helper" });
+    const helper = page.locator("[data-roster-card]").filter({ hasText: "Offline Helper" });
 
     await helper.getByRole("button", { name: "Actions for Offline Helper" }).click();
     await page.getByRole("menuitem", { name: "New thread" }).click();
@@ -1278,26 +1284,26 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
     // The card names the same tool as the timeline entry, so the assertion is
     // scoped to the entry rather than the plain word.
-    await expect(page.locator(".tool-call-name", { hasText: "shell" })).toBeVisible();
+    await expect(page.locator("[data-tool-call-name]", { hasText: "shell" })).toBeVisible();
     await expect(page.getByText(/Waiting for approval: shell/)).toBeVisible();
 
     // The inline approval card (slice 13.9): the action, what it touches, the
     // consequence, the live deadline and two buttons. The run also carries a
     // gate that already timed out, so one capture holds both states and the
     // resolved capture proves the first card answered.
-    const pendingCard = page.locator(".approval-card[data-approval-state='pending']");
-    const timedOutCard = page.locator(".approval-card[data-approval-state='timed_out']");
+    const pendingCard = page.locator("[data-approval-state='pending']");
+    const timedOutCard = page.locator("[data-approval-state='timed_out']");
 
     await expect(pendingCard).toHaveCount(1);
-    await expect(pendingCard.locator(".approval-card-title")).toHaveText("Approval needed");
-    await expect(pendingCard.locator(".approval-card-consequence")).toHaveText(
+    await expect(pendingCard.locator("[data-approval-title]")).toHaveText("Approval needed");
+    await expect(pendingCard.locator("[data-approval-consequence]")).toHaveText(
       "Run echo offline on the bot's computer.",
     );
-    await expect(pendingCard.locator(".approval-card-target")).toHaveText("echo offline");
+    await expect(pendingCard.locator("[data-approval-target]")).toHaveText("echo offline");
     await expect(pendingCard.locator("time")).toHaveText(/left$/);
     await expect(timedOutCard).toHaveCount(1);
-    await expect(timedOutCard.locator(".approval-card-title")).toHaveText("Timed out");
-    await expect(timedOutCard.locator(".approval-card-decision")).toHaveText(
+    await expect(timedOutCard.locator("[data-approval-title]")).toHaveText("Timed out");
+    await expect(timedOutCard.locator("[data-approval-decision]")).toHaveText(
       "The deadline passed, so the run was denied.",
     );
     await captureApprovalState(page, "approval-pending", { narrow: true });
@@ -1306,15 +1312,15 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
     await expect(page.locator("#approvals-waiting")).toBeVisible();
     await expect(page.locator("#approvals-history")).toBeVisible();
-    await expect(page.locator(".approval-card[data-approval-state='pending']")).toHaveCount(1);
-    await expect(page.locator(".approval-card[data-approval-state='timed_out']")).toHaveCount(1);
+    await expect(page.locator("[data-approval-state='pending']")).toHaveCount(1);
+    await expect(page.locator("[data-approval-state='timed_out']")).toHaveCount(1);
     await captureApprovalState(page, "approvals-queue");
 
     await page
-      .locator(".approval-card[data-approval-state='pending']")
+      .locator("[data-approval-state='pending']")
       .getByRole("button", { name: "Approve" })
       .click();
-    await expect(page.locator(".approval-card[data-approval-state='approved']")).toHaveCount(1);
+    await expect(page.locator("[data-approval-state='approved']")).toHaveCount(1);
     await expect(page.locator("#approvals-waiting")).toHaveCount(0);
     await captureApprovalState(page, "approvals-history");
 
@@ -1328,8 +1334,8 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     // the capture shows the bubbles, the attribution and the stop control.
     // The approval card has resolved in place rather than folding away.
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
-    await expect(page.locator(".approval-card[data-approval-state='approved']")).toHaveCount(1);
-    await expect(page.locator(".approval-card[data-approval-state='timed_out']")).toHaveCount(1);
+    await expect(page.locator("[data-approval-state='approved']")).toHaveCount(1);
+    await expect(page.locator("[data-approval-state='timed_out']")).toHaveCount(1);
     await captureApprovalState(page, "approval-resolved");
     await captureConsoleState(page, "conversation-streaming");
 
@@ -1339,15 +1345,15 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
     await page.reload();
     await expect(page.getByText(/offline assistant response/)).toBeVisible();
-    await expect(page.locator(".tool-call-name", { hasText: "shell" })).toBeVisible();
+    await expect(page.locator("[data-tool-call-name]", { hasText: "shell" })).toBeVisible();
     expect(await repositories.routines.listForBot(botId)).toHaveLength(1);
 
     // An attachment: staged, uploaded and sent, then read back as the card in
     // the operator's bubble.
     await page
-      .locator(".composer input[type='file']")
+      .locator("[data-composer] input[type='file']")
       .setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
-    await expect(page.locator(".composer-file-ready")).toBeVisible();
+    await expect(page.locator("[data-composer-file]")).toBeVisible();
     await page.getByLabel("Message", { exact: true }).fill("Here is the note");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.locator("a.message-attachment")).toBeVisible();
@@ -1363,9 +1369,9 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
       });
     });
     await page
-      .locator(".composer input[type='file']")
+      .locator("[data-composer] input[type='file']")
       .setInputFiles({ name: "lost.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
-    await expect(page.locator(".composer-file-failed")).toBeVisible();
+    await expect(page.locator("[data-composer-file][data-status='failed']")).toBeVisible();
     await captureConsoleState(page, "conversation-upload-failed");
     await page.unroute("**/threads/*/attachments**");
     await page.getByRole("button", { name: "Remove lost.txt" }).click();
@@ -1376,11 +1382,11 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     // console against the real API rather than a staged transcript.
     const completing = await current.startRun(threadId, { stop: "working" });
 
-    await expect(page.locator(".live-strip-step")).toHaveText("Running shell…");
+    await expect(page.locator("[data-live-strip-step]")).toHaveText("Running shell…");
     await captureConsoleState(page, "run-surface-running");
 
     await completing.complete();
-    await expect(page.locator(".run-card-title").last()).toHaveText("Run finished");
+    await expect(page.locator("[data-run-card-title]").last()).toHaveText("Run finished");
     await captureConsoleState(page, "run-surface-completed");
 
     // A failed run closes with its own card: the failure line where the ✓
@@ -1390,9 +1396,9 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await expect(page.getByText("Fail the offline task", { exact: true })).toBeVisible();
     const failing = await current.startRun(threadId, { stop: "working" });
 
-    await expect(page.locator(".live-strip-step")).toHaveText("Running shell…");
+    await expect(page.locator("[data-live-strip-step]")).toHaveText("Running shell…");
     await failing.fail();
-    await expect(page.locator(".run-card-title").last()).toHaveText("Run failed");
+    await expect(page.locator("[data-run-card-title]").last()).toHaveText("Run failed");
     await captureConsoleState(page, "run-surface-failed");
 
     await captureWorkspace(page, current.origin, botId, threadId);
@@ -1444,7 +1450,7 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     // exercised rather than staged before the captures.
     await page.goto(current.origin);
 
-    const ledger = page.locator(".roster-card").filter({ hasText: "Ledger" });
+    const ledger = page.locator("[data-roster-card]").filter({ hasText: "Ledger" });
 
     await ledger.getByRole("button", { name: "Actions for Ledger" }).click();
     await page.getByRole("menuitem", { name: "Pin" }).click();

@@ -59,13 +59,13 @@ export function HomeScreen({
       )}
 
       {failed ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4" data-empty>
           <h3>The bot list could not be loaded</h3>
           <p className="text-muted-foreground">Check your connection and try again.</p>
           <Button onClick={onRetry}>Try again</Button>
         </div>
       ) : roster.active.length === 0 ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4" data-empty>
           <h3>Create your first bot</h3>
           <p className="text-muted-foreground">
             Give it a name and instructions, then start its first thread.

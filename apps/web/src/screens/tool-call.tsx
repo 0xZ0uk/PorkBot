@@ -88,7 +88,9 @@ export function ToolCallEntry({
     <li className={failed ? "flex flex-col gap-1 border-destructive" : "flex flex-col gap-1"}>
       <details className="">
         <summary className="flex cursor-pointer items-center gap-2 rounded-md p-1 hover:bg-accent">
-          <span className="font-medium text-body">{call.tool}</span>
+          <span className="font-medium text-body" data-tool-call-name>
+            {call.tool}
+          </span>
           {target === null ? null : (
             <span className="break-words font-mono text-code text-muted-foreground">{target}</span>
           )}

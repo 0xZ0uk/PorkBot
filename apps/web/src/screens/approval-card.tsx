@@ -138,6 +138,7 @@ export function ApprovalCard({
             "inline-flex items-center gap-1 text-meta font-semibold",
             approvalTitleTone[live],
           )}
+          data-approval-title
         >
           <Icon name={statusIcon(live)} size={14} />
           {statusTitle(live)}
