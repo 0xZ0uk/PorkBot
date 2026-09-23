@@ -247,7 +247,7 @@ function McpDetail({
             {live.map((grant) => (
               <li
                 key={grant.botId}
-                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2"
+                className="connection-key flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2"
               >
                 <span>{botName(state.bots, grant.botId)}</span>
                 <RevokeGrant
@@ -404,7 +404,7 @@ function InstallForm({ pending, onSubmit }: InstallFormProps) {
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
         const secret = clientSecret.trim();

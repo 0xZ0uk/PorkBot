@@ -197,7 +197,7 @@ function MemoryDocumentCard({
       variant="raised"
       className={
         removed
-          ? "flex flex-col gap-2 rounded-lg border border-border bg-card p-3 border-dashed"
+          ? "memory-document--removed flex flex-col gap-2 rounded-lg border border-border bg-card p-3 border-dashed"
           : "flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
       }
       data-memory-document
@@ -354,7 +354,7 @@ function EditForm({ document, pending, onSubmit }: EditFormProps) {
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       data-memory-form
       onSubmit={(event) => {
         event.preventDefault();
@@ -419,7 +419,7 @@ function RemoveConfirm({ document, pending, onCancel, onSubmit }: RemoveConfirmP
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       data-memory-form
       onSubmit={(event) => {
         event.preventDefault();
@@ -473,7 +473,7 @@ function RestoreConfirm({ document, revision, pending, onCancel, onSubmit }: Res
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       data-memory-form
       onSubmit={(event) => {
         event.preventDefault();

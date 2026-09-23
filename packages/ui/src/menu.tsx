@@ -62,6 +62,8 @@ export function Menu({
             {items.map((item) => (
               <BaseMenu.Item
                 key={item.id}
+                nativeButton
+                render={<button type="button" />}
                 disabled={item.disabled === true}
                 data-destructive={item.destructive === true ? "true" : undefined}
                 onClick={() => {

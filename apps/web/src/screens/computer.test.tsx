@@ -92,7 +92,7 @@ async function render(element: ReactElement): Promise<void> {
 
 /** Every button on the page: the mount div and the register's portals alike. */
 function buttons(): HTMLButtonElement[] {
-  return [...document.body.querySelectorAll<HTMLButtonElement>("button")];
+  return [...document.body.querySelectorAll<HTMLButtonElement>("button, [role='menuitem']")];
 }
 
 function buttonWith(label: string): HTMLButtonElement {
@@ -105,9 +105,18 @@ function buttonWith(label: string): HTMLButtonElement {
   return button;
 }
 
+/**
+ * A menu item's disabled state is ARIA's: the register's menu keeps disabled
+ * items focusable, so the native `disabled` property is not the signal.
+ */
+function off(element: HTMLElement): boolean {
+  return element.getAttribute("aria-disabled") === "true";
+}
+
 async function click(element: HTMLElement): Promise<void> {
   await act(async () => {
-    element.click();
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 }
 
@@ -369,10 +378,10 @@ describe("the lifecycle control", () => {
     await render(<ComputerScreen {...screenProps(running)} />);
 
     const start = await menuItem("Running", "Start — bring the machine up");
-    expect(start.disabled).toBe(true);
-    expect(buttonWith("Stop — park it, keeping the home").disabled).toBe(false);
-    expect(buttonWith("Reset — destroy the machine and its home").disabled).toBe(false);
-    expect(buttonWith("Recover — adopt it, or create a fresh one").disabled).toBe(false);
+    expect(off(start)).toBe(true);
+    expect(off(buttonWith("Stop — park it, keeping the home"))).toBe(false);
+    expect(off(buttonWith("Reset — destroy the machine and its home"))).toBe(false);
+    expect(off(buttonWith("Recover — adopt it, or create a fresh one"))).toBe(false);
   });
 
   it("enables start on a stopped machine", async () => {
@@ -388,8 +397,8 @@ describe("the lifecycle control", () => {
     );
 
     await click(buttonWith("Stopped"));
-    expect(buttonWith("Start — bring the machine up").disabled).toBe(false);
-    expect(buttonWith("Stop — park it, keeping the home").disabled).toBe(true);
+    expect(off(buttonWith("Start — bring the machine up"))).toBe(false);
+    expect(off(buttonWith("Stop — park it, keeping the home"))).toBe(true);
   });
 
   it("keeps every verb out of reach for a bot with no machine", async () => {
@@ -403,7 +412,7 @@ describe("the lifecycle control", () => {
       "Reset — destroy the machine and its home",
       "Recover — adopt it, or create a fresh one",
     ]) {
-      expect(buttonWith(label).disabled).toBe(true);
+      expect(off(buttonWith(label))).toBe(true);
     }
   });
 

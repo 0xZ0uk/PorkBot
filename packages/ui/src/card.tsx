@@ -48,7 +48,7 @@ export function Card({ variant = "flat", className, children, ...rest }: CardPro
   const Element = (tag ?? "div") as ElementType;
 
   return (
-    <Element className={cn(cardVariants({ variant }), className)} {...elementProps}>
+    <Element className={cn(cardVariants({ variant }), className)} data-card {...elementProps}>
       {children}
     </Element>
   );

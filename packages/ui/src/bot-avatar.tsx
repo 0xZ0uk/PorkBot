@@ -93,7 +93,7 @@ export function BotAvatar({ id, name, color, imageUrl, size = 32, className }: B
 
   if (imageUrl !== undefined && imageUrl !== null && imageUrl.trim().length > 0) {
     return (
-      <span className={classes} aria-hidden="true" title={name}>
+      <span className={classes} data-avatar aria-hidden="true" title={name}>
         <img className="size-full object-cover" src={imageUrl} alt="" />
       </span>
     );

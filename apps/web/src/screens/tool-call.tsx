@@ -85,28 +85,38 @@ export function ToolCallEntry({
   const target = toolTarget(call);
 
   return (
-    <li className={failed ? "flex flex-col gap-1 border-destructive" : "flex flex-col gap-1"}>
-      <details className="">
-        <summary className="flex cursor-pointer items-center gap-2 rounded-md p-1 hover:bg-accent">
-          <span className="font-medium text-body" data-tool-call-name>
+    <li
+      className={
+        failed
+          ? "tool-call flex flex-col gap-1 border-destructive tool-call-failed"
+          : "tool-call flex flex-col gap-1"
+      }
+      data-tool-call
+    >
+      <details className="tool-call-details" data-tool-call-details>
+        <summary className="tool-call-summary flex cursor-pointer items-center gap-2 rounded-md p-1 hover:bg-accent">
+          <span className="tool-call-name font-medium text-body" data-tool-call-name>
             {call.tool}
           </span>
           {target === null ? null : (
-            <span className="break-words font-mono text-code text-muted-foreground">{target}</span>
+            <span className="tool-call-target break-words font-mono text-code text-muted-foreground">
+              {target}
+            </span>
           )}
           <span className="ml-auto flex flex-none items-baseline gap-2">
             <span
               className={
                 failed
-                  ? "text-meta uppercase tracking-wide text-muted-foreground text-destructive"
-                  : "text-meta uppercase tracking-wide text-muted-foreground"
+                  ? "tool-call-status text-meta uppercase tracking-wide text-muted-foreground text-destructive"
+                  : "tool-call-status text-meta uppercase tracking-wide text-muted-foreground"
               }
+              data-tool-call-status
             >
               {statusLabel(call)}
             </span>
             {artifact === undefined ? null : (
               <a
-                className="text-body text-primary"
+                className="tool-call-artifact text-body text-primary"
                 href={toolResultPath(botId, threadId, runId, artifact.callId)}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -116,7 +126,10 @@ export function ToolCallEntry({
               </a>
             )}
             {call.durationMs === undefined ? null : (
-              <span className="text-meta text-muted-foreground">
+              <span
+                data-tool-call-duration
+                className="tool-call-duration text-meta text-muted-foreground"
+              >
                 {formatDuration(call.durationMs)}
               </span>
             )}
@@ -135,7 +148,7 @@ export function ToolCallEntry({
           <dt>Result</dt>
           <dd>
             {failed ? (
-              <p className="m-0 wrap-anywhere text-destructive">
+              <p className="m-0 wrap-anywhere text-destructive" data-tool-call-error>
                 {call.error ?? "The call failed."}
               </p>
             ) : call.status === "completed" ? (
@@ -172,7 +185,11 @@ export function ToolCallEntry({
           >
             <Icon name="download" size={14} />
           </span>
-          <a className="text-body text-primary ml-auto flex-none" href={download.downloadPath}>
+          <a
+            className="tool-call-download text-body text-primary ml-auto flex-none"
+            href={download.downloadPath}
+            data-tool-call-download
+          >
             Download {download.filename} ({formatBytes(download.sizeBytes)})
           </a>
         </Card>

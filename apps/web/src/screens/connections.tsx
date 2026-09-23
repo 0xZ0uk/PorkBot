@@ -214,7 +214,7 @@ function ConnectionCard({
 
   return (
     <li
-      className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
+      className="connection flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
       data-connection-row
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -284,7 +284,7 @@ function ConnectionCard({
       </div>
 
       {disconnecting ? (
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-background p-2">
+        <div className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2">
           <p className="text-muted-foreground">
             {disconnectWasDefault ? `This is the space default. ` : ""}
             {disconnectWarning({ wasDefault: disconnectWasDefault, bots: disconnectBots })}
@@ -428,7 +428,7 @@ function CreateConnectionForm({
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-md border border-border bg-background p-2"
+      className="memory-form flex flex-col gap-2 rounded-md border border-border bg-background p-2"
       onSubmit={(event) => {
         event.preventDefault();
 

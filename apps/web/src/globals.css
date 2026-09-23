@@ -80,6 +80,122 @@
 }
 /* The document rules the shell needs before the bundle runs. They read the
    tokens' custom properties, so they survive a theme change untouched. */
+/* Named hooks a surface or a test reads: a row's state, a form's role, a
+   call's status. They carry no CSS — the utilities exist so the class is
+   declared rather than silently unstyled, and so the sweep cannot rename a
+   hook without this file noticing. */
+@utility approval-card-bot {
+  --pb-hook: 1;
+}
+@utility approval-card-run {
+  --pb-hook: 1;
+}
+@utility attachment-card {
+  --pb-hook: 1;
+}
+@utility composer {
+  --pb-hook: 1;
+}
+@utility composer-file-failed {
+  --pb-hook: 1;
+}
+@utility composer-file-invalid {
+  --pb-hook: 1;
+}
+@utility composer-file-ready {
+  --pb-hook: 1;
+}
+@utility computer-view-state {
+  --pb-hook: 1;
+}
+@utility connection {
+  --pb-hook: 1;
+}
+@utility connection-key {
+  --pb-hook: 1;
+}
+@utility live-strip-step {
+  --pb-hook: 1;
+}
+@utility memory-document--removed {
+  --pb-hook: 1;
+}
+@utility memory-form {
+  --pb-hook: 1;
+}
+@utility message-attachment {
+  --pb-hook: 1;
+}
+@utility message-attribution {
+  --pb-hook: 1;
+}
+@utility provider-list {
+  --pb-hook: 1;
+}
+@utility provider-option {
+  --pb-hook: 1;
+}
+@utility run-card {
+  --pb-hook: 1;
+}
+@utility run-card-icon-failed {
+  --pb-hook: 1;
+}
+@utility run-card-line {
+  --pb-hook: 1;
+}
+@utility run-card-title {
+  --pb-hook: 1;
+}
+@utility terminal {
+  --pb-hook: 1;
+}
+@utility terminal-form {
+  --pb-hook: 1;
+}
+@utility tool-call {
+  --pb-hook: 1;
+}
+@utility tool-call-artifact {
+  --pb-hook: 1;
+}
+@utility tool-call-details {
+  --pb-hook: 1;
+}
+@utility tool-call-download {
+  --pb-hook: 1;
+}
+@utility tool-call-duration {
+  --pb-hook: 1;
+}
+@utility tool-call-failed {
+  --pb-hook: 1;
+}
+@utility tool-call-name {
+  --pb-hook: 1;
+}
+@utility tool-call-status {
+  --pb-hook: 1;
+}
+@utility tool-call-summary {
+  --pb-hook: 1;
+}
+@utility tool-call-target {
+  --pb-hook: 1;
+}
+@utility transcript {
+  --pb-hook: 1;
+}
+@utility transcript-scroll {
+  --pb-hook: 1;
+}
+@utility transcript-separator {
+  --pb-hook: 1;
+}
+@utility usage-stat-value {
+  --pb-hook: 1;
+}
+
 @layer base {
   *,
   *::before,

@@ -40,7 +40,7 @@ export function SettingsScreen({ sections }: SettingsScreenProps) {
     const root = rootRef.current;
     // The pane is the scroll container; without it the nav keeps the marks a
     // click or a scroll left rather than guessing from nothing.
-    const pane = root?.closest(".shell-pane") ?? null;
+    const pane = root?.closest("[data-shell-pane]") ?? null;
 
     if (root === null || pane === null) {
       return;
@@ -143,9 +143,9 @@ export function SettingsScreen({ sections }: SettingsScreenProps) {
       ref={rootRef}
     >
       <header className="flex flex-col gap-1">
-        <h1 className="m-0 text-title" id="settings-title">
+        <h2 className="m-0 text-title" id="settings-title">
           Settings
-        </h1>
+        </h2>
         <ModeControl />
       </header>
 

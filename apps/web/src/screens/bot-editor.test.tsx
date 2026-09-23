@@ -56,7 +56,7 @@ describe("bot editor", () => {
     const screen = props(fakeBot("bot-1", "Ada"), "data:image/png;base64,ZmFrZQ==");
     await act(async () => root.render(<BotEditorScreen {...screen} />));
 
-    expect(container.querySelector(".pb-avatar img")?.getAttribute("alt")).toBe("");
+    expect(container.querySelector("[data-avatar] img")?.getAttribute("alt")).toBe("");
     expect(container.querySelector("[data-avatar] svg")).toBeNull();
     expect(container.textContent).toContain("Your uploaded avatar appears in the roster.");
   });

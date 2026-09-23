@@ -130,7 +130,6 @@ export function ApprovalCard({
     <Card
       className="mt-2 flex flex-col gap-2 border-l-4 border-border pl-3"
       data-approval-state={live}
-      data-approval-tool={tool}
     >
       <div className="flex flex-col items-start gap-1">
         <span
@@ -155,7 +154,7 @@ export function ApprovalCard({
       </div>
 
       {bot === null || bot === undefined ? null : (
-        <p className="m-0 flex items-center gap-1 text-meta text-muted-foreground">
+        <p className="approval-card-bot m-0 flex items-center gap-1 text-meta text-muted-foreground">
           <BotAvatar id={bot.id} name={bot.name} color={bot.color ?? null} size={20} />
           <span>{bot.name}</span>
         </p>
@@ -178,7 +177,7 @@ export function ApprovalCard({
           </code>
         )}
         {runId === null || runId === undefined ? null : (
-          <span className="text-meta text-muted-foreground">Run {runId}</span>
+          <span className="approval-card-run text-meta text-muted-foreground">Run {runId}</span>
         )}
       </p>
 

@@ -153,7 +153,7 @@ function rowNamed(name: string): HTMLElement | undefined {
   );
 }
 
-function buttonByText(text: string, scope: ParentNode = container): HTMLElement {
+function buttonByText(text: string, scope: ParentNode = document.body): HTMLElement {
   const found = [...scope.querySelectorAll<HTMLElement>("button, [role='menuitem']")].find(
     (el) => el.textContent === text,
   );
@@ -173,7 +173,8 @@ async function openActions(row: HTMLElement): Promise<HTMLElement> {
   }
 
   await act(async () => {
-    trigger.click();
+    trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 
   // Base UI opens the menu asynchronously; wait a frame for the portal.

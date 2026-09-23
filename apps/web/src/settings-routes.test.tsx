@@ -430,16 +430,18 @@ describe("the settings mode control", () => {
     expect(trigger).toBeDefined();
 
     await act(async () => {
-      trigger?.click();
+      trigger?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    const items = [...(footer as HTMLElement).querySelectorAll("[role='menuitem']")].map(
+    // The register's menu portals its popup, so the items sit on the body.
+    const items = [...document.body.querySelectorAll("[role='menuitem']")].map(
       (item) => item.textContent,
     );
 
     expect(items).toEqual(["System", "Light", "Dark"]);
 
-    await clickIn(footer as HTMLElement, "Dark");
+    await clickIn(document.body, "Dark");
 
     expect(document.documentElement.dataset["theme"]).toBe("dark");
     expect(window.localStorage.getItem("porkbot.theme")).toBe("dark");
