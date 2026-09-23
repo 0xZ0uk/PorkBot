@@ -1214,8 +1214,10 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
     await memoryCard.locator("[data-memory-form]").locator("input").fill("Release done");
     await memoryCard.getByRole("button", { name: "Remove document" }).click();
     await expect(page.getByText("Nothing remembered yet")).toBeVisible();
-    await memoryCard
-      .getByRole("radio", { name: "Removed" })
+    // The scope switch is screen chrome, outside the document card; match it
+    // by its exact name so a hidden provider radio can never satisfy it.
+    await page
+      .getByRole("radio", { name: "Removed", exact: true })
       .evaluate((el) => (el as HTMLElement).click());
     await expect(page.locator("[data-removed]")).toBeVisible();
     await captureMemory(page, "memory-removed");
@@ -1230,8 +1232,8 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
       .getByRole("button", { name: "Restore revision" })
       .click();
     await expect(page.getByText("Nothing removed")).toBeVisible();
-    await memoryCard
-      .getByRole("radio", { name: "Current" })
+    await page
+      .getByRole("radio", { name: "Current", exact: true })
       .evaluate((el) => (el as HTMLElement).click());
     await expect(memoryCard.getByRole("heading", { name: "Release note updated" })).toBeVisible();
 
