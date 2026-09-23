@@ -160,6 +160,7 @@ export function ComposerScreen({
               variant="raised"
               key={file.key}
               data-composer-file
+              data-status={file.status}
               className={cn(
                 "flex flex-row flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1 text-body",
                 file.status === "invalid" && "composer-file-invalid",
