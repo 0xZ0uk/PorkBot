@@ -140,3 +140,6 @@ export {
 } from "./posture/patterns.ts";
 export type { PersonalDataRule, SecretPattern } from "./posture/patterns.ts";
 export type { PostureFinding } from "./posture/finding.ts";
+
+export { uiHooks, uiHookNames, uiHooksByScreen } from "./ui-contract.ts";
+export type { UiHookName, UiHookScreen } from "./ui-contract.ts";

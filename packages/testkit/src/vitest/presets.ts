@@ -82,7 +82,11 @@ export interface TierOptions {
   readonly coverageThresholds?: Record<string, number>;
 }
 
-const flakeReporterPath = fileURLToPath(new URL("./flake-reporter.js", import.meta.url));
+// Resolved on demand: importing the contract record through `@porkbot/testkit`
+// must not need a `file:` URL, so a jsdom conformance test can share it.
+function flakeReporterPath(): string {
+  return fileURLToPath(new URL("./flake-reporter.js", import.meta.url));
+}
 
 function coverageOptions(options: TierOptions): NonNullable<InlineConfig["coverage"]> {
   return {
@@ -131,7 +135,7 @@ function tierConfig(tier: Tier, options: TierOptions): ViteUserConfig {
       reporters: [
         ["default"],
         [
-          flakeReporterPath,
+          flakeReporterPath(),
           { tier, packageRoot, repoRoot, ledgerFile } satisfies Record<string, unknown>,
         ],
       ],
