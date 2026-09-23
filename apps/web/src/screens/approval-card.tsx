@@ -161,14 +161,19 @@ export function ApprovalCard({
         </p>
       )}
 
-      <p className="m-0 wrap-anywhere text-meta text-muted-foreground">{description.consequence}</p>
+      <p className="m-0 wrap-anywhere text-meta text-muted-foreground" data-approval-consequence>
+        {description.consequence}
+      </p>
 
       <p className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
         <code className="font-mono text-code" data-approval-tool>
           {description.action}
         </code>
         {description.target === null ? null : (
-          <code className="m-0 wrap-anywhere font-mono text-code text-muted-foreground">
+          <code
+            className="m-0 wrap-anywhere font-mono text-code text-muted-foreground"
+            data-approval-target
+          >
             {description.target}
           </code>
         )}
@@ -203,11 +208,13 @@ export function ApprovalCard({
       ) : null}
 
       {live === "timed_out" ? (
-        <p className="m-0 wrap-anywhere text-body text-muted-foreground">
+        <p className="m-0 wrap-anywhere text-body text-muted-foreground" data-approval-decision>
           The deadline passed, so the run was denied.
         </p>
       ) : current.reason === null || current.reason === "" ? null : (
-        <p className="m-0 wrap-anywhere text-body text-muted-foreground">{current.reason}</p>
+        <p className="m-0 wrap-anywhere text-body text-muted-foreground" data-approval-decision>
+          {current.reason}
+        </p>
       )}
 
       {error ? (

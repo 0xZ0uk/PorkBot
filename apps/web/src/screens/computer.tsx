@@ -418,7 +418,10 @@ function Terminal({
             >
               <pre className="m-0 font-mono text-code">{`$ ${entry.command}`}</pre>
               {entry.stdout === "" ? null : (
-                <pre className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code">
+                <pre
+                  className="m-0 wrap-anywhere whitespace-pre-wrap font-mono text-code"
+                  data-terminal-stdout
+                >
                   {entry.stdout}
                 </pre>
               )}
