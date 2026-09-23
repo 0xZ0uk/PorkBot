@@ -80,15 +80,15 @@ function UsageStats({ totals }: { readonly totals: UsageTotalsView }) {
 
   return (
     <div className="flex flex-wrap gap-3">
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-usage-stat>
         <span className="text-meta text-muted-foreground">Input tokens</span>
         <span className="font-medium text-body">{tokenText(totals.inputTokens)}</span>
       </div>
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-usage-stat>
         <span className="text-meta text-muted-foreground">Output tokens</span>
         <span className="font-medium text-body">{tokenText(totals.outputTokens)}</span>
       </div>
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-usage-stat>
         <span className="text-meta text-muted-foreground">Calls</span>
         <span className="font-medium text-body">{String(calls)}</span>
       </div>
