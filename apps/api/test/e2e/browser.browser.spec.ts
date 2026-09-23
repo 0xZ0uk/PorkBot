@@ -957,7 +957,7 @@ async function captureComputer(page: Page): Promise<void> {
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-reset.png") });
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Cancel" }).evaluate((el) => (el as HTMLElement).click());
 
   // The provider sheet: what each kind is and why one is unavailable, then the
   // confirmation a choice still arms.
@@ -971,7 +971,7 @@ async function captureComputer(page: Page): Promise<void> {
   await expect(page.getByText("does not move this bot's home")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-switch-confirm.png") });
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Cancel" }).evaluate((el) => (el as HTMLElement).click());
 
   // The stopped machine: the surface states the state, and the terminal and
   // files say the machine is not running rather than offering a dead shell.

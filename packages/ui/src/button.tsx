@@ -16,7 +16,7 @@ export type ButtonProps = Omit<ComponentPropsWithoutRef<"button">, "className"> 
 };
 
 const buttonVariants = cva(
-  "inline-flex cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-transparent px-3 py-2 font-sans text-body font-medium transition-colors no-underline disabled:cursor-not-allowed disabled:opacity-60 aria-busy:cursor-progress",
+  "inline-flex cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-transparent px-3 py-2 font-sans text-body font-medium no-underline disabled:cursor-not-allowed disabled:opacity-60 aria-busy:cursor-progress",
   {
     variants: {
       variant: {
@@ -75,7 +75,7 @@ export type IconButtonProps = Omit<ComponentPropsWithoutRef<"button">, "classNam
 };
 
 const iconButtonVariants = cva(
-  "inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent p-0 transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 aria-busy:cursor-progress",
+  "inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-transparent p-0 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 aria-busy:cursor-progress",
   {
     variants: {
       variant: {
