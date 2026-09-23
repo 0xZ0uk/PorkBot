@@ -1,3 +1,11 @@
+/**
+ * The browser tier's shared fixture: one single-origin deployment in-process
+ * (built SPA over the shipped Node server) with only the mail, model and
+ * computer emulators behind it, plus the acceptance captures each flow reuses.
+ * Selectors come from `uiHooks` so the specs and the unit-tier conformance
+ * test cannot drift from the markup they pin.
+ */
+
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -7,7 +15,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { test, expect } from "@playwright/test";
+import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import {
   ComputerEmulator,
@@ -31,7 +39,7 @@ import {
 import type { DatabaseHandle, SystemActor, UserActor, UserRepositories } from "@porkbot/db";
 import type { SafeFetch } from "@porkbot/effect";
 import { createLogger } from "@porkbot/logging";
-import { createSuiteDatabase } from "@porkbot/testkit";
+import { createSuiteDatabase, uiHooks } from "@porkbot/testkit";
 import type { SuiteDatabase } from "@porkbot/testkit";
 import { createOperatorAuth } from "../../src/operator-auth.ts";
 import type { OperatorAuth } from "../../src/operator-auth.ts";
@@ -41,23 +49,24 @@ import { createApiServer } from "../../src/server.ts";
 
 /**
  * A release-flow browser fixture: the browser talks to a real built SPA over
+
  * one origin, the API is the shipped Node server, and the only providers are
  * the mail, model and computer emulators. The front proxy is deliberately
  * tiny and test-local; it recreates the single-origin deployment shape so the
  * browser exercises the same HTTP transport as a deployment.
  */
 
-const ownerEmail = "browser-owner@example.invalid";
-const password = "correct-horse-battery";
-const authSecret = "browser-e2e-secret-not-real-0123456789abcdef";
-const logger = createLogger({ level: "info", service: "@porkbot/api", write: () => {} });
+export const ownerEmail = "browser-owner@example.invalid";
+export const password = "correct-horse-battery";
+export const authSecret = "browser-e2e-secret-not-real-0123456789abcdef";
+export const logger = createLogger({ level: "info", service: "@porkbot/api", write: () => {} });
 
-interface StaticHost {
+export interface StaticHost {
   readonly child: ChildProcess;
   readonly port: number;
 }
 
-interface BrowserRun {
+export interface BrowserRun {
   readonly runId: string;
   readonly threadId: string;
   readonly callId: string;
@@ -69,7 +78,7 @@ interface BrowserRun {
   fail(): Promise<void>;
 }
 
-interface StartRunOptions {
+export interface StartRunOptions {
   /**
    * Where the run parks. `approval` (the default) is the gate the existing
    * flows drive; `working` leaves the run mid-call, so a test can capture the
@@ -78,7 +87,7 @@ interface StartRunOptions {
   readonly stop?: "approval" | "working";
 }
 
-interface BrowserHarness {
+export interface BrowserHarness {
   readonly origin: string;
   readonly suite: SuiteDatabase;
   readonly database: DatabaseHandle;
@@ -99,24 +108,24 @@ interface BrowserHarness {
   close(): Promise<void>;
 }
 
-interface RunRow {
+export interface RunRow {
   readonly id: string;
   readonly sourceMessageId: string | null;
 }
 
-interface SteeringRow {
+export interface SteeringRow {
   readonly id: string;
   readonly text: string | null;
 }
 
-type EventTemplate = {
+export type EventTemplate = {
   readonly schemaVersion: 1;
   readonly threadId: string;
   readonly runId: string;
   readonly type: RunEvent["type"];
 } & Record<string, unknown>;
 
-function listen(server: Server): Promise<number> {
+export function listen(server: Server): Promise<number> {
   return new Promise((resolve, reject) => {
     const onError = (error: Error) => {
       server.off("listening", onListening);
@@ -140,7 +149,7 @@ function listen(server: Server): Promise<number> {
   });
 }
 
-async function closeServer(server: Server): Promise<void> {
+export async function closeServer(server: Server): Promise<void> {
   if (!server.listening) {
     return;
   }
@@ -151,7 +160,7 @@ async function closeServer(server: Server): Promise<void> {
   });
 }
 
-function forward(request: IncomingMessage, response: ServerResponse, port: number): void {
+export function forward(request: IncomingMessage, response: ServerResponse, port: number): void {
   const upstream = httpRequest(
     {
       hostname: "127.0.0.1",
@@ -177,7 +186,7 @@ function forward(request: IncomingMessage, response: ServerResponse, port: numbe
   request.pipe(upstream);
 }
 
-function isApiRequest(request: IncomingMessage): boolean {
+export function isApiRequest(request: IncomingMessage): boolean {
   const pathname = new URL(request.url ?? "/", "http://browser").pathname;
 
   return (
@@ -192,7 +201,7 @@ function isApiRequest(request: IncomingMessage): boolean {
   );
 }
 
-async function startWebHost(): Promise<StaticHost> {
+export async function startWebHost(): Promise<StaticHost> {
   const webRoot = path.resolve(import.meta.dirname, "../../../web");
   const child = spawn(process.execPath, ["dist/host/main.js"], {
     cwd: webRoot,
@@ -229,7 +238,7 @@ async function startWebHost(): Promise<StaticHost> {
   return { child, port };
 }
 
-async function stopWebHost(host: StaticHost): Promise<void> {
+export async function stopWebHost(host: StaticHost): Promise<void> {
   if (host.child.exitCode !== null) {
     return;
   }
@@ -240,7 +249,7 @@ async function stopWebHost(host: StaticHost): Promise<void> {
   });
 }
 
-function offlineComputer(computer: ComputerEmulator): ComputerLifecycleProvider {
+export function offlineComputer(computer: ComputerEmulator): ComputerLifecycleProvider {
   return Object.assign(computer, {
     reset: async (ref: ComputerRef) => {
       await computer.destroy(ref);
@@ -259,8 +268,8 @@ function offlineComputer(computer: ComputerEmulator): ComputerLifecycleProvider 
   }) satisfies ComputerLifecycleProvider;
 }
 
-async function createHarness(): Promise<BrowserHarness> {
-  const suite = await createSuiteDatabase({ suite: "api_browser" });
+export async function createHarness(options: { suite?: string } = {}): Promise<BrowserHarness> {
+  const suite = await createSuiteDatabase({ suite: options.suite ?? "api_browser" });
   const database = openDatabase(suite.connectionString, "api");
   const storageRoot = await mkdtemp(path.join(tmpdir(), "porkbot-browser-storage-"));
   const credentialKeys = createCredentialKeyring({
@@ -727,7 +736,7 @@ async function createHarness(): Promise<BrowserHarness> {
   return harness;
 }
 
-async function rpc<T>(page: Page, procedure: string, input: unknown): Promise<T> {
+export async function rpc<T>(page: Page, procedure: string, input: unknown): Promise<T> {
   return page.evaluate(
     async ({ procedure: path, input: body }) => {
       const response = await fetch(`/rpc/${path}`, {
@@ -747,7 +756,7 @@ async function rpc<T>(page: Page, procedure: string, input: unknown): Promise<T>
   );
 }
 
-function botIdFromUrl(url: string): string {
+export function botIdFromUrl(url: string): string {
   const match = new URL(url).pathname.match(/\/bots\/([^/]+)\/edit$/);
 
   if (match?.[1] === undefined) {
@@ -757,7 +766,7 @@ function botIdFromUrl(url: string): string {
   return match[1];
 }
 
-function threadIdFromUrl(url: string): string {
+export function threadIdFromUrl(url: string): string {
   const match = new URL(url).pathname.match(/\/threads\/([^/]+)$/);
 
   if (match?.[1] === undefined) {
@@ -774,7 +783,7 @@ function threadIdFromUrl(url: string): string {
  * request links; the archived group is captured open because that is the state
  * the slice adds.
  */
-async function captureRoster(
+export async function captureRoster(
   page: Page,
   origin: string,
   name: string,
@@ -791,10 +800,10 @@ async function captureRoster(
   await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
   // The loader is what fills the rows; wait for the roster to settle rather
   // than for the heading alone, so a capture is never of a loading pane.
-  await expect(page.locator("[data-roster-card], [data-empty]").first()).toBeVisible();
+  await expect(page.locator(`${uiHooks.rosterCard}, ${uiHooks.rosterEmpty}`).first()).toBeVisible();
 
   if (options.archived === true) {
-    await page.getByRole("button", { name: /^Archived \(/ }).click();
+    await press(page.getByRole("button", { name: /^Archived \(/ }));
     await expect(page.getByRole("button", { name: "Hide archived" })).toBeVisible();
   }
 
@@ -809,10 +818,10 @@ async function captureRoster(
     await page.emulateMedia({ colorScheme: "dark" });
     await page.waitForTimeout(200);
 
-    const overflow = await page.evaluate(() => {
-      const pane = document.querySelector("[data-shell-pane]");
+    const overflow = await page.evaluate((selector) => {
+      const pane = document.querySelector(selector);
       return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
-    });
+    }, uiHooks.shellPane);
 
     expect(overflow, "the roster does not scroll sideways at 390").toBe(0);
     await page.screenshot({ path: path.join(uiDir, `${name}-390-dark.png`) });
@@ -826,7 +835,7 @@ async function captureRoster(
  * pull request links; the narrow switcher is exercised here rather than only
  * asserted, because it is the pane the shell replaces the rail with.
  */
-async function captureWorkspace(
+export async function captureWorkspace(
   page: Page,
   origin: string,
   botId: string,
@@ -851,10 +860,10 @@ async function captureWorkspace(
       await page.screenshot({ path: path.join(uiDir, `shell-${String(width)}-${mode}.png`) });
 
       if (width === 390) {
-        const overflow = await page.evaluate(() => {
-          const pane = document.querySelector("[data-shell-pane]");
+        const overflow = await page.evaluate((selector) => {
+          const pane = document.querySelector(selector);
           return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
-        });
+        }, uiHooks.shellPane);
 
         expect(overflow, "the content pane does not scroll horizontally at 390").toBe(0);
       }
@@ -866,14 +875,11 @@ async function captureWorkspace(
   // sheet's 180ms enter animation.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.getByRole("button", { name: "Switch bot" }).click();
+  await press(page.getByRole("button", { name: "Switch bot" }));
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(uiDir, "shell-390-switcher-dark.png") });
-  await page
-    .getByRole("dialog")
-    .getByRole("link", { name: /Offline Helper/ })
-    .click();
+  await press(page.getByRole("dialog").getByRole("link", { name: /Offline Helper/ }));
   await expect(page).toHaveURL(new RegExp(`/bots/${botId}$`));
 }
 
@@ -885,7 +891,7 @@ async function captureWorkspace(
  * `test-results/ui/` beside the conversation captures, which CI uploads and
  * the pull request links.
  */
-async function captureApprovalState(
+export async function captureApprovalState(
   page: Page,
   name: string,
   options: { readonly narrow?: boolean } = {},
@@ -906,10 +912,10 @@ async function captureApprovalState(
     await page.emulateMedia({ colorScheme: "dark" });
     await page.waitForTimeout(200);
 
-    const overflow = await page.evaluate(() => {
-      const pane = document.querySelector("[data-shell-pane]");
+    const overflow = await page.evaluate((selector) => {
+      const pane = document.querySelector(selector);
       return pane === null ? 0 : pane.scrollWidth - pane.clientWidth;
-    });
+    }, uiHooks.shellPane);
 
     expect(overflow, "the approval card does not scroll sideways at 390").toBe(0);
     await page.screenshot({ path: path.join(uiDir, `${name}-390-dark.png`) });
@@ -925,9 +931,9 @@ async function captureApprovalState(
  * exercised here rather than only asserted, so the capture is of the real
  * client against the real API. The machine is left running.
  */
-async function captureComputer(page: Page): Promise<void> {
+export async function captureComputer(page: Page): Promise<void> {
   const uiDir = path.resolve("test-results/ui");
-  const surface = page.locator("[data-computer-view-state]");
+  const surface = page.locator(uiHooks.computerViewState);
 
   await mkdir(uiDir, { recursive: true });
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -945,7 +951,7 @@ async function captureComputer(page: Page): Promise<void> {
 
   // The lifecycle menu, open: every verb states what it does before it is
   // chosen.
-  await page.getByRole("button", { name: /machine actions/ }).click();
+  await press(page.getByRole("button", { name: /machine actions/ }));
   await expect(
     page.getByRole("menuitem", { name: "Reset — destroy the machine and its home" }),
   ).toBeVisible();
@@ -953,45 +959,37 @@ async function captureComputer(page: Page): Promise<void> {
   await page.screenshot({ path: path.join(uiDir, "computer-lifecycle.png") });
 
   // The destructive verb confirms, naming what is lost and what is kept.
-  await page
-    .getByRole("menuitem", { name: "Reset — destroy the machine and its home" })
-    .evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("menuitem", { name: "Reset — destroy the machine and its home" }));
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-reset.png") });
-  await page.getByRole("button", { name: "Cancel" }).evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("button", { name: "Cancel" }));
 
   // The provider sheet: what each kind is and why one is unavailable, then the
   // confirmation a choice still arms.
-  await page.getByRole("button", { name: "Change" }).evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("button", { name: "Change" }));
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-provider.png") });
   // A press, not `check()`: the radio is controlled by the stored selection,
   // so choosing arms the confirmation rather than flipping the radio itself.
-  await page
-    .getByRole("radio", { name: /^Offline emulator/ })
-    .evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("radio", { name: /^Offline emulator/ }));
   await expect(page.getByText("does not move this bot's home")).toBeVisible();
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-switch-confirm.png") });
-  await page.getByRole("button", { name: "Cancel" }).evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("button", { name: "Cancel" }));
 
   // The stopped machine: the surface states the state, and the terminal and
   // files say the machine is not running rather than offering a dead shell.
-  await page.getByRole("button", { name: /machine actions/ }).click();
-  await page
-    .getByRole("menuitem", { name: "Stop — park it, keeping the home" })
-    .evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("button", { name: /machine actions/ }));
+  await press(page.getByRole("menuitem", { name: "Stop — park it, keeping the home" }));
   await expect(surface).toHaveText("Stopped");
   await page.mouse.move(0, 0);
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(uiDir, "computer-stopped.png") });
 
-  await page.getByRole("button", { name: /machine actions/ }).click();
-  await page
-    .getByRole("menuitem", { name: "Start — bring the machine up" })
-    .evaluate((el) => (el as HTMLElement).click());
+  await press(page.getByRole("button", { name: /machine actions/ }));
+  await press(page.getByRole("menuitem", { name: "Start — bring the machine up" }));
   await expect(surface).toHaveText("Running");
 }
 
@@ -1003,7 +1001,7 @@ async function captureComputer(page: Page): Promise<void> {
  * pull request links, and the panel is the real client reading the real API,
  * so a section that holds nothing says so.
  */
-async function captureSettings(page: Page, origin: string): Promise<void> {
+export async function captureSettings(page: Page, origin: string): Promise<void> {
   const uiDir = path.resolve("test-results/ui");
   const sections = ["models", "mcp", "secrets", "notifications", "usage", "account"];
 
@@ -1013,12 +1011,12 @@ async function captureSettings(page: Page, origin: string): Promise<void> {
   await expect(page.locator("#account")).toBeVisible();
 
   for (const mode of ["Dark", "Light"] as const) {
-    await page.getByRole("button", { name: mode, exact: true }).click();
+    await press(page.getByRole("button", { name: mode, exact: true }));
     await page.waitForTimeout(200);
 
-    await page.evaluate(() => {
-      document.querySelector("[data-shell-pane]")?.scrollTo(0, 0);
-    });
+    await page.evaluate((selector) => {
+      document.querySelector(selector)?.scrollTo(0, 0);
+    }, uiHooks.shellPane);
     await page.waitForTimeout(200);
     await page.screenshot({
       path: path.join(uiDir, `interface-settings-1280-${mode.toLowerCase()}.png`),
@@ -1043,7 +1041,7 @@ async function captureSettings(page: Page, origin: string): Promise<void> {
  * the pull request links, and the history is opened through the screen's own
  * control rather than staged.
  */
-async function captureMemory(
+export async function captureMemory(
   page: Page,
   name: string,
   options: { readonly history?: boolean } = {},
@@ -1053,12 +1051,10 @@ async function captureMemory(
   await mkdir(uiDir, { recursive: true });
 
   if (options.history === true) {
-    await page
-      .locator("[data-memory-document]")
-      .first()
-      .getByRole("button", { name: "History" })
-      .click();
-    await expect(page.locator("[data-memory-timeline-entry]").first()).toBeVisible();
+    await press(
+      page.locator(uiHooks.memoryDocument).first().getByRole("button", { name: "History" }),
+    );
+    await expect(page.locator(uiHooks.memoryTimelineEntry).first()).toBeVisible();
   }
 
   for (const mode of ["dark", "light"] as const) {
@@ -1075,14 +1071,14 @@ async function captureMemory(
  * `test-results/ui/` beside the memory captures, which CI uploads and the pull
  * request links.
  */
-async function captureUsage(page: Page, origin: string, botId: string): Promise<void> {
+export async function captureUsage(page: Page, origin: string, botId: string): Promise<void> {
   const uiDir = path.resolve("test-results/ui");
 
   await mkdir(uiDir, { recursive: true });
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${origin}/bots/${botId}/usage`);
-  await expect(page.locator("[data-usage-stat]").first()).toBeVisible();
+  await expect(page.locator(uiHooks.usageStat).first()).toBeVisible();
 
   for (const mode of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: mode });
@@ -1091,7 +1087,7 @@ async function captureUsage(page: Page, origin: string, botId: string): Promise<
   }
 
   await page.goto(`${origin}/settings/usage`);
-  await expect(page.locator("[data-usage-stat]").first()).toBeVisible();
+  await expect(page.locator(uiHooks.usageStat).first()).toBeVisible();
 
   for (const mode of ["dark", "light"] as const) {
     await page.emulateMedia({ colorScheme: mode });
@@ -1108,7 +1104,7 @@ async function captureUsage(page: Page, origin: string, botId: string): Promise<
  * each state is exercised here rather than only asserted, so the capture is of
  * the real client against the real API.
  */
-async function captureConsoleState(page: Page, name: string): Promise<void> {
+export async function captureConsoleState(page: Page, name: string): Promise<void> {
   const uiDir = path.resolve("test-results/ui");
 
   await mkdir(uiDir, { recursive: true });
@@ -1121,27 +1117,25 @@ async function captureConsoleState(page: Page, name: string): Promise<void> {
   }
 }
 
-let harness: BrowserHarness | undefined;
+/**
+ * The shared press: a control is activated through its own click handler
+ * rather than Playwright's actionability dance, which never settles for the
+ * register's radio inputs (hidden inside their label) or for dialog buttons
+ * parked outside the viewport. Every flow presses this way.
+ */
+export async function press(target: {
+  evaluate(pageFunction: (element: Element) => unknown): Promise<unknown>;
+}): Promise<void> {
+  await target.evaluate((element) => (element as HTMLElement).click());
+}
 
-test.beforeAll(async () => {
-  harness = await createHarness();
-});
-
-test.afterAll(async () => {
-  await harness?.close();
-  harness = undefined;
-});
-
-test("drives the release-critical browser flows offline", async ({ page }) => {
-  const current = harness;
-
-  if (current === undefined) {
-    throw new Error("the browser harness did not start");
-  }
-
-  const screenshotPath = path.resolve("test-results/ui/porkbot-browser.png");
-  await mkdir(path.dirname(screenshotPath), { recursive: true });
-
+/**
+ * Journey steps the flows share, ported from the release script one for one.
+ * Arrange uses the harness's seeds; drive goes through the UI the way an
+ * operator's hand would, and every press is `press()` — a bare `click()` is
+ * not a press.
+ */
+export async function guardOffline(page: Page): Promise<void> {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
 
@@ -1157,329 +1151,67 @@ test("drives the release-critical browser flows offline", async ({ page }) => {
 
     await route.abort();
   });
+}
 
-  try {
-    await page.goto(`${current.origin}/sign-up`);
-    await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
-    await page.getByLabel("Name", { exact: true }).fill("Browser Owner");
-    await page.getByLabel("Email", { exact: true }).fill(ownerEmail);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Create account" }).click();
-    await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
+/** Signs a fresh operator up, then out and back in — the account round trip. */
+export async function signUp(page: Page, origin: string): Promise<void> {
+  await page.goto(`${origin}/sign-up`);
+  await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
+  await page.getByLabel("Name", { exact: true }).fill("Browser Owner");
+  await page.getByLabel("Email", { exact: true }).fill(ownerEmail);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await press(page.getByRole("button", { name: "Create account" }));
+  await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page).toHaveURL(/\/sign-in$/);
-    await page.getByLabel("Email", { exact: true }).fill(ownerEmail);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
+  await press(page.getByRole("button", { name: "Sign out" }));
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await page.getByLabel("Email", { exact: true }).fill(ownerEmail);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await press(page.getByRole("button", { name: "Sign in" }));
+  await expect(page.getByRole("heading", { name: "Bots" })).toBeVisible();
+}
 
-    // The empty roster (slice 13.6): the home a fresh operator lands on,
-    // before the first teammate exists.
-    await captureRoster(page, current.origin, "roster-empty");
+/** Creates a bot through the editor and returns the id the URL names. */
+export async function createBot(
+  page: Page,
+  origin: string,
+  input: { name: string; title: string; description: string; mission: string },
+): Promise<string> {
+  await page.goto(`${origin}/bots/new`);
+  await page.getByLabel("Name", { exact: true }).fill(input.name);
+  await page.getByLabel("Title", { exact: true }).fill(input.title);
+  await page.getByLabel("Description", { exact: true }).fill(input.description);
+  await page.getByLabel("What should this bot do?", { exact: true }).fill(input.mission);
+  await press(page.getByRole("button", { name: "Create bot" }));
+  await expect(page).toHaveURL(/\/bots\/[^/]+\/edit$/);
+  return botIdFromUrl(page.url());
+}
 
-    const repositories = await current.bindActor(page);
+/** Opens a new thread for the named bot from the roster row's own menu. */
+export async function newThreadFromRoster(
+  page: Page,
+  origin: string,
+  botName: string,
+): Promise<string> {
+  await page.goto(origin);
+  const row = page.locator(uiHooks.rosterCard).filter({ hasText: botName });
 
-    await page.goto(`${current.origin}/bots/new`);
-    await page.getByLabel("Name", { exact: true }).fill("Offline Helper");
-    await page.getByLabel("Title", { exact: true }).fill("Release fixture");
-    await page.getByLabel("Description", { exact: true }).fill("A deterministic browser bot");
-    await page
-      .getByLabel("What should this bot do?", { exact: true })
-      .fill("Answer using only the offline fixture.");
-    await page.getByRole("button", { name: "Create bot" }).click();
-    await expect(page).toHaveURL(/\/bots\/[^/]+\/edit$/);
-    const botId = botIdFromUrl(page.url());
+  await press(row.getByRole("button", { name: `Actions for ${botName}` }));
+  await press(page.getByRole("menuitem", { name: "New thread" }));
+  await expect(page).toHaveURL(/\/bots\/[^/]+\/threads\/[^/]+$/);
+  return threadIdFromUrl(page.url());
+}
 
-    await current.attachComputer(botId);
-    await current.seedMemory(botId);
+/** Sends one message from the composer and waits for it on the wire. */
+export async function sendMessage(page: Page, text: string): Promise<void> {
+  await page.getByLabel("Message", { exact: true }).fill(text);
+  await press(page.getByRole("button", { name: "Send", exact: true }));
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+}
 
-    await page.goto(`${current.origin}/bots/${botId}/memory`);
-    const memoryCard = page.locator("[data-memory-document]").first();
-    await expect(memoryCard.getByRole("heading", { name: "Release note" })).toBeVisible();
-    await memoryCard.getByRole("button", { name: "Edit" }).click();
-    const memoryForm = memoryCard.locator("[data-memory-form]");
-    await memoryForm.getByLabel("Title", { exact: true }).fill("Release note updated");
-    await memoryForm.locator("textarea").fill("The browser fixture still starts offline.");
-    await memoryForm.locator("input").nth(1).fill("Verify memory editing");
-    await memoryForm.getByRole("button", { name: "Save" }).click();
-    await expect(memoryCard.getByRole("heading", { name: "Release note updated" })).toBeVisible();
-
-    // The memory captures (slice 13.12): the card with its revision timeline
-    // open, then the Removed scope where the tombstone is marked, then the
-    // restore that puts the fixture back.
-    await captureMemory(page, "memory-history", { history: true });
-
-    await memoryCard.getByRole("button", { name: "Remove" }).click();
-    await memoryCard.locator("[data-memory-form]").locator("input").fill("Release done");
-    await memoryCard.getByRole("button", { name: "Remove document" }).click();
-    await expect(page.getByText("Nothing remembered yet")).toBeVisible();
-    // The scope switch is screen chrome, outside the document card; match it
-    // by its exact name so a hidden provider radio can never satisfy it.
-    await page
-      .getByRole("radio", { name: "Removed", exact: true })
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(page.locator("[data-removed]")).toBeVisible();
-    await captureMemory(page, "memory-removed");
-
-    await page
-      .locator("[data-removed]")
-      .getByRole("button", { name: "Restore", exact: true })
-      .click();
-    await page
-      .locator("[data-removed]")
-      .locator("[data-memory-form]")
-      .getByRole("button", { name: "Restore revision" })
-      .click();
-    await expect(page.getByText("Nothing removed")).toBeVisible();
-    await page
-      .getByRole("radio", { name: "Current", exact: true })
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(memoryCard.getByRole("heading", { name: "Release note updated" })).toBeVisible();
-
-    const routine = await rpc<{ readonly botId: string }>(page, "routines/create", {
-      botId,
-      instruction: "Check the offline queue",
-      cron: "0 * * * *",
-      timezone: "UTC",
-    });
-    expect(routine.botId).toBe(botId);
-
-    // The settings panel mounts all six sections at once, so the connections
-    // section is the scope for the flow that follows.
-    await page.goto(`${current.origin}/settings`);
-    const models = page.locator("#models");
-    await models.getByRole("button", { name: "New connection" }).click();
-    await models.getByLabel("Label", { exact: true }).fill("Offline model");
-    await models.getByLabel("Base URL", { exact: true }).fill(current.model.baseUrl);
-    await models.getByLabel("Credential name", { exact: true }).fill("offline-model-emulator");
-    await models.getByLabel("API key", { exact: true }).fill("offline");
-    await models.getByLabel("Default model (optional)", { exact: true }).fill("porkbot-e2e");
-    await models.getByRole("button", { name: "Connect" }).click();
-    const modelConnection = models
-      .locator("[data-connection-row]")
-      .filter({ hasText: "Offline model" });
-    await expect(modelConnection).toBeVisible();
-    await modelConnection.getByRole("button", { name: "Test" }).click();
-    await expect(modelConnection.getByText(/Reachable · 1 model · streaming/)).toBeVisible();
-
-    await page.goto(`${current.origin}/bots/${botId}/computer`);
-    // The surface states the machine's state as a state: gone until the first
-    // start, and the frame says plainly where no live view exists.
-    await expect(page.locator("[data-computer-view-state]")).toHaveText("Gone");
-    await page.getByRole("button", { name: /machine actions/ }).click();
-    await page
-      .getByRole("menuitem", { name: "Start — bring the machine up" })
-      .evaluate((el) => (el as HTMLElement).click());
-    await expect(page.locator("[data-computer-view-state]")).toHaveText("Running");
-    await expect(page.getByText("No live view", { exact: false })).toBeVisible();
-
-    await captureComputer(page);
-
-    await page.getByRole("tab", { name: "Terminal" }).click();
-    await page.getByLabel("Command", { exact: true }).fill("echo offline");
-    await page.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(page.getByText("$ echo offline", { exact: true })).toBeVisible();
-    await expect(page.locator("[data-terminal-stdout]")).toHaveText("offline");
-
-    await page.goto(current.origin);
-    const helper = page.locator("[data-roster-card]").filter({ hasText: "Offline Helper" });
-
-    await helper.getByRole("button", { name: "Actions for Offline Helper" }).click();
-    await page.getByRole("menuitem", { name: "New thread" }).click();
-    await expect(page).toHaveURL(/\/bots\/[^/]+\/threads\/[^/]+$/);
-    const threadId = threadIdFromUrl(page.url());
-    await page.getByLabel("Message", { exact: true }).fill("Start offline task");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByText("Start offline task", { exact: true })).toBeVisible();
-
-    const run = await current.startRun(threadId);
-    // The run exists, so the usage ledger can be seeded with the shape a week
-    // of calls leaves before the usage captures at the end of the flow.
-    await current.seedUsage(botId);
-
-    // The card names the same tool as the timeline entry, so the assertion is
-    // scoped to the entry rather than the plain word.
-    await expect(page.locator("[data-tool-call-name]", { hasText: "shell" })).toBeVisible();
-    await expect(page.getByText(/Waiting for approval: shell/)).toBeVisible();
-
-    // The inline approval card (slice 13.9): the action, what it touches, the
-    // consequence, the live deadline and two buttons. The run also carries a
-    // gate that already timed out, so one capture holds both states and the
-    // resolved capture proves the first card answered.
-    const pendingCard = page.locator("[data-approval-state='pending']");
-    const timedOutCard = page.locator("[data-approval-state='timed_out']");
-
-    await expect(pendingCard).toHaveCount(1);
-    await expect(pendingCard.locator("[data-approval-title]")).toHaveText("Approval needed");
-    await expect(pendingCard.locator("[data-approval-consequence]")).toHaveText(
-      "Run echo offline on the bot's computer.",
-    );
-    await expect(pendingCard.locator("[data-approval-target]")).toHaveText("echo offline");
-    await expect(pendingCard.locator("time")).toHaveText(/left$/);
-    await expect(timedOutCard).toHaveCount(1);
-    await expect(timedOutCard.locator("[data-approval-title]")).toHaveText("Timed out");
-    await expect(timedOutCard.locator("[data-approval-decision]")).toHaveText(
-      "The deadline passed, so the run was denied.",
-    );
-    await captureApprovalState(page, "approval-pending", { narrow: true });
-
-    await page.goto(`${current.origin}/approvals`);
-    await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
-    await expect(page.locator("#approvals-waiting")).toBeVisible();
-    await expect(page.locator("#approvals-history")).toBeVisible();
-    await expect(page.locator("[data-approval-state='pending']")).toHaveCount(1);
-    await expect(page.locator("[data-approval-state='timed_out']")).toHaveCount(1);
-    await captureApprovalState(page, "approvals-queue");
-
-    await page
-      .locator("[data-approval-state='pending']")
-      .getByRole("button", { name: "Approve" })
-      .click();
-    await expect(page.locator("[data-approval-state='approved']")).toHaveCount(1);
-    await expect(page.locator("#approvals-waiting")).toHaveCount(0);
-    await captureApprovalState(page, "approvals-history");
-
-    await page.goto(`${current.origin}/bots/${botId}/threads/${threadId}`);
-    await page.getByLabel("Message", { exact: true }).fill("Steer this run");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByText("Steer this run", { exact: true })).toBeVisible();
-    await run.continueAfterApproval();
-
-    // A streaming run: the tokens have landed and the run is still live, so
-    // the capture shows the bubbles, the attribution and the stop control.
-    // The approval card has resolved in place rather than folding away.
-    await expect(page.getByText(/offline assistant response/)).toBeVisible();
-    await expect(page.locator("[data-approval-state='approved']")).toHaveCount(1);
-    await expect(page.locator("[data-approval-state='timed_out']")).toHaveCount(1);
-    await captureApprovalState(page, "approval-resolved");
-    await captureConsoleState(page, "conversation-streaming");
-
-    await rpc(page, "runs/stop", { runId: run.runId });
-    await run.cancel();
-    await expect(page.getByText(/offline assistant response/)).toBeVisible();
-
-    await page.reload();
-    await expect(page.getByText(/offline assistant response/)).toBeVisible();
-    await expect(page.locator("[data-tool-call-name]", { hasText: "shell" })).toBeVisible();
-    expect(await repositories.routines.listForBot(botId)).toHaveLength(1);
-
-    // An attachment: staged, uploaded and sent, then read back as the card in
-    // the operator's bubble.
-    await page
-      .locator("[data-composer] input[type='file']")
-      .setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
-    await expect(page.locator("[data-composer-file]")).toBeVisible();
-    await page.getByLabel("Message", { exact: true }).fill("Here is the note");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.locator("a.message-attachment")).toBeVisible();
-    await captureConsoleState(page, "conversation-attachment");
-
-    // An upload failure: the route refuses, and the row says so while the
-    // draft stands.
-    await page.route("**/threads/*/attachments**", async (route) => {
-      await route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "offline" }),
-      });
-    });
-    await page
-      .locator("[data-composer] input[type='file']")
-      .setInputFiles({ name: "lost.txt", mimeType: "text/plain", buffer: Buffer.from("offline") });
-    await expect(page.locator("[data-composer-file][data-status='failed']")).toBeVisible();
-    await captureConsoleState(page, "conversation-upload-failed");
-    await page.unroute("**/threads/*/attachments**");
-    await page.getByRole("button", { name: "Remove lost.txt" }).click();
-
-    // The run surface (slice 13.8): the live strip while a run works, and the
-    // report card a settled run closes with. The queued run the attachment's
-    // send started is the one driven here, so the capture is of the real
-    // console against the real API rather than a staged transcript.
-    const completing = await current.startRun(threadId, { stop: "working" });
-
-    await expect(page.locator("[data-live-strip-step]")).toHaveText("Running shell…");
-    await captureConsoleState(page, "run-surface-running");
-
-    await completing.complete();
-    await expect(page.locator("[data-run-card-title]").last()).toHaveText("Run finished");
-    await captureConsoleState(page, "run-surface-completed");
-
-    // A failed run closes with its own card: the failure line where the ✓
-    // lines would be, in the run's own words.
-    await page.getByLabel("Message", { exact: true }).fill("Fail the offline task");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByText("Fail the offline task", { exact: true })).toBeVisible();
-    const failing = await current.startRun(threadId, { stop: "working" });
-
-    await expect(page.locator("[data-live-strip-step]")).toHaveText("Running shell…");
-    await failing.fail();
-    await expect(page.locator("[data-run-card-title]").last()).toHaveText("Run failed");
-    await captureConsoleState(page, "run-surface-failed");
-
-    await captureWorkspace(page, current.origin, botId, threadId);
-
-    // The usage captures (slice 13.12): one bot's report and the settings
-    // report over every bot, after the run that produced the ledger exists.
-    await captureUsage(page, current.origin, botId);
-
-    // The settings panel with something in every section it can seed offline:
-    // a stored secret and a notification switch over the API, beside the
-    // connection, the bots and the usage the flow already produced. MCP stays
-    // empty because its install needs a reachable HTTPS server, which the
-    // offline fixture does not have; the section says so.
-    await rpc(page, "botSecrets/put", {
-      botId,
-      name: "api_token",
-      value: "fixture-value",
-      origin: "https://api.example.invalid",
-      auth: { type: "bearer" },
-    });
-    await rpc(page, "notifications/setPreference", { kind: "run.failed", enabled: true });
-    await captureSettings(page, current.origin);
-
-    // The roster captures need more than one teammate, and a bot in the
-    // archived group: both are seeded over the API because the capture is
-    // about how the rows render, not how a bot is created.
-    await rpc(page, "bots/create", {
-      name: "Ledger",
-      title: "Bookkeeping",
-      color: "#2563eb",
-      spawnKey: randomUUID(),
-    });
-    await rpc(page, "bots/create", {
-      name: "Scout",
-      title: "Reading a page",
-      color: "#16a34a",
-      spawnKey: randomUUID(),
-    });
-    const retired = await rpc<{ readonly id: string }>(page, "bots/create", {
-      name: "Piper",
-      title: "Errands",
-      color: "#d946ef",
-      spawnKey: randomUUID(),
-    });
-
-    await rpc(page, "bots/archive", { id: retired.id });
-
-    // Pin one teammate through the row's own menu, so the pinned group is
-    // exercised rather than staged before the captures.
-    await page.goto(current.origin);
-
-    const ledger = page.locator("[data-roster-card]").filter({ hasText: "Ledger" });
-
-    await ledger.getByRole("button", { name: "Actions for Ledger" }).click();
-    await page.getByRole("menuitem", { name: "Pin" }).click();
-    await expect(page.getByRole("heading", { name: "Pinned" })).toBeVisible();
-
-    await captureRoster(page, current.origin, "roster-home", {
-      modes: ["dark", "light"],
-      narrow: true,
-    });
-    await captureRoster(page, current.origin, "roster-archived", { archived: true });
-  } finally {
-    if (!page.isClosed()) {
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-    }
-  }
-});
+/** The screenshot the UI comment publishes: the product's own front door. */
+export async function heroShot(page: Page): Promise<void> {
+  const screenshotPath = path.resolve("test-results/ui/porkbot-browser.png");
+  await mkdir(path.dirname(screenshotPath), { recursive: true });
+  await page.screenshot({ path: screenshotPath, fullPage: true });
+}
