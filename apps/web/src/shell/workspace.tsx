@@ -1,6 +1,25 @@
-import { useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import type { Approval } from "@porkbot/contracts";
-import { BotAvatar, IconButton, SidebarProvider, StateChip, useSidebar } from "@porkbot/ui";
+import {
+  BotAvatar,
+  Button,
+  CountBadge,
+  Icon,
+  IconButton,
+  Input,
+  Menu,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarProvider,
+  SidebarRail,
+  StateChip,
+  useSidebar,
+} from "@porkbot/ui";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { findRosterBot } from "../roster.ts";
@@ -8,11 +27,10 @@ import type { Roster, RosterEntry } from "../roster.ts";
 import { stateFromPending } from "./bot-state.ts";
 import { ShellHeaderProvider } from "./header-state.tsx";
 import type { ShellHeaderState } from "./header-state.tsx";
-import { Inspector } from "./inspector.tsx";
-import { applyMode, currentChoice } from "./mode.ts";
+import { applyMode, currentChoice, modeLabel, modes } from "./mode.ts";
 import type { Mode } from "./mode.ts";
 import { ModeProvider } from "./mode-context.tsx";
-import { Rail } from "./rail.tsx";
+import { RosterRow } from "./roster-row.tsx";
 
 /**
  * The workspace: the rail, the content pane and the inspector (slice 13.4;
@@ -137,6 +155,15 @@ export function Workspace({
     );
   }, [pendingForBot, roster.active, selectedBotId, state]);
 
+  const visibleEntries = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return needle === ""
+      ? entries
+      : entries.filter((entry) =>
+          `${entry.bot.name} ${entry.bot.title}`.toLowerCase().includes(needle),
+        );
+  }, [entries, query]);
+
   const chooseMode = useCallback((next: Mode) => {
     setMode(next);
     applyMode(document.documentElement, globalThis.localStorage, next);
@@ -146,30 +173,205 @@ export function Workspace({
   function RailSlot(): ReactNode {
     const { closeMobile } = useContext(RailControls);
     return (
-      <Rail
-        entries={entries}
-        pendingCount={pendingApprovals.length}
-        query={query}
-        onQuery={setQuery}
-        mode={mode}
-        onMode={chooseMode}
-        onSignOut={onSignOut}
-        rosterFailed={rosterFailed ?? false}
-        onRetryRoster={onRetryRoster}
-        onNavigate={closeMobile}
-      />
+      <Sidebar side="left" collapsible="icon" className="border-r border-border bg-card">
+        <SidebarRail />
+        <SidebarHeader>
+          <span className="text-title">PorkBot</span>
+          <div className="flex items-center gap-2 px-2 text-muted-foreground">
+            <Icon name="search" aria-hidden="true" />
+            <Input
+              type="search"
+              placeholder="Search bots"
+              aria-label="Search bots"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+              }}
+            />
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <nav aria-label="Bots" className="flex flex-col gap-1">
+                {visibleEntries.map((entry) => (
+                  <RosterRow
+                    key={entry.bot.id}
+                    entry={entry}
+                    size="rail"
+                    onNavigate={closeMobile}
+                  />
+                ))}
+                {rosterFailed ? (
+                  <>
+                    <p className="text-body text-muted-foreground" data-rail-empty>
+                      The bot list could not be loaded.
+                    </p>
+                    <Button variant="ghost" onClick={onRetryRoster}>
+                      Try again
+                    </Button>
+                  </>
+                ) : null}
+                {!rosterFailed && visibleEntries.length === 0 ? (
+                  <p className="text-body text-muted-foreground" data-rail-empty>
+                    {entries.length === 0 ? "No bots yet." : "No bots match."}
+                  </p>
+                ) : null}
+                {!rosterFailed && entries.length === 0 ? (
+                  <Link
+                    to="/bots/new"
+                    onClick={closeMobile}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-body hover:bg-accent"
+                  >
+                    <Icon name="plus" aria-hidden="true" />
+                    New bot
+                  </Link>
+                ) : null}
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>
+          <nav aria-label="Workspace" className="flex flex-col gap-1">
+            <Link
+              to="/approvals"
+              onClick={closeMobile}
+              aria-label={
+                pendingApprovals.length > 0
+                  ? `Approvals, ${String(pendingApprovals.length)} waiting`
+                  : "Approvals"
+              }
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-body hover:bg-accent"
+            >
+              <Icon name="alert" aria-hidden="true" />
+              <span>Approvals</span>
+              {pendingApprovals.length > 0 ? <CountBadge count={pendingApprovals.length} /> : null}
+            </Link>
+            <Link
+              to="/settings"
+              onClick={closeMobile}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-body hover:bg-accent"
+            >
+              <Icon name="settings" aria-hidden="true" />
+              <span>Settings</span>
+            </Link>
+            <Menu
+              variant="ghost"
+              label={`Mode: ${modeLabel(mode)}`}
+              items={modes.map((candidate) => ({
+                id: candidate,
+                label: modeLabel(candidate),
+                onSelect: () => {
+                  chooseMode(candidate);
+                },
+              }))}
+            />
+            <Button variant="ghost" onClick={onSignOut}>
+              <Icon name="log-out" aria-hidden="true" />
+              <span>Sign out</span>
+            </Button>
+          </nav>
+        </SidebarFooter>
+      </Sidebar>
     );
   }
 
   function InspectorSlot(): ReactNode {
     const { closeMobile } = useContext(InspectorToggle);
-    return selected === null ? null : (
-      <Inspector
-        bot={selected}
-        state={state}
-        pendingApprovals={pendingApprovals.filter((approval) => approval.botId === selected.id)}
-        onNavigate={closeMobile}
-      />
+    if (selected === null) {
+      return null;
+    }
+
+    const meta = [selected.title, selected.computerProvider, selected.model].filter(
+      (part): part is string => part !== null && part !== "",
+    );
+    const selectedPendingApprovals = pendingApprovals.filter(
+      (approval) => approval.botId === selected.id,
+    );
+    return (
+      <Sidebar side="right" collapsible="offcanvas" className="border-l border-border bg-card">
+        <SidebarRail />
+        <SidebarHeader>
+          <div className="flex items-center gap-2">
+            <BotAvatar id={selected.id} name={selected.name} color={selected.color} size={32} />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-heading text-foreground">{selected.name}</span>
+              <span className="text-meta text-muted-foreground">
+                {meta.length === 0 ? "Bot" : meta.join(" · ")}
+              </span>
+            </span>
+          </div>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>State</SidebarGroupLabel>
+            <SidebarGroupContent>
+              {state === null ? (
+                <p className="text-body text-muted-foreground">No state to show yet.</p>
+              ) : (
+                <StateChip
+                  state={state}
+                  count={state === "waiting" ? selectedPendingApprovals.length : undefined}
+                />
+              )}
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Pending approvals</SidebarGroupLabel>
+            <SidebarGroupContent>
+              {selectedPendingApprovals.length === 0 ? (
+                <p className="text-body text-muted-foreground">Nothing waiting.</p>
+              ) : (
+                <>
+                  <p className="text-body">
+                    {selectedPendingApprovals.length === 1
+                      ? "1 action is waiting for you."
+                      : `${String(selectedPendingApprovals.length)} actions are waiting for you.`}
+                  </p>
+                  <Link
+                    to="/approvals"
+                    onClick={closeMobile}
+                    className="text-body text-primary hover:underline"
+                  >
+                    Review approvals
+                  </Link>
+                </>
+              )}
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Screens</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <nav aria-label={`${selected.name} screens`} className="flex flex-col gap-1">
+                <Link
+                  to="/bots/$botId/computer"
+                  params={{ botId: selected.id }}
+                  onClick={closeMobile}
+                  className="text-body text-primary hover:underline"
+                >
+                  Computer
+                </Link>
+                <Link
+                  to="/bots/$botId/memory"
+                  params={{ botId: selected.id }}
+                  onClick={closeMobile}
+                  className="text-body text-primary hover:underline"
+                >
+                  Memory
+                </Link>
+                <Link
+                  to="/bots/$botId/usage"
+                  params={{ botId: selected.id }}
+                  onClick={closeMobile}
+                  className="text-body text-primary hover:underline"
+                >
+                  Usage
+                </Link>
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
     );
   }
 
